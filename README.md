@@ -13,12 +13,26 @@ Two skills that share one set of house engineering rules:
 
 **Install both together.** crud-gen reads house-review's `references/` as its source of truth.
 
-## Install
+## Install (once per machine)
 ```bash
-mkdir -p ~/.claude/skills
-cp -r house-review crud-gen ~/.claude/skills/
+git clone git@github.com:ManishAnandProgrammer/Claude-Skills.git ~/Documents/claude-skills
+~/Documents/claude-skills/scripts/install.sh
 ```
-Restart Claude Code (or start a new session); both show up as `/house-review` and `/crud-gen`.
+This repository is the **single source of truth**:
+- `install.sh` symlinks every skill into `~/.claude/skills/`, backing up any existing copy, so
+  Claude Code loads the skills straight from this repository;
+- it schedules `scripts/sync.sh` once a day: a systemd user timer on Linux (catches up after
+  the machine was off), cron elsewhere.
+
+The sync is a fast-forward-only `git pull`. It never merges or overwrites, and skips (logged) when
+there are uncommitted local edits. Log: `~/.local/state/claude-skills/sync.log`.
+
+Start a new Claude Code session afterwards; the skills show up as `/house-review` and `/crud-gen`.
+
+## Changing a skill
+Edit the files here (or through `~/.claude/skills/<name>`, the same files), then commit and push.
+The other machines pick the change up within a day, or right away with
+`~/Documents/claude-skills/scripts/sync.sh`.
 
 ## Use
 - `/house-review`: asks for the scope (branch diff, uncommitted, a path, the whole codebase).
