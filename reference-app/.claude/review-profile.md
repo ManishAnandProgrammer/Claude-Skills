@@ -25,7 +25,7 @@ nothing: it is the code the skills copy.
 | `moduleContracts` | `api-facades` | |
 | `layerPackages` | `controller, service, repository, domain, mapper, dto` | |
 | `repositoryAccess` | `aggregate-service` | ARCH-15, enforced by `AggregateArchTest` |
-| `aggregates` | `User (UserService)`, `RefreshToken (TokenService)`, `TodoList (TodoListService)`, `Todo (TodoService; members: TimeEntry)`, `Tag (TagService)` | TimeEntry is a member of Todo: nested `/todos/{todoId}/time-entries`, no service of its own |
+| `aggregates` | `User (UserService); RefreshToken (TokenService); TodoList (TodoListService); Todo (TodoService): TimeEntry; Tag (TagService)` | TimeEntry is a member of Todo: nested `/todos/{todoId}/time-entries`, no service of its own |
 | `requestSuffix` | `Request` | |
 | `instances` | `multiple` | |
 | `hotPaths` | `none` | |
