@@ -151,7 +151,9 @@ Lines are counted without blank or comment lines.
 - **Check:** comments are for *why*, on logic the code can't explain (a lock, a security choice, a
   database or framework behaviour, a non-obvious contract). A finding is:
   - a comment that restates the code, **including class and method Javadoc that repeats the name**
-    (`/** Accounts. */` on `UserService`, `@param` lists that repeat `@Schema` text);
+    (`/** Accounts. */` on `UserService`, `@param` lists that repeat `@Schema` text). A *why* is
+    fine in Javadoc form on a class or method when it explains a contract the signature can't
+    (a lock order, a transaction rule, a security choice);
   - a historical "no longer …" note;
   - a stale or misleading comment;
   - a `TODO` without an owner or ticket;

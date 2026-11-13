@@ -38,7 +38,7 @@ class PoolExhaustionIntegrationTest extends IntegrationTest {
                 held.add(dataSource.getConnection());
             }
 
-            getAs(user.accessToken(), "/api/v1/todo-lists")
+            getAs(user.accessToken(), "/api/v1/users/me")
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(jsonPath("$.errorCode").value("DATABASE_UNAVAILABLE"))
                     .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
@@ -47,7 +47,7 @@ class PoolExhaustionIntegrationTest extends IntegrationTest {
                 connection.close();
             }
         }
-        getAs(user.accessToken(), "/api/v1/todo-lists").andExpect(status().isOk());
+        getAs(user.accessToken(), "/api/v1/users/me").andExpect(status().isOk());
         assertThat(pool.getHikariPoolMXBean().getThreadsAwaitingConnection()).isZero();
     }
 }

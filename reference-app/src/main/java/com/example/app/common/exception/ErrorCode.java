@@ -49,6 +49,7 @@ public enum ErrorCode {
     USER_PASSWORD_BREACHED,
     AUTH_INVALID_CREDENTIALS,
     AUTH_INVALID_REFRESH_TOKEN,
+    // example:begin (the golden todo module; bootstrap-copy.sh leaves it out of real projects)
 
     // ── TodoList ─────────────────────────────────────────────────────────
     TODO_LIST_NOT_FOUND,
@@ -56,5 +57,6 @@ public enum ErrorCode {
     TODO_LIST_IN_USE,
 
     // ── Todo ─────────────────────────────────────────────────────────────
-    TODO_NOT_FOUND
+    TODO_NOT_FOUND,
+    // example:end
 }

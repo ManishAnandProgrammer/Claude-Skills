@@ -11,6 +11,8 @@
 #              persistence base, config files, test base, ArchUnit
 #     sign-in  user module (signup, login, tokens) + Redis rate limiting
 #     example  the golden crud-gen module (todo lists and todos), for reference only
+# Shared files (ErrorCode, messages, limits) mark the example module's entries with
+# "example:begin" / "example:end" comment lines: without the example piece those blocks are left out.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,7 +28,7 @@ while [ $# -gt 0 ]; do
         --package) package="${2:-}"; shift 2 ;;
         --with) pieces="${2:-}"; shift 2 ;;
         --dry-run) dry_run=true; shift ;;
-        -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown option: $1 (see --help)" ;;
     esac
 done
@@ -79,7 +81,7 @@ LIST
 
 dependencies_for() {
     case "$1" in
-        core) echo "spring-boot-starter-{webmvc,json,validation,security,oauth2-resource-server,data-jpa,liquibase,actuator}, postgresql, lombok, hibernate-processor (annotation processor), springdoc-openapi-starter-webmvc-ui, resilience4j-spring-boot4, logstash-logback-encoder, micrometer-tracing-bridge-brave; test: spring-boot-starter-{webmvc,security,data-jpa}-test, spring-boot-testcontainers, testcontainers-{junit-jupiter,postgresql}, archunit-junit5" ;;
+        core) echo "spring-boot-starter-{webmvc,json,validation,security,oauth2-resource-server,data-jpa,liquibase,actuator}, postgresql, lombok, hibernate-processor (annotation processor), springdoc-openapi-starter-webmvc-ui, resilience4j-spring-boot4, logstash-logback-encoder, micrometer-tracing-bridge-brave, micrometer-registry-prometheus; test: spring-boot-starter-{webmvc,security,data-jpa}-test, spring-boot-testcontainers, testcontainers-{junit-jupiter,postgresql}, archunit-junit5" ;;
         sign-in) echo "spring-boot-starter-data-redis, bucket4j_jdk17-core, bucket4j_jdk17-lettuce" ;;
         example) echo "(none beyond core)" ;;
     esac
@@ -94,6 +96,18 @@ dest_for() {
     esac
 }
 
+with_example=false
+[[ ",$pieces," == *",example,"* ]] && with_example=true
+
+# Without the example piece, its blocks in shared files are dropped; with it, only the marker lines.
+example_filter() {
+    if $with_example; then
+        sed '/example:\(begin\|end\)/d'
+    else
+        sed '/example:begin/,/example:end/d'
+    fi
+}
+
 copied=() skipped=()
 copy_file() {
     local relative="$1" dest
@@ -106,7 +120,8 @@ copy_file() {
     $dry_run && return
     mkdir -p "$(dirname "$target/$dest")"
     case "$relative" in
-        *.java|*.yml|*.yaml|*.xml|*.properties) sed "s/${REFERENCE_PACKAGE//./\\.}/$package/g" "$REFERENCE/$relative" > "$target/$dest" ;;
+        *.java|*.yml|*.yaml|*.xml|*.properties)
+            sed "s/${REFERENCE_PACKAGE//./\\.}/$package/g" "$REFERENCE/$relative" | example_filter > "$target/$dest" ;;
         *) cp "$REFERENCE/$relative" "$target/$dest" ;;
     esac
 }
@@ -147,8 +162,11 @@ else
     fi
 fi
 
-$dry_run && echo "DRY RUN: nothing was written."
-echo "copied ${#copied[@]} file(s) into $target (package $package)"
+if $dry_run; then
+    echo "DRY RUN: nothing was written. Would copy ${#copied[@]} file(s) into $target (package $package)"
+else
+    echo "copied ${#copied[@]} file(s) into $target (package $package)"
+fi
 if [ ${#skipped[@]} -gt 0 ]; then
     echo "skipped ${#skipped[@]} existing file(s), left as they are:"
     printf '  %s\n' "${skipped[@]}"

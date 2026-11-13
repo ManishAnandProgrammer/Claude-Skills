@@ -259,10 +259,18 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   need a (partial) unique index with the violation translated to **the domain code**, or
   `INSERT … ON CONFLICT`, or a lock. Idempotent operations (pin, follow) use
   `ON CONFLICT DO NOTHING` and answer 2xx, not 409 (F-084).
-- **Unique text (HelpBook):** a unique `text` column gets a unique **index on
-  `lower(trim(col))`**, so case and surrounding spaces don't make a different value ("Groceries" vs
-  " groceries", two accounts for one email). A nullable one is partial: `WHERE col IS NOT NULL`.
-  The code normalises the same way before writing and looking up, so the index is used.
+- **Unique text (HelpBook):** case and surrounding spaces must not make a different value
+  ("Groceries" vs " groceries", two accounts for one email). Two correct shapes:
+  - the code **stores the normalised form** (enforced by `CHECK (col = lower(trim(col)))`) and the
+    column gets a **plain unique constraint**, which every `col = ?` lookup uses (emails, codes);
+  - the stored text **keeps its case** (a display name) and gets a unique **index on
+    `lower(trim(col))`**. PostgreSQL uses an expression index **only for a query naming the same
+    expression**: a lookup `WHERE col = ?` beside it is a sequential scan (measured 2026-11-13:
+    the reference's login read the whole `users` table).
+
+  A nullable one is partial: `WHERE col IS NOT NULL`.
+- **Detect:** an expression index next to a repository lookup on the bare column (`findByEmail`).
+- **Severity:** High on a lookup in a request path (login, signup).
 - **Severity:** High.
 
 ### DATA-06: Optimistic locking
@@ -314,6 +322,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - every foreign key column is indexed;
   - **one index per offered list order**, leading with the scope columns (owner, tenant), then the
     sort keys, **ending with the id** tie-breaker; filtered columns covered (composite or partial);
+  - **also per scoping filter** (a parent id: a list's own screen): `(parent_id, owner_id, sort
+    keys…, id)`, which also serves the foreign key, or the page walks every row of the owner;
   - every sort has a unique tie-breaker;
   - **a keyset sort key is never null.** A nullable column (a due date) sorts through a stored
     generated column (`coalesce(due_date, date '9999-12-31')`) that the index and the keyset use;

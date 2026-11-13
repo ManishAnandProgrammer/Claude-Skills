@@ -48,12 +48,12 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.USER_PASSWORD_BREACHED, HttpStatus.BAD_REQUEST);
         MAPPING.put(ErrorCode.AUTH_INVALID_CREDENTIALS, HttpStatus.UNAUTHORIZED);
         MAPPING.put(ErrorCode.AUTH_INVALID_REFRESH_TOKEN, HttpStatus.UNAUTHORIZED);
-
+        // example:begin
         MAPPING.put(ErrorCode.TODO_LIST_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TODO_LIST_NAME_TAKEN, HttpStatus.CONFLICT);
         MAPPING.put(ErrorCode.TODO_LIST_IN_USE, HttpStatus.CONFLICT);
-
         MAPPING.put(ErrorCode.TODO_NOT_FOUND, HttpStatus.NOT_FOUND);
+        // example:end
     }
 
     private ErrorCodeHttpStatusMapper() {

@@ -49,7 +49,7 @@ Fill values from the codebase, not from memory.
 | `ErrorCodeMapper` | `com.example.common.exception.ErrorCodeHttpStatusMapper` | `EnumMap` entries are added here |
 | `AppException` | `com.example.common.exception.AppException` | `of` / `supply` / `withCause` |
 | `messagesFile` | `src/main/resources/messages/message_en.properties` | Every locale file gets the new keys |
-| `constraintCodeMap` | `GlobalExceptionHandler#CONSTRAINT_CODES` | Where unique / FK constraint names map to ErrorCodes |
+| `constraintCodeMap` | `<module>/<Module>ConstraintErrorCodes` | A `ConstraintErrorCodes` bean per module maps its unique / FK constraint names to ErrorCodes; the handler aggregates them |
 | `staleErrorCode` | `OPTIMISTIC_LOCK_CONFLICT` | Thrown when the version from the client is stale |
 
 ## Paging and lists
@@ -57,7 +57,7 @@ Fill values from the codebase, not from memory.
 | Key | Value | Notes |
 |---|---|---|
 | `cursorLists` | `all lists not in offsetLists` | Keyset paging (the default): `CursorFilter`, `CursorWrapper`, `pageInfo {nextCursor, hasMore}`, no count |
-| `offsetLists` | `none` | Bounded admin tables that need page numbers: `PageFilter`, `PaginationWrapper`, count on a full page |
+| `offsetLists` | `none` | Bounded admin tables that need page numbers, as **entity class names** (`TodoList`): `PageFilter`, `PaginationWrapper`, count on a full page |
 | `CursorFilter` / `CursorWrapper` / `KeysetPages` | `com.example.common.pagination.CursorFilter` / `…wrapper.CursorWrapper` / `…pagination.KeysetPages` | Cursor lists |
 | `PageFilter` / `PaginationWrapper` / `OffsetPages` | `com.example.common.pagination.PageFilter` / `…wrapper.PaginationWrapper` / `…pagination.OffsetPages` | Offset lists |
 | `Paging` | `com.example.common.pagination.Paging` | Default sizes from configuration (`offset(filter, sort)`, `cursorSize(filter)`) |

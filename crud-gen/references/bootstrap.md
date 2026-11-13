@@ -24,8 +24,9 @@ With **AskUserQuestion** (several per call):
 3. **Signup policy** (with sign-in): email-verified signup (answers 202 and never reveals an
    existing account; needs an email-sending choice) or immediate accounts (simpler; signup reveals
    whether an email is registered: record the accepted risk).
-4. **Breached-password check** (Spring Security's `CompromisedPasswordChecker`, an outbound
-   call; fail-open or fail-closed), `tokenRevocation`, the client-IP log mode, `metricsAuth` (how
+4. **Breached-password check** (the `sign-in` piece's `BreachedPasswordCheck`: Have I Been Pwned
+   range API, timeouts, a bulkhead, failures counted; on or off with
+   `app.security.breached-passwords.enabled`; fail-open. Fail-closed needs a code change: say so), `tokenRevocation`, the client-IP log mode, `metricsAuth` (how
    the metrics scrape is secured), multi-tenant or not.
 5. **Packaging:** a Dockerfile (JDK or jlink runtime with `jcmd` and JFR, non-root, the CFG-08
    flags) or Boot's `build-image` (record which flags Paketo sets).
@@ -59,12 +60,13 @@ Write `.claude/crud-profile.md` and `.claude/review-profile.md` from their templ
   `PERSONAL_DATA_PEPPER`, ...).
 
 ## 3. Dependencies
-The script prints the dependencies each piece needs. Propose them (with versions and Boot
+Start the pom from `reference-app/pom.xml` (its dependencies, the annotation processor and the
+plugins), keeping only the approved pieces. The script prints the dependencies each piece needs. Propose them (with versions and Boot
 compatibility) and add the approved ones. Also propose `micrometer-registry-prometheus` with the
 `metricsAuth` decision; without it nothing can scrape the metrics.
 
 ## 4. Verify
 1. Build and test (`{{buildCommand}}`). **Check the test count is what you expect**: a test class
-   Surefire doesn't pick up (named `*Rules` instead of `*Test`) passes silently by not running.
+   Surefire doesn't pick up (named `*Rules` instead of `*Test`) passes silently by not running. `ErrorCodeContractTest` runs two cases per `ErrorCode`, so every added code adds two.
 2. Run `/house-review all`. Expected: no findings outside open business decisions.
 3. Report what was copied, what was skipped (with the differences proposed), and the decisions.

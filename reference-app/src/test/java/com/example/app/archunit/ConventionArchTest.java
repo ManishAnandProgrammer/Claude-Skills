@@ -103,7 +103,9 @@ class ConventionArchTest {
     static final ArchRule repositoryImplementationsAreNotPublic = classes().that().haveSimpleNameEndingWith("RepositoryImpl")
             .should().notBePublic()
             .andShould().resideInAPackage("..repository.impl")
-            .because("an implementation is reached through its repository interface only (naming convention)");
+            .because("an implementation is reached through its repository interface only (naming convention)")
+            // A fresh project has no custom repository yet.
+            .allowEmptyShould(true);
 
     /** Imports the test classes itself: the rules above analyse production code only. */
     @ArchTest

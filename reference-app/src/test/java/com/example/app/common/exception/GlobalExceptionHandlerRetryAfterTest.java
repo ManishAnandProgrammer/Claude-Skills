@@ -70,7 +70,7 @@ class GlobalExceptionHandlerRetryAfterTest {
     @Test
     @DisplayName("A client error carries no Retry-After")
     void clientErrorHasNoRetryAfter() {
-        ResponseEntity<ProblemDetail> notFound = handler.handleAppException(AppException.of(ErrorCode.TODO_NOT_FOUND), request);
+        ResponseEntity<ProblemDetail> notFound = handler.handleAppException(AppException.of(ErrorCode.USER_NOT_FOUND), request);
 
         assertThat(notFound.getHeaders().containsHeader(HttpHeaders.RETRY_AFTER)).isFalse();
     }

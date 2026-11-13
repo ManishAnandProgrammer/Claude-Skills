@@ -45,7 +45,7 @@ project doesn't have.
 | `exceptionHandler` | FQN | REST-06 |
 | `errorCodeType` | `none` | FQN of the ErrorCode enum once it exists |
 | `cursorLists` | `all lists not in offsetLists` | Cursor (keyset) paging, the default: user-facing and growing lists, dropdowns |
-| `offsetLists` | `none` | Bounded admin tables that need page numbers |
+| `offsetLists` | `none` | Bounded admin tables that need page numbers, as **entity class names** (`TodoList`), not prose |
 | `NotXss` | `none` | FQN of the anti-XSS validator, or `escape-on-output` with a link to the policy |
 | `noEmojiFields` | `none` | Fields where `@NoEmoji` applies (codes, identifiers) |
 | `tokenRevocation` | `short-lived(15)` | `blacklist` (jti blacklist with a TTL, any store, no DB connection on a cache hit) or `short-lived(<max minutes>)` |

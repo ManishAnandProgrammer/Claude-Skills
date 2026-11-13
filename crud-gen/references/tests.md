@@ -27,6 +27,9 @@ unique name, dropdown). Generate `{{testRoot}}/<app path>/EntityNameIntegrationT
 - **Special characters in a query parameter go through `.param(...)`**: MockMvc's
   `get(String)` treats the path as a template and encodes `%25` again.
 
+The table is the contract; test method names may follow the golden classes. When the golden tests
+and this table disagree, the table wins (and the golden class is a bug to report).
+
 ## Required tests
 
 | # | Test | Asserts | Rule |
@@ -52,7 +55,14 @@ unique name, dropdown). Generate `{{testRoot}}/<app path>/EntityNameIntegrationT
 | 18 | Per filter: `filterByXReturnsOnlyMatching` | its matching row present, its non-matching row absent; **range filters include the boundary row** and exclude the next one | TEST-16, TEST-12 |
 | 19 | Per enum (filter or field): `@EnumSource` over every constant | each member works through the real endpoint | TEST-15 |
 | 20 | `unconvertibleFilterValuesAre400`; unknown enum in a body; `unknownJsonFieldIs400` | `REQUEST_PARAMETER_INVALID` naming only the field (no `java.` in the body); `REQUEST_UNREADABLE` | REST-06, REST-22 |
-| 21 | `listRunsAConstantNumberOfQueries` | `statistics()`: the same statement count for 1 row and a full batch (cursor lists: exactly 1) | TEST-06 |
+| 21 | `listRunsAConstantNumberOfQueries` | `statistics()`: cursor lists exactly 1 statement for 1 row and a full batch; offset lists 1 for a partial page and 2 for a full one (the count), the same for every page size | TEST-06 |
+| 22 | Race tests return status **and body** | every 409 of a race asserts its errorCode and that the body has no `uq_`, `fk_`, `SQL`, `Exception`, `java.`: races reach other code paths (`@Version`, the unique index) than the sequential tests | TEST-08, TEST-04 |
+| 23 | Parent with children: `childWritesRacingAParentDeleteKeepTheInvariant` | latched child creates into a parent against one delete of it: either the parent is gone with no children or it remains with them; creates 201 or 404 `PARENT_NOT_FOUND`, the delete 204 or 409 `PARENT_IN_USE`. Proves the parent lock (`FOR SHARE`). Lives in the **child's** test class; the parent's `deleteWhileReferencedIs409` too, once the child exists | TEST-05 |
+| 24 | Per sort, both directions | every keyset (each sort, each direction, the dropdown's `DESC`) walked to the end | TEST-12 |
+| 25 | `query` limits | `search-query` at its limit and limit + 1 on every list and dropdown | TEST-03 |
+| 26 | Entity unit test | state methods (`changeStatus`, `moveTo`): transitions, the timestamp rule, the impossible-state guard (`IllegalStateException`) | JAVA-16 |
+| 28 | `everyListShapeUsesAnIndex` | for each offered order × scoping filter: `EXPLAIN` (with `enable_seqscan = off`) on seeded rows names the intended index. Golden: `TodoIndexIntegrationTest` | DATA-10 |
+| 27 | When the golden class has them: `lockedRowAnswers503` (a write against a row locked by another transaction: 503 `DATABASE_CONTENTION` + `Retry-After`, row unchanged) and `apiDocsShowTheLimits` (the configured `maxLength` in the OpenAPI schema) | one per project is enough; generate them only for the first entity | ERR-05, REST-09 |
 
 Dropdown: add the tests from `references/dropdown.md`. Variant B replaces 2, 6 and 16–18 with:
 GET before create (null object), PUT create, PUT replace, and GET for an unknown parent.

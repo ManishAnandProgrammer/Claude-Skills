@@ -12,9 +12,12 @@ import jakarta.validation.Validator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -28,8 +31,11 @@ class LimitsIntegrationTest extends IntegrationTest {
     @Autowired
     private Validator validator;
 
+    @Autowired
+    private Environment environment;
+
     @Test
-    @DisplayName("Every @MaxLength and @ConfiguredMax key in the code has a configured value")
+    @DisplayName("Every @MaxLength, @ConfiguredMax and @LatestDate key in the code has a configured value")
     void everyLimitKeyIsConfigured() {
         JavaClasses classes = new ClassFileImporter()
                 .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -47,10 +53,23 @@ class LimitsIntegrationTest extends IntegrationTest {
                 checkConfigured(missing, field.getAnnotationOfType(ConfiguredMax.class).value(),
                         () -> limits.get(field.getAnnotationOfType(ConfiguredMax.class).value()));
             }
+            if (field.isAnnotatedWith(LatestDate.class)) {
+                checked++;
+                String key = "latest-date." + field.getAnnotationOfType(LatestDate.class).value();
+                checkConfigured(missing, key, () -> requireDate("app.limits." + key));
+            }
         }
 
         assertThat(checked).isPositive();
         assertThat(missing).isEmpty();
+    }
+
+    private void requireDate(String property) {
+        String value = environment.getProperty(property);
+        if (Objects.isNull(value)) {
+            throw new IllegalStateException(property + " is not configured");
+        }
+        LocalDate.parse(value);
     }
 
     private static void checkConfigured(List<String> missing, String key, Runnable lookup) {

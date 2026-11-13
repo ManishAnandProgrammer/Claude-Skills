@@ -37,15 +37,18 @@ annotation's full LLM contract) and, for one entity, `todo/repository/impl/TodoL
 
 ## What to generate per entity (naming fixed: `findDropdownItems`, `dropdown`, `dropdown`)
 1. **Repository** (Criteria, never `@Query`): a **projection**
-   `builder.construct(DropdownItem.class, value, label)` fetched with `KeysetPages` over the keyset
+   `builder.construct(DropdownItem.class, value, label)` in a `ProjectionQuery`, fetched with the
+   injected `keysetPages` (returning a `CursorBatch`) over the keyset
    `(sortField, valueField)`; predicates for mandatory, optional, status and search; scoped like the
    resource's reads (ownership, tenant). Indexes `(scope columns, sortField, valueField)`.
-2. **Service:** `CursorWrapper<DropdownItem> dropdown(<Filter> filter)`; refuses an inapplicable
+2. **Service:** `CursorWrapper<DropdownItem> dropdown(<Filter> filter)` builds the wrapper from the
+   repository's `CursorBatch`; refuses an inapplicable
    `status`; the batch size from `Paging.cursorSize(filter)`. `cacheable = true` only for static
    master data, with `@CacheEvict` on writes and a shared cache when `{{instances}}` is
    `multiple`.
 3. **API interface:** `@Operation(summary = "Options for the <label> dropdown")`, the description
-   lists the defaults and the batching; `@ApiResponse` 200, 400, 401, 403, 503.
+   lists the defaults and the batching; `@ApiResponse` 200, 400, 401, 503 (403 only when
+   `{{dropdownSecurity}}` checks a role).
 4. **Controller:** `dropdown(@Valid <Filter> filter)` returning the service result;
    `{{dropdownSecurity}}` (normally `isAuthenticated()`; ask when the resource is more restricted).
    A dropdown never lists items the caller couldn't fetch.

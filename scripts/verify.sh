@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
 # Verifies the skills repository before a push (it is private: there is no CI):
 #   1. reference-app builds and every test passes (Testcontainers: Docker must be reachable);
-#   2. bootstrap-copy.sh copies core + sign-in into a fresh project under another package, and that
-#      project builds and passes its tests too.
-# Run it by hand, or let .githooks/pre-push run it. Exit code 0 only when both are green.
+#   2. bootstrap-copy.sh copies core + sign-in into a fresh project under another package and
+#      another application name, and that project builds and passes its tests too;
+#   3. the reference's Docker image starts with the prod profile against PostgreSQL and Redis:
+#      healthy, sign-in rate limited through Redis, metrics only on the management port. Tests can't
+#      see this: Testcontainers hands them their connections (a missing Redis setting once switched
+#      rate limiting off in every deployment, with every test green).
+# Run it by hand, or let .githooks/pre-push run it. Exit code 0 only when all three are green.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 REFERENCE="$REPO/reference-app"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/claude-skills-verify.XXXXXX")"
-trap 'rm -rf "$WORK"' EXIT
+RUN="claude-skills-verify-$$"
+cleanup() {
+    docker rm -f "$RUN-app" "$RUN-pg" "$RUN-redis" > /dev/null 2>&1 || true
+    docker network rm "$RUN-net" > /dev/null 2>&1 || true
+    docker image rm "$RUN-image" > /dev/null 2>&1 || true
+    rm -rf "$WORK"
+}
+trap cleanup EXIT
 
 mvn_verify() {
     local dir="$1" log="$2"
@@ -29,10 +40,10 @@ docker info > /dev/null 2>&1 || {
     exit 1
 }
 
-echo "[1/2] reference-app: build and tests"
+echo "[1/3] reference-app: build and tests"
 mvn_verify "$REFERENCE" "$WORK/reference.log"
 
-echo "[2/2] bootstrap-copy into a fresh project (package com.acme.smoke)"
+echo "[2/3] bootstrap-copy into a fresh project (package com.acme.smoke)"
 project="$WORK/smoke"
 mkdir -p "$project/src/main/java/com/acme/smoke"
 cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$project/"
@@ -56,6 +67,42 @@ public class SmokeApplication {
 JAVA
 "$REPO/scripts/bootstrap-copy.sh" --target "$project" --package com.acme.smoke --with core,sign-in > "$WORK/copy.log"
 grep -q "com.example.app" -r "$project/src" && { echo "FAILED: com.example.app left in the copied sources" >&2; exit 1; }
+grep -rqE "example:(begin|end)|TODO_LIST|todo-list" "$project/src" && { echo "FAILED: example-module entries left in a copy without the example piece" >&2; exit 1; }
+# Bootstrap renames the application; tests must not depend on the reference's name.
+sed -i 's/\${APP_NAME:reference}/${APP_NAME:smoke}/' "$project/src/main/resources/application.yml"
+grep -q 'APP_NAME:smoke' "$project/src/main/resources/application.yml" || { echo "FAILED: could not rename the smoke application" >&2; exit 1; }
 mvn_verify "$project" "$WORK/smoke.log"
 
-echo "verified: reference-app and a bootstrap copy both build green"
+echo "[3/3] reference-app image: prod profile against PostgreSQL and Redis"
+docker build -q -t "$RUN-image" "$REFERENCE" > /dev/null
+docker network create "$RUN-net" > /dev/null
+docker run -d --name "$RUN-pg" --network "$RUN-net" -e POSTGRES_DB=reference -e POSTGRES_USER=verify \
+    -e POSTGRES_PASSWORD=verify-password postgres:18 > /dev/null
+docker run -d --name "$RUN-redis" --network "$RUN-net" redis:8 > /dev/null
+docker run -d --name "$RUN-app" --network "$RUN-net" -m 768m \
+    -e SPRING_PROFILES_ACTIVE=prod -e DB_HOST="$RUN-pg" -e DB_NAME=reference -e DB_USER=verify -e DB_PASSWORD=verify-password \
+    -e REDIS_HOST="$RUN-redis" -e JWT_SECRET="$(head -c 48 /dev/urandom | base64)" \
+    -e PERSONAL_DATA_PEPPER="$(head -c 48 /dev/urandom | base64)" -e BREACHED_PASSWORD_CHECK_ENABLED=false \
+    "$RUN-image" > /dev/null
+status=""
+for _ in $(seq 1 60); do
+    status="$(docker inspect -f '{{.State.Health.Status}}' "$RUN-app" 2>/dev/null || echo gone)"
+    [ "$status" = healthy ] || [ "$status" = gone ] && break
+    sleep 3
+done
+if [ "$status" != healthy ]; then
+    echo "FAILED: the container is $status" >&2
+    docker logs "$RUN-app" 2>&1 | tail -30 >&2
+    exit 1
+fi
+in_app() { docker exec "$RUN-app" sh -c "$1"; }
+login='curl -s -o /dev/null -w "%{http_code} " -H Content-Type:application/json -d "{\"email\":\"verify@example.com\",\"password\":\"Wrong-Pass-1\"}" localhost:8080/api/v1/auth/login'
+codes="$(in_app "for i in 1 2 3 4 5 6 7 8; do $login; done")"
+[[ "$codes" == *429* ]] || { echo "FAILED: no 429 after repeated logins (rate limiting is off: is Redis reached?): $codes" >&2; exit 1; }
+[ "$(in_app 'curl -s -o /dev/null -w "%{http_code}" localhost:8080/actuator/prometheus')" = 404 ] \
+    || { echo "FAILED: /actuator/prometheus answers on the public port" >&2; exit 1; }
+in_app 'curl -sf localhost:8081/actuator/prometheus' | grep -q '^rate_limit' \
+    || { echo "FAILED: no rate-limit metrics on the management port" >&2; exit 1; }
+echo "container: healthy, rate limited through Redis ($codes), metrics on the management port only"
+
+echo "verified: reference-app, a bootstrap copy and the image are green"

@@ -84,11 +84,12 @@ Check before generating:
 | Extends `{{AuditBase}}` (audit columns + `@Version`) | DATA-06 |
 | Lombok: `@Getter @SuperBuilder`, protected no-args constructor, `@Setter` only on freely editable fields; state changes are entity methods | JAVA-16, SMELL-16 |
 | Relations `@ManyToOne(fetch = LAZY)`; collections read-only with `add…` / `remove…` | JAVA-16 |
-| **String columns are `text`** with no `length` and no length constants in the entity; the length contract is `@MaxLength` on the request with its number in `app.limits.text` | DATA-12 |
+| **String columns are `text` in the changeset**; the entity has a plain `@Column` (no `length`, no `columnDefinition`: `validate` accepts `text` for a `String`) and no length constants; the length contract is `@MaxLength` on the request with its number in `app.limits.text` | DATA-12 |
+| A state field (status) has its **starting value in the entity** (`@Builder.Default`), never in the mapper; impossible-state guards in entity methods throw `IllegalStateException` (500, logged), never `IllegalArgumentException` (400) | JAVA-16, ERR-04 |
 | No soft-delete flag; statuses are enums with a check constraint | DATA-07 |
 | A changeset exists, with `--rollback`; FKs named `fk_<table>_<column>` | DATA-13 |
-| A unique text column has a unique **index on `lower(trim(col))`**, partial (`WHERE col IS NOT NULL`) when nullable | DATA-05 |
-| An index on every FK column, and **one index per offered list order**, leading with the owner (when owned) and **ending with `id`** | DATA-10 |
+| A unique text column ignores case and surrounding spaces: **either** the code stores the normalised form (a check constraint `col = lower(trim(col))`) and the column gets a plain unique constraint, **or** the stored text keeps its case and gets a unique index on `lower(trim(col))`, which **only a query on that same expression can use** (a lookup `col = ?` scans the table). Partial (`WHERE col IS NOT NULL`) when nullable | DATA-05 |
+| An index on every FK column, and **one index per offered list order and per filter that scopes the list** (`todoListId`: the list's own screen), leading with the scope columns and **ending with `id`** | DATA-10 |
 | **A keyset sort key is non-null.** A nullable one (a due date) gets a stored generated column, e.g. `due_sort date GENERATED ALWAYS AS (coalesce(due_date, date '9999-12-31')) STORED`, mapped read-only | Session 2; DATA-10 |
 | A child owned through its parent: the child's owner and the parent's owner are tied by a **composite FK** `(parent_id, owner_id) → parent(id, owner_id)` and a `moveTo` method that checks the owner | DATA-05, SMELL-16 |
 | The sequence exists for a display number | DATA-14 |
@@ -99,6 +100,10 @@ For each failure: report it, offer the fix with **AskUserQuestion** (the entity 
 changeset; never edit an applied one), apply it on approval. If declined, generate anyway and list
 it as an open item.
 
+**Add every new changeset to `db.changelog-master.yaml` right away**, for all the entities you will
+generate, before the first build: Hibernate validates every entity's table at startup, so a missing
+child table fails the build of the parent too.
+
 ---
 
 ## Step 3: Decide the variant and the list kind
@@ -106,7 +111,7 @@ it as an open item.
 - **Variant A: list CRUD** (no FK with `unique = true`). **Variant B: one per parent** (a unique
   FK): a nested singleton resource; GET returns a null object when absent, PUT creates or
   replaces.
-- **List kind** (`{{cursorLists}}` / `{{offsetLists}}`, else ask):
+- **List kind** (`{{cursorLists}}` / `{{offsetLists}}`, entity names; else ask):
   - **cursor** (the default): user-facing or growing lists. `CursorFilter`, `CursorWrapper`,
     `pageInfo {nextCursor, hasMore}`, no count. Golden: `TodoFilter`, `TodoRepositoryImpl`;
   - **offset**: bounded admin tables that need page numbers. `PageFilter`, `PaginationWrapper`,
@@ -137,13 +142,17 @@ it as an open item.
 Cursor: `extends {{CursorFilter}}` (golden `TodoFilter`). Offset: `extends {{PageFilter}}` (golden
 `TodoListFilter`). One field per filterable attribute: FK ids (named like the request field,
 `todoListId`), enums typed as enums, a `query` with `@MaxLength("search-query")`, a `sort` enum with
-a default; `requireXPredicate()` per optional field.
+a default; `requireXPredicate()` per optional field (the repository builds predicates only from
+these). A filter with `query` implements `QueryFilter`, so the shared text-search helper takes the
+filter.
 
 ### 4.2 Requests (records)
 `<Entity>CreateRequest`, `<Entity>UpdateRequest` (with `@NotNull Long version`), one per state action
 (`<Entity>StatusRequest`). **Every String carries `@MaxLength("<entity>.<field>")`** and its
 number is added to `app.limits.text` in `config/limits.yml`; collections carry `@NotEmpty` and a
-`@ConfiguredMax` size. `@Schema` on every component. Golden: `TodoCreateRequest`.
+`@ConfiguredMax` size; a date with a meaningful upper bound carries `@LatestDate("<entity>.<field>")`
+(`app.limits.latest-date`), e.g. below a sort sentinel. `@Schema` on every component. Golden:
+`TodoCreateRequest`.
 
 ### 4.3 Responses (records)
 `<Entity>Response` (every field, FKs as ids, ending with `{{auditFields}}`) for the detail; for list
@@ -155,6 +164,11 @@ fields. Golden: `TodoResponse`, `TodoSummaryResponse`.
 referenced; the mapper entries; a message in every `{{messagesFile}}`; the handler's
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
 `*_IN_USE`). Never check-then-insert (DATA-05).
+**Bootstrap brings no feature codes**: every code, mapping, message, constraint entry and limit key
+is added here. Constraint mappings go in the module's own `ConstraintErrorCodes` bean (the handler
+aggregates them). A child's composite owner FK `(parent_id, owner_id)` maps to the parent's
+`*_IN_USE` (it fires on the parent's delete); it can mean "in use" only because the service loads
+the parent by id **and owner** before writing a child, so a foreign parent is a 404 first.
 
 ### 4.5 Mapper
 Golden `TodoMapper`: `toEntity(request, resolvedParents…, ownerId)`, `update(entity, request,
@@ -169,16 +183,20 @@ written into it (golden `TodoListRepository`).
 ### 4.7 Custom repository and Criteria projection impl
 Golden: `TodoRepositoryImpl` (cursor), `TodoListRepositoryImpl` (offset + dropdown).
 - **Projections only**: `builder.construct(<Row>.class, …)`; never entities on a list page.
-- Cursor: a `Keyset` per sort (keys non-null, last key the id), fetched with `{{KeysetPages}}`.
-- Offset: `{{OffsetPages}}.fetch` with the sort from the filter's sort enum.
+- The projection is a `ProjectionQuery` (entity, row class, selections, predicates), passed to the
+  injected `keysetPages` / `offsetPages` beans.
+- Cursor: a `Keyset` per sort (keys non-null, last key the id): `keysetPages.fetch(query, keyset,
+  after, size)` returns a `CursorBatch`; **the service** turns it into a `CursorWrapper`.
+- Offset: `offsetPages.fetch(query, pageable)` with the sort from the filter's sort enum; the service
+  wraps the page in `PaginationWrapper.fromPage`.
 - Predicates from the `requireXPredicate()` methods; text search with `{{TextSearch}}.contains`.
 - Child data on a list page: an aggregate subquery in the projection, or two steps (a page of ids,
   then one grouped query). Never a collection fetch (DATA-26).
 
 ### 4.8 Service
 Golden `TodoService` / `TodoListService`: class `@Transactional(readOnly = true)`, `@Transactional`
-writes; create `saveAndFlush`; update/actions change the managed entity after a version check
-against the request's `version`, then `flush()`; delete loads (404) then flushes; ownership through
+writes; create `saveAndFlush`; update/actions change the managed entity after
+`entity.checkVersion(request.version())` (409 `OPTIMISTIC_LOCK_CONFLICT`), then `flush()`; delete loads (404) then flushes; ownership through
 `findByIdAndOwnerId` (another user's record is 404); parents written into are locked with
 `getOwned<Parent>ForWrite` (`MANDATORY`); list sizes from `{{Paging}}`. No remote call inside a
 transaction (DATA-01).
@@ -193,7 +211,9 @@ List descriptions explain the paging (cursor: `after` / `pageInfo.nextCursor`; o
 
 ### 4.10 Controller
 Golden `TodoController`: package-private, `implements <Entity>Api`, full paths, 201/204 with
-`@ResponseStatus`, `{{controllerSecurity}}`, nothing but the service call.
+`@ResponseStatus`, `{{controllerSecurity}}`, nothing but the service call. A user-level resource needs no
+`@PreAuthorize` (every authenticated principal is a user); the dropdown carries
+`{{dropdownSecurity}}` explicitly because it is often shared by screens of different roles.
 
 ### 4.11 Dropdown (when the entity carries `{{dropdownAnnotation}}`)
 Read `references/dropdown.md`. Golden: `TodoListRepositoryImpl.findDropdownItems`,
@@ -228,4 +248,5 @@ with `scripts/verify.sh`).
       transaction.
 - [ ] API interface documents every status and errorCode; thin package-private controller.
 - [ ] Why-comments only; no tunables in code; no `var`.
+- [ ] Changesets in the master changelog before the first build.
 - [ ] Tests per tests.md; build green; one guard proven to fail; house-review clean.
