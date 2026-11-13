@@ -67,6 +67,12 @@ Extract the class name, every field with its JPA annotations, the FK relations
 Derive `EntityName` / `entityName`, the URL path (kebab-case plural), and `ERROR_PREFIX`
 (UPPER_SNAKE, e.g. `TODO_LIST`). `ID` means `{{idType}}`.
 
+**Aggregate** (ARCH-15, `{{aggregates}}`): is the entity an aggregate **root** (its own service,
+controller and row in `AggregateArchTest.AGGREGATES`), or a **member** of another root's aggregate
+(no service of its own: the root's service owns its repository and rules)? Use the profile; when
+the entity isn't listed, ask: "is `<Entity>` changed only together with `<Parent>` and meaningless
+without it (member), or does it have its own lifecycle (root)?". Record the answer in both profiles.
+
 **Module** (if `{{modules}}` is set): every generated class goes under `{{appPackage}}` with
 `{module}` substituted; cross-module access follows `{{moduleContracts}}` (architecture.md
 ARCH-04/05/06): a parent in another module is referenced by id (a UUID column with a database
@@ -108,6 +114,11 @@ child table fails the build of the parent too.
 
 ## Step 3: Decide the variant and the list kind
 
+- **Variant M: aggregate member** (from Step 1): no service, controller or API interface of its
+  own. Its endpoints are nested under the root (`/{roots}/{rootId}/{members}`) in the **root's**
+  controller and API interface; its operations are methods of the **root's** service, which loads
+  the root (ownership, version, lock) before touching the member; its repository is used only
+  there. Everything else below (requests, responses, mapper, repository, tests) applies.
 - **Variant A: list CRUD** (no FK with `unique = true`). **Variant B: one per parent** (a unique
   FK): a nested singleton resource; GET returns a null object when absent, PUT creates or
   replaces.
@@ -131,8 +142,9 @@ child table fails the build of the parent too.
 - **Comments only for *why***, on logic the code can't explain (a lock, a security choice, a database
   behaviour). No class or method Javadoc that restates the name. OpenAPI annotations are not
   comments and are always written.
-- **Naming:** HTTP bodies are `<Entity><Action>Request` (`TodoCreateRequest`, `TodoUpdateRequest`,
-  `TodoStatusRequest`); GET parameters are `<Entity>Filter`; responses `<Entity>Response`, list rows
+- **Naming:** HTTP bodies are `<Entity><Action>{{requestSuffix}}` (default `Request`:
+  `TodoCreateRequest`, `TodoUpdateRequest`, `TodoStatusRequest`; read the golden `*Request` names
+  with the project's suffix); GET parameters are `<Entity>Filter`; responses `<Entity>Response`, list rows
   `<Entity>SummaryResponse` when they leave out heavy fields.
 - **No tunables in code.** Every limit, size, timeout or window is a configuration key
   (`app.limits.*`, `app.jobs.*`, ...); code names the key. Invariants of an algorithm or a format
@@ -147,8 +159,8 @@ these). A filter with `query` implements `QueryFilter`, so the shared text-searc
 filter.
 
 ### 4.2 Requests (records)
-`<Entity>CreateRequest`, `<Entity>UpdateRequest` (with `@NotNull Long version`), one per state action
-(`<Entity>StatusRequest`). **Every String carries `@MaxLength("<entity>.<field>")`** and its
+`<Entity>Create{{requestSuffix}}`, `<Entity>Update{{requestSuffix}}` (with `@NotNull Long version`),
+one per state action (`<Entity>Status{{requestSuffix}}`). **Every String carries `@MaxLength("<entity>.<field>")`** and its
 number is added to `app.limits.text` in `config/limits.yml`; collections carry `@NotEmpty` and a
 `@ConfiguredMax` size; a date with a meaningful upper bound carries `@LatestDate("<entity>.<field>")`
 (`app.limits.latest-date`), e.g. below a sort sentinel. `@Schema` on every component. Golden:
@@ -194,7 +206,11 @@ Golden: `TodoRepositoryImpl` (cursor), `TodoListRepositoryImpl` (offset + dropdo
   then one grouped query). Never a collection fetch (DATA-26).
 
 ### 4.8 Service
-Golden `TodoService` / `TodoListService`: class `@Transactional(readOnly = true)`, `@Transactional`
+Golden `TodoService` / `TodoListService`. **Add the aggregate's row to the project's
+`AggregateArchTest.AGGREGATES`** (a member: add it to its root's members). Another aggregate is
+reached only through its service's entity methods, never its repository (ARCH-15); a use case that
+writes several aggregates goes in a `<UseCase>Manager` that owns the transaction. Class
+`@Transactional(readOnly = true)`, `@Transactional`
 writes; create `saveAndFlush`; update/actions change the managed entity after
 `entity.checkVersion(request.version())` (409 `OPTIMISTIC_LOCK_CONFLICT`), then `flush()`; delete loads (404) then flushes; ownership through
 `findByIdAndOwnerId` (another user's record is 404); parents written into are locked with
@@ -249,4 +265,5 @@ with `scripts/verify.sh`).
 - [ ] API interface documents every status and errorCode; thin package-private controller.
 - [ ] Why-comments only; no tunables in code; no `var`.
 - [ ] Changesets in the master changelog before the first build.
+- [ ] Aggregate decided (root or member); `AggregateArchTest.AGGREGATES` and both profiles updated.
 - [ ] Tests per tests.md; build green; one guard proven to fail; house-review clean.

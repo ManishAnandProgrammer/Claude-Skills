@@ -167,9 +167,10 @@ Lines are counted without blank or comment lines.
 - **Check:** names are descriptive, pronounceable and searchable, with no encodings or
   prefixes, and a meaningful distinction (`resolvedBy` that also means "dismissed by" is a
   finding). Parameter order consistent across sibling methods.
-  - **HTTP input names:** request bodies are `<Entity><Action>Request` (`TodoCreateRequest`,
-    `TodoStatusRequest`), GET parameter objects `<Entity>Filter`; never `*Payload` beside
-    `*Request` in one codebase;
+  - **HTTP input names:** request bodies are `<Entity><Action>{{requestSuffix}}` (default
+    `Request`: `TodoCreateRequest`, `TodoStatusRequest`; a project may choose `Payload` or
+    `Command`), GET parameter objects `<Entity>Filter`, responses `<Entity>Response`; **one suffix
+    per codebase**, never `*Payload` beside `*Request`;
   - one name per concept across layers (a filter's `todoListId`, not `listId`, when the payloads
     and responses say `todoListId`);
   - **package names are lower-case words** (`transportstaff`, not `transportStaff`; HelpBook).

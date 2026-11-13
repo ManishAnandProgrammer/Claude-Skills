@@ -133,6 +133,32 @@ The rules below say which mode they apply to.
   as its need ("the exemption had been far wider than the need").
 - **Severity:** Medium; High when it has grown into a hole.
 
+### ARCH-15: Aggregates own their repositories; Manager services own cross-aggregate transactions
+Owner's rule (2026-11-13), within a module as well as across modules.
+- **Check:**
+  - **one service per aggregate**: the aggregate root's service (`{{aggregates}}`: root, owning
+    service, member entities) is the only class outside the repository package that uses the
+    repositories of the root **and of its member entities** (`FormService` → `FormRepository`,
+    `FormFieldRepository`). It enforces the members' business rules, so a member entity has **no
+    service of its own** and is reached through the root (`/forms/{formId}/fields`);
+  - **another aggregate is reached only through its root's service**, by its entity methods
+    (`getOwnedTodoListForWrite`): they carry validation, ownership, locking and, later, caching and
+    its invalidation. Using another aggregate's repository bypasses all of them;
+  - **a Manager (application) service** (`<UseCase>Manager`, in `service`) exists only when one
+    request writes **several aggregates**: it owns that transaction boundary and calls the aggregate
+    services, which join it; it uses no repository. A use case that writes one aggregate needs no
+    Manager (SMELL-11, SMELL-12: no layer for the pattern's sake);
+  - **read models may join**: a read-only Criteria projection may join another aggregate's table to
+    show its data (a list's name on a todo row); loading or writing another aggregate's entity
+    goes through its service;
+  - no interface for a single implementation (SMELL-11): services are concrete classes.
+- **Detect:** a `*Repository` import in a service of another aggregate, a mapper or a Manager; a
+  member entity with its own service or controller; a Manager that writes one aggregate; entity
+  services calling each other in a cycle (the use case belongs in a Manager).
+- **Enforce:** ArchUnit, from `{{aggregates}}` (reference: `AggregateArchTest`); an undeclared
+  repository fails the rule, so every new aggregate is declared.
+- **Severity:** High when a business rule, lock or ownership check is bypassed; otherwise Medium.
+
 ---
 
 ## Enforcing with ArchUnit (house recommendation)
@@ -154,6 +180,7 @@ Automatable, from the profile:
 | ARCH-08 | `<root>.common..` depends on no feature module |
 | ARCH-11 | `@RestController` classes not public; no `@Transactional` methods in `..controller..`; no dependency on `..repository..` / `..domain..` |
 | ARCH-12 | methods calling bypass API X carry annotation A; every `@Scheduled` method declares its posture |
+| ARCH-15 | a `*Repository` is used only by its aggregate's service (`{{aggregates}}`) and its own repository package; an undeclared repository fails |
 | Naming | `*Controller`, `*Repository`; `*RepositoryImpl` not public; package names lower-case; test classes end in `Test` (Surefire skips others silently) |
 | Conventions in bytecode | no `@Lob` field; no `@Transactional` private method; no `Optional` field or parameter; no `@TransactionalEventListener` + `REQUIRES_NEW` without `@Async`; no `Executors.newFixedThreadPool` / `newCachedThreadPool`; `GeneralCodingRules` (no `System.out`, no java.util.logging, no field injection, no generic `RuntimeException` thrown) |
 

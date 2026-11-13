@@ -70,7 +70,9 @@ Fill values from the codebase, not from memory.
 | `ownerField` | `none` | Field that makes an entity user-owned (e.g. `createdBy`): another user's record answers 404 |
 | `idStrategy` | `uuidv7` | `uuidv7` (Hibernate `UuidVersion7Strategy`, app-assigned) or `tsid` |
 | `moduleContracts` | `service-entity-methods` | Or `api-facades` (modulith); same value as the review profile |
-| `repositoryAccess` | `service, mapper` | Whether mappers may use `getReferenceById` |
+| `repositoryAccess` | `aggregate-service` | ARCH-15: only the aggregate's service uses its repositories; mappers receive resolved entities |
+| `aggregates` | `none` | Same value as the review profile: `Root (OwningService): Member, ...` |
+| `requestSuffix` | `Request` | `<Entity><Action>{{requestSuffix}}`: `Request` (default), `Payload` or `Command`, one per project |
 | `migrationsDir` / `changesetAuthor` | `src/main/resources/db/changelog/changes` / `dev` | Pre-flight changesets go here |
 
 ## Tests and build

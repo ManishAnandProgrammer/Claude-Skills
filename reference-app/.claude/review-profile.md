@@ -24,7 +24,9 @@ nothing: it is the code the skills copy.
 | `modules` | `todo: a user's todo lists and todos (the golden crud-gen module)`, `user: accounts and signing in`; `common`, `config`: infrastructure | |
 | `moduleContracts` | `api-facades` | |
 | `layerPackages` | `controller, service, repository, domain, mapper, dto` | |
-| `repositoryAccess` | `service, mapper` | |
+| `repositoryAccess` | `aggregate-service` | ARCH-15, enforced by `AggregateArchTest` |
+| `aggregates` | `User (UserService)`, `RefreshToken (TokenService)`, `TodoList (TodoListService)`, `Todo (TodoService)` | No members yet: every entity is its own aggregate root |
+| `requestSuffix` | `Request` | |
 | `instances` | `multiple` | |
 | `hotPaths` | `none` | |
 | `archTests` | `ModuleBoundaryArchTest`, `LayerArchTest`, `ConventionArchTest` | No carve-outs |

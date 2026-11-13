@@ -18,6 +18,9 @@ differs per project.
 With **AskUserQuestion** (several per call):
 1. `rootPackage`, the modules and their one-line owners, `moduleContracts` (suggest
    `api-facades`), `instances`.
+   Also `requestSuffix` (`Request` by default; `Payload` or `Command` if the team prefers: one per
+   project). Aggregates (`aggregates`, ARCH-15) are decided per entity by crud-gen; the sign-in
+   piece brings `User (UserService)` and `RefreshToken (TokenService)`.
 2. **Sign-in:** the app issues its own tokens (the `sign-in` piece), an external identity
    provider (copy `core` only, then adapt `SecurityConfig` to the provider's issuer and JWK set),
    or none.

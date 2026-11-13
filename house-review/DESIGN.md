@@ -480,3 +480,26 @@ What changed:
 - **Rate limiting:** decided in part (own layer over Bucket4j, per-policy store-failure mode with
   a local fallback, every scope with owner-chosen defaults); placement (transport-neutral for
   GraphQL) is the last open session.
+
+## Step 12: the owner's design notes (2026-11-13)
+
+The owner's notes on path placement, DTO naming and layering, with the decisions taken:
+- **Paths on the controller class, versions through Spring Framework 7's API versioning.** The
+  owner's trade-off: class-level paths force SRP and read cleaner, but path versioning used to mean
+  a second controller per version; method-level paths allow versions side by side but need
+  discipline. Spring 7 (Boot 4: `spring.mvc.apiversion.*`) matches a `version` attribute on each
+  mapping (`"1+"` = from 1 on), resolved from a path segment, header, query or media type, so
+  versions coexist in one controller whatever the placement. Decision: class-level
+  `@RequestMapping("/api/{version}/<resource>")`, **path segment** transport (URLs unchanged,
+  visible in proxy and CDN logs), the resolved version (`HandlerMapping.API_VERSION_ATTRIBUTE`) in
+  the request-completion log as `apiVersion` and as a metric tag, so it shows whatever the
+  transport.
+- **DTO suffix** is a profile key, `requestSuffix`, default `Request` (the owner's notes prefer
+  `Payload`; run 1 chose `Request`; both are allowed, one per project). Responses `*Response`, GET
+  parameters `*Filter`.
+- **Layering:** no interface for a single implementation; no middle man; no Manager service for a
+  pattern's sake. ARCH-15: a repository belongs to its aggregate's service (the root's service also
+  owns the repositories of member entities, and enforces their rules); another aggregate only
+  through its root's service (validation, ownership, locking, caching aren't bypassed); a Manager
+  service only spans several aggregates, to own their transaction. Enforced by `AggregateArchTest`
+  from the profile's `aggregates`.
