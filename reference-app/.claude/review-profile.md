@@ -35,7 +35,7 @@ nothing: it is the code the skills copy.
 
 | Key | Value | Notes |
 |---|---|---|
-| `urlPrefix` | `/api/v1` | |
+| `urlPrefix` | `/api/{version}` | Class-level `@RequestMapping("/api/{version}/<resource>")`; methods relative with `version = "v1+"`; served versions in `spring.mvc.apiversion.supported` |
 | `DropdownItem` / `DropdownFilter` | `com.example.app.common.dropdown.*` | Dropdowns are cursor-paged (`CursorWrapper`) |
 | `ObjectWrapper` / `ListWrapper` / `MapWrapper` / `PaginationWrapper` / `CursorWrapper` | `com.example.app.common.wrapper.*` | |
 | `exceptionHandler` | `com.example.app.common.exception.GlobalExceptionHandler` | |

@@ -25,6 +25,7 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.REQUEST_METHOD_NOT_ALLOWED, HttpStatus.METHOD_NOT_ALLOWED);
         MAPPING.put(ErrorCode.REQUEST_MEDIA_TYPE_UNSUPPORTED, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
         MAPPING.put(ErrorCode.REQUEST_NOT_ACCEPTABLE, HttpStatus.NOT_ACCEPTABLE);
+        MAPPING.put(ErrorCode.API_VERSION_UNSUPPORTED, HttpStatus.BAD_REQUEST);
         MAPPING.put(ErrorCode.REQUEST_INVALID, HttpStatus.BAD_REQUEST);
         MAPPING.put(ErrorCode.RESOURCE_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.ILLEGAL_ARGUMENT, HttpStatus.BAD_REQUEST);

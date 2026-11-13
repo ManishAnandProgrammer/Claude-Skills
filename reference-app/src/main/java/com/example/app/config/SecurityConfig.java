@@ -59,7 +59,10 @@ import java.util.List;
 class SecurityConfig {
 
     private static final String[] PUBLIC_PATHS = {
-            "/api/v1/auth/**",
+            // Every API version's sign-in, so a new version needs no change here. One segment only
+            // (never **): an unknown version is refused 400 by MVC before any handler runs, and a
+            // version grants no access by itself, since every other path needs a token.
+            "/api/*/auth/**",
             "/actuator/health",
             "/actuator/health/**",
             // No token (metricsAuth: network-only): served only on the management port, which is

@@ -1,4 +1,4 @@
-# Tomcat, threads, shutdown, request bodies, JSON input, API docs.
+# Tomcat, threads, shutdown, API versions, request bodies, JSON input, API docs.
 spring:
   threads:
     virtual:
@@ -14,6 +14,17 @@ spring:
   lifecycle:
     # Longer than the longest request: 3s pool wait + 25s statement timeout.
     timeout-per-shutdown-phase: 30s
+  mvc:
+    # Spring's API versioning; the parser (v1, v2, ...) is common/apiversion/MajorVersionParser.
+    apiversion:
+      use:
+        # /api/{version}/...: the segment after /api.
+        path-segment: 1
+      required: true
+      # The only versions served. A version a mapping names stays unreachable until it is listed
+      # here; any other is 400 API_VERSION_UNSUPPORTED.
+      supported: v1
+      detect-supported: false
   servlet:
     multipart:
       # No endpoint takes uploads.

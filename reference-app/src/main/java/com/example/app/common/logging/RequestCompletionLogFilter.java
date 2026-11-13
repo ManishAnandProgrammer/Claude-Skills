@@ -1,5 +1,6 @@
 package com.example.app.common.logging;
 
+import com.example.app.common.apiversion.RequestApiVersion;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,8 +18,9 @@ import java.time.Duration;
 
 /**
  * One line per request when it ends: its status and duration, at WARN past
- * {@code app.logging.request-completion.slow-threshold}. The request id, endpoint, client and user
- * are already on the line from the log context. Actuator scrapes are skipped; the line is switched
+ * {@code app.logging.request-completion.slow-threshold}, and the {@code apiVersion} Spring resolved
+ * (left out for a request outside the API or with a refused version). The request id, endpoint,
+ * client and user are already on the line from the log context. Actuator scrapes are skipped; the line is switched
  * off with {@code app.logging.request-completion.enabled=false}.
  */
 @Slf4j
@@ -48,18 +50,23 @@ class RequestCompletionLogFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } catch (IOException | ServletException | RuntimeException escaped) {
             // The container answers 500, but the response object still says 200 at this point.
-            log.error("Request failed: status=500, durationMs={}", Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
+            log.error("Request failed: status=500, durationMs={}{}",
+                    Duration.ofNanos(System.nanoTime() - startedAt).toMillis(), apiVersion(request));
             throw escaped;
         }
-        logCompletion(response, Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
+        logCompletion(request, response, Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
     }
 
-    private void logCompletion(HttpServletResponse response, long durationMillis) {
+    private void logCompletion(HttpServletRequest request, HttpServletResponse response, long durationMillis) {
         if (durationMillis > slowThresholdMillis) {
-            log.warn("Request slow: status={}, durationMs={}, thresholdMs={}",
-                    response.getStatus(), durationMillis, slowThresholdMillis);
+            log.warn("Request slow: status={}, durationMs={}, thresholdMs={}{}",
+                    response.getStatus(), durationMillis, slowThresholdMillis, apiVersion(request));
         } else {
-            log.info("Request done: status={}, durationMs={}", response.getStatus(), durationMillis);
+            log.info("Request done: status={}, durationMs={}{}", response.getStatus(), durationMillis, apiVersion(request));
         }
+    }
+
+    private static String apiVersion(HttpServletRequest request) {
+        return RequestApiVersion.of(request).map(version -> ", apiVersion=" + version).orElse("");
     }
 }
