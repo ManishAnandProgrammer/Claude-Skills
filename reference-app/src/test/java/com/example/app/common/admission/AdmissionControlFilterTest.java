@@ -17,6 +17,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -32,10 +33,12 @@ class AdmissionControlFilterTest {
     private static final String API_PATH = "/api/v1/todos";
     private static final String SIGN_IN_PATH = "/api/v1/auth/login";
     private static final String NEXT_VERSION_SIGN_IN_PATH = "/api/v2/auth/login";
+    private static final String REFRESH_PATH = "/api/v1/auth/refresh-token";
+    private static final List<String> SIGN_IN_PATTERNS = List.of("/api/*/auth/login", "/api/*/auth/signup");
 
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final AdmissionControlFilter filter = new AdmissionControlFilter(
-            new AdmissionGroups(Map.of("sign-in", "/api/*/auth/**"), Duration.ofSeconds(10)), bulkheads(), meterRegistry,
+            new AdmissionGroups(Map.of("sign-in", SIGN_IN_PATTERNS), Duration.ofSeconds(10)), bulkheads(), meterRegistry,
             problemResponses(), new WebEndpointProperties());
 
     /** One permit per group, no wait: the second request in a group is refused at once. */
@@ -115,6 +118,28 @@ class AdmissionControlFilterTest {
     }
 
     @Test
+    @DisplayName("A full sign-in group still admits a token refresh: it is in the api group, not sign-in")
+    void aFullSignInGroupStillAdmitsARefresh() throws Exception {
+        CountDownLatch inside = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> signingIn = executor.submit(() -> holdAPermit(SIGN_IN_PATH, inside, release));
+            inside.await();
+
+            MockFilterChain refreshChain = new MockFilterChain();
+            filter.doFilter(request(REFRESH_PATH), new MockHttpServletResponse(), refreshChain);
+            MockHttpServletResponse nextVersionSignIn = new MockHttpServletResponse();
+            filter.doFilter(request(NEXT_VERSION_SIGN_IN_PATH), nextVersionSignIn, new MockFilterChain());
+            release.countDown();
+            signingIn.get();
+
+            assertThat(refreshChain.getRequest()).isNotNull();
+            assertThat(nextVersionSignIn.getStatus()).isEqualTo(503);
+            assertThat(rejected("sign-in")).isEqualTo(1.0);
+        }
+    }
+
+    @Test
     @DisplayName("A full api group leaves sign-in open")
     void aFullApiGroupLeavesSignInOpen() throws Exception {
         CountDownLatch inside = new CountDownLatch(1);
@@ -135,7 +160,7 @@ class AdmissionControlFilterTest {
     @Test
     @DisplayName("A group without a configured bulkhead stops startup instead of running on library defaults")
     void refusesAGroupWithoutABulkhead() {
-        AdmissionGroups unknown = new AdmissionGroups(Map.of("reports", "/api/*/reports/**"), Duration.ofSeconds(10));
+        AdmissionGroups unknown = new AdmissionGroups(Map.of("reports", List.of("/api/*/reports/**")), Duration.ofSeconds(10));
 
         assertThatThrownBy(() -> new AdmissionControlFilter(unknown, bulkheads(), meterRegistry, problemResponses(),
                 new WebEndpointProperties()))

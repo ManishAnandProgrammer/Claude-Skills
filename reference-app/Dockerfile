@@ -1,9 +1,11 @@
-# Build the jar first (./mvnw -B verify), then: docker build -t reference-app .
+# Build the jar first (./mvnw -B verify), then: docker build -t <image> .
 #
 # Stopping: the application drains for up to 30s (spring.lifecycle.timeout-per-shutdown-phase), and
 # Docker kills a container 10s after SIGTERM by default. Give it longer than the drain:
 # `docker run --stop-timeout 40`, compose `stop_grace_period: 40s`, Kubernetes
-# `terminationGracePeriodSeconds: 40`, ECS `stopTimeout: 40`.
+# `terminationGracePeriodSeconds: 40`, ECS `stopTimeout: 40`. The drain covers the normal request,
+# not a rare worst-case signup or login (about 60s), by decision: the load balancer times out around
+# 60s anyway, and a short, predictable drain is safer for deployments (see config/server.yml).
 FROM eclipse-temurin:25-jdk-noble AS layers
 WORKDIR /build
 COPY target/*.jar app.jar
@@ -26,13 +28,18 @@ VOLUME /diagnostics
 # JDK_JAVA_OPTIONS is read by the java launcher only, so jcmd run in the container doesn't inherit
 # these flags. 70% of the container limit leaves room for metaspace, threads and buffers.
 ENV JDK_JAVA_OPTIONS="-XX:MaxRAMPercentage=70 -XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError"
-# The application port. The management port (8081: health, metrics) is never published publicly.
+# The application port. The management port (MANAGEMENT_PORT, 8081 by default: health, metrics) is
+# never published publicly.
 EXPOSE 8080
+# Diagnostics directories kept on the volume (the newest; older ones are deleted at start).
+ENV DIAGNOSTICS_KEEP=5
 # Liveness, not readiness: under overload readiness goes OUT_OF_SERVICE on purpose (the load balancer
 # sends traffic elsewhere), and a restart then would only add to the outage.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8081/actuator/health/liveness || exit 1
+    CMD curl -fsS "http://127.0.0.1:${MANAGEMENT_PORT:-8081}/actuator/health/liveness" || exit 1
 # Each start writes its diagnostics to a directory of its own: the JVM is always PID 1 here, so a
 # fixed java_pid1.hprof would already exist after the first out-of-memory restart and the next dump
-# would be skipped. exec keeps java as PID 1, so it receives SIGTERM and drains.
-ENTRYPOINT ["/bin/sh", "-c", "dir=/diagnostics/$(date -u +%Y%m%dT%H%M%SZ)-$(hostname) && mkdir -p \"$dir\" && exec java -XX:HeapDumpPath=\"$dir\" -XX:ErrorFile=\"$dir\"/hs_err_%p.log -Xlog:gc*:file=\"$dir\"/gc.log:time,uptime,level,tags:filecount=5,filesize=20m org.springframework.boot.loader.launch.JarLauncher"]
+# would be skipped. The directories start with a UTC timestamp, so name order is age order: before
+# creating this start's, all but the newest DIAGNOSTICS_KEEP - 1 are deleted, or restarts would
+# fill the volume. exec keeps java as PID 1, so it receives SIGTERM and drains.
+ENTRYPOINT ["/bin/sh", "-c", "ls -1d /diagnostics/*/ 2>/dev/null | sort -r | tail -n +\"$DIAGNOSTICS_KEEP\" | xargs -r rm -rf -- && dir=/diagnostics/$(date -u +%Y%m%dT%H%M%SZ)-$(hostname) && mkdir -p \"$dir\" && exec java -XX:HeapDumpPath=\"$dir\" -XX:ErrorFile=\"$dir\"/hs_err_%p.log -Xlog:gc*:file=\"$dir\"/gc.log:time,uptime,level,tags:filecount=5,filesize=20m org.springframework.boot.loader.launch.JarLauncher"]

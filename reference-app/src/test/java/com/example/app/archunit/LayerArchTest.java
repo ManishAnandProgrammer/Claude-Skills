@@ -47,9 +47,9 @@ class LayerArchTest {
             .because("a class-level transaction on a controller holds a connection through (de)serialisation of every endpoint (ARCH-11)");
 
     @ArchTest
-    static final ArchRule onlyServicesAndMappersUseRepositories = classes().that().resideInAPackage("..repository..")
-            .should().onlyHaveDependentClassesThat().resideInAnyPackage("..service..", "..mapper..", "..repository..")
-            .because("repositoryAccess is service and mapper (getReferenceById): anything else goes through the service (ARCH-03)");
+    static final ArchRule onlyServicesUseRepositories = classes().that().resideInAPackage("..repository..")
+            .should().onlyHaveDependentClassesThat().resideInAnyPackage("..service..", "..repository..")
+            .because("repositoryAccess is aggregate-service: services only, and AggregateArchTest names which (ARCH-03, ARCH-15)");
 
     @ArchTest
     static final ArchRule controllersOpenNoTransactions = noMethods().that().areDeclaredInClassesThat().resideInAPackage("..controller..")

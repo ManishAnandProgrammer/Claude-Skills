@@ -15,6 +15,11 @@ public class RateLimitExceededException extends RuntimeException {
 
     public RateLimitExceededException(Duration retryAfter) {
         super("Rate limit exceeded");
-        this.retryAfterSeconds = Math.max(1, retryAfter.toSeconds());
+        // Rounded up: a client told to come back before the bucket has refilled is refused again.
+        this.retryAfterSeconds = Math.max(1, ceilSeconds(retryAfter));
+    }
+
+    private static long ceilSeconds(Duration duration) {
+        return duration.getNano() == 0 ? duration.getSeconds() : duration.getSeconds() + 1;
     }
 }
