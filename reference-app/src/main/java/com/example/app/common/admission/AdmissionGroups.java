@@ -12,12 +12,12 @@ import java.util.Map;
  * instead of the {@code api} group's, so a burst of one kind (CPU-bound sign-ins) can't use up the
  * permits every other request needs.
  *
- * @param pathPrefixes group name (a {@code resilience4j.bulkhead.instances} entry) to the request path
- *                     prefix it admits
+ * @param paths        group name (a {@code resilience4j.bulkhead.instances} entry) to the path pattern it
+ *                     admits; a wildcard version segment admits every API version (see limits.yml)
  * @param warnInterval at most one WARN per group per interval while refusing: under overload a line per
  *                     refusal would itself be load
  */
 @Validated
 @ConfigurationProperties(prefix = "app.admission.groups")
-record AdmissionGroups(@NotNull Map<String, String> pathPrefixes, @NotNull Duration warnInterval) {
+record AdmissionGroups(@NotNull Map<String, String> paths, @NotNull Duration warnInterval) {
 }

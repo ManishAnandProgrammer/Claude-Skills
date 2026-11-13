@@ -22,7 +22,7 @@ Fill values from the codebase, not from memory.
 | Key | Value | Notes |
 |---|---|---|
 | `idType` | `Long` | `Long`, `UUID`, ... |
-| `urlPrefix` | `/v1` | Prefix every endpoint path starts with, e.g. `/api/v1` |
+| `urlPrefix` | `/api/{version}` | Class-level `@RequestMapping("{{urlPrefix}}/<resource-plural>")`; methods relative with `version = "v1+"` (REST-07) |
 | `ObjectWrapper` | `com.example.dto.ObjectWrapper` | Fully-qualified single-object response wrapper |
 | `objectFactory` | `ObjectWrapper.withObject` | Static factory that wraps one object (must accept `null`) |
 | `objectSetter` | `setResponse` | Setter that replaces the wrapped object (build-first pattern) |

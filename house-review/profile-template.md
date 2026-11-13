@@ -41,7 +41,7 @@ project doesn't have.
 
 | Key | Value | Notes |
 |---|---|---|
-| `urlPrefix` | `/api/v1` | REST-07 |
+| `urlPrefix` | `/api/{version}` | REST-07: class-level paths start with it; versions are Spring API versioning in the path segment (`v1`) |
 | `DropdownItem` / `DropdownFilter` | FQNs | REST-13 house dropdown standard (cursor-paged) |
 | `ObjectWrapper` / `ListWrapper` / `MapWrapper` / `PaginationWrapper` / `CursorWrapper` | FQNs | REST-11 |
 | `exceptionHandler` | FQN | REST-06 |

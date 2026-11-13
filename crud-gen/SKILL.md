@@ -219,15 +219,17 @@ transaction (DATA-01).
 
 ### 4.9 API interface (OpenAPI)
 Golden `TodoApi`: `@Tag`; `@Operation` with text-block descriptions; an `@ApiResponse` for every
-status and errorCode the endpoint can return: 200/201/204, 400 (`VALIDATION_FAILED`,
+status and errorCode the endpoint can return (except `API_VERSION_UNSUPPORTED`: a customizer adds it
+to every operation): 200/201/204, 400 (`VALIDATION_FAILED`,
 `REQUEST_UNREADABLE`, `REQUEST_PARAMETER_INVALID` for a bad id, enum, date or cursor), 401, 403
 (roles), 404, 409 (`*_TAKEN`, `OPTIMISTIC_LOCK_CONFLICT`, also on delete, `*_IN_USE`), 503.
 List descriptions explain the paging (cursor: `after` / `pageInfo.nextCursor`; offset: `page` /
 `size`, limits from configuration). Filters are `@ParameterObject`.
 
 ### 4.10 Controller
-Golden `TodoController`: package-private, `implements <Entity>Api`, full paths, 201/204 with
-`@ResponseStatus`, `{{controllerSecurity}}`, nothing but the service call. A user-level resource needs no
+Golden `TodoController`: package-private, `implements <Entity>Api`, class-level
+`@RequestMapping("{{urlPrefix}}/<resource-plural>")`, methods with relative paths and
+`version = "v1+"` (the current baseline; REST-07), 201/204 with `@ResponseStatus`, `{{controllerSecurity}}`, nothing but the service call. A user-level resource needs no
 `@PreAuthorize` (every authenticated principal is a user); the dropdown carries
 `{{dropdownSecurity}}` explicitly because it is often shared by screens of different roles.
 

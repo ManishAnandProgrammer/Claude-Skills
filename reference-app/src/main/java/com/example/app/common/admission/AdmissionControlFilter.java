@@ -14,8 +14,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.actuate.autoconfigure.endpoint.web.WebEndpointProperties;
 import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
 import org.springframework.core.Ordered;
+import org.springframework.http.server.PathContainer;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -33,7 +36,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Resilience4j <em>semaphore</em> bulkhead decides at the door instead (never the thread-pool
  * bulkhead, which would undo virtual threads). The permit is released in {@code finally}.</p>
  *
- * <p><b>Groups:</b> a request under one of {@link AdmissionGroups#pathPrefixes()} takes its permit from
+ * <p><b>Groups:</b> a request under one of {@link AdmissionGroups#paths()} takes its permit from
  * that group's bulkhead, any other from {@value #DEFAULT_GROUP}'s. The bulkheads are the Resilience4j
  * starter's, configured under {@code resilience4j.bulkhead.instances}; a group missing there stops
  * startup rather than run on the library's defaults.</p>
@@ -57,10 +60,12 @@ class AdmissionControlFilter extends OncePerRequestFilter implements Ordered {
     private final List<Group> prefixGroups = new ArrayList<>();
     private final Group defaultGroup;
     private final ProblemResponses problemResponses;
+    private static final String MATCH_ALL = "/**";
+
     private final String actuatorBasePath;
     private final long warnEveryNanos;
 
-    private record Group(String pathPrefix, Bulkhead bulkhead, Counter rejected, AtomicLong lastWarnAt) {
+    private record Group(PathPattern path, Bulkhead bulkhead, Counter rejected, AtomicLong lastWarnAt) {
     }
 
     AdmissionControlFilter(AdmissionGroups groups, BulkheadRegistry bulkheads, MeterRegistry meterRegistry,
@@ -68,20 +73,21 @@ class AdmissionControlFilter extends OncePerRequestFilter implements Ordered {
         this.problemResponses = problemResponses;
         this.actuatorBasePath = actuator.getBasePath();
         this.warnEveryNanos = groups.warnInterval().toNanos();
-        this.defaultGroup = group(DEFAULT_GROUP, "", bulkheads, meterRegistry);
-        for (Map.Entry<String, String> entry : groups.pathPrefixes().entrySet()) {
+        this.defaultGroup = group(DEFAULT_GROUP, MATCH_ALL, bulkheads, meterRegistry);
+        for (Map.Entry<String, String> entry : groups.paths().entrySet()) {
             prefixGroups.add(group(entry.getKey(), entry.getValue(), bulkheads, meterRegistry));
         }
     }
 
-    private Group group(String name, String pathPrefix, BulkheadRegistry bulkheads, MeterRegistry meterRegistry) {
+    private Group group(String name, String path, BulkheadRegistry bulkheads, MeterRegistry meterRegistry) {
         Bulkhead bulkhead = bulkheads.find(name).orElseThrow(() -> new IllegalStateException(
                 "Admission group '%s' needs resilience4j.bulkhead.instances.%s".formatted(name, name)));
         Counter rejected = Counter.builder(REJECTED_METRIC)
                 .description("Requests refused at the door because their group's in-flight cap was reached")
                 .tag(GROUP_TAG, name)
                 .register(meterRegistry);
-        return new Group(pathPrefix, bulkhead, rejected, new AtomicLong(System.nanoTime() - warnEveryNanos));
+        return new Group(PathPatternParser.defaultInstance.parse(path), bulkhead, rejected,
+                new AtomicLong(System.nanoTime() - warnEveryNanos));
     }
 
     @Override
@@ -97,7 +103,7 @@ class AdmissionControlFilter extends OncePerRequestFilter implements Ordered {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        Group group = groupOf(request.getRequestURI());
+        Group group = groupOf(PathContainer.parsePath(request.getRequestURI()));
         if (!group.bulkhead().tryAcquirePermission()) {
             refuse(group, request, response);
             return;
@@ -109,9 +115,9 @@ class AdmissionControlFilter extends OncePerRequestFilter implements Ordered {
         }
     }
 
-    private Group groupOf(String path) {
+    private Group groupOf(PathContainer path) {
         for (Group group : prefixGroups) {
-            if (path.startsWith(group.pathPrefix())) {
+            if (group.path().matches(path)) {
                 return group;
             }
         }

@@ -91,8 +91,30 @@ a finding**. Profile keys are written `{{key}}`.
   every piece there: ERR-01 members, the ERR-02 mapping table, ERR-03 transient failures, ERR-04
   throwing rules.
 
-### REST-07: Versioning
-- **Check:** every path starts with `{{urlPrefix}}` (URI versioning). No header versioning.
+### REST-07: Paths and versioning
+Owner's decision (2026-11-13): paths on the controller class, versions through Spring Framework 7's
+API versioning, carried in the path.
+- **Check:**
+  - every `@RestController` has **one class-level `@RequestMapping`**, `{{urlPrefix}}/<resource-plural>`
+    (`/api/{version}/todo-lists`): one resource per controller (SRP). Handler methods carry only
+    relative paths;
+  - **every handler method declares `version`**, as a baseline (`"v1+"`): a new version adds methods
+    only for the endpoints that change, in the same controller;
+  - versions are Spring API versioning (`spring.mvc.apiversion.*`: path segment, `required`, the
+    `supported` list in configuration) with a strict parser (`v<major>` only: Spring's default parser
+    drops non-digits, so `/api/x1/` would serve v1);
+  - a missing, malformed or unsupported version answers 400 `API_VERSION_UNSUPPORTED` (documented
+    once by an OpenAPI customizer, not per operation);
+  - the resolved version (`HandlerMapping.API_VERSION_ATTRIBUTE`) is in the request-completion log
+    (`apiVersion`) and a tag on `http.server.requests`;
+  - path patterns elsewhere (security public paths, admission groups) use a version wildcard
+    (`/api/*/auth/**`), so a new version needs no change there and inherits their protection;
+  - deprecating a version: an `ApiVersionDeprecationHandler` bean (RFC 9745 `Deprecation` /
+    `Sunset` headers), not hand-written headers.
+- **Detect:** a full path on a method; a method without `version`; `/api/v1/` written into a security
+  or admission pattern; a second controller for the same resource per version.
+- **Enforce:** ArchUnit (reference: one class-level path per controller; every handler declares its
+  version).
 - **Severity:** Medium.
 
 ### REST-08: Lists

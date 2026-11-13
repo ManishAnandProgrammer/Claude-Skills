@@ -31,10 +31,11 @@ class AdmissionControlFilterTest {
 
     private static final String API_PATH = "/api/v1/todos";
     private static final String SIGN_IN_PATH = "/api/v1/auth/login";
+    private static final String NEXT_VERSION_SIGN_IN_PATH = "/api/v2/auth/login";
 
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final AdmissionControlFilter filter = new AdmissionControlFilter(
-            new AdmissionGroups(Map.of("sign-in", "/api/v1/auth/"), Duration.ofSeconds(10)), bulkheads(), meterRegistry,
+            new AdmissionGroups(Map.of("sign-in", "/api/*/auth/**"), Duration.ofSeconds(10)), bulkheads(), meterRegistry,
             problemResponses(), new WebEndpointProperties());
 
     /** One permit per group, no wait: the second request in a group is refused at once. */
@@ -91,7 +92,7 @@ class AdmissionControlFilterTest {
     }
 
     @Test
-    @DisplayName("A full sign-in group refuses sign-ins only, counted under its own tag")
+    @DisplayName("A full sign-in group refuses sign-ins of every API version only, counted under its own tag")
     void aFullSignInGroupRefusesSignInsOnly() throws Exception {
         CountDownLatch inside = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -100,7 +101,7 @@ class AdmissionControlFilterTest {
             inside.await();
 
             MockHttpServletResponse secondSignIn = new MockHttpServletResponse();
-            filter.doFilter(request(SIGN_IN_PATH), secondSignIn, new MockFilterChain());
+            filter.doFilter(request(NEXT_VERSION_SIGN_IN_PATH), secondSignIn, new MockFilterChain());
             MockFilterChain apiChain = new MockFilterChain();
             filter.doFilter(request(API_PATH), new MockHttpServletResponse(), apiChain);
             release.countDown();
@@ -134,7 +135,7 @@ class AdmissionControlFilterTest {
     @Test
     @DisplayName("A group without a configured bulkhead stops startup instead of running on library defaults")
     void refusesAGroupWithoutABulkhead() {
-        AdmissionGroups unknown = new AdmissionGroups(Map.of("reports", "/api/v1/reports/"), Duration.ofSeconds(10));
+        AdmissionGroups unknown = new AdmissionGroups(Map.of("reports", "/api/*/reports/**"), Duration.ofSeconds(10));
 
         assertThatThrownBy(() -> new AdmissionControlFilter(unknown, bulkheads(), meterRegistry, problemResponses(),
                 new WebEndpointProperties()))
