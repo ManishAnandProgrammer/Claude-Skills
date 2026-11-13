@@ -1,0 +1,199 @@
+# Code smells (SMELL-xx)
+
+Sources: `Coding_Standards.md` (23 smells), `Refactoring Book Summary.md` (22 smells),
+`Clean Code Book Summary.md`, merged without duplicates. Thresholds come from the profile
+(`{{maxMethodLines}}` default 30, `{{maxParams}}` default 4, `{{maxClassLines}}` default 300).
+Lines are counted without blank or comment lines.
+
+---
+
+### SMELL-01: Duplicate code
+- **Check:** the same logic or the same piece of knowledge (a rule, a format, a regex, a
+  constant) appears more than once.
+- **Detect:** grep for repeated regexes, format strings (`"#PP-"`), hashing or normalisation
+  code, identical validation ranges, near-identical classes (copy-paste exception types,
+  summary endpoints).
+- **Severity:** Medium; Low for 2 copies of a trivial line.
+- **Fix:** one helper, constant or value type. Prefer a library method (JAVA-12).
+
+### SMELL-02: God class / divergent change
+- **Check:** a class over `{{maxClassLines}}` lines, or one that changes for several unrelated
+  reasons (HTTP transport + resilience + message wording + parsing).
+- **Detect:**
+  - list the class's responsibilities, one line each; 4 or more is a finding;
+  - injected collaborators: 1–4 normal, 5–7 review, 8+ likely too broad;
+  - ask "if two unrelated rules change, do they both hit this class?".
+- **Severity:** Medium.
+- **Fix:** split by use case or workflow slice, within the same module. Don't extract random
+  helpers while keeping the orchestration in one place.
+
+### SMELL-03: Long method
+- **Check:** a method over `{{maxMethodLines}}` lines, or one that does more than one thing.
+- **Fix:** Extract Method, named after *what* the part does.
+- **Severity:** Medium (Low just over the limit).
+
+### SMELL-04: Long parameter list
+- **Check:** more than `{{maxParams}}` parameters, or several booleans or Strings of the same
+  type next to each other (easy to swap).
+- **Not a finding when:** a record's canonical constructor, or a framework callback.
+- **Fix:** a parameter object (a record) or a builder.
+- **Severity:** Medium.
+
+### SMELL-05: Data clumps
+- **Check:** the same group of fields or parameters travels together (headline + body per
+  language; three sentiment percentages; street/city/zip).
+- **Fix:** a value object (a record, or `@Embeddable` for entities, keeping the column names).
+- **Severity:** Low.
+
+### SMELL-06: Primitive obsession
+- **Check:** domain concepts held as raw `String` / `int`: email, phone, money, codes,
+  outcomes and statuses compared as strings (`"FAILED".equals(x)`).
+- **Fix:** an enum for closed sets; a value type that validates and normalises (email
+  lower-cased, phone in E.164) for open ones.
+- **Severity:** Medium when a string is a contract between two classes; otherwise Low.
+
+### SMELL-07: Switch on type code
+- **Check:** the same `switch` / `if` chain on a type or status repeated in several places,
+  or behaviour selected by a type code.
+- **Fix:** polymorphism, an enum with behaviour, or a strategy map.
+- **Not a finding when:** a single exhaustive `switch` expression over an enum in one place.
+- **Severity:** Medium.
+
+### SMELL-08: Train wrecks / Law of Demeter
+- **Check:** `a.getB().getC().getD()` chains that reach through objects, including through
+  API wrappers (`service.x().getResponse().size()`).
+- **Fix:** Hide Delegate: ask the nearest object for what you need, or expose an internal
+  method that returns the domain value.
+- **Severity:** Low.
+
+### SMELL-09: Feature envy / inappropriate intimacy
+- **Check:** a method that mostly reads and writes another class's fields (a service setting 4
+  fields of an entity to perform a transition), or classes that change each other's internals.
+- **Fix:** Move Method into the class that owns the data (see DATA / JAVA rich-entity rules).
+- **Severity:** Medium.
+
+### SMELL-10: Shotgun surgery
+- **Check:** one change needs edits in many unrelated classes (e.g. adding a payload field in 3
+  hand-copied places; a workflow rule split between two modules).
+- **Detect:** the change-blast test. Simulate one likely change and count what it touches: one
+  module and a few files is healthy; many modules plus DTOs, mappers, listeners and transactions
+  is High.
+- **Fix:** put the knowledge in one place. (The "reuse the entity as a DTO / reflection mapping"
+  fix in Coding_Standards §10 is **not** used: DTOs at boundaries and hand-written mappers are
+  house rules.)
+- **Severity:** Medium.
+
+### SMELL-11: Speculative generality / lazy class
+- **Check:** abstractions, parameters, hooks or classes with one trivial use or none: generic
+  frameworks for one case, a class that only wraps a one-liner, interfaces with one
+  implementation (JAVA-05).
+- **Not a finding when:** the profile's generator pattern requires the artifact and it is used.
+- **Severity:** Low.
+
+### SMELL-12: Middle man
+- **Check:** a class whose methods only delegate to another class, without adding anything.
+- **Not a finding when:** a controller (thin by design, REST-21), or a facade that adds
+  coordination, transactions or translation.
+- **Severity:** Low.
+
+### SMELL-13: Temporary field
+- **Check:** fields set only in some code paths, or used as scratch space between method
+  calls in a singleton bean (also a thread-safety bug, CONC-01).
+- **Severity:** Medium (High in a singleton).
+
+### SMELL-14: Refused bequest / parallel hierarchies
+- **Check:** a subclass that overrides parent behaviour with "unsupported"; a new subclass in
+  one hierarchy that forces a new subclass in another.
+- **Severity:** Medium.
+
+### SMELL-15: Alternative classes with different interfaces
+- **Check:** classes that do the same job with different method names or signatures.
+- **Fix:** one interface (that is the "more than one implementation" case, JAVA-05).
+- **Severity:** Low.
+
+### SMELL-16: Data class / anemic entity
+- **Check:** an **entity** whose state transitions and invariants live in services: public
+  setters for status, timestamps or version; services setting several related fields; no
+  methods such as `publish()`, `fail(reason)`.
+- **Not a finding when:** a DTO or record. Those are meant to be pure data.
+- **Severity:** Medium.
+
+### SMELL-17: Magic numbers and strings
+- **Check:**
+  - unexplained literals: HTTP status numbers, `/ 60000`, `* 24 * 60 * 60`, `"localhost"`;
+  - repeated header names or error messages;
+  - defaults written in both an annotation and configuration.
+- **Fix:** a named constant, `Duration`, `HttpStatus`, a configuration property (one place).
+- **Severity:** Low (Medium when the same literal is a contract across classes).
+
+### SMELL-18: Dead code
+- **Check:** unused classes, methods, fields, record components, constants, imports,
+  annotations (`@Slf4j` with no log call, `@RequiredArgsConstructor` with no fields),
+  commented-out code, fields that are never written but are exposed in the API, and deprecated or
+  renamed library APIs (e.g. Jackson 3 `isString()`, not `isTextual()`).
+- **Detect:** grep every candidate across `src/main` **and** `src/test` before reporting. Also
+  check compiler warnings from the build.
+- **Severity:** Low; Medium when a never-written field is shown to clients as if it meant
+  something.
+
+### SMELL-19: Comments
+- **Check:** keep comments that give intent, warnings or non-obvious contracts. A finding is:
+  - a comment that restates the code;
+  - a historical "no longer …" note;
+  - a stale or misleading comment;
+  - a `TODO` without an owner or ticket;
+  - a journal or closing-brace comment;
+  - a manual or runbook in code.
+- **Also:** enum constants in a module's `api/` package (a published contract) carry Javadoc.
+  Remove stale Javadoc, and fix broken `{@link}`s.
+- **Severity:** Low; Medium when misleading.
+
+### SMELL-20: Names
+- **Check:** names are descriptive, pronounceable and searchable, with no encodings or
+  prefixes, and a meaningful distinction (`resolvedBy` that also means "dismissed by" is a
+  finding). Parameter order consistent across sibling methods.
+- **Severity:** Low (Medium when misleading).
+
+### SMELL-21: Flag arguments
+- **Check:** a `boolean` parameter that selects behaviour (`setEnabled(id, false)`,
+  `applyFields(..., isNew)`, `new X(msg, true, false)`).
+- **Fix:** separate methods, or named factories.
+- **Severity:** Low.
+
+### SMELL-22: Hidden side effects / query mixed with modifier
+- **Check:** a method whose name promises a read but writes (a `get…` that INSERTs), or that
+  both returns data and changes state without saying so.
+- **Severity:** Medium.
+
+### SMELL-23: Conditionals
+- **Check:** negative conditionals (`if (!isNotValid)`), deep nesting where a guard clause would
+  do, complex boolean expressions without an explanatory variable or method.
+- **Severity:** Low.
+
+### SMELL-24: Inconsistency
+- **Check:** similar things done differently in the same codebase: two blank-check helpers,
+  two time-zone meanings of "today", one module on `== null` and another on `Objects.isNull`,
+  some not-found messages with the id and some without.
+- **Severity:** Low (Medium when the meaning differs, as with "today").
+
+### SMELL-25: Vertical structure
+- **Check:** variables declared far from their first use; callers above callees (read
+  top-down); related methods scattered; very long lines; horizontal alignment.
+- **Severity:** Low.
+
+### SMELL-26: Incomplete library class
+- **Check:** a missing library capability worked around in many places.
+- **Fix:** wrap it once in an adapter.
+- **Severity:** Low.
+
+### SMELL-27: One meaning per field or column
+- **Check:** a field or column answers exactly one question. A `null` used as a flag while the
+  value means something else, sentinel values (`-1`), or a column read with two meanings is a
+  finding. "Two questions, two columns."
+- **Severity:** Medium.
+
+### SMELL-28: No helpers for one-off operations; no single-use temporaries
+- **Check:** an operation used once is inlined, not turned into a helper. A local used once that
+  adds no clarity is inlined.
+- **Not a finding when:** the name documents intent that an expression would hide.
+- **Severity:** Low.
