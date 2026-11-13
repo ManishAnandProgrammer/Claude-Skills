@@ -2,7 +2,6 @@ package com.example.app.common.pagination;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
-import com.example.app.common.wrapper.CursorWrapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -45,23 +44,23 @@ public class KeysetPages {
             String.class, text -> text,
             Long.class, Long::valueOf);
 
+    private final EntityManager entityManager;
     private final ObjectMapper objectMapper;
 
-    public KeysetPages(ObjectMapper objectMapper) {
+    public KeysetPages(EntityManager entityManager, ObjectMapper objectMapper) {
+        this.entityManager = entityManager;
         this.objectMapper = objectMapper;
     }
 
     private record CursorContent(String sort, List<String> keys) {
     }
 
-    public <T, R> CursorWrapper<R> fetch(EntityManager entityManager, Class<T> entity, Class<R> row,
-                                         OffsetPages.Projection<T, R> projection, OffsetPages.Conditions<T> conditions,
-                                         Keyset<T, R> keyset, String after, int size) {
+    public <T, R> CursorBatch<R> fetch(ProjectionQuery<T, R> projectionQuery, Keyset<T, R> keyset, String after, int size) {
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
-        CriteriaQuery<R> query = builder.createQuery(row);
-        Root<T> root = query.from(entity);
-        query.select(projection.select(builder, root));
-        List<Predicate> predicates = new ArrayList<>(conditions.build(builder, root));
+        CriteriaQuery<R> query = builder.createQuery(projectionQuery.row());
+        Root<T> root = query.from(projectionQuery.entity());
+        query.select(projectionQuery.projection().select(builder, root));
+        List<Predicate> predicates = new ArrayList<>(projectionQuery.conditions().build(builder, root));
         if (Objects.nonNull(after)) {
             predicates.add(seekPast(builder, root, keyset, decode(after, keyset)));
         }
@@ -69,10 +68,10 @@ public class KeysetPages {
         query.orderBy(orders(builder, root, keyset));
         List<R> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();
         if (rows.size() <= size) {
-            return CursorWrapper.of(rows, null);
+            return new CursorBatch<>(rows, null);
         }
         List<R> batch = rows.subList(0, size);
-        return CursorWrapper.of(batch, encode(keyset, batch.getLast()));
+        return new CursorBatch<>(batch, encode(keyset, batch.getLast()));
     }
 
     private static <T, R> List<Order> orders(CriteriaBuilder builder, Root<T> root, Keyset<T, R> keyset) {

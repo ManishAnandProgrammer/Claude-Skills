@@ -16,8 +16,10 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -69,4 +71,15 @@ public abstract class AuditableEntity {
     @Version
     @Column(nullable = false)
     private Long version;
+
+    /**
+     * Refuses a change made from a stale copy: the version the client last read must be the current
+     * one. It fails like a write that lost the race at the flush, so both answer 409
+     * {@code OPTIMISTIC_LOCK_CONFLICT} through one handler.
+     */
+    public void checkVersion(Long expected) {
+        if (!Objects.equals(version, expected)) {
+            throw new ObjectOptimisticLockingFailureException(getClass(), id);
+        }
+    }
 }

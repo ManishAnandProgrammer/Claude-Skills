@@ -2,10 +2,11 @@ package com.example.app.todo.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
-import com.example.app.common.security.CurrentUser;
-import com.example.app.common.wrapper.ObjectWrapper;
+import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Paging;
+import com.example.app.common.security.CurrentUser;
 import com.example.app.common.wrapper.CursorWrapper;
+import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.domain.TodoList;
 import com.example.app.todo.dto.request.TodoCreateRequest;
@@ -21,7 +22,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.util.Objects;
 import java.util.UUID;
 
 /** Every read and write is scoped to the caller: another user's todo, or list, answers 404 like a missing one. */
@@ -50,7 +50,8 @@ public class TodoService {
     }
 
     public CursorWrapper<TodoSummaryResponse> findByFilter(TodoFilter filter) {
-        return repository.findByFilter(filter, currentUser.id(), paging.cursorSize(filter));
+        CursorBatch<TodoSummaryResponse> batch = repository.findByFilter(filter, currentUser.id(), paging.cursorSize(filter));
+        return CursorWrapper.of(batch.items(), batch.nextCursor());
     }
 
     @Transactional
@@ -79,9 +80,7 @@ public class TodoService {
 
     private Todo getEditableTodo(UUID id, UUID ownerId, Long expectedVersion) {
         Todo todo = getOwnedTodo(id, ownerId);
-        if (!Objects.equals(todo.getVersion(), expectedVersion)) {
-            throw AppException.of(ErrorCode.OPTIMISTIC_LOCK_CONFLICT);
-        }
+        todo.checkVersion(expectedVersion);
         return todo;
     }
 

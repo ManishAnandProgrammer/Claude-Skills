@@ -15,10 +15,11 @@ CREATE TABLE todo_lists (
     -- Target of the todos' composite foreign key: a todo lives only in a list of its own owner.
     CONSTRAINT uq_todo_lists_id_owner_id UNIQUE (id, owner_id)
 );
--- One name per owner as people read it ("Groceries" and " groceries" are the same list); also
--- serves the owner's lists sorted by name, and the dropdown.
+-- One name per owner as people read it ("Groceries" and " groceries" are the same list).
 CREATE UNIQUE INDEX uq_todo_lists_owner_id_name ON todo_lists (owner_id, lower(trim(name)));
+-- One index per offered order, ending in the id tie-breaker: by name (the page's NAME and the
+-- dropdown in both directions), and newest first (UUIDv7 ids are time-ordered). query is a contains
+-- search no btree serves; it is filtered while walking them.
 CREATE INDEX idx_todo_lists_owner_id_name_id ON todo_lists (owner_id, name, id);
--- The owner's lists newest first: UUIDv7 ids are time-ordered.
 CREATE INDEX idx_todo_lists_owner_id_id ON todo_lists (owner_id, id);
 --rollback DROP TABLE todo_lists;

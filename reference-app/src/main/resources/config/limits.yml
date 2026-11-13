@@ -21,6 +21,10 @@ app:
       todo-list.name: 100
       todo.title: 200
       todo.notes: 10000
+    # Latest dates the API accepts, by field (@LatestDate("…") on request records).
+    latest-date:
+      # Must stay before 9999-12-31, the due_sort value that puts undated todos last (0003).
+      todo.due-date: "2999-12-31"
   admission:
     # The `api` group: every API request outside the groups below (resilience4j.bulkhead.instances.api
     # reads these). At least twice the pool (checked at startup): tune with a load test.
