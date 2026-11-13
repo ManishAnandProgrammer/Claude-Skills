@@ -9,10 +9,15 @@ import java.time.Duration;
 /**
  * The limiter itself ({@code app.rate-limit.*}); the limits belong to the modules that apply them.
  *
- * @param enabled        off only in tests that don't test the limits
- * @param backendTimeout longest a check waits for Redis before letting the request through
+ * @param enabled           off only in tests that don't test the limits
+ * @param backendTimeout    longest a check waits for Redis before letting the request through
+ * @param expiryGrace       a bucket is deleted from Redis this long after it has refilled completely
+ * @param reconnectInterval pause between background attempts to connect while Redis is unreachable
  */
 @Validated
 @ConfigurationProperties(prefix = "app.rate-limit")
-public record RateLimitProperties(boolean enabled, @NotNull Duration backendTimeout) {
+public record RateLimitProperties(boolean enabled,
+                                  @NotNull Duration backendTimeout,
+                                  @NotNull Duration expiryGrace,
+                                  @NotNull Duration reconnectInterval) {
 }

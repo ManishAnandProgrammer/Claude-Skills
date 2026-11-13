@@ -11,7 +11,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noMethods;
 
-/** Layer direction inside each module: controller → service → repository → domain (ARCH-03, ARCH-11). */
+/** Layer direction inside each module: controller → service → repository → domain (ARCH-03, ARCH-11), and who may use repositories. */
 @AnalyzeClasses(packages = "com.example.app", importOptions = ImportOption.DoNotIncludeTests.class)
 class LayerArchTest {
 
@@ -40,6 +40,16 @@ class LayerArchTest {
     static final ArchRule controllersUseNoRepositoryOrEntity = noClasses().that().resideInAPackage("..controller..")
             .should().dependOnClassesThat().resideInAnyPackage("..repository..", "..domain..")
             .because("controllers talk to services and DTOs only; entities never leave the service layer (ARCH-11)");
+
+    @ArchTest
+    static final ArchRule controllersAreNotTransactional = noClasses().that().areAnnotatedWith(RestController.class)
+            .should().beAnnotatedWith(Transactional.class)
+            .because("a class-level transaction on a controller holds a connection through (de)serialisation of every endpoint (ARCH-11)");
+
+    @ArchTest
+    static final ArchRule onlyServicesAndMappersUseRepositories = classes().that().resideInAPackage("..repository..")
+            .should().onlyHaveDependentClassesThat().resideInAnyPackage("..service..", "..mapper..", "..repository..")
+            .because("repositoryAccess is service and mapper (getReferenceById): anything else goes through the service (ARCH-03)");
 
     @ArchTest
     static final ArchRule controllersOpenNoTransactions = noMethods().that().areDeclaredInClassesThat().resideInAPackage("..controller..")

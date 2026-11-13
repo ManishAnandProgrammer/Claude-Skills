@@ -1,6 +1,5 @@
 package com.example.app.common.ratelimit;
 
-import com.example.app.common.scheduling.MultiInstanceSafe;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.BucketConfiguration;
 import io.github.bucket4j.ConsumptionProbe;
@@ -23,11 +22,12 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.boot.context.event.ApplicationStartedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.Objects;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -43,7 +43,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * failures".</p>
  *
  * <p>The connection is opened at startup and retried in the background, never on a request thread;
- * once connected, Lettuce reconnects by itself.</p>
+ * once connected, Lettuce reconnects by itself. The retries run on a thread of their own: an attempt
+ * can block for {@code spring.data.redis.connect-timeout}, and must not delay the scheduled jobs.
+ * Each instance opens its own connection, so every instance retrying at once is harmless.</p>
  */
 @Component
 @Slf4j
@@ -52,8 +54,6 @@ public class RedisRateLimiter implements DisposableBean {
     static final String LET_THROUGH_METRIC = "rate_limit.unchecked";
     static final String RECONNECT_FAILURE_METRIC = "rate_limit.reconnect.failures";
     private static final String KEY_PREFIX = "rate-limit:";
-    /** Buckets are deleted from Redis this long after they have refilled completely. */
-    private static final Duration EXPIRY_GRACE = Duration.ofSeconds(10);
     private static final RedisCodec<String, byte[]> CODEC = RedisCodec.of(StringCodec.UTF8, ByteArrayCodec.INSTANCE);
 
     private final LettuceConnectionFactory connectionFactory;
@@ -61,6 +61,8 @@ public class RedisRateLimiter implements DisposableBean {
     private final Counter letThrough;
     private final Counter reconnectFailures;
     private final AtomicBoolean backendAvailable = new AtomicBoolean(true);
+    private final ScheduledExecutorService reconnector = Executors.newSingleThreadScheduledExecutor(
+            Thread.ofPlatform().name("rate-limit-reconnect").daemon(true).factory());
 
     private volatile StatefulConnection<String, byte[]> connection;
     private volatile ProxyManager<String> buckets;
@@ -98,10 +100,10 @@ public class RedisRateLimiter implements DisposableBean {
     @EventListener(ApplicationStartedEvent.class)
     void connectAtStartup() {
         connectIfNeeded();
+        long interval = properties.reconnectInterval().toMillis();
+        reconnector.scheduleWithFixedDelay(this::connectIfNeeded, interval, interval, TimeUnit.MILLISECONDS);
     }
 
-    @Scheduled(initialDelay = 5, fixedDelay = 5, timeUnit = TimeUnit.SECONDS)
-    @MultiInstanceSafe("Opens this instance's own Redis connection; no shared state")
     void connectIfNeeded() {
         if (!properties.enabled() || Objects.nonNull(buckets)) {
             return;
@@ -120,7 +122,8 @@ public class RedisRateLimiter implements DisposableBean {
             return;
         }
         AbstractRedisClient client = connectionFactory.getNativeClient();
-        ExpirationAfterWriteStrategy expiry = ExpirationAfterWriteStrategy.basedOnTimeForRefillingBucketUpToMax(EXPIRY_GRACE);
+        ExpirationAfterWriteStrategy expiry =
+                ExpirationAfterWriteStrategy.basedOnTimeForRefillingBucketUpToMax(properties.expiryGrace());
         if (client instanceof RedisClusterClient cluster) {
             StatefulRedisClusterConnection<String, byte[]> clusterConnection = cluster.connect(CODEC);
             connection = clusterConnection;
@@ -171,6 +174,7 @@ public class RedisRateLimiter implements DisposableBean {
 
     @Override
     public void destroy() {
+        reconnector.shutdownNow();
         StatefulConnection<String, byte[]> current = connection;
         if (Objects.nonNull(current)) {
             current.close();

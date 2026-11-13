@@ -11,6 +11,9 @@ import org.slf4j.MDC;
  * <p>{@link RequestLogContextFilter} sets the first three when a request arrives and clears them
  * all when it ends; {@link UserLogContextFilter} adds the user once the token is verified. The MDC
  * is thread-local, so clearing every key in one place keeps one request's context off the next.</p>
+ *
+ * <p>A scheduled job's run fills the same keys ({@link ScheduledRunLogContext}): {@code requestId} is
+ * the run's id and {@code endpoint} names the job.</p>
  */
 public final class LogContext {
 

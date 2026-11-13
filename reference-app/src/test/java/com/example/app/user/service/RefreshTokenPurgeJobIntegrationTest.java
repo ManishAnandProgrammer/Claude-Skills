@@ -53,12 +53,13 @@ class RefreshTokenPurgeJobIntegrationTest extends IntegrationTest {
     @DisplayName("The purge keeps going past one batch of 1,000")
     void purgeLoopsOverBatches() throws Exception {
         UUID userId = newUser().id();
-        sql("""
+        int inserted = sql("""
                 insert into refresh_tokens (id, user_id, token_hash, expires_at, created_at, updated_at, version)
                 select gen_random_uuid(), ?, md5(random()::text) || md5(random()::text), now() - interval '3 days',
                        now(), now(), 0
                   from generate_series(1, 1500)
                 """, userId);
+        assertThat(inserted).isEqualTo(1500);
 
         job.purgeExpired();
 

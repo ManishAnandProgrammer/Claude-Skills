@@ -66,7 +66,7 @@ class TransientDatabaseFailureTest {
     @DisplayName("Each kind answers within its configured Retry-After range, and the value is really jittered")
     void retryAfterIsJitteredWithinTheConfiguredRange(TransientDatabaseFailure failure) {
         RetryAfterProperties ranges = new RetryAfterProperties(range(1, 3), range(1, 3), range(3, 8), range(4, 8));
-        RetryAfterProperties.Range range = failure.retryAfter(ranges);
+        RetryAfterProperties.Range range = ranges.rangeFor(failure.errorCode()).orElseThrow();
         Set<Long> seen = new HashSet<>();
         for (int attempt = 0; attempt < 200; attempt++) {
             seen.add(Long.parseLong(range.pickSeconds()));

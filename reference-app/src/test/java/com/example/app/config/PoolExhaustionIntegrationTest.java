@@ -1,0 +1,53 @@
+package com.example.app.config;
+
+import com.example.app.support.IntegrationTest;
+import com.zaxxer.hikari.HikariDataSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * With every pooled connection taken, a request waits {@code connection-timeout} and is answered 503
+ * {@code DATABASE_UNAVAILABLE} with a {@code Retry-After}: never a 500 (ERR-03, TEST-18). The
+ * connections are given back in {@code finally}, so the shared context goes on as before.
+ */
+class PoolExhaustionIntegrationTest extends IntegrationTest {
+
+    @Autowired
+    private DataSource dataSource;
+
+    @Test
+    @DisplayName("An exhausted pool answers 503 DATABASE_UNAVAILABLE with a Retry-After")
+    void exhaustedPoolAnswers503WithRetryAfter() throws Exception {
+        TestUser user = newUser();
+        HikariDataSource pool = dataSource.unwrap(HikariDataSource.class);
+        List<Connection> held = new ArrayList<>();
+        try {
+            for (int taken = 0; taken < pool.getMaximumPoolSize(); taken++) {
+                held.add(dataSource.getConnection());
+            }
+
+            getAs(user.accessToken(), "/api/v1/todo-lists")
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.errorCode").value("DATABASE_UNAVAILABLE"))
+                    .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
+        } finally {
+            for (Connection connection : held) {
+                connection.close();
+            }
+        }
+        getAs(user.accessToken(), "/api/v1/todo-lists").andExpect(status().isOk());
+        assertThat(pool.getHikariPoolMXBean().getThreadsAwaitingConnection()).isZero();
+    }
+}

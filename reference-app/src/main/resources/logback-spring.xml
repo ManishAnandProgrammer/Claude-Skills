@@ -13,7 +13,9 @@
       hand-off, so no pattern uses %class, %method or %line.
 
   Each profile gets exactly one root with one appender. The fallback covers a run with no known
-  profile active, so the fail-fast startup error is visible.
+  profile active, so the fail-fast startup error is visible. Its profile list repeats
+  app.allowed-profiles on purpose: springProfile takes a literal profile expression, which a
+  springProperty's comma list can't become. Change both together.
 -->
 <configuration>
 

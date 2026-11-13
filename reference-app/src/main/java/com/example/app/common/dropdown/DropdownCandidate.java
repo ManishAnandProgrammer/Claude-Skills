@@ -8,47 +8,59 @@ import java.lang.annotation.Target;
 
 /**
  * Marks a JPA {@code @Entity} as the source of a frontend dropdown. One shape for every dropdown,
- * so the frontend has one dropdown component and one fetch helper.
+ * so the frontend has one dropdown component and one fetch helper. The golden example is the todo
+ * list dropdown ({@code TodoListRepositoryImpl.findDropdownItems}, {@code TodoListService.dropdown}).
  *
  * <hr>
  * <h2>LLM CONTRACT: READ BEFORE GENERATING DROPDOWN CODE</h2>
  *
  * <p>When an entity carries this annotation, generate, in its module's layers:</p>
  * <ol>
- *   <li><strong>Repository</strong>: {@code List<DropdownItem> findDropdownItems(<Filter> filter)} in the
- *       {@code Custom<Entity>Repository}, implemented with the <strong>Criteria API</strong> (never
- *       {@code @Query}: the generic filter makes every predicate conditional);</li>
- *   <li><strong>Service</strong>: {@code ListWrapper<DropdownItem> dropdown(<Filter> filter)}. <strong>The
- *       service builds the wrapper</strong>, as for every endpoint;</li>
+ *   <li><strong>Repository</strong>: {@code CursorWrapper<DropdownItem> findDropdownItems(<Filter> filter, <scope>, int size)}
+ *       in the {@code Custom<Entity>Repository}, implemented with the <strong>Criteria API</strong> through
+ *       {@code KeysetPages} (never {@code @Query}: the generic filter makes every predicate conditional);</li>
+ *   <li><strong>Service</strong>: {@code CursorWrapper<DropdownItem> dropdown(<Filter> filter)}: refuses the
+ *       parameters that don't apply (below), resolves the batch size with {@code Paging.cursorSize(filter)},
+ *       and returns the repository's batch;</li>
  *   <li><strong>Controller</strong>: {@code dropdown(@Valid <Filter> filter)} at
  *       {@code GET /api/v1/<resource-plural>/dropdown}, returning the service result as is, and
  *       documented in the API interface.</li>
  * </ol>
  *
  * <h2>Response</h2>
- * <p>Always {@code ListWrapper<DropdownItem>}: {@link DropdownItem} is {@code {value, label}} and
- * nothing else; {@code value = <valueField>}, {@code label = <displayField>}. A dropdown is bounded
- * by its limit, so it is never paginated.</p>
+ * <p>Always {@code CursorWrapper<DropdownItem>}: one batch under {@code response} and
+ * {@code pageInfo {nextCursor, hasMore}}, never a total. {@link DropdownItem} is {@code {value, label}}
+ * and nothing else; {@code value = <valueField>}, {@code label = <displayField>}. A large set (thousands
+ * of cities) is browsed batch by batch or narrowed with {@code query}.</p>
  *
  * <h2>Parameters</h2>
- * <p>Every dropdown takes {@link DropdownFilter} ({@code status}, {@code sortDirection},
- * {@code limit}, {@code query}). Mandatory and optional filters go in a subclass,
- * {@code <Entity>DropdownFilter extends DropdownFilter}, one field per entry named after its
- * dot-path ({@code "project.id"} → {@code projectId}): mandatory ones {@code @NotNull}, optional ones
- * nullable with a {@code requireXPredicate()}. Never loose {@code @RequestParam}s, never a named
- * sub-path ({@code by-x-id/dropdown}). A true child resource puts its parent in the path
- * ({@code /projects/{projectId}/sections/dropdown}).</p>
+ * <p>Every dropdown takes {@link DropdownFilter}, which extends {@code CursorFilter}: {@code size} (the
+ * default and the maximum come from {@code app.limits.cursor-page}), {@code after} (the previous batch's
+ * {@code pageInfo.nextCursor}), {@code status}, {@code sortDirection} and {@code query}. Mandatory and
+ * optional filters go in a subclass, {@code <Entity>DropdownFilter extends DropdownFilter}, one field per
+ * entry named after its dot-path ({@code "project.id"} → {@code projectId}): mandatory ones
+ * {@code @NotNull}, optional ones nullable with a {@code requireXPredicate()}. Never loose
+ * {@code @RequestParam}s, never a named sub-path ({@code by-x-id/dropdown}). A true child resource puts
+ * its parent in the path ({@code /projects/{projectId}/sections/dropdown}).</p>
+ *
+ * <p>A parameter that doesn't apply is a 400 {@code REQUEST_PARAMETER_INVALID} naming it
+ * ({@code withExtension("parameter", …)}), never silently ignored: a {@code status} other than
+ * {@code ACTIVE} on an entity without an {@link #activeField()}, and a {@code query} on a dropdown that
+ * isn't {@link #searchable()}.</p>
  *
  * <h2>Query rules</h2>
  * <ul>
  *   <li>A projection: {@code builder.construct(DropdownItem.class, value, label)}, never entities;</li>
  *   <li>{@link #activeField()}: {@code status=ACTIVE} (the default) → {@code = TRUE}, {@code INACTIVE} →
  *       {@code = FALSE}, {@code ALL} → no predicate;</li>
- *   <li>{@code ORDER BY <sortField> <direction>, <valueField>} ({@code sortField} defaults to
- *       {@code displayField}; the request's {@code sortDirection} overrides the annotation's);</li>
- *   <li>{@link #searchable()}: {@code LOWER(<displayField>) LIKE %query%}. A {@code query} on a
- *       non-searchable dropdown is a 400 {@code REQUEST_PARAMETER_INVALID}, never ignored;</li>
- *   <li>{@code setMaxResults(limit)}; indexes on the filter and sort columns;</li>
+ *   <li>a keyset on {@code (<sortField>, <valueField>)}: two {@code Keyset} constants (ascending and
+ *       descending, each with its own name, so a cursor taken in one direction is refused in the other)
+ *       over the same key columns, the unique {@code valueField} last. {@code sortField} defaults to
+ *       {@code displayField}; the request's {@code sortDirection} overrides the annotation's;</li>
+ *   <li>{@link #searchable()}: {@code TextSearch.contains(builder, <displayField>, query)}, a case-insensitive
+ *       "contains" that needs no escaping. Never {@code LIKE};</li>
+ *   <li>an index on the scope and filter columns followed by {@code (<sortField>, <valueField>)}, so each
+ *       batch is an index range;</li>
  *   <li>scoped like the resource's reads: a dropdown never lists what the caller couldn't fetch.</li>
  * </ul>
  *

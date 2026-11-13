@@ -6,7 +6,7 @@ import org.springframework.data.domain.Page;
 @Schema(description = "Position of this page in the full list")
 public record PageInfo(
         @Schema(description = "Zero-based page index", example = "0") int number,
-        @Schema(description = "Page size actually used (capped at 100)", example = "20") int size,
+        @Schema(description = "Page size actually used: the requested size, or the configured default", example = "20") int size,
         @Schema(description = "Items across all pages", example = "57") long totalElements,
         @Schema(description = "Number of pages", example = "3") int totalPages,
         @Schema(description = "Whether a page follows this one", example = "true") boolean hasNext,
