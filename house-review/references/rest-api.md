@@ -107,8 +107,10 @@ API versioning, carried in the path.
     once by an OpenAPI customizer, not per operation);
   - the resolved version (`HandlerMapping.API_VERSION_ATTRIBUTE`) is in the request-completion log
     (`apiVersion`) and a tag on `http.server.requests`;
-  - path patterns elsewhere (security public paths, admission groups) use a version wildcard
-    (`/api/*/auth/**`), so a new version needs no change there and inherits their protection;
+  - path patterns elsewhere use a version wildcard, so a new version needs no change there and
+    inherits their protection: security public paths `/api/*/auth/**`; admission groups name only
+    the expensive endpoints (`/api/*/auth/login`, `/api/*/auth/signup`), never a whole prefix that
+    would also throttle cheap calls such as token refresh;
   - deprecating a version: an `ApiVersionDeprecationHandler` bean (RFC 9745 `Deprecation` /
     `Sunset` headers), not hand-written headers.
 - **Detect:** a full path on a method; a method without `version`; `/api/v1/` written into a security
