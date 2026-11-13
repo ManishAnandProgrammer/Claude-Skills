@@ -16,15 +16,18 @@ import java.lang.annotation.Target;
  *
  * <p>When an entity carries this annotation, generate, in its module's layers:</p>
  * <ol>
- *   <li><strong>Repository</strong>: {@code CursorWrapper<DropdownItem> findDropdownItems(<Filter> filter, <scope>, int size)}
+ *   <li><strong>Repository</strong>: {@code CursorBatch<DropdownItem> findDropdownItems(<Filter> filter, <scope>, int size)}
  *       in the {@code Custom<Entity>Repository}, implemented with the <strong>Criteria API</strong> through
- *       {@code KeysetPages} (never {@code @Query}: the generic filter makes every predicate conditional);</li>
+ *       {@code KeysetPages.fetch} and a {@code ProjectionQuery} (never {@code @Query}: the generic filter
+ *       makes every predicate conditional);</li>
  *   <li><strong>Service</strong>: {@code CursorWrapper<DropdownItem> dropdown(<Filter> filter)}: refuses the
- *       parameters that don't apply (below), resolves the batch size with {@code Paging.cursorSize(filter)},
- *       and returns the repository's batch;</li>
- *   <li><strong>Controller</strong>: {@code dropdown(@Valid <Filter> filter)} at
- *       {@code GET /api/v1/<resource-plural>/dropdown}, returning the service result as is, and
- *       documented in the API interface.</li>
+ *       parameters that don't apply (below), resolves the batch size with the injected {@code Paging}'s
+ *       {@code cursorSize(filter)}, and wraps the repository's batch
+ *       ({@code CursorWrapper.of(batch.items(), batch.nextCursor())});</li>
+ *   <li><strong>Controller</strong>: {@code dropdown(@Valid <Filter> filter)}, mapped
+ *       {@code @GetMapping(path = "/dropdown", version = "v1+")} under the class-level
+ *       {@code @RequestMapping("/api/{version}/<resource-plural>")} (never a full or versioned path on the
+ *       method), returning the service result as is, and documented in the API interface.</li>
  * </ol>
  *
  * <h2>Response</h2>
@@ -41,7 +44,8 @@ import java.lang.annotation.Target;
  * entry named after its dot-path ({@code "project.id"} → {@code projectId}): mandatory ones
  * {@code @NotNull}, optional ones nullable with a {@code requireXPredicate()}. Never loose
  * {@code @RequestParam}s, never a named sub-path ({@code by-x-id/dropdown}). A true child resource puts
- * its parent in the path ({@code /projects/{projectId}/sections/dropdown}).</p>
+ * its parent in the class-level path ({@code /api/{version}/projects/{projectId}/sections}, then
+ * {@code /dropdown}).</p>
  *
  * <p>A parameter that doesn't apply is a 400 {@code REQUEST_PARAMETER_INVALID} naming it
  * ({@code withExtension("parameter", …)}), never silently ignored: a {@code status} other than
@@ -55,7 +59,7 @@ import java.lang.annotation.Target;
  *       {@code = FALSE}, {@code ALL} → no predicate;</li>
  *   <li>a keyset on {@code (<sortField>, <valueField>)}: two {@code Keyset} constants (ascending and
  *       descending, each with its own name, so a cursor taken in one direction is refused in the other)
- *       over the same key columns, the unique {@code valueField} last. {@code sortField} defaults to
+ *       over the same {@code KeyColumn} list, the unique {@code valueField} last. {@code sortField} defaults to
  *       {@code displayField}; the request's {@code sortDirection} overrides the annotation's;</li>
  *   <li>{@link #searchable()}: {@code TextSearch.contains(builder, <displayField>, query)}, a case-insensitive
  *       "contains" that needs no escaping. Never {@code LIKE};</li>

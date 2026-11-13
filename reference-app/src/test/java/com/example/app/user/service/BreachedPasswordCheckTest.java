@@ -2,6 +2,7 @@ package com.example.app.user.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import io.github.resilience4j.bulkhead.Bulkhead;
 import io.github.resilience4j.bulkhead.BulkheadConfig;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -23,20 +24,33 @@ class BreachedPasswordCheckTest {
     private static final String PASSWORD = "Correct-Horse-9";
 
     private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
-    private final BulkheadRegistry bulkheads = BulkheadRegistry.of(BulkheadConfig.custom()
-            .maxConcurrentCalls(1)
-            .maxWaitDuration(Duration.ZERO)
-            .build());
+    private final BulkheadRegistry bulkheads = onePermit();
     private final AtomicInteger checks = new AtomicInteger();
 
+    /** The check's bulkhead with a single permit and no wait. */
+    private static BulkheadRegistry onePermit() {
+        BulkheadRegistry registry = BulkheadRegistry.ofDefaults();
+        registry.bulkhead(BreachedPasswordCheck.BULKHEAD, BulkheadConfig.custom()
+                .maxConcurrentCalls(1)
+                .maxWaitDuration(Duration.ZERO)
+                .build());
+        return registry;
+    }
+
+    private static BreachedPasswordProperties properties(boolean enabled) {
+        return new BreachedPasswordProperties(enabled, "http://unused/", Duration.ofSeconds(1), Duration.ofSeconds(1));
+    }
+
     private BreachedPasswordCheck check(boolean enabled, CompromisedPasswordChecker checker) {
-        BreachedPasswordProperties properties = new BreachedPasswordProperties(enabled, "http://unused/",
-                Duration.ofSeconds(1), Duration.ofSeconds(1));
         CompromisedPasswordChecker counting = password -> {
             checks.incrementAndGet();
             return checker.check(password);
         };
-        return new BreachedPasswordCheck(counting, properties, bulkheads, meterRegistry);
+        return new BreachedPasswordCheck(counting, properties(enabled), bulkheads, meterRegistry);
+    }
+
+    private Bulkhead bulkhead() {
+        return bulkheads.find(BreachedPasswordCheck.BULKHEAD).orElseThrow();
     }
 
     private double unavailable() {
@@ -51,7 +65,7 @@ class BreachedPasswordCheckTest {
         assertThatThrownBy(() -> check.requireNotBreached(PASSWORD))
                 .isInstanceOfSatisfying(AppException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.USER_PASSWORD_BREACHED));
-        assertThat(bulkheads.bulkhead(BreachedPasswordCheck.BULKHEAD).getMetrics().getAvailableConcurrentCalls()).isOne();
+        assertThat(bulkhead().getMetrics().getAvailableConcurrentCalls()).isOne();
     }
 
     @Test
@@ -63,7 +77,7 @@ class BreachedPasswordCheckTest {
 
         assertThatCode(() -> check.requireNotBreached(PASSWORD)).doesNotThrowAnyException();
         assertThat(unavailable()).isOne();
-        assertThat(bulkheads.bulkhead(BreachedPasswordCheck.BULKHEAD).getMetrics().getAvailableConcurrentCalls()).isOne();
+        assertThat(bulkhead().getMetrics().getAvailableConcurrentCalls()).isOne();
     }
 
     @Test
@@ -73,5 +87,30 @@ class BreachedPasswordCheckTest {
 
         assertThat(checks.get()).isZero();
         assertThat(unavailable()).isZero();
+    }
+
+    @Test
+    @DisplayName("With every lookup permit taken the check is skipped: no call, counted as unavailable, signup proceeds")
+    void aFullBulkheadSkipsTheCheck() {
+        BreachedPasswordCheck check = check(true, password -> new CompromisedPasswordDecision(true));
+        assertThat(bulkhead().tryAcquirePermission()).isTrue();
+        try {
+            assertThatCode(() -> check.requireNotBreached(PASSWORD)).doesNotThrowAnyException();
+        } finally {
+            bulkhead().onComplete();
+        }
+
+        assertThat(checks.get()).isZero();
+        assertThat(unavailable()).isOne();
+    }
+
+    @Test
+    @DisplayName("A bulkhead missing from the configuration stops startup instead of running on library defaults")
+    void refusesAMissingBulkhead() {
+        CompromisedPasswordChecker unused = password -> new CompromisedPasswordDecision(false);
+
+        assertThatThrownBy(() -> new BreachedPasswordCheck(unused, properties(true), BulkheadRegistry.ofDefaults(), meterRegistry))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("resilience4j.bulkhead.instances." + BreachedPasswordCheck.BULKHEAD);
     }
 }

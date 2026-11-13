@@ -22,7 +22,8 @@ import org.springframework.stereotype.Component;
  * <p>A semaphore bulkhead ({@code resilience4j.bulkhead.instances.breached-passwords}) bounds the
  * lookups in flight: a slow service would otherwise hold an admission permit per signup for up to
  * the read timeout and fill the API's cap. When it is full the check is skipped, counted like an
- * outage.</p>
+ * outage. The instance is the Resilience4j starter's; one missing from the configuration stops startup
+ * rather than run on the library's defaults.</p>
  */
 @Slf4j
 @Component
@@ -40,7 +41,8 @@ class BreachedPasswordCheck {
                           BulkheadRegistry bulkheads, MeterRegistry meterRegistry) {
         this.checker = checker;
         this.properties = properties;
-        this.bulkhead = bulkheads.bulkhead(BULKHEAD);
+        this.bulkhead = bulkheads.find(BULKHEAD).orElseThrow(() -> new IllegalStateException(
+                "The breached-password check needs resilience4j.bulkhead.instances.%s".formatted(BULKHEAD)));
         this.unavailable = unavailableCounter(meterRegistry);
     }
 

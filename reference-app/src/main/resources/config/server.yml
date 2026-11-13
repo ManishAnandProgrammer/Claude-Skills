@@ -12,7 +12,10 @@ spring:
       mode: force
       thread-name-prefix: task-
   lifecycle:
-    # Longer than the longest request: 3s pool wait + 25s statement timeout.
+    # Covers the normal request (3s pool wait + 25s statement timeout), not the rare worst case: a
+    # signup or login runs several steps and can take about 60s. Owner's decision (REL-13, see the
+    # review profile): the load balancer times out around 60s anyway, and a short, predictable drain
+    # is safer for deployments.
     timeout-per-shutdown-phase: 30s
   mvc:
     # Spring's API versioning; the parser (v1, v2, ...) is common/apiversion/MajorVersionParser.

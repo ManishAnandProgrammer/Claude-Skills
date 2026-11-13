@@ -34,5 +34,8 @@ Configuration is split by concern under `src/main/resources/config/` (with profi
 `Dockerfile` packages the jar `./mvnw -B verify` built (`docker build -t reference-app .`). Give the
 container a stop grace period longer than the 30 s drain (`spring.lifecycle.timeout-per-shutdown-phase`):
 Docker's default of 10 s kills requests mid-drain. In compose, `stop_grace_period: 40s`; with
-`docker run`, `--stop-timeout 40`. Mount `/diagnostics` (heap dumps, `hs_err`, GC logs, one directory
-per start) on a private volume: heap dumps hold tokens and personal data.
+`docker run`, `--stop-timeout 40`. The drain covers the normal request, not a rare worst-case signup
+or login (about 60 s): the load balancer times out around then anyway, and a short, predictable drain
+is safer for deployments (owner's decision). Mount `/diagnostics` (heap dumps, `hs_err`, GC logs, one
+directory per start, the newest `DIAGNOSTICS_KEEP` kept, 5 by default) on a private volume: heap dumps
+hold tokens and personal data.

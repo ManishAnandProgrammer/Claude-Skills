@@ -29,7 +29,7 @@ nothing: it is the code the skills copy.
 | `requestSuffix` | `Request` | |
 | `instances` | `multiple` | |
 | `hotPaths` | `none` | |
-| `archTests` | `ModuleBoundaryArchTest`, `LayerArchTest`, `ConventionArchTest` | No carve-outs |
+| `archTests` | `ModuleBoundaryArchTest`, `LayerArchTest`, `ConventionArchTest`, `AggregateArchTest` | No carve-outs |
 | `publishedContracts` | `none` | |
 | `multiTenant` | `false` | |
 
@@ -86,6 +86,8 @@ nothing: it is the code the skills copy.
 | Text columns are `text`; request Strings carry `@MaxLength("<key>")` with the number in `app.limits.text` | DATA-12 | One length contract, configurable (owner's decision 2026-11-13) |
 | Algorithm invariants stay in code with a why-comment (bcrypt's 72 bytes, the 8-character password floor, 256-bit tokens, the bcrypt cost `SecurityConfig.BCRYPT_STRENGTH`) | O6 no-constants rule, SMELL-17 | They aren't tunables: changing them breaks security. The bcrypt cost is a security decision taken with a load test (it sets sign-in CPU and the `sign-in` admission cap), never a per-deployment setting: a lowered value would silently weaken every new hash |
 | The house kit keeps methods the reference itself doesn't call: `MapWrapper`, `ListWrapper`, `ObjectWrapper.setResponse`, `addExtraDetails`, `AppException.withCause` / `withFailedValidations` | SMELL-18 | Bootstrap copies the kit and crud-gen's generated code calls it; deleting a method because the reference doesn't use it would break generated modules. Dead code elsewhere is still a finding |
+| Graceful shutdown drains for 30 s (`spring.lifecycle.timeout-per-shutdown-phase`), stop grace 40 s: enough for the normal request, not for a rare worst-case signup or login (about 60 s) | REL-13 | Owner's decision (2026-11-13): the load balancer times out around 60 s anyway, so a longer drain would finish requests whose client is already gone; a short, predictable drain is safer for deployments |
+| The breached-password `RestClient` is built with `RestClient.builder()`, not Boot's injected `RestClient.Builder`, with the observation registry, a constant-URI `RangeLookupObservationConvention`, timeouts and a failure-counting interceptor set by hand (`BreachedPasswordConfig`) | OPS-06 | Boot's `RestClient.Builder` lives in a module the application doesn't otherwise need; the manual wiring gives the same `http.client.requests` observation and `traceparent` |
 
 ## Deviation register
 

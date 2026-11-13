@@ -37,8 +37,12 @@ app:
     groups:
       # Requests matching these path patterns take their permit from the bulkhead of that name.
       # The version segment is a wildcard, so a new API version is admitted the same way.
+      # sign-in is the bcrypt endpoints only: refresh and logout stay in `api`, so a login storm
+      # never refuses the token refresh of users already signed in.
       paths:
-        sign-in: /api/*/auth/**
+        sign-in:
+          - /api/*/auth/login
+          - /api/*/auth/signup
       # While refusing, at most one WARN per group per interval.
       warn-interval: 10s
   # How long a client is told to wait (jittered within the range) after a 503 or 429.
@@ -69,8 +73,9 @@ resilience4j:
       api:
         max-concurrent-calls: ${app.admission.max-concurrent}
         max-wait-duration: ${app.admission.max-wait}
-      # /api/v1/auth/**: bcrypt at cost 12 is about 250 ms of CPU per sign-in, so a few per core is all
-      # the CPU holds. A cap of its own keeps a login storm from taking the permits everything else needs.
+      # Login and signup (app.admission.groups.paths.sign-in): bcrypt at cost 12 is about 250 ms of CPU
+      # per sign-in, so a few per core is all the CPU holds. A cap of its own keeps a login storm from
+      # taking the permits everything else needs.
       sign-in:
         max-concurrent-calls: ${ADMISSION_SIGN_IN_MAX_CONCURRENT:8}
         max-wait-duration: 500ms

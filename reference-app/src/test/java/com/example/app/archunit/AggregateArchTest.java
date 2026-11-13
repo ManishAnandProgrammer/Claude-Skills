@@ -35,6 +35,7 @@ class AggregateArchTest {
             new Aggregate("RefreshToken", "TokenService", List.of()));
 
     private static final String REPOSITORY_SUFFIX = "Repository";
+    private static final List<String> OWN_REPOSITORY_SUBPACKAGES = List.of(".impl", ".custom");
 
     private record Aggregate(String root, String service, List<String> members) {
 
@@ -76,7 +77,8 @@ class AggregateArchTest {
     private static void checkUser(Dependency dependency, Aggregate aggregate, ConditionEvents events) {
         JavaClass user = dependency.getOriginClass().getBaseComponentType();
         String topLevelName = user.getName().replaceAll("\\$.*", "");
-        boolean ownPersistenceCode = user.getPackageName().contains(".repository");
+        boolean ownPersistenceCode = isOwnRepositoryPackage(user.getPackageName(),
+                dependency.getTargetClass().getBaseComponentType().getPackageName());
         boolean aggregateService = topLevelName.endsWith("." + aggregate.service());
         if (!ownPersistenceCode && !aggregateService) {
             events.add(SimpleConditionEvent.violated(dependency,
@@ -84,5 +86,14 @@ class AggregateArchTest {
                             .formatted(dependency.getTargetClass().getSimpleName(), topLevelName,
                                     aggregate.service(), aggregate.service())));
         }
+    }
+
+    /** The repository's own package and its fragments' ({@code impl}, {@code custom}): not another module's. */
+    private static boolean isOwnRepositoryPackage(String userPackage, String repositoryPackage) {
+        if (!userPackage.startsWith(repositoryPackage)) {
+            return false;
+        }
+        String subpackage = userPackage.substring(repositoryPackage.length());
+        return subpackage.isEmpty() || OWN_REPOSITORY_SUBPACKAGES.contains(subpackage);
     }
 }

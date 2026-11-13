@@ -38,9 +38,13 @@ public record RetryAfterProperties(@Valid @NotNull Range serverBusy,
 
     public record Range(@NotNull Duration min, @NotNull Duration max) {
 
+        // Retry-After is whole seconds: below one second the header would read 0, "come back at once",
+        // which is what the refusal exists to prevent.
+        private static final Duration SHORTEST = Duration.ofSeconds(1);
+
         public Range {
-            if (Objects.nonNull(min) && Objects.nonNull(max) && (min.isNegative() || max.compareTo(min) < 0)) {
-                throw new IllegalArgumentException("a Retry-After range needs 0 <= min <= max");
+            if (Objects.nonNull(min) && Objects.nonNull(max) && (min.compareTo(SHORTEST) < 0 || max.compareTo(min) < 0)) {
+                throw new IllegalArgumentException("a Retry-After range needs 1s <= min <= max");
             }
         }
 
