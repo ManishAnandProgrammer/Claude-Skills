@@ -97,10 +97,13 @@ Check before generating:
 | A unique text column ignores case and surrounding spaces: **either** the code stores the normalised form (a check constraint `col = lower(trim(col))`) and the column gets a plain unique constraint, **or** the stored text keeps its case and gets a unique index on `lower(trim(col))`, which **only a query on that same expression can use** (a lookup `col = ?` scans the table). Partial (`WHERE col IS NOT NULL`) when nullable | DATA-05 |
 | An index on every FK column, and **one index per offered list order and per filter that scopes the list** (`todoListId`: the list's own screen), leading with the scope columns and **ending with `id`** | DATA-10 |
 | **A keyset sort key is non-null.** A nullable one (a due date) gets a stored generated column, e.g. `due_sort date GENERATED ALWAYS AS (coalesce(due_date, date '9999-12-31')) STORED`, mapped read-only | Session 2; DATA-10 |
-| A child owned through its parent: the child's owner and the parent's owner are tied by a **composite FK** `(parent_id, owner_id) → parent(id, owner_id)` and a `moveTo` method that checks the owner | DATA-05, SMELL-16 |
+| A child owned through its parent: the child's owner and the parent's owner are tied by a **composite FK** `(parent_id, owner_id) → parent(id, owner_id)`, which needs `UNIQUE (id, owner_id)` on the parent (its own changeset if the parent's is applied). The plain `owner_id` FK still gets its own index (the composite one doesn't lead with it). A child that can change parent has a `moveTo` method that checks the owner; one that can't has `updatable = false` on its parent column | DATA-05, DATA-10, SMELL-16 |
+| Booleans: a primitive `boolean` column `NOT NULL` with a database default; its starting value in the entity (`@Builder.Default`, the builder ignores field initialisers). Editable with the rest of the record → `@Setter`; a transition with rules or side effects (`deactivate()` that also does X) → an entity method. In requests a boolean is a `Boolean` with `@NotNull` (no silent `false`) | JAVA-16, REST-09 |
+| Time: `Instant` for moments (UTC; the client localises), `LocalDate` for calendar dates the user picks (stored and returned as sent, never converted). The backend handles no time zone: a date compared with "today" allows UTC today plus a configured tolerance (1 day) | owner's rule 2026-11-13 |
 | The sequence exists for a display number | DATA-14 |
 
-Golden examples: `~/.claude/skills-reference/src/main/resources/db/changelog/changes/000{2,3}-*.sql`.
+Golden examples: `~/.claude/skills-reference/src/main/resources/db/changelog/changes/000{2,3,4,5}-*.sql`.
+Changesets use `--changeset {{changesetAuthor}}:NNNN-…` (the golden files say `dev`: a placeholder).
 
 For each failure: report it, offer the fix with **AskUserQuestion** (the entity change and a **new**
 changeset; never edit an applied one), apply it on approval. If declined, generate anyway and list
@@ -145,7 +148,8 @@ child table fails the build of the parent too.
 - **Naming:** HTTP bodies are `<Entity><Action>{{requestSuffix}}` (default `Request`:
   `TodoCreateRequest`, `TodoUpdateRequest`, `TodoStatusRequest`; read the golden `*Request` names
   with the project's suffix); GET parameters are `<Entity>Filter`; responses `<Entity>Response`, list rows
-  `<Entity>SummaryResponse` when they leave out heavy fields.
+  `<Entity>SummaryResponse` when they leave out heavy fields (a `text` column with a limit over
+  1,000 characters, or a collection); otherwise the list row is the `<Entity>Response`.
 - **No tunables in code.** Every limit, size, timeout or window is a configuration key
   (`app.limits.*`, `app.jobs.*`, ...); code names the key. Invariants of an algorithm or a format
   stay in code with a why-comment.

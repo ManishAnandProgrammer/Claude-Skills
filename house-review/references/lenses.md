@@ -222,8 +222,12 @@ is code-smells.md, java.md and architecture.md.
 - **Severity:** High.
 
 ### REL-13: Graceful shutdown
-- **Check:** `server.shutdown: graceful` and `timeout-per-shutdown-phase` cover the longest
-  request or job. Executors wait with a bound. Claims and leases stay consistent on SIGTERM.
+- **Check:** `server.shutdown: graceful`; `timeout-per-shutdown-phase` covers the normal request and
+  job, and the container's stop grace is longer than it. Executors wait with a bound. Claims and
+  leases stay consistent on SIGTERM.
+- **Not a finding when:** the drain is shorter than a rare worst-case request **by decision** (house
+  default 30 s: the load balancer times out around 60 s anyway, and a short predictable drain is
+  safer for deployments), recorded in the profile's Conventions.
 - **Severity:** Medium.
 
 ### REL-14: Health, probes and the management surface

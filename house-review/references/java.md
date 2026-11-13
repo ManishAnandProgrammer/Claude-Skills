@@ -164,6 +164,18 @@ designing this skill (DESIGN.md).
 - **Not a finding when:** a compact constructor with one guard.
 - **Severity:** Low.
 
+### JAVA-25: Time without time zones
+Owner's rule (2026-11-13): the backend handles no time zone.
+- **Check:** moments are `Instant` (UTC; the client shows them in the user's zone); calendar dates the
+  user picks are `LocalDate`, stored and returned as sent, never converted through a zone; "now" and
+  "today" come from the injected `Clock` (UTC), also inside validators; a date compared with today
+  allows a configured tolerance (1 day: every zone is within +14 h of UTC), so no real user is
+  refused, and the client enforces the exact local rule.
+- **Detect:** `ZoneId`/`ZonedDateTime`/`OffsetDateTime` in domain code; `LocalDate.now()` or
+  `@PastOrPresent`/`@FutureOrPresent` on a `LocalDate` without the application clock; a `LocalDate`
+  derived from an `Instant` on the server; `LocalDateTime` for a moment.
+- **Severity:** Medium (High when a stored date shifts).
+
 ### JAVA-24 (Jackson 3): The single-constructor trap
 - **Check:** a *class* DTO with exactly one non-default constructor is auto-detected as the
   `@JsonCreator`, and breaks when the parameter types differ from the field types. DTOs are
