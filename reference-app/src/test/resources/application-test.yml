@@ -15,21 +15,17 @@ app:
     personal-data-pepper: test-pepper-that-is-at-least-thirty-two-bytes
   cors:
     allowed-origins: http://localhost:3000
-  rate-limit:
-    # Every test request comes from 127.0.0.1: the per-IP limits are out of the way, the per-account
-    # login limit stays as in production (each test uses its own accounts).
-    sign-in:
-      login-per-ip: { requests: 100000, window: 1m }
-      signup-per-ip: { requests: 100000, window: 1m }
-      refresh-per-ip: { requests: 100000, window: 1m }
-      logout-per-ip: { requests: 100000, window: 1m }
+  # The sign-in limits are production's (config/limits.yml). Each MockMvc request comes from its own
+  # client address (support/DistinctClientAddresses), as each test uses its own accounts, so no test
+  # trips a limit another test used; the rate-limit tests pin one address to trip a per-IP limit.
   admission:
     max-concurrent: 200
 springdoc:
   api-docs:
     enabled: true
 management:
-  # Same port as the application, so MockMvc reaches the actuator.
+  # Same port as the application, so MockMvc reaches the actuator. StartupChecks allows this only
+  # when the test profile is the only one active.
   server:
     port: 8080
 server:

@@ -46,7 +46,7 @@ nothing: it is the code the skills copy.
 | `noEmojiFields` | `none` | |
 | `tokenRevocation` | `short-lived(15)` | |
 | `edgeRateLimiter` | `none` | |
-| `metricsAuth` | `pending` | |
+| `metricsAuth` | `network-only` | `/actuator/prometheus` has no token: served on the management port only, never published; `StartupChecks` refuses a missing or shared management port (test profile alone excepted) |
 | `apiDocsLocation` | `controller/api/<Name>Api` | |
 
 ## Persistence

@@ -1,4 +1,4 @@
-# Tokens, secrets, CORS.
+# Tokens, secrets, CORS, the breached-password check.
 app:
   jwt:
     secret: ${JWT_SECRET}
@@ -11,5 +11,28 @@ app:
   security:
     # HMAC key for personal data in logs and rate-limit keys (PersonalDataHasher). No default.
     personal-data-pepper: ${PERSONAL_DATA_PEPPER}
+    # Signup refuses passwords from known breaches (Have I Been Pwned range API). Fail-open: while
+    # the service is unreachable or the bulkhead below is full, signup proceeds and
+    # breached_password.check.unavailable counts it.
+    breached-passwords:
+      enabled: ${BREACHED_PASSWORD_CHECK_ENABLED:true}
+      api-url: https://api.pwnedpasswords.com/range/
+      connect-timeout: 2s
+      read-timeout: 3s
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+
+resilience4j:
+  bulkhead:
+    instances:
+      # Lookups in flight at once. A signup past it skips the check at once (no wait) rather than
+      # hold its admission permit behind a slow service.
+      breached-passwords:
+        max-concurrent-calls: 4
+        max-wait-duration: 0
+
+logging:
+  level:
+    # Spring's checker logs every failed lookup at ERROR with a stack trace, then answers "not
+    # compromised": an outage would flood the log. FailureCountingInterceptor logs one WARN instead.
+    org.springframework.security.web.authentication.password.HaveIBeenPwnedRestApiPasswordChecker: OFF

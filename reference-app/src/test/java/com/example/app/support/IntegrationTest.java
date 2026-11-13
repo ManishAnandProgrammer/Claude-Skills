@@ -6,6 +6,8 @@ import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
@@ -34,18 +36,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * shared database. Create your own data (unique emails and names), never assume an empty table,
  * and don't add {@code @MockitoBean} or {@code @TestPropertySource}: either starts another context.
  *
+ * <p>{@code @AutoConfigureMetrics} keeps the prometheus registry, which Boot switches off in tests,
+ * so the scrape is tested. Every request comes from its own client address
+ * ({@link DistinctClientAddresses}).</p>
+ *
  * <p>Fixture helpers assert their own success, so a setup that fails fails the test.</p>
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@AutoConfigureMetrics
 @ActiveProfiles("test")
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, StubBreachedPasswords.class, DistinctClientAddresses.class})
 public abstract class IntegrationTest {
 
     protected static final String PASSWORD = "Correct-Horse-9";
 
     @Autowired
     protected MockMvc mvc;
+
+    @Value("${spring.application.name}")
+    private String applicationName;
 
     /** For asserting database invariants (row counts) that no endpoint exposes. Writes go through {@link #sql}. */
     @Autowired
@@ -74,6 +84,16 @@ public abstract class IntegrationTest {
 
     /** A signed-up user and their access token. */
     protected record TestUser(UUID id, String email, String accessToken, String refreshToken) {
+    }
+
+    /** The application's name, which bootstrap renames: never write it into a test. */
+    protected String applicationName() {
+        return applicationName;
+    }
+
+    /** The Problem Details {@code type} of an error code; the URN carries the application's name. */
+    protected String problemType(String errorCode) {
+        return "urn:%s:error:%s".formatted(applicationName, errorCode);
     }
 
     protected static String uniqueEmail(String prefix) {

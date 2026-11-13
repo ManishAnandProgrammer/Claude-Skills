@@ -33,7 +33,7 @@ class AdmissionControlFilterTest {
     private static ProblemResponses problemResponses() {
         StaticMessageSource messages = new StaticMessageSource();
         messages.addMessage("SERVER_BUSY", Locale.getDefault(), "The service is busy. Please retry shortly.");
-        return new ProblemResponses(JsonMapper.builder().build(), messages, new ProblemTypes("reference"));
+        return new ProblemResponses(JsonMapper.builder().build(), messages, new ProblemTypes("app"));
     }
 
     private static RetryAfterProperties retryAfter() {

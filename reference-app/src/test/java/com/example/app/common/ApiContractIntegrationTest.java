@@ -44,7 +44,7 @@ class ApiContractIntegrationTest extends IntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"))
-                .andExpect(jsonPath("$.type").value("urn:reference:error:RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.type").value(problemType("RESOURCE_NOT_FOUND")))
                 .andExpect(jsonPath("$.instance").value("/api/v1/no-such-thing"))
                 .andExpect(jsonPath("$.status").value(404));
     }
@@ -84,6 +84,16 @@ class ApiContractIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.status").value("UP"));
         mvc.perform(get("/actuator/health/liveness"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("The prometheus scrape answers without a token (the management port is the boundary), with the mitigation counters at zero or more")
+    void prometheusScrapeNeedsNoToken() throws Exception {
+        mvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("application=\"%s\"".formatted(applicationName()))))
+                .andExpect(content().string(containsString("breached_password_check_unavailable_total")))
+                .andExpect(content().string(containsString("rate_limit_unchecked_total")));
     }
 
     @Test

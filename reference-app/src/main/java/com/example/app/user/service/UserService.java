@@ -28,12 +28,14 @@ public class UserService {
     private final UserMapper mapper;
     private final PasswordEncoder passwordEncoder;
     private final AuthRateLimits rateLimits;
+    private final BreachedPasswordCheck breachedPasswordCheck;
 
     /**
-     * Runs without a transaction: hashing the password takes about a quarter of a second of CPU, and
-     * must not hold a pooled connection meanwhile. The existence check and the insert each run in
-     * their own short transaction; a concurrent signup with the same email that slips between them is
-     * refused by {@code uq_users_email} with the same {@code USER_EMAIL_TAKEN}.
+     * Runs without a transaction: hashing the password takes about a quarter of a second of CPU and
+     * the breached-password check is a remote call; neither may hold a pooled connection meanwhile.
+     * The existence check and the insert each run in their own short transaction; a concurrent
+     * signup with the same email that slips between them is refused by {@code uq_users_email} with
+     * the same {@code USER_EMAIL_TAKEN}.
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ObjectWrapper<UserResponse> signup(SignupRequest request, String clientIp) {
@@ -42,6 +44,7 @@ public class UserService {
         if (repository.existsByEmail(email)) {
             throw AppException.of(ErrorCode.USER_EMAIL_TAKEN);
         }
+        breachedPasswordCheck.requireNotBreached(request.password());
         User user = User.register(email, request.fullName(), passwordEncoder.encode(request.password()));
         User saved = repository.saveAndFlush(user);
         log.info("Account created: userId={}", saved.getId());

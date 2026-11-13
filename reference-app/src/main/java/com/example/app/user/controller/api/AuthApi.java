@@ -27,9 +27,11 @@ public interface AuthApi {
     @Operation(summary = "Create an account", description = """
             Creates a USER account. The email (ASCII) is stored lower-case; the password needs at \
             least 8 characters and at most 72 bytes, with an upper-case letter, a lower-case letter, \
-            a digit and another character. Sign in afterwards with login.""")
+            a digit and another character, and must not appear in a known data breach (checked \
+            against Have I Been Pwned without sending the password; skipped while that service is \
+            unreachable or busy). Sign in afterwards with login.""")
     @ApiResponse(responseCode = "201", description = "Created; Location points at /api/v1/users/me")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, USER_PASSWORD_BREACHED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "USER_EMAIL_TAKEN",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
