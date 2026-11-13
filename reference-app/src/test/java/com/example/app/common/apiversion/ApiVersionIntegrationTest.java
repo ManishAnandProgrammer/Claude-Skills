@@ -62,13 +62,13 @@ class ApiVersionIntegrationTest extends IntegrationTest {
     void unsupportedVersionIs400() throws Exception {
         TestUser user = newUser();
 
-        getAs(user.accessToken(), "/api/v9/todo-lists")
+        getAs(user.accessToken(), "/api/v9/users/me")
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.errorCode").value("API_VERSION_UNSUPPORTED"))
                 .andExpect(jsonPath("$.type").value(problemType("API_VERSION_UNSUPPORTED")))
                 .andExpect(jsonPath("$.detail").value(UNSUPPORTED_MESSAGE))
-                .andExpect(jsonPath("$.instance").value("/api/v9/todo-lists"))
+                .andExpect(jsonPath("$.instance").value("/api/v9/users/me"))
                 .andExpect(content().string(not(containsString("Exception"))))
                 .andExpect(content().string(not(containsString("org.springframework"))));
     }
@@ -79,7 +79,7 @@ class ApiVersionIntegrationTest extends IntegrationTest {
     void malformedVersionIs400(String version) throws Exception {
         TestUser user = newUser();
 
-        getAs(user.accessToken(), "/api/%s/todo-lists".formatted(version))
+        getAs(user.accessToken(), "/api/%s/users/me".formatted(version))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("API_VERSION_UNSUPPORTED"))
                 .andExpect(jsonPath("$.detail").value(UNSUPPORTED_MESSAGE));
@@ -90,7 +90,7 @@ class ApiVersionIntegrationTest extends IntegrationTest {
     void missingVersionIs404() throws Exception {
         TestUser user = newUser();
 
-        getAs(user.accessToken(), "/api/todo-lists")
+        getAs(user.accessToken(), "/api/users/me")
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -111,7 +111,7 @@ class ApiVersionIntegrationTest extends IntegrationTest {
         getAs(null, "/api/v9/users/me")
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
-        getAs(null, "/api/vx/todo-lists")
+        getAs(null, "/api/vx/users/me")
                 .andExpect(status().isUnauthorized());
     }
 
@@ -168,12 +168,13 @@ class ApiVersionIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/{version}/users/me']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/users/me'].get.responses['400'].description",
                         containsString("API_VERSION_UNSUPPORTED")))
-                .andExpect(jsonPath("$.paths['/api/v1/users/me'].get.responses['400'].content['application/problem+json']").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/todos'].get.responses['400'].description",
+                .andExpect(jsonPath("$.paths['/api/v1/auth/signup'].post.responses['400'].content['application/problem+json']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/signup'].post.responses['400'].description",
                         containsString("VALIDATION_FAILED")))
-                .andExpect(jsonPath("$.paths['/api/v1/todos'].get.responses['400'].description",
+                .andExpect(jsonPath("$.paths['/api/v1/auth/signup'].post.responses['400'].description",
                         containsString("API_VERSION_UNSUPPORTED")))
-                .andExpect(jsonPath("$.paths['/api/v1/todos'].get.parameters[?(@.name == 'version')]").isEmpty());
+                // The version is in the URL, not a parameter clients fill in (the operation has no other).
+                .andExpect(jsonPath("$.paths['/api/v1/users/me'].get.parameters").doesNotExist());
     }
 
     private String completionLine(String requestId) {

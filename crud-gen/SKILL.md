@@ -220,7 +220,8 @@ transaction (DATA-01).
 ### 4.9 API interface (OpenAPI)
 Golden `TodoApi`: `@Tag`; `@Operation` with text-block descriptions; an `@ApiResponse` for every
 status and errorCode the endpoint can return (except `API_VERSION_UNSUPPORTED`: a customizer adds it
-to every operation): 200/201/204, 400 (`VALIDATION_FAILED`,
+to every operation; error `@Content` needs no `mediaType`, a customizer publishes it as
+`application/problem+json`): 200/201/204, 400 (`VALIDATION_FAILED`,
 `REQUEST_UNREADABLE`, `REQUEST_PARAMETER_INVALID` for a bad id, enum, date or cursor), 401, 403
 (roles), 404, 409 (`*_TAKEN`, `OPTIMISTIC_LOCK_CONFLICT`, also on delete, `*_IN_USE`), 503.
 List descriptions explain the paging (cursor: `after` / `pageInfo.nextCursor`; offset: `page` /
