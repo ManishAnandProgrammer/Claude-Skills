@@ -45,6 +45,10 @@ a finding**. Profile keys are written `{{key}}`.
   - a `PATCH` whose body DTO has required (`@NotNull` / `@NotBlank`) fields is really a PUT;
   - a GET that INSERTs, e.g. a settings row created on read.
 - **Severity:** Medium.
+- **Not a finding when:** a REST-03 state change or single-field sub-resource
+  (`PATCH /x/{id}/role {role}`, `PATCH /x/{id}/enabled {enabled}`): its one field is required by
+  nature, and the body *is* the change. The PUT smell is a PATCH on the resource itself
+  (`PATCH /x/{id}`) whose body requires fields the client didn't mean to change.
 
 ### REST-05: Status codes
 - **Check:**

@@ -431,3 +431,22 @@ Deliberate differences from the original doc (house rules):
   messages). When it arrives, turn the exception principles into concrete checks.
 - Their log pattern (format, structured fields). When it arrives, add concrete logging-format
   rules.
+
+## Step 10: first field test, `/house-review user` on news-pulse (2026-11-13)
+
+Report: news-pulse `docs/reviews/2026-11-13-user.md` (16 findings; 11 already tracked, 5 new).
+What the run showed about the skill, and what changed:
+- **"Already tracked" had no answer.** Step 7 (decisions) now offers **fix / track / accept**.
+  A tracked finding is planned work, not an exception, so it gets no marker. Findings the tracker
+  fully covers aren't asked about again. Tracked findings are written to the tracker as a note or
+  a new task. Every finding carries a `Tracked:` line.
+- **The questions came before the report.** The order is now Step 6 report, Step 7 decisions,
+  Step 8 fixes, so the author decides with the findings in front of them. The report gained a
+  **Decisions** section. "Tracker only" is a valid Step 8 answer.
+- **A module review met project-wide causes** (no database timeouts, lenient Jackson). These are
+  now labelled `(project-wide)`, reported once, and listed only under "Previous findings" once a
+  report or tracker holds them.
+- **REST-04 contradicted REST-03.** `PATCH /x/{id}/role {role}` is the prescribed state-change
+  shape, not a disguised PUT. REST-04 gained a "Not a finding when" clause.
+- Not a skill issue: the build needs Docker. In a shell without the `docker` group, the
+  profile's `buildCommand` notes `sg docker -c "…"`.

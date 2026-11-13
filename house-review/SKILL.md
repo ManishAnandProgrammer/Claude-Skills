@@ -30,10 +30,10 @@ Principles:
 - **A finding must be real.** Read the code before reporting. Every Critical and High finding is
   re-verified (Step 5). If unsure, label it "possible" and say why.
 - **A deviation is an exception, never a pattern.** Code that breaks a guideline is either fixed
-  or accepted by the author and marked, so nobody copies it (Step 6).
+  or accepted by the author and marked, so nobody copies it (Step 7).
 - **Fewer, grouped findings beat many trivial ones.** One finding lists every location of the
   same problem.
-- Never change code before the report is shown and the user has chosen what to fix.
+- Never change code before the report is shown (Step 6) and the user has chosen what to fix.
 
 ---
 
@@ -82,7 +82,7 @@ Then add the **related files** the rules need even when unchanged:
   response DTO, for the doc-drift check (REST-20);
 - the tests of every changed class, for the test duties in lenses.md;
 - the migrations touching every changed entity;
-- `.claude/review-profile.md` and the deviation markers in scope (Step 6).
+- `.claude/review-profile.md` and the deviation markers in scope (Step 4).
 
 Lenses per mode (lenses.md):
 - **diff and uncommitted:** lenses 1, 2, 6 and 7, plus lens 8 when the change touches locks,
@@ -191,7 +191,15 @@ Finding format (reviewers and you):
 - Severity: Critical | High | Medium | Low
 - What: 1–3 sentences, concrete
 - Fix: concrete
+- Tracked: <task id, and which part is new> | new
 ```
+
+**Project-wide findings.** A path, diff or uncommitted review also meets causes outside its
+scope: shared configuration (`application.yml`, timeouts, Jackson), the exception handler, a
+`common` class. Report such a finding once, with `(project-wide)` in its title and the in-scope
+symptom in **What**, and don't count it toward the scope's own findings in the summary. When an
+earlier report or the tracker already holds it, list it only under "Previous findings" (open),
+not as a new finding, so the same problem doesn't reappear in every module's review.
 
 ---
 
@@ -235,38 +243,19 @@ Also check any number you report (counts of endpoints, tests, files) by recomput
 
 ---
 
-## Step 6: Deviations: accept or reject
-
-A **guideline finding** is a finding that is not a bug, security hole or data risk: style,
-structure, naming, conventions, API shape. For guideline findings at Medium or Low, ask the
-author with **AskUserQuestion** (up to 4 per call, grouped by rule). The options:
-- **Fix it** (default);
-- **Accept as an exception**, with a reason from the author.
-
-Critical findings, and High findings about security or data integrity, are **never** offered
-as deviations.
-
-For each accepted deviation:
-1. Add the marker comment directly above the code, using the project's comment syntax:
-   ```java
-   // DEVIATION(<RULE-ID>, accepted <yyyy-mm-dd>): <reason>. Exception, do not copy.
-   ```
-   For SQL or YAML, use `--` or `#`.
-2. Append a row to the profile's **Deviation register**: rule, file and symbol, reason, date,
-   accepted by.
-3. Re-check the broken-window alarm (Step 4).
-
-In whole-codebase mode with many guideline findings, ask per rule ("accept all N locations of
-SMELL-21 for this reason?"), not per location.
-
----
-
-## Step 7: Report
+## Step 6: Report
 
 **Diff and uncommitted:** print the report in the terminal.
 
 **Path and all:** write `<reportDir>/<yyyy-mm-dd>-<scope>.md` (`reportDir` from the profile,
 default `docs/reviews`) and print a short summary with the path.
+
+The report comes **before** the questions of Steps 7 and 8, so the author decides with every
+finding in front of them. Step 7 then adds its decisions to the report.
+
+Each finding carries a **Tracked** line: the tracker task that already covers it (fully or in
+part, saying which part is new), or `new`. Project-wide findings say `project-wide` in their
+title (Step 3).
 
 Report layout:
 ```
@@ -286,6 +275,9 @@ Build: ok | failed · Tests: x passed, y failed · Duration: …
 
 ## Accepted deviations in scope
 (marker locations, by rule; stale markers; broken-window alarms)
+
+## Decisions
+(added in Step 7: per finding fix, tracked in <task>, or accepted; what was added to the tracker)
 
 ## Structural verdict (path and all)
 (verdict, deep pattern, smallest refactoring move, architecture priority list)
@@ -310,7 +302,46 @@ Build: ok | failed · Tests: x passed, y failed · Duration: …
 (one line per convention, with its reason)
 ```
 
-The verdict is **NOT READY** while any Critical or High finding is open and not accepted.
+The verdict is **NOT READY** while any Critical or High finding is open and not accepted. A
+finding that is tracked is still open: tracking it doesn't make the code ready.
+
+---
+
+## Step 7: Decisions: fix, track or accept
+
+A **guideline finding** is a finding that is not a bug, security hole or data risk: style,
+structure, naming, conventions, API shape. For guideline findings at Medium or Low, ask the
+author with **AskUserQuestion** (up to 4 per call, grouped by rule). The options:
+- **Fix it** (default);
+- **Track it**: already a tracker task, or to be added as one (name the task: `T26`, or "new
+  task"). Nothing is marked in the code: a tracked finding is planned work, not an exception;
+- **Accept as an exception**, with a reason from the author.
+
+Don't ask about findings the tracker already covers completely and that nothing new was found
+in: list them in **Decisions** as "tracked in <task>". Ask only about new findings and new parts.
+
+Findings the author chooses to track are written to the project's tracker (in the user's words
+when they gave a reason): a note on the existing task, or a new task in the tracker's own format
+and numbering, with a link back to the report. Ask before creating a tracker file that doesn't
+exist.
+
+Critical findings, and High findings about security or data integrity, are **never** offered
+as deviations.
+
+For each accepted deviation:
+1. Add the marker comment directly above the code, using the project's comment syntax:
+   ```java
+   // DEVIATION(<RULE-ID>, accepted <yyyy-mm-dd>): <reason>. Exception, do not copy.
+   ```
+   For SQL or YAML, use `--` or `#`.
+2. Append a row to the profile's **Deviation register**: rule, file and symbol, reason, date,
+   accepted by.
+3. Re-check the broken-window alarm (Step 4).
+
+In whole-codebase mode with many guideline findings, ask per rule ("accept all N locations of
+SMELL-21 for this reason?"), not per location.
+
+Record every decision in the report's **Decisions** section.
 
 ---
 
@@ -323,8 +354,8 @@ Before asking, check **where the fixes collide**. Examples:
 
 Each proposed fix names the failure it prevents *in this system*.
 
-Ask with **AskUserQuestion** which findings to fix: all Critical and High, a chosen set, or
-none. Then:
+Ask with **AskUserQuestion** which findings to fix now: all Critical and High, a chosen set, or
+none (tracker only: the findings go to the tracker as in Step 7). Then:
 1. Fix them, following the rule's **Fix** guidance, the profile and CLAUDE.md.
 2. Update the API-interface docs for every endpoint touched (REST-20).
 3. Add the missing tests from the report for the code you changed.

@@ -84,7 +84,7 @@ project doesn't have.
 <!--
 The project's deliberate choices where they differ from, or refine, the reference rules. Each
 needs a reason. Code that follows them is fine; code that breaks them is a deviation (SKILL.md
-Step 6). Reports list these under "Notes the profile overrides".
+Step 7). Reports list these under "Notes the profile overrides".
 -->
 
 | Convention | Overrides / refines | Why |
