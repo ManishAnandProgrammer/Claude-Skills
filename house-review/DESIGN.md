@@ -450,3 +450,6 @@ What the run showed about the skill, and what changed:
   shape, not a disguised PUT. REST-04 gained a "Not a finding when" clause.
 - Not a skill issue: the build needs Docker. In a shell without the `docker` group, the
   profile's `buildCommand` notes `sg docker -c "…"`.
+- **`diff <base>`** added: a branch stacked on another feature branch (news-pulse's
+  `chore/user-cleanups` on `chore/pre-work-cleanup`, 36 commits ahead of `staging`) is reviewed
+  against its own base, not the whole stack.

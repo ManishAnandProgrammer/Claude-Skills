@@ -72,6 +72,7 @@ Parse `$ARGUMENTS`:
 | Argument | Mode | Files |
 |---|---|---|
 | `diff` | Branch diff | `git diff --name-only <mainBranch>...HEAD` (merge base) |
+| `diff <base>` | Branch diff against another base | `git diff --name-only <base>...HEAD`: for a branch stacked on another feature branch, so only its own commits are reviewed |
 | `uncommitted` | Uncommitted changes | `git diff --name-only HEAD` plus untracked files (`git ls-files --others --exclude-standard`) |
 | `all` | Whole codebase | Every source, test, resource and migration file |
 | a path | Path or module | Every file under the path |
