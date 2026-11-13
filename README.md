@@ -20,6 +20,8 @@ Two skills that share one set of house engineering rules:
   all new code via crud-gen.
 - [Set up on another computer](guides/setup-new-machine.md): SSH key, clone, install, verify;
   also how to let Claude do it.
+- [Share as a zip](guides/share-as-zip.md): for someone without access to this repository:
+  `scripts/package.sh` makes the zip, `scripts/install-standalone.sh` installs it (no sync).
 
 ## Install (once per machine)
 ```bash
@@ -38,6 +40,9 @@ The sync is a fast-forward-only `git pull`. It never merges or overwrites, and s
 there are uncommitted local edits. Log: `~/.local/state/claude-skills/sync.log`.
 
 Start a new Claude Code session afterwards; the skills show up as `/house-review` and `/crud-gen`.
+
+Got a **zip** instead of a clone (no `.git`)? Run `scripts/install-standalone.sh`: same links
+and `CLAUDE.md` block, no daily sync. See [guides/share-as-zip.md](guides/share-as-zip.md).
 
 ## Changing a skill
 Edit the files here (or through `~/.claude/skills/<name>`, the same files), then commit and push.

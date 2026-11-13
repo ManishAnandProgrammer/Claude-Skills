@@ -14,7 +14,8 @@ made, committed and pushed here.
 | Daily sync | systemd user timer `claude-skills-sync.timer` (Linux), or cron (macOS, other) | Fast-forward-only `git pull`; skips while there are uncommitted edits |
 | Instructions for Claude | a marked block in `~/.claude/CLAUDE.md` | Every Claude Code session, in every project, knows where the skills live and that changes are committed and pushed here |
 
-`install.sh` is safe to run again: links are refreshed, an existing non-link skill folder is
+`install.sh` (git clone only; a zip copy uses `install-standalone.sh`, see `share-as-zip.md`) is
+safe to run again: links are refreshed, an existing non-link skill folder is
 backed up first, and the `CLAUDE.md` block is replaced, not duplicated.
 
 ---

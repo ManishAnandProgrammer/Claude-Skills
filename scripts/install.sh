@@ -1,65 +1,35 @@
 #!/usr/bin/env bash
-# One-time setup on a machine: links every skill in this repo into ~/.claude/skills (the repo is
-# the single source of truth) and schedules scripts/sync.sh once a day. Safe to run again.
+# Installer for the OWNER's machines: this folder is a git clone of the skills repository.
+# - links every skill into ~/.claude/skills (this repository is the single source of truth);
+# - tells Claude Code, in ~/.claude/CLAUDE.md, where the skills live and that changes are
+#   committed and pushed here;
+# - schedules scripts/sync.sh once a day (fast-forward-only pull).
+# Safe to run again. For a zip copy without git, use install-standalone.sh instead.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-SKILLS_DIR="$HOME/.claude/skills"
-mkdir -p "$SKILLS_DIR"
+source "$REPO/scripts/lib/common.sh"
 
-for skill in "$REPO"/*/; do
-    skill="${skill%/}"
-    name="$(basename "$skill")"
-    [ -f "$skill/SKILL.md" ] || continue
-    target="$SKILLS_DIR/$name"
-    if [ -L "$target" ]; then
-        ln -sfn "$skill" "$target"
-    elif [ -e "$target" ]; then
-        backup="$target.backup-$(date +%Y%m%d%H%M%S)"
-        mv "$target" "$backup"
-        echo "existing $name moved to $backup"
-        ln -s "$skill" "$target"
-    else
-        ln -s "$skill" "$target"
-    fi
-    echo "linked $target -> $skill"
-done
+if [ ! -d "$REPO/.git" ]; then
+    echo "error: $REPO is not a git clone (no .git)."
+    echo "For a zip copy, run: $REPO/scripts/install-standalone.sh"
+    exit 1
+fi
 
-chmod +x "$REPO/scripts/sync.sh"
+link_skills "$REPO"
 
-# Tell Claude Code, in every project on this machine, where the skills live and how to change them.
-# Written between markers so a re-run replaces the block instead of duplicating it.
-memory="$HOME/.claude/CLAUDE.md"
-begin="<!-- claude-skills:begin -->"
-end="<!-- claude-skills:end -->"
-block="$begin
-## Skills: single source of truth
+origin="$(git -C "$REPO" remote get-url origin 2>/dev/null || echo "no remote")"
+write_claude_block "## Skills: single source of truth
 The skills in \`~/.claude/skills/\` (house-review, crud-gen, ...) are symlinks into the git
-repository \`$REPO\` (GitHub: $(git -C "$REPO" remote get-url origin)).
+repository \`$REPO\` (GitHub: $origin).
 - To change a skill, edit the files in that repository, then commit and push there. Never copy a
   skill elsewhere, and never edit a copy.
 - A daily job pulls the repository (fast-forward only) and skips while there are uncommitted
   changes, so push skill edits promptly.
 - To pull now: \`$REPO/scripts/sync.sh\` (log: \`~/.local/state/claude-skills/sync.log\`).
-- Guides: \`$REPO/guides/\`.
-$end"
-touch "$memory"
-if grep -qF "$begin" "$memory"; then
-    python3 - "$memory" "$begin" "$end" "$block" <<'PY'
-import sys
-path, begin, end, block = sys.argv[1:5]
-text = open(path).read()
-start = text.index(begin)
-stop = text.index(end) + len(end)
-open(path, "w").write(text[:start] + block + text[stop:])
-PY
-    echo "updated the skills block in $memory"
-else
-    [ -s "$memory" ] && printf '\n' >> "$memory"
-    printf '%s\n' "$block" >> "$memory"
-    echo "added the skills block to $memory"
-fi
+- Guides: \`$REPO/guides/\`."
 
+chmod +x "$REPO/scripts/sync.sh"
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
     units="$HOME/.config/systemd/user"
     mkdir -p "$units"
@@ -88,8 +58,7 @@ UNIT
     systemctl --user enable --now claude-skills-sync.timer
     echo "scheduled: systemd user timer claude-skills-sync.timer (daily)"
 else
-    line="@daily $REPO/scripts/sync.sh"
-    ( crontab -l 2>/dev/null | grep -vF "$REPO/scripts/sync.sh"; echo "$line"; echo "@reboot $REPO/scripts/sync.sh" ) | crontab -
+    ( crontab -l 2>/dev/null | grep -vF "$REPO/scripts/sync.sh"; echo "@daily $REPO/scripts/sync.sh"; echo "@reboot $REPO/scripts/sync.sh" ) | crontab -
     echo "scheduled: cron (@daily and @reboot)"
 fi
 
