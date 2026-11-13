@@ -108,14 +108,19 @@ class BreachedPasswordConfigTest {
     }
 
     @Test
-    @DisplayName("Each lookup is observed as http.client.requests")
+    @DisplayName("Lookups are observed as http.client.requests under one URI tag, whatever the hash prefix")
     void lookupsAreObserved() throws IOException {
         ObservationRegistry observationRegistry = ObservationRegistry.create();
         observationRegistry.observationConfig().observationHandler(new DefaultMeterObservationHandler(meterRegistry));
 
-        checker(rangeApi(200, RANGE_49EFE), observationRegistry).check(BREACHED_PASSWORD);
+        CompromisedPasswordChecker checker = checker(rangeApi(200, RANGE_49EFE), observationRegistry);
+        checker.check(BREACHED_PASSWORD);
+        checker.check("Qz8-a91f3c-Vw-x7");
 
-        assertThat(meterRegistry.get("http.client.requests").timer().count()).isOne();
+        // Two passwords, two hash prefixes: still one timer, tagged with the URI template only.
+        assertThat(meterRegistry.get("http.client.requests").timers()).hasSize(1);
+        assertThat(meterRegistry.get("http.client.requests").tag("uri", RangeLookupObservationConvention.URI)
+                .timer().count()).isEqualTo(2);
     }
 
     @Test

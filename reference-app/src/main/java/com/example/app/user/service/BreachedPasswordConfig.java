@@ -21,8 +21,9 @@ class BreachedPasswordConfig {
     // A RestClient replacing the checker's own needs the API's base URL: the checker requests only
     // the hash prefix. Ours adds timeouts (the default has none, so a hanging service would hold
     // every signup), counts failures, which the checker itself swallows, and observes each call
-    // (http.client.requests, traceparent) through the registry: Boot's RestClient.Builder lives in a
-    // module this application doesn't otherwise need.
+    // (http.client.requests, traceparent) through the registry, under one URI tag (see
+    // RangeLookupObservationConvention): Boot's RestClient.Builder lives in a module this application
+    // doesn't otherwise need.
     @Bean
     CompromisedPasswordChecker compromisedPasswordChecker(BreachedPasswordProperties properties,
                                                           MeterRegistry meterRegistry,
@@ -35,6 +36,7 @@ class BreachedPasswordConfig {
                 .defaultHeader(ADD_PADDING, Boolean.TRUE.toString())
                 .requestFactory(requestFactory)
                 .observationRegistry(observationRegistry)
+                .observationConvention(new RangeLookupObservationConvention())
                 .requestInterceptor(new FailureCountingInterceptor(BreachedPasswordCheck.unavailableCounter(meterRegistry)))
                 .build();
         HaveIBeenPwnedRestApiPasswordChecker checker = new HaveIBeenPwnedRestApiPasswordChecker();
