@@ -5,6 +5,7 @@ import com.example.app.common.dropdown.DropdownItem;
 import com.example.app.common.dropdown.DropdownStatus;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Paging;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.wrapper.CursorWrapper;
@@ -22,7 +23,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /** Every read and write is scoped to the caller: another user's list answers 404, like a missing one. */
@@ -55,9 +55,7 @@ public class TodoListService {
     @Transactional
     public ObjectWrapper<TodoListResponse> update(UUID id, TodoListUpdateRequest request) {
         TodoList todoList = getOwnedTodoList(id, currentUser.id());
-        if (!Objects.equals(todoList.getVersion(), request.version())) {
-            throw AppException.of(ErrorCode.OPTIMISTIC_LOCK_CONFLICT);
-        }
+        todoList.checkVersion(request.version());
         mapper.update(todoList, request);
         repository.flush();
         return ObjectWrapper.withObject(mapper.toResponse(todoList));
@@ -75,7 +73,8 @@ public class TodoListService {
         if (filter.getStatus() != DropdownStatus.ACTIVE) {
             throw AppException.of(ErrorCode.REQUEST_PARAMETER_INVALID).withExtension("parameter", "status");
         }
-        return repository.findDropdownItems(filter, currentUser.id(), paging.cursorSize(filter));
+        CursorBatch<DropdownItem> batch = repository.findDropdownItems(filter, currentUser.id(), paging.cursorSize(filter));
+        return CursorWrapper.of(batch.items(), batch.nextCursor());
     }
 
     /**

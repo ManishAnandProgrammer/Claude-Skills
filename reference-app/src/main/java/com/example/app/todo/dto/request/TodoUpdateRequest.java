@@ -1,5 +1,6 @@
 package com.example.app.todo.dto.request;
 
+import com.example.app.common.limits.LatestDate;
 import com.example.app.common.limits.MaxLength;
 import com.example.app.todo.domain.TodoPriority;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -27,7 +28,8 @@ public record TodoUpdateRequest(
         @NotNull
         TodoPriority priority,
 
-        @Schema(description = "Due date (yyyy-MM-dd); empty for none", example = "2026-11-20")
+        @Schema(description = "Due date (yyyy-MM-dd), up to a configured latest date; empty for none", example = "2026-11-20")
+        @LatestDate("todo.due-date")
         LocalDate dueDate,
 
         @Schema(description = "The version you last read; a stale one is refused with 409", example = "0")
