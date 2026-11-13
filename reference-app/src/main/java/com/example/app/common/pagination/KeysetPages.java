@@ -42,6 +42,7 @@ public class KeysetPages {
             LocalDate.class, LocalDate::parse,
             Instant.class, Instant::parse,
             String.class, text -> text,
+            Integer.class, Integer::valueOf,
             Long.class, Long::valueOf);
 
     private final EntityManager entityManager;

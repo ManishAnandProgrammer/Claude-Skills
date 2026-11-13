@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 /**
  * The tunable limits under {@code app.limits.*} (config/limits.yml), read by key: the configuration
  * is the only place a number lives. A key that isn't configured is a bug and fails loudly;
- * {@code LimitKeysTest} checks every key the code uses.
+ * {@code LimitsIntegrationTest} checks every key the code uses.
  */
 @Component
 public class Limits {

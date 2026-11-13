@@ -2,10 +2,14 @@ package com.example.app.todo.controller.api;
 
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.CursorWrapper;
+import com.example.app.todo.dto.request.TimeEntryCreateRequest;
+import com.example.app.todo.dto.request.TimeEntryFilter;
+import com.example.app.todo.dto.request.TimeEntryUpdateRequest;
 import com.example.app.todo.dto.request.TodoCreateRequest;
 import com.example.app.todo.dto.request.TodoFilter;
 import com.example.app.todo.dto.request.TodoStatusRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
+import com.example.app.todo.dto.response.TimeEntryResponse;
 import com.example.app.todo.dto.response.TodoResponse;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -18,7 +22,9 @@ import org.springframework.http.ProblemDetail;
 
 import java.util.UUID;
 
-@Tag(name = "Todos", description = "The signed-in user's todos. Another user's todo or list answers 404.")
+@Tag(name = "Todos", description = """
+        The signed-in user's todos and the time logged on them (/todos/{todoId}/time-entries). Another \
+        user's todo or list answers 404.""")
 public interface TodoApi {
 
     @Operation(summary = "Your todos, in batches", description = """
@@ -97,7 +103,9 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<TodoResponse> changeStatus(UUID id, TodoStatusRequest request);
 
-    @Operation(summary = "Delete a todo")
+    @Operation(summary = "Delete a todo", description = """
+            Only a todo without time entries: delete its time entries first, so logged (billable) time \
+            is never removed as a side effect.""")
     @ApiResponse(responseCode = "204", description = "Deleted")
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -105,9 +113,91 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT (it changed while being deleted)",
+    @ApiResponse(responseCode = "409", description = "TODO_IN_USE (it has time entries), OPTIMISTIC_LOCK_CONFLICT (it changed while being deleted)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     void delete(UUID id);
+
+    @Operation(summary = "A todo's time entries, in batches", description = """
+            Cursor-paged: the first call returns a batch and pageInfo.nextCursor; send it as after to \
+            get the next batch, until hasMore is false. size sets the batch (default and maximum from \
+            configuration). Filters, all inclusive: spentOnFrom and spentOnTo (yyyy-MM-dd), minMinutes \
+            and maxMinutes (from 1 to the configured maximum of an entry), and billable; a range whose \
+            lower bound is above its upper one is a 400. Ordered by sort: SPENT_ON (the default; the \
+            most recent day first) or MINUTES (the longest first); a cursor only continues the order it \
+            came from.""")
+    @ApiResponse(responseCode = "200", description = "One batch, with pageInfo {nextCursor, hasMore}")
+    @ApiResponse(responseCode = "400", description = """
+            VALIDATION_FAILED (size, after, minMinutes or maxMinutes out of range; spentOnFrom after \
+            spentOnTo, or minMinutes above maxMinutes, naming the lower bound); \
+            REQUEST_PARAMETER_INVALID (a malformed id or date, a non-numeric size or minutes, a billable \
+            that is not true or false, an unknown sort, or an after that is tampered or from another \
+            sort; see failed or parameter)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    CursorWrapper<TimeEntryResponse> timeEntries(UUID todoId, @ParameterObject TimeEntryFilter filter);
+
+    @Operation(summary = "One time entry of a todo")
+    @ApiResponse(responseCode = "200", description = "The time entry")
+    @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (an id is not a UUID)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TIME_ENTRY_NOT_FOUND (missing, or not on this todo)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ObjectWrapper<TimeEntryResponse> getTimeEntry(UUID todoId, UUID id);
+
+    @Operation(summary = "Log time on a todo", description = """
+            minutes from 1 to a configured maximum. spentOn is a calendar day in the user's own time zone, \
+            stored as sent: the client keeps it from being in the future; the server refuses only a day \
+            that is in the future everywhere (after today in UTC plus a configured tolerance). A blank note \
+            is stored as none.""")
+    @ApiResponse(responseCode = "201", description = "Created")
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (the id is not a UUID)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ObjectWrapper<TimeEntryResponse> createTimeEntry(UUID todoId, TimeEntryCreateRequest request);
+
+    @Operation(summary = "Edit a time entry", description = """
+            Replaces minutes, spentOn, note and billable, with the rules of logging time. Send the version \
+            you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT.""")
+    @ApiResponse(responseCode = "200", description = "Updated; the version increments when something changed")
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TIME_ENTRY_NOT_FOUND",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ObjectWrapper<TimeEntryResponse> updateTimeEntry(UUID todoId, UUID id, TimeEntryUpdateRequest request);
+
+    @Operation(summary = "Delete a time entry")
+    @ApiResponse(responseCode = "204", description = "Deleted")
+    @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (an id is not a UUID)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TIME_ENTRY_NOT_FOUND",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT (it changed while being deleted)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    void deleteTimeEntry(UUID todoId, UUID id);
 }

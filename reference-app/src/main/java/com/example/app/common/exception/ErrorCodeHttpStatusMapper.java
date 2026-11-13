@@ -54,6 +54,10 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.TODO_LIST_NAME_TAKEN, HttpStatus.CONFLICT);
         MAPPING.put(ErrorCode.TODO_LIST_IN_USE, HttpStatus.CONFLICT);
         MAPPING.put(ErrorCode.TODO_NOT_FOUND, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.TODO_IN_USE, HttpStatus.CONFLICT);
+        MAPPING.put(ErrorCode.TIME_ENTRY_NOT_FOUND, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.TAG_NOT_FOUND, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.TAG_NAME_TAKEN, HttpStatus.CONFLICT);
         // example:end
     }
 

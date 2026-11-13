@@ -1,0 +1,51 @@
+package com.example.app.todo.domain;
+
+import com.example.app.common.persistence.AuditableEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.experimental.SuperBuilder;
+
+import java.time.LocalDate;
+import java.util.UUID;
+
+/**
+ * A member of its todo's aggregate: written only through {@code TodoService}, which loads the todo
+ * first. It never moves to another todo, and the composite foreign key keeps its owner the todo's.
+ */
+@Entity
+@Table(name = "time_entries")
+@Getter
+@SuperBuilder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class TimeEntry extends AuditableEntity {
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "todo_id", nullable = false, updatable = false)
+    private Todo todo;
+
+    @Column(name = "owner_id", nullable = false, updatable = false)
+    private UUID ownerId;
+
+    @Setter
+    @Column(nullable = false)
+    private Integer minutes;
+
+    @Setter
+    @Column(name = "spent_on", nullable = false)
+    private LocalDate spentOn;
+
+    @Setter
+    private String note;
+
+    @Setter
+    @Column(nullable = false)
+    private boolean billable;
+}

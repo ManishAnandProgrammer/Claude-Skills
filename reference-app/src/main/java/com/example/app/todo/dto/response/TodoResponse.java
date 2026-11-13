@@ -14,7 +14,7 @@ public record TodoResponse(
         @Schema(description = "Its list") UUID todoListId,
         @Schema(description = "The owner's account id") UUID ownerId,
         @Schema(description = "What to do", example = "Buy oat milk") String title,
-        @Schema(description = "Free-form notes") String notes,
+        @Schema(description = "Free-form notes; null for none") String notes,
         @Schema(description = "OPEN or DONE", example = "OPEN") TodoStatus status,
         @Schema(description = "Priority", example = "MEDIUM") TodoPriority priority,
         @Schema(description = "Due date", example = "2026-11-20") LocalDate dueDate,

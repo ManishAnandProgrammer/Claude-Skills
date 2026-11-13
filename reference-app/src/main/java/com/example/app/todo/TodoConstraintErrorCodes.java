@@ -7,8 +7,9 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * The list name unique per owner, and the foreign key that refuses a list's delete while todos point
- * at it. Inserts never trip that foreign key: the services lock the parent list for the write.
+ * The list and tag names unique per owner, and the foreign keys that refuse a delete while children
+ * point at it: a list with todos, a todo with time entries. Inserts never trip those foreign keys:
+ * the services lock the parent for the write.
  */
 @Component
 class TodoConstraintErrorCodes implements ConstraintErrorCodes {
@@ -17,6 +18,8 @@ class TodoConstraintErrorCodes implements ConstraintErrorCodes {
     public Map<String, ErrorCode> byConstraintName() {
         return Map.of(
                 "uq_todo_lists_owner_id_name", ErrorCode.TODO_LIST_NAME_TAKEN,
-                "fk_todos_todo_list_id_owner_id", ErrorCode.TODO_LIST_IN_USE);
+                "fk_todos_todo_list_id_owner_id", ErrorCode.TODO_LIST_IN_USE,
+                "fk_time_entries_todo_id_owner_id", ErrorCode.TODO_IN_USE,
+                "uq_tags_owner_id_name", ErrorCode.TAG_NAME_TAKEN);
     }
 }

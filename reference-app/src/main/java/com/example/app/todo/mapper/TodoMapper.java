@@ -6,6 +6,7 @@ import com.example.app.todo.dto.request.TodoCreateRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
 import com.example.app.todo.dto.response.TodoResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.UUID;
 
@@ -17,7 +18,7 @@ public class TodoMapper {
                 .todoList(todoList)
                 .ownerId(ownerId)
                 .title(request.title().strip())
-                .notes(request.notes())
+                .notes(notesOrNone(request.notes()))
                 .priority(request.priority())
                 .dueDate(request.dueDate())
                 .build();
@@ -26,7 +27,7 @@ public class TodoMapper {
     public void update(Todo todo, TodoUpdateRequest request, TodoList todoList) {
         todo.moveTo(todoList);
         todo.setTitle(request.title().strip());
-        todo.setNotes(request.notes());
+        todo.setNotes(notesOrNone(request.notes()));
         todo.setPriority(request.priority());
         todo.setDueDate(request.dueDate());
     }
@@ -47,5 +48,10 @@ public class TodoMapper {
                 todo.getCreatedBy(),
                 todo.getUpdatedBy(),
                 todo.getVersion());
+    }
+
+    /** One representation of "no notes": blank is stored as null. */
+    private static String notesOrNone(String notes) {
+        return StringUtils.hasText(notes) ? notes : null;
     }
 }

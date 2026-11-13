@@ -21,8 +21,9 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Every list order, under every filter that scopes it, reads an index in order: the scope in the
- * index condition and no sort step. The statements have the shape of the repositories' queries.
+ * Every list order, under every filter that scopes it, reads its intended index in order: that index
+ * named in the plan (another one that happens to avoid the sort would hide a dropped or unused
+ * index), the scope in the index condition and no sort step. The statements have the shape of the repositories' queries.
  * The planner chooses by statistics, so one owner gets a realistic spread first (many lists, few
  * open todos) and the tables are analysed; scans that read whole tables are switched off, because
  * on the few rows of a test database they would win on cost and hide a missing index.
@@ -59,36 +60,46 @@ class TodoIndexIntegrationTest extends IntegrationTest {
     static Stream<Arguments> scopedOrders() {
         return Stream.of(
                 Arguments.of("todos, DUE_DATE", "todos where owner_id = :owner order by due_sort, id",
-                        List.of("owner_id")),
+                        List.of("owner_id"),
+                        "idx_todos_owner_id_due_sort_id"),
                 Arguments.of("todos, NEWEST", "todos where owner_id = :owner order by id desc",
-                        List.of("owner_id")),
+                        List.of("owner_id"),
+                        "idx_todos_owner_id_id"),
                 Arguments.of("todos of a list, DUE_DATE",
                         "todos where owner_id = :owner and todo_list_id = :list order by due_sort, id",
-                        List.of("owner_id", "todo_list_id")),
+                        List.of("owner_id", "todo_list_id"),
+                        "idx_todos_todo_list_id_owner_id_due_sort_id"),
                 Arguments.of("todos of a list, NEWEST",
                         "todos where owner_id = :owner and todo_list_id = :list order by id desc",
-                        List.of("owner_id", "todo_list_id")),
+                        List.of("owner_id", "todo_list_id"),
+                        "idx_todos_todo_list_id_owner_id_id"),
                 Arguments.of("todos in a status, DUE_DATE",
                         "todos where owner_id = :owner and status = :status order by due_sort, id",
-                        List.of("owner_id", "status")),
+                        List.of("owner_id", "status"),
+                        "idx_todos_owner_id_status_due_sort_id"),
                 Arguments.of("todos in a status, NEWEST",
                         "todos where owner_id = :owner and status = :status order by id desc",
-                        List.of("owner_id", "status")),
+                        List.of("owner_id", "status"),
+                        "idx_todos_owner_id_status_id"),
                 Arguments.of("todos due on or before, DUE_DATE",
                         "todos where owner_id = :owner and due_sort <= :due and due_date <= :due order by due_sort, id",
-                        List.of("owner_id", "due_sort")),
+                        List.of("owner_id", "due_sort"),
+                        "idx_todos_owner_id_due_sort_id"),
                 Arguments.of("todo lists, NAME", "todo_lists where owner_id = :owner order by name, id",
-                        List.of("owner_id")),
+                        List.of("owner_id"),
+                        "idx_todo_lists_owner_id_name_id"),
                 Arguments.of("todo lists, NEWEST", "todo_lists where owner_id = :owner order by id desc",
-                        List.of("owner_id")),
+                        List.of("owner_id"),
+                        "idx_todo_lists_owner_id_id"),
                 Arguments.of("todo list dropdown, DESC", "todo_lists where owner_id = :owner order by name desc, id desc",
-                        List.of("owner_id")));
+                        List.of("owner_id"),
+                        "idx_todo_lists_owner_id_name_id"));
     }
 
-    @ParameterizedTest(name = "{0}")
+    @ParameterizedTest(name = "{0}: {3}")
     @MethodSource("scopedOrders")
-    @DisplayName("Every offered order under every scoping filter reads an index in order")
-    void everyScopedOrderReadsAnIndexInOrder(String name, String fromWhereOrder, List<String> scope) {
+    @DisplayName("Every offered order under every scoping filter reads its intended index in order")
+    void everyScopedOrderReadsAnIndexInOrder(String name, String fromWhereOrder, List<String> scope, String index) {
         MapSqlParameterSource parameters = new MapSqlParameterSource()
                 .addValue("owner", ownerId)
                 .addValue("list", listId)
@@ -103,7 +114,7 @@ class TodoIndexIntegrationTest extends IntegrationTest {
         });
         String plan = String.join("\n", planLines);
 
-        assertThat(plan).as(plan).contains("Index").doesNotContain("Sort");
+        assertThat(plan).as(plan).contains("using " + index + " on").doesNotContain("Sort");
         String indexCondition = plan.lines().filter(line -> line.contains("Index Cond:")).findFirst().orElse("");
         assertThat(indexCondition).as(plan).contains(scope);
     }
