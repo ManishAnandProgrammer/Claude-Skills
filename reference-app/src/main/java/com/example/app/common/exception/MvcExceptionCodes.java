@@ -8,6 +8,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.accept.InvalidApiVersionException;
+import org.springframework.web.accept.MissingApiVersionException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
@@ -18,7 +20,7 @@ import java.util.Optional;
 
 /**
  * The {@link ErrorCode} of an exception Spring MVC answers itself (a malformed body, a missing
- * parameter, a wrong method, an async timeout): a specific code where one exists, else one by status
+ * parameter, a wrong method, an unsupported API version, an async timeout): a specific code where one exists, else one by status
  * class.
  */
 final class MvcExceptionCodes {
@@ -41,6 +43,8 @@ final class MvcExceptionCodes {
             case HttpRequestMethodNotSupportedException _ -> Optional.of(ErrorCode.REQUEST_METHOD_NOT_ALLOWED);
             case HttpMediaTypeNotSupportedException _ -> Optional.of(ErrorCode.REQUEST_MEDIA_TYPE_UNSUPPORTED);
             case HttpMediaTypeNotAcceptableException _ -> Optional.of(ErrorCode.REQUEST_NOT_ACCEPTABLE);
+            // NotAcceptableApiVersionException (a fixed-version mapping asked for another) is an InvalidApiVersionException.
+            case MissingApiVersionException _, InvalidApiVersionException _ -> Optional.of(ErrorCode.API_VERSION_UNSUPPORTED);
             case NoResourceFoundException _, NoHandlerFoundException _ -> Optional.of(ErrorCode.RESOURCE_NOT_FOUND);
             case AsyncRequestTimeoutException _ -> Optional.of(ErrorCode.SERVER_BUSY);
             default -> Optional.empty();

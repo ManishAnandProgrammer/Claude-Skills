@@ -21,51 +21,53 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
 @RestController
+@RequestMapping("/api/{version}/todo-lists")
 @RequiredArgsConstructor
 class TodoListController implements TodoListApi {
 
     private final TodoListService service;
 
     @Override
-    @GetMapping("/api/v1/todo-lists")
+    @GetMapping(version = "v1+")
     public PaginationWrapper<TodoListResponse> all(@Valid TodoListFilter filter) {
         return service.findByFilter(filter);
     }
 
     @Override
-    @GetMapping("/api/v1/todo-lists/{id}")
+    @GetMapping(path = "/{id}", version = "v1+")
     public ObjectWrapper<TodoListResponse> get(@PathVariable UUID id) {
         return service.findById(id);
     }
 
     @Override
-    @PostMapping("/api/v1/todo-lists")
+    @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
     public ObjectWrapper<TodoListResponse> create(@RequestBody @Valid TodoListCreateRequest request) {
         return service.create(request);
     }
 
     @Override
-    @PutMapping("/api/v1/todo-lists/{id}")
+    @PutMapping(path = "/{id}", version = "v1+")
     public ObjectWrapper<TodoListResponse> update(@PathVariable UUID id, @RequestBody @Valid TodoListUpdateRequest request) {
         return service.update(id, request);
     }
 
     @Override
-    @DeleteMapping("/api/v1/todo-lists/{id}")
+    @DeleteMapping(path = "/{id}", version = "v1+")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @Override
-    @GetMapping("/api/v1/todo-lists/dropdown")
+    @GetMapping(path = "/dropdown", version = "v1+")
     @PreAuthorize("isAuthenticated()")
     public CursorWrapper<DropdownItem> dropdown(@Valid DropdownFilter filter) {
         return service.dropdown(filter);

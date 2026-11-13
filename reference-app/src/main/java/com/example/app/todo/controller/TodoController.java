@@ -20,50 +20,52 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
 @RestController
+@RequestMapping("/api/{version}/todos")
 @RequiredArgsConstructor
 class TodoController implements TodoApi {
 
     private final TodoService service;
 
     @Override
-    @GetMapping("/api/v1/todos")
+    @GetMapping(version = "v1+")
     public CursorWrapper<TodoSummaryResponse> all(@Valid TodoFilter filter) {
         return service.findByFilter(filter);
     }
 
     @Override
-    @GetMapping("/api/v1/todos/{id}")
+    @GetMapping(path = "/{id}", version = "v1+")
     public ObjectWrapper<TodoResponse> get(@PathVariable UUID id) {
         return service.findById(id);
     }
 
     @Override
-    @PostMapping("/api/v1/todos")
+    @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
     public ObjectWrapper<TodoResponse> create(@RequestBody @Valid TodoCreateRequest request) {
         return service.create(request);
     }
 
     @Override
-    @PutMapping("/api/v1/todos/{id}")
+    @PutMapping(path = "/{id}", version = "v1+")
     public ObjectWrapper<TodoResponse> update(@PathVariable UUID id, @RequestBody @Valid TodoUpdateRequest request) {
         return service.update(id, request);
     }
 
     @Override
-    @PatchMapping("/api/v1/todos/{id}/status")
+    @PatchMapping(path = "/{id}/status", version = "v1+")
     public ObjectWrapper<TodoResponse> changeStatus(@PathVariable UUID id, @RequestBody @Valid TodoStatusRequest request) {
         return service.changeStatus(id, request);
     }
 
     @Override
-    @DeleteMapping("/api/v1/todos/{id}")
+    @DeleteMapping(path = "/{id}", version = "v1+")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);

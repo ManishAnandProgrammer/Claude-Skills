@@ -9,7 +9,8 @@ package com.example.app.common.exception;
  *
  * <p>A new constant needs, in the same change: a mapper entry, a message in every locale file
  * ({@code ErrorCodeContractTest} fails otherwise), an {@code @ApiResponse} on every endpoint that
- * can return it, and a negative test asserting it.</p>
+ * can return it (or, for one every endpoint can return, an {@code OpenApiCustomizer} that adds it),
+ * and a negative test asserting it.</p>
  */
 public enum ErrorCode {
 
@@ -21,6 +22,8 @@ public enum ErrorCode {
     REQUEST_METHOD_NOT_ALLOWED,
     REQUEST_MEDIA_TYPE_UNSUPPORTED,
     REQUEST_NOT_ACCEPTABLE,
+    /** Missing, malformed or not supported, whatever carries it (path, header); a client mismatch, not a form error. */
+    API_VERSION_UNSUPPORTED,
     /** Any other refusal of the request's form that has no more specific code. */
     REQUEST_INVALID,
     RESOURCE_NOT_FOUND,
