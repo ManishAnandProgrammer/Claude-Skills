@@ -74,6 +74,8 @@ LIST
 src/main/java/$reference_path/todo
 src/main/resources/db/changelog/changes/0002-todo-lists.sql
 src/main/resources/db/changelog/changes/0003-todos.sql
+src/main/resources/db/changelog/changes/0004-tags.sql
+src/main/resources/db/changelog/changes/0005-time-entries.sql
 src/test/java/$reference_path/todo
 LIST
             ;;

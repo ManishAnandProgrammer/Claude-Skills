@@ -32,6 +32,8 @@ tell the user to run the skills installer.
 | `<ref>/todo/service/TodoService.java`, `TodoListService.java` | Transactions, ownership, version checks, parent locking |
 | `<ref>/todo/controller/api/*Api.java`, `controller/*Controller.java` | OpenAPI interface, thin package-private controller |
 | `~/.claude/skills-reference/src/test/java/com/example/app/todo/*IntegrationTest.java` | The tests every entity ships with |
+| `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
+| `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@OrderedRange`), a bounded number, a calendar date (`@NotAfterToday`) |
 
 The rules behind the shape are the house-review references, which are the source of truth:
 `rest-api.md`, `error-contract.md`, `persistence.md`, `java.md`, `code-smells.md`, `lenses.md`
@@ -117,11 +119,16 @@ child table fails the build of the parent too.
 
 ## Step 3: Decide the variant and the list kind
 
-- **Variant M: aggregate member** (from Step 1): no service, controller or API interface of its
-  own. Its endpoints are nested under the root (`/{roots}/{rootId}/{members}`) in the **root's**
-  controller and API interface; its operations are methods of the **root's** service, which loads
-  the root (ownership, version, lock) before touching the member; its repository is used only
-  there. Everything else below (requests, responses, mapper, repository, tests) applies.
+- **Variant M: aggregate member** (from Step 1; golden `TimeEntry`): no service, controller or API
+  interface of its own. Endpoints nested under the root, `/<roots>/{<root>Id}/<members>`, in the
+  **root's** API and controller; methods named `<members>`, `get<Member>`, `create<Member>`,
+  `update<Member>`, `delete<Member>` in the root's service. Every operation loads the root first
+  (owner check: `<ROOT>_NOT_FOUND`), then the member by `findByIdAnd<Root>IdAndOwnerId`
+  (`<MEMBER>_NOT_FOUND`); only create locks the root (`findForShareByIdAndOwnerId`) and the root's
+  version is untouched. The member's FK column is `updatable = false`; the root needs
+  `UNIQUE (id, owner_id)` for the composite FK. Deleting a root that still has members is 409
+  `<ROOT>_IN_USE` unless the owner chooses a cascade (ask). The nested list costs 2 statements
+  (the ownership check, then the batch). Everything else below applies.
 - **Variant A: list CRUD** (no FK with `unique = true`). **Variant B: one per parent** (a unique
   FK): a nested singleton resource; GET returns a null object when absent, PUT creates or
   replaces.
@@ -161,6 +168,19 @@ Cursor: `extends {{CursorFilter}}` (golden `TodoFilter`). Offset: `extends {{Pag
 a default; `requireXPredicate()` per optional field (the repository builds predicates only from
 these). A filter with `query` implements `QueryFilter`, so the shared text-search helper takes the
 filter.
+
+**Shapes** (golden `Tag` / `TimeEntry`):
+- **Range filters:** `<x>From` / `<x>To` for dates, `min<X>` / `max<X>` for numbers, both inclusive;
+  each bound carries the field's own constraints (`@Min`, `@ConfiguredMax`); the filter class
+  carries `@OrderedRange(from = …, to = …)` (an inverted range is 400 naming the lower bound).
+- **Flags:** the list filters a flag as `status` (`DropdownStatus`, default `ALL`), the dropdown
+  defaults to `ACTIVE`; a flag without rules is set by the update (`@Setter`).
+- **Pattern fields:** `@Pattern` with a readable message instead of `@MaxLength` (the pattern bounds
+  the length), normalised in the mapper (case), backed by a database `CHECK`.
+- **"None" is null:** optional text and pattern fields store blank as `null`; the `@Schema` says
+  "null, absent or blank for none (returned as null)".
+- **Calendar dates:** `@NotAfterToday` (UTC today + `app.limits.not-after-today.tolerance-days`),
+  never `@PastOrPresent` (JAVA-25).
 
 ### 4.2 Requests (records)
 `<Entity>Create{{requestSuffix}}`, `<Entity>Update{{requestSuffix}}` (with `@NotNull Long version`),

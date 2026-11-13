@@ -42,7 +42,7 @@ and this table disagree, the table wins (and the golden class is a bug to report
 | 6 | `deleteReturns204AndTheEntityIsGone` | 204, then GET 404 | TEST-01 |
 | 7 | `deleteWhileReferencedIs409` (if referenced) | 409 `ERROR_PREFIX_IN_USE`, no constraint name in the body | ERR, TEST-04 |
 | 8 | `createWithoutRequiredFieldsIs400`; `writesWithoutAVersionAre400` | 400 `VALIDATION_FAILED`, `failed` names each field | TEST-08 |
-| 9 | Per `@MaxLength` field: the configured length is accepted (with multi-byte text), length + 1 is 400 with the configured number | TEST-03 |
+| 9 | Per `@MaxLength` field, **on create and update**: the configured length is accepted (with multi-byte text), length + 1 is 400 with the configured number; the maximum page `size` accepted | TEST-03 |
 | 10 | `createWithAScriptTagStoresItAsText` | the documented `{{NotXss}}` behaviour, per free-text shape | TEST-03 |
 | 11 | Per unique field: taken on create **and on update** is 409 `*_TAKEN`; uniqueness ignores case and surrounding spaces | DATA-05, TEST-04 |
 | 12 | `concurrentCreatesWithTheSameXStoreOne` | latch race: one 201, the rest 409, **one row** in the database | TEST-05 |
@@ -55,13 +55,16 @@ and this table disagree, the table wins (and the golden class is a bug to report
 | 18 | Per filter: `filterByXReturnsOnlyMatching` | its matching row present, its non-matching row absent; **range filters include the boundary row** and exclude the next one | TEST-16, TEST-12 |
 | 19 | Per domain enum (filter or field; sort enums are covered by rows 16, 17 and 24): `@EnumSource` over every constant | each member works through the real endpoint | TEST-15 |
 | 20 | `unconvertibleFilterValuesAre400`; unknown enum in a body; `unknownJsonFieldIs400` | `REQUEST_PARAMETER_INVALID` naming only the field (no `java.` in the body); `REQUEST_UNREADABLE` | REST-06, REST-22 |
-| 21 | `listRunsAConstantNumberOfQueries` | `statistics()`: cursor lists exactly 1 statement for 1 row and a full batch; offset lists 1 for a partial page and 2 for a full one (the count), the same for every page size | TEST-06 |
+| 21 | `listRunsAConstantNumberOfQueries` | `statistics()`: cursor lists and **dropdowns** exactly 1 statement for 1 row and a full batch; a nested member list 2 (the root's ownership check, then the batch); offset lists 1 for a partial page and 2 for a full one (the count), the same for every page size | TEST-06 |
 | 22 | Race tests return status **and body** | every 409 of a race asserts its errorCode and that the body has no `uq_`, `fk_`, `SQL`, `Exception`, `java.`: races reach other code paths (`@Version`, the unique index) than the sequential tests | TEST-08, TEST-04 |
-| 23 | Parent with children: `childWritesRacingAParentDeleteKeepTheInvariant` | latched child creates into a parent against one delete of it: either the parent is gone with no children or it remains with them; creates 201 or 404 `PARENT_NOT_FOUND`, the delete 204 or 409 `PARENT_IN_USE`. Proves the parent lock (`FOR SHARE`). Lives in the **child's** test class; the parent's `deleteWhileReferencedIs409` too, once the child exists | TEST-05 |
+| 23 | Parent with children: `childWritesRacingAParentDeleteKeepTheInvariant` | latched child creates into a parent against one delete of it: either the parent is gone with no children or it remains with them; assert the exact outcome the test's gate produces (with a lock gate: every create 201, the delete 409 `PARENT_IN_USE`, all children present), not an either/or. Proves the parent lock (`FOR SHARE`). Lives in the **child's** test class; the parent's `deleteWhileReferencedIs409` too, once the child exists | TEST-05 |
 | 24 | Per sort, both directions | every keyset (each sort, each direction, the dropdown's `DESC`) walked to the end | TEST-12 |
+| 25b | Range filters | a bound row included and the next value excluded at each end; both bounds equal; an inverted range 400 naming the lower bound | TEST-12 |
+| 25c | Calendar dates (`@NotAfterToday`) | today computed **once** from the `Clock` bean before any request: today + tolerance accepted, one day later refused, on create **and** update | JAVA-25 |
+| 25d | Optional text / pattern fields | blank and empty stored and returned as `null` | SMELL-27 |
 | 25 | `query` limits | `search-query` at its limit and limit + 1 on every list and dropdown | TEST-03 |
 | 26 | Entity unit test (only when the entity has state methods) | state methods (`changeStatus`, `moveTo`): transitions, the timestamp rule, the impossible-state guard (`IllegalStateException`) | JAVA-16 |
-| 28 | `everyListShapeUsesAnIndex` | for each offered order × scoping filter: `EXPLAIN` (with `enable_seqscan = off`) on seeded rows names the intended index. Golden: `TodoIndexIntegrationTest` | DATA-10 |
+| 28 | `everyListShapeUsesAnIndex` | for each offered order × scoping filter: `EXPLAIN` (with `enable_seqscan = off`) on seeded rows contains the intended index **by name**. Golden: `TodoIndexIntegrationTest` | DATA-10 |
 | 27 | When the golden class has them: `lockedRowAnswers503` (a write against a row locked by another transaction: 503 `DATABASE_CONTENTION` + `Retry-After`, row unchanged) and `apiDocsShowTheLimits` (the configured `maxLength` in the OpenAPI schema) | one per project is enough: generate each only when the project's tests don't have one yet (grep for the test name) | ERR-05, REST-09 |
 
 Dropdown: add the tests from `references/dropdown.md`. Variant B replaces 2, 6 and 16–18 with:

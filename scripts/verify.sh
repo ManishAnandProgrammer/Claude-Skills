@@ -3,6 +3,7 @@
 #   1. reference-app builds and every test passes (Testcontainers: Docker must be reachable);
 #   2. bootstrap-copy.sh copies core + sign-in into a fresh project under another package and
 #      another application name, and that project builds and passes its tests too;
+#      2b. the same with the example module, so every golden file arrives with its changesets;
 #   3. the reference's Docker image starts with the prod profile against PostgreSQL and Redis:
 #      healthy, sign-in rate limited through Redis, metrics only on the management port. Tests can't
 #      see this: Testcontainers hands them their connections (a missing Redis setting once switched
@@ -72,6 +73,18 @@ grep -rqE "example:(begin|end)|TODO_LIST|todo-list" "$project/src" && { echo "FA
 sed -i 's/\${APP_NAME:reference}/${APP_NAME:smoke}/' "$project/src/main/resources/application.yml"
 grep -q 'APP_NAME:smoke' "$project/src/main/resources/application.yml" || { echo "FAILED: could not rename the smoke application" >&2; exit 1; }
 mvn_verify "$project" "$WORK/smoke.log"
+
+echo "[2b/3] bootstrap-copy with the example module (package com.acme.example)"
+example="$WORK/example"
+mkdir -p "$example/src/main/java/com/acme/example"
+cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$example/"
+sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>example</artifactId>|' -e 's|<name>reference-app</name>|<name>example</name>|' \
+    "$REFERENCE/pom.xml" > "$example/pom.xml"
+sed -e 's/package com.acme.smoke;/package com.acme.example;/' -e 's/SmokeApplication/ExampleApplication/g' \
+    "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$example/src/main/java/com/acme/example/ExampleApplication.java"
+"$REPO/scripts/bootstrap-copy.sh" --target "$example" --package com.acme.example --with core,sign-in,example > "$WORK/copy-example.log"
+grep -rq "example:\(begin\|end\)" "$example/src" && { echo "FAILED: example markers left in the copy" >&2; exit 1; }
+mvn_verify "$example" "$WORK/example.log"
 
 echo "[3/3] reference-app image: prod profile against PostgreSQL and Redis"
 docker build -q -t "$RUN-image" "$REFERENCE" > /dev/null
