@@ -1,0 +1,21 @@
+# Configuration is split by concern under config/; each file may have profile variants next to it
+# (config/db-prod.yml, config/server-dev.yml, ...), which Spring Boot applies on top of the base
+# file for the active profile. Every environment-dependent value comes from an environment
+# variable (see .env.example); secrets have no defaults.
+spring:
+  application:
+    # The one name everything else derives from: error type URNs, the pool name, the JDBC
+    # ApplicationName, the JWT issuer, the logs' "app" field, the metrics' application tag.
+    name: ${APP_NAME:reference}
+  config:
+    import:
+      - classpath:config/db.yml
+      - classpath:config/server.yml
+      - classpath:config/security.yml
+      - classpath:config/observability.yml
+      - classpath:config/limits.yml
+      - classpath:config/jobs.yml
+
+app:
+  # The profiles this application may run with; startup fails on any other, or none.
+  allowed-profiles: dev,test,prod

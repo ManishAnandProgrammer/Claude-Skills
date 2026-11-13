@@ -1,0 +1,60 @@
+# Tomcat, threads, shutdown, request bodies, JSON input, API docs.
+spring:
+  threads:
+    virtual:
+      # Under virtual threads server.tomcat.threads.max bounds nothing: concurrency is capped by
+      # app.admission (AdmissionControlFilter) instead.
+      enabled: true
+  task:
+    execution:
+      # SchedulingConfig's TaskScheduler is an Executor too; without force Boot would skip its async
+      # executor, and the MDC TaskDecorator with it.
+      mode: force
+      thread-name-prefix: task-
+  lifecycle:
+    # Longer than the longest request: 3s pool wait + 25s statement timeout.
+    timeout-per-shutdown-phase: 30s
+  servlet:
+    multipart:
+      # No endpoint takes uploads.
+      enabled: false
+  jackson:
+    # A misspelt or unknown field is a 400 REQUEST_UNREADABLE, never silently ignored.
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-invalid-subtype: true
+      accept-float-as-int: false
+      wrap-exceptions: true
+    mapper:
+      allow-coercion-of-scalars: false
+      accept-case-insensitive-enums: false
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  # Behind the reverse proxy getRemoteAddr() is the real client.
+  forward-headers-strategy: native
+  compression:
+    enabled: true
+    min-response-size: 1KB
+    mime-types: application/json,application/problem+json
+  tomcat:
+    connection-timeout: 5s
+    max-connections: 5000
+    accept-count: 1000
+    keep-alive-timeout: 15s
+    max-keep-alive-requests: 1000
+    max-http-form-post-size: 1MB
+    max-swallow-size: 2MB
+    max-http-response-header-size: 16KB
+  max-http-request-header-size: 16KB
+  servlet:
+    encoding:
+      force: true
+
+# Off unless a profile turns them on (dev): a forgotten profile must not publish the API schema.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

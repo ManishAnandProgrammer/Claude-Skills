@@ -1,0 +1,155 @@
+package com.example.app.config;
+
+import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.logging.UserLogContextFilter;
+import com.example.app.common.security.CurrentUser;
+import com.example.app.common.web.ProblemResponses;
+import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import com.nimbusds.jose.proc.SecurityContext;
+import jakarta.servlet.DispatcherType;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+/**
+ * Stateless JWT security.
+ *
+ * <ul>
+ *   <li>Access tokens are HS256 JWTs signed and verified with {@code app.jwt.secret} by Spring
+ *       Security's resource server: checked by signature, expiry and issuer, with no database
+ *       lookup per request. The {@code sub} claim is the user id, {@code roles} the roles.</li>
+ *   <li>Public: the sign-in endpoints, health, and the API docs (disabled in prod). Everything else
+ *       needs a token. Role checks, when a role beyond {@code USER} exists, live in
+ *       {@code @PreAuthorize} on the controllers (method security is on).</li>
+ *   <li>{@code DispatcherType.ERROR} is permitted, so an exception that escapes to the container's
+ *       error page isn't re-answered as a 401.</li>
+ *   <li>Security errors are Problem Details with an {@code errorCode}, like every other error.</li>
+ * </ul>
+ */
+@Configuration
+@EnableMethodSecurity
+class SecurityConfig {
+
+    private static final String[] PUBLIC_PATHS = {
+            "/api/v1/auth/**",
+            "/actuator/health",
+            "/actuator/health/**",
+            "/v3/api-docs/**",
+            "/swagger-ui/**",
+            "/swagger-ui.html"
+    };
+    private static final String ROLES_CLAIM = "roles";
+    private static final String ROLE_PREFIX = "ROLE_";
+    private static final String HMAC_SHA_256 = "HmacSHA256";
+    private static final int BCRYPT_STRENGTH = 12;
+
+    @Bean
+    SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                            JwtAuthenticationConverter jwtAuthenticationConverter,
+                                            AuthenticationEntryPoint authenticationEntryPoint,
+                                            AccessDeniedHandler accessDeniedHandler,
+                                            CurrentUser currentUser) throws Exception {
+        http
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(Customizer.withDefaults())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(requests -> requests
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(PUBLIC_PATHS).permitAll()
+                        .anyRequest().authenticated())
+                .oauth2ResourceServer(resourceServer -> resourceServer
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
+                .addFilterAfter(new UserLogContextFilter(currentUser), BearerTokenAuthenticationFilter.class);
+        return http.build();
+    }
+
+    @Bean
+    AuthenticationEntryPoint authenticationEntryPoint(ProblemResponses problemResponses) {
+        return (request, response, exception) ->
+                problemResponses.write(request, response, ErrorCode.AUTHENTICATION_REQUIRED);
+    }
+
+    @Bean
+    AccessDeniedHandler accessDeniedHandler(ProblemResponses problemResponses) {
+        return (request, response, exception) -> problemResponses.write(request, response, ErrorCode.ACCESS_DENIED);
+    }
+
+    @Bean
+    JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
+        authorities.setAuthoritiesClaimName(ROLES_CLAIM);
+        authorities.setAuthorityPrefix(ROLE_PREFIX);
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(authorities);
+        return converter;
+    }
+
+    @Bean
+    JwtDecoder jwtDecoder(JwtProperties properties) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(secretKey(properties))
+                .macAlgorithm(MacAlgorithm.HS256)
+                .build();
+        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(properties.issuer()));
+        return decoder;
+    }
+
+    @Bean
+    JwtEncoder jwtEncoder(JwtProperties properties) {
+        return new NimbusJwtEncoder(new ImmutableSecret<SecurityContext>(secretKey(properties)));
+    }
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(BCRYPT_STRENGTH);
+    }
+
+    @Bean
+    CorsConfigurationSource corsConfigurationSource(CorsProperties properties) {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(properties.allowedOrigins());
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept-Language", "X-Request-ID"));
+        configuration.setExposedHeaders(List.of("X-Request-ID", "Retry-After", "Location"));
+        configuration.setAllowCredentials(false);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
+    private static SecretKey secretKey(JwtProperties properties) {
+        return new SecretKeySpec(properties.secret().getBytes(StandardCharsets.UTF_8), HMAC_SHA_256);
+    }
+}

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - include:
+      file: changes/0001-users-and-refresh-tokens.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0002-todo-lists.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0003-todos.sql
+      relativeToChangelogFile: true

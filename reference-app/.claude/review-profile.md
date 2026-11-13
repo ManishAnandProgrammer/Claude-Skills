@@ -1,0 +1,91 @@
+# Review profile: reference-app
+
+The house reference application (see README.md). Reviewing it with `/house-review all` must find
+nothing: it is the code the skills copy.
+
+## Project
+
+| Key | Value | Notes |
+|---|---|---|
+| `mainBranch` | `main` | |
+| `buildCommand` | `./mvnw -B verify` | JDK 25, Docker; or `../scripts/verify.sh` for the copy smoke test too |
+| `testCommand` | `same` | |
+| `sourceRoots` | `src/main/java` | |
+| `testRoots` | `src/test/java` | |
+| `migrationsDir` | `src/main/resources/db/changelog` | |
+| `reportDir` | `docs/reviews` | |
+| `subagentThreshold` | `25` | |
+
+## Architecture
+
+| Key | Value | Notes |
+|---|---|---|
+| `rootPackage` | `com.example.app` | Renamed by `bootstrap-copy.sh` |
+| `modules` | `todo: a user's todo lists and todos (the golden crud-gen module)`, `user: accounts and signing in`; `common`, `config`: infrastructure | |
+| `moduleContracts` | `api-facades` | |
+| `layerPackages` | `controller, service, repository, domain, mapper, dto` | |
+| `repositoryAccess` | `service, mapper` | |
+| `instances` | `multiple` | |
+| `hotPaths` | `none` | |
+| `archTests` | `ModuleBoundaryArchTest`, `LayerArchTest`, `ConventionArchTest` | No carve-outs |
+| `publishedContracts` | `none` | |
+| `multiTenant` | `false` | |
+
+## API
+
+| Key | Value | Notes |
+|---|---|---|
+| `urlPrefix` | `/api/v1` | |
+| `DropdownItem` / `DropdownFilter` | `com.example.app.common.dropdown.*` | Dropdowns are cursor-paged (`CursorWrapper`) |
+| `ObjectWrapper` / `ListWrapper` / `MapWrapper` / `PaginationWrapper` / `CursorWrapper` | `com.example.app.common.wrapper.*` | |
+| `exceptionHandler` | `com.example.app.common.exception.GlobalExceptionHandler` | |
+| `errorCodeType` | `com.example.app.common.exception.ErrorCode` | |
+| `cursorLists` | `todos, dropdowns` | Keyset; `pageInfo {nextCursor, hasMore}`; no counts |
+| `offsetLists` | `todo lists` | Bounded per user; page numbers and counts |
+| `NotXss` | `escape-on-output` | JSON API; clients render text |
+| `noEmojiFields` | `none` | |
+| `tokenRevocation` | `short-lived(15)` | |
+| `edgeRateLimiter` | `none` | |
+| `metricsAuth` | `pending` | |
+| `apiDocsLocation` | `controller/api/<Name>Api` | |
+
+## Persistence
+
+| Key | Value |
+|---|---|
+| `idStrategy` | `uuidv7` |
+| `auditedTables` | `none` |
+| `auditMechanism` | `pg-trigger` |
+| `retentionExceptions` | `none` |
+
+## Thresholds
+
+| Key | Value |
+|---|---|
+| `maxMethodLines` | `30` |
+| `maxParams` | `4` |
+| `maxClassLines` | `300` |
+| `deviationAlarm` | `3` |
+
+## Logging
+
+| Key | Value |
+|---|---|
+| `logPattern` | `house` |
+| `clientIpLogging` | `truncated` |
+| `requestCompletionLog` | `on` |
+
+## Conventions
+
+| Convention | Overrides / refines | Why |
+|---|---|---|
+| Create calls `saveAndFlush`; update changes the managed entity and calls `flush()` before mapping | DATA-25 | The response carries the new `version` and audit fields |
+| Filters are mutable classes | JAVA-03 | Query-parameter binding goes through setters |
+| Text columns are `text`; request Strings carry `@MaxLength("<key>")` with the number in `app.limits.text` | DATA-12 | One length contract, configurable (owner's decision 2026-11-13) |
+| Algorithm invariants stay in code with a why-comment (bcrypt's 72 bytes, the 8-character password floor, 256-bit tokens) | O6 no-constants rule | They aren't tunables: changing them breaks security |
+
+## Deviation register
+
+| Rule | File / symbol | Reason | Accepted on | Accepted by |
+|---|---|---|---|---|
+| | | | | |

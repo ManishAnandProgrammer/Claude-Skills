@@ -1,0 +1,36 @@
+# Datasource and Redis come from Testcontainers (@ServiceConnection), which overrides these.
+spring:
+  datasource:
+    username: test
+    password: test
+  jpa:
+    properties:
+      hibernate:
+        # For the query-count tests (IntegrationTest#statistics).
+        generate_statistics: true
+app:
+  jwt:
+    secret: test-secret-that-is-at-least-thirty-two-bytes-long
+  security:
+    personal-data-pepper: test-pepper-that-is-at-least-thirty-two-bytes
+  cors:
+    allowed-origins: http://localhost:3000
+  rate-limit:
+    # Every test request comes from 127.0.0.1: the per-IP limits are out of the way, the per-account
+    # login limit stays as in production (each test uses its own accounts).
+    sign-in:
+      login-per-ip: { requests: 100000, window: 1m }
+      signup-per-ip: { requests: 100000, window: 1m }
+      refresh-per-ip: { requests: 100000, window: 1m }
+      logout-per-ip: { requests: 100000, window: 1m }
+  admission:
+    max-concurrent: 200
+springdoc:
+  api-docs:
+    enabled: true
+management:
+  # Same port as the application, so MockMvc reaches the actuator.
+  server:
+    port: 8080
+server:
+  port: 8080

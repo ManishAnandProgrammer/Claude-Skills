@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Every line carries the request's context (com.example.app.common.logging.LogContext): trace and
+  span ids (Micrometer Tracing), the request id echoed in X-Request-ID, the endpoint, the client
+  address (in app.logging.client-ip mode) and the user id. A request id a client quotes finds every
+  line of its request.
+
+  Writes are asynchronous: a request thread hands the event to a background writer instead of
+  queueing on the console appender's lock.
+    - queueSize 65536: about 1 KB an event with its MDC, so at most ~64 MB.
+    - discardingThreshold 0: never drop INFO or DEBUG when the queue is nearly full.
+    - includeCallerData false: caller data walks the stack on the request thread and would undo the
+      hand-off, so no pattern uses %class, %method or %line.
+
+  Each profile gets exactly one root with one appender. The fallback covers a run with no known
+  profile active, so the fail-fast startup error is visible.
+-->
+<configuration>
+
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name"/>
+    <springProperty scope="context" name="APP_ENV" source="APP_ENV" defaultValue="unset"/>
+
+    <property name="REQUEST_CONTEXT"
+              value="[%X{traceId:-},%X{spanId:-}] [%X{requestId:-}] [%X{endpoint:-}] [%X{clientIp:-}] [%X{userId:-}]"/>
+
+    <springProfile name="!(dev | test | prod)">
+        <appender name="FALLBACK_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} %-5level ${REQUEST_CONTEXT} %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="FALLBACK_CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- dev and test: level first, for reading as it happens -->
+    <springProfile name="dev | test">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%-5level %d{HH:mm:ss.SSS} [%thread] ${REQUEST_CONTEXT} %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+        <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+            <appender-ref ref="CONSOLE"/>
+            <queueSize>65536</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <includeCallerData>false</includeCallerData>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="ASYNC_CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- prod: structured JSON for the log pipeline -->
+    <springProfile name="prod">
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeMdcKeyName>traceId</includeMdcKeyName>
+                <includeMdcKeyName>spanId</includeMdcKeyName>
+                <includeMdcKeyName>requestId</includeMdcKeyName>
+                <includeMdcKeyName>endpoint</includeMdcKeyName>
+                <includeMdcKeyName>clientIp</includeMdcKeyName>
+                <includeMdcKeyName>userId</includeMdcKeyName>
+                <customFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</customFields>
+            </encoder>
+        </appender>
+        <appender name="ASYNC_JSON_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+            <appender-ref ref="JSON_CONSOLE"/>
+            <queueSize>65536</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <includeCallerData>false</includeCallerData>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="ASYNC_JSON_CONSOLE"/>
+        </root>
+    </springProfile>
+
+</configuration>

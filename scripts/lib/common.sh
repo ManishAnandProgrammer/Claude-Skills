@@ -4,6 +4,7 @@
 
 SKILLS_DIR="$HOME/.claude/skills"
 BACKUP_DIR="$HOME/.claude/skills-backup"      # outside SKILLS_DIR, so backups are never loaded as skills
+REFERENCE_LINK="$HOME/.claude/skills-reference" # the skills read reference-app/ through this stable path
 MEMORY_FILE="$HOME/.claude/CLAUDE.md"
 BLOCK_BEGIN="<!-- claude-skills:begin -->"
 BLOCK_END="<!-- claude-skills:end -->"
@@ -53,6 +54,13 @@ link_skills() {
         ln -sfn "$skill" "$target"
         echo "linked $target -> $skill"
     done
+    if [ -d "$repo/reference-app" ]; then
+        if [ -e "$REFERENCE_LINK" ] && [ ! -L "$REFERENCE_LINK" ]; then
+            die "$REFERENCE_LINK exists and is not a link; move it away and run again"
+        fi
+        ln -sfn "$repo/reference-app" "$REFERENCE_LINK"
+        echo "linked $REFERENCE_LINK -> $repo/reference-app"
+    fi
 }
 
 # Removes the links in ~/.claude/skills that point into $1 (and only those).
@@ -64,6 +72,11 @@ unlink_skills() {
             "$repo"/*) rm "$link" && echo "removed link $link" ;;
         esac
     done
+    if [ -L "$REFERENCE_LINK" ]; then
+        case "$(readlink "$REFERENCE_LINK")" in
+            "$repo"/*) rm "$REFERENCE_LINK" && echo "removed link $REFERENCE_LINK" ;;
+        esac
+    fi
 }
 
 # Writes (mode "write", with the body in $2) or removes (mode "remove", only when the block names

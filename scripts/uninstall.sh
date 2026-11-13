@@ -19,6 +19,9 @@ command -v python3 >/dev/null 2>&1 || die "python3 is required"
 acquire_lock
 
 unlink_skills "$REPO"
+if [ "$(git -C "$REPO" config --get core.hooksPath 2>/dev/null)" = ".githooks" ]; then
+    git -C "$REPO" config --unset core.hooksPath && echo "pre-push verification disabled"
+fi
 update_claude_block remove "$REPO"
 
 # The timer has one name per user: remove it only when it runs THIS folder's sync.sh, so

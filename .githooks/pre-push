@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Runs scripts/verify.sh when the pushed commits touch code the skills ship or depend on:
+# reference-app/, scripts/, or a skill directory. Guides and READMEs alone skip it.
+# Skip once with: git push --no-verify
+set -euo pipefail
+REPO="$(git rev-parse --show-toplevel)"
+zero="0000000000000000000000000000000000000000"
+needs_verify=false
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue
+    if [ "$remote_sha" = "$zero" ]; then
+        range="$(git rev-list "$local_sha" --not --remotes | tail -1)"
+        base="${range:+$range^}"
+        changed="$(git diff --name-only "${base:-$local_sha}" "$local_sha" 2>/dev/null || git show --name-only --format= "$local_sha")"
+    else
+        changed="$(git diff --name-only "$remote_sha" "$local_sha")"
+    fi
+    if grep -qE '^(reference-app/|scripts/|crud-gen/|house-review/|\.githooks/)' <<< "$changed"; then
+        needs_verify=true
+    fi
+done
+if $needs_verify; then
+    echo "pre-push: verifying the reference application and a bootstrap copy (takes a few minutes)..."
+    "$REPO/scripts/verify.sh"
+fi

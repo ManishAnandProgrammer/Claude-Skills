@@ -1,0 +1,7 @@
+logging:
+  level:
+    com.example.app: DEBUG
+management:
+  tracing:
+    sampling:
+      probability: 1.0

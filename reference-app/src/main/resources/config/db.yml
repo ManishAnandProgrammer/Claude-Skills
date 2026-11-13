@@ -1,0 +1,55 @@
+# PostgreSQL, the connection pool, JPA and Liquibase.
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:${spring.application.name}}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      pool-name: ${spring.application.name}-pool
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # Fail fast: admission control is the queue; this is the backstop.
+      connection-timeout: 3000
+      validation-timeout: 1000
+      keepalive-time: 30000
+      idle-timeout: 120000
+      max-lifetime: 1800000
+      leak-detection-threshold: 30000
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+      # Together with provider_disables_autocommit: a connection is borrowed at the first
+      # statement, not when the transaction begins.
+      auto-commit: false
+      data-source-properties:
+        # Server-side limits for the app pool only (Liquibase opens its own connection).
+        options: -c statement_timeout=25s -c lock_timeout=3s -c idle_in_transaction_session_timeout=30s
+        # Greater than statement_timeout, so the server cancels first and the connection survives.
+        socketTimeout: 30
+        reWriteBatchedInserts: true
+        tcpKeepAlive: true
+        ApplicationName: ${spring.application.name}-${APP_ENV:local}
+  jpa:
+    open-in-view: false
+    show-sql: false
+    hibernate:
+      # Liquibase owns the schema; Hibernate only checks the entities match it.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        connection:
+          provider_disables_autocommit: true
+        jdbc:
+          time_zone: UTC
+          batch_size: 30
+        order_inserts: true
+        order_updates: true
+        default_batch_fetch_size: 30
+        query:
+          # Hibernate 7.4 pages collection fetches in SQL and never trips this; kept as a guard.
+          # The rule that matters: list pages never fetch collections (projections instead).
+          fail_on_pagination_over_collection_fetch: true
+          in_clause_parameter_padding: true
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+    url: ${spring.datasource.url}
+    user: ${spring.datasource.username}
+    password: ${spring.datasource.password}

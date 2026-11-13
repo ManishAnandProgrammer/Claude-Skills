@@ -1,0 +1,6 @@
+logging:
+  level:
+    root: WARN
+    # The one INFO line per request stays (RequestCompletionLogFilter), and so do job summaries.
+    com.example.app.common.logging: INFO
+    com.example.app.user.service.RefreshTokenPurgeJob: INFO

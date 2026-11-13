@@ -1,0 +1,49 @@
+# Actuator, health, metrics, tracing, request logging.
+management:
+  # Health, probes and metrics on their own port: they never wait behind the application
+  # connector, and the port is never published publicly.
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,connectionPool
+  health:
+    # Redis is optional (rate limits fail open): its outage must not take instances out.
+    redis:
+      enabled: false
+    db:
+      enabled: false
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles:
+        http.server.requests: 0.5,0.95,0.99
+        hikaricp.connections.acquire: 0.5,0.95,0.99
+      percentiles-histogram:
+        http.server.requests: true
+        http.server.requests.active: false
+        hikaricp.connections.acquire: true
+        hikaricp.connections.usage: true
+        jvm.gc.pause: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING:0.1}
+
+app:
+  logging:
+    # truncated: the last IPv4 octet zeroed (IPv6 cut to /48). Enough to trace an abusive network,
+    # without keeping a personal address in the logs.
+    client-ip: truncated
+    request-completion:
+      enabled: true
+      slow-threshold: 2s

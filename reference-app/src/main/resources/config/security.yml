@@ -1,0 +1,15 @@
+# Tokens, secrets, CORS.
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    issuer: ${JWT_ISSUER:${spring.application.name}}
+    access-token-ttl: ${JWT_ACCESS_TTL:15m}
+    refresh-token-ttl: ${JWT_REFRESH_TTL:30d}
+    # A refresh token presented again this soon after its rotation is a client duplicate (two tabs,
+    # a retry after a timeout), not a leak: refused without revoking every session.
+    rotation-grace: 30s
+  security:
+    # HMAC key for personal data in logs and rate-limit keys (PersonalDataHasher). No default.
+    personal-data-pepper: ${PERSONAL_DATA_PEPPER}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}

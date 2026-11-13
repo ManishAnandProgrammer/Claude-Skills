@@ -23,6 +23,10 @@ acquire_lock
 
 link_skills "$REPO"
 
+# Owner machines verify skill changes before pushing (the repository is private: there is no CI).
+git -C "$REPO" config core.hooksPath .githooks
+echo "pre-push verification enabled (.githooks/pre-push; skip once with git push --no-verify)"
+
 origin="$(git -C "$REPO" remote get-url origin 2>/dev/null || echo "no remote")"
 update_claude_block write "## Skills: single source of truth
 The skills in \`~/.claude/skills/\` (house-review, crud-gen, ...) are symlinks into the git

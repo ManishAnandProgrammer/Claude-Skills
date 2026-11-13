@@ -1,0 +1,8 @@
+# Scheduled jobs.
+app:
+  jobs:
+    refresh-token-purge:
+      cron: "0 15 3 * * *"
+      # Tokens are deleted this long after they expired.
+      keep-after-expiry: 1d
+      batch-size: 1000

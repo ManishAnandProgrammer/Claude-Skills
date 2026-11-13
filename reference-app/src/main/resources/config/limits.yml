@@ -1,0 +1,42 @@
+# Every tunable limit in one place. Code names a limit; the number lives only here.
+app:
+  limits:
+    # Offset-paged lists (bounded admin tables): page and size beyond these are a 400.
+    offset-page:
+      default-size: 20
+      max-size: 100
+      max-page: 100000
+    # Cursor-paged lists and dropdowns: a batch beyond max-size is a 400.
+    cursor-page:
+      default-size: 20
+      max-size: 100
+    # Maximum lengths of text the API accepts, by field (@MaxLength("…") on request records).
+    # The columns are text; these are the contract.
+    text:
+      search-query: 100
+      cursor: 512
+      user.email: 254
+      user.full-name: 100
+      user.refresh-token: 100
+      todo-list.name: 100
+      todo.title: 200
+      todo.notes: 10000
+  admission:
+    # At least twice the pool (checked at startup): tune with a load test.
+    max-concurrent: ${ADMISSION_MAX_CONCURRENT:20}
+    max-wait: 50ms
+  # How long a client is told to wait (jittered within the range) after a 503 or 429.
+  retry-after:
+    server-busy: { min: 1s, max: 3s }
+    database-contention: { min: 1s, max: 3s }
+    query-timeout: { min: 3s, max: 8s }
+    database-unavailable: { min: 4s, max: 8s }
+  rate-limit:
+    enabled: true
+    backend-timeout: 200ms
+    sign-in:
+      login-per-ip: { requests: 20, window: 1m }
+      login-per-account: { requests: 5, window: 1m }
+      signup-per-ip: { requests: 5, window: 10m }
+      refresh-per-ip: { requests: 30, window: 1m }
+      logout-per-ip: { requests: 30, window: 1m }
