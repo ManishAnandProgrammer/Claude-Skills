@@ -25,7 +25,7 @@ nothing: it is the code the skills copy.
 | `moduleContracts` | `api-facades` | |
 | `layerPackages` | `controller, service, repository, domain, mapper, dto` | |
 | `repositoryAccess` | `aggregate-service` | ARCH-15, enforced by `AggregateArchTest` |
-| `aggregates` | `User (UserService)`, `RefreshToken (TokenService)`, `TodoList (TodoListService)`, `Todo (TodoService)` | No members yet: every entity is its own aggregate root |
+| `aggregates` | `User (UserService)`, `RefreshToken (TokenService)`, `TodoList (TodoListService)`, `Todo (TodoService; members: TimeEntry)`, `Tag (TagService)` | TimeEntry is a member of Todo: nested `/todos/{todoId}/time-entries`, no service of its own |
 | `requestSuffix` | `Request` | |
 | `instances` | `multiple` | |
 | `hotPaths` | `none` | |
@@ -42,8 +42,8 @@ nothing: it is the code the skills copy.
 | `ObjectWrapper` / `ListWrapper` / `MapWrapper` / `PaginationWrapper` / `CursorWrapper` | `com.example.app.common.wrapper.*` | |
 | `exceptionHandler` | `com.example.app.common.exception.GlobalExceptionHandler` | |
 | `errorCodeType` | `com.example.app.common.exception.ErrorCode` | |
-| `cursorLists` | `Todo`, dropdowns | Keyset; `pageInfo {nextCursor, hasMore}`; no counts |
-| `offsetLists` | `TodoList` | Bounded per user; page numbers and counts |
+| `cursorLists` | `Todo`, `TimeEntry`, dropdowns | Keyset; `pageInfo {nextCursor, hasMore}`; no counts |
+| `offsetLists` | `TodoList`, `Tag` | Bounded per user; page numbers and counts |
 | `NotXss` | `escape-on-output` | JSON API; clients render text |
 | `noEmojiFields` | `none` | |
 | `tokenRevocation` | `short-lived(15)` | |

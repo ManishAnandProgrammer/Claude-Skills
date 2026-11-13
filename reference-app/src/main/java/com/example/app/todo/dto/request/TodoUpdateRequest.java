@@ -20,7 +20,7 @@ public record TodoUpdateRequest(
         @NotBlank @MaxLength("todo.title")
         String title,
 
-        @Schema(description = "Free-form notes")
+        @Schema(description = "Free-form notes; null or blank removes them (returned as null)")
         @MaxLength("todo.notes")
         String notes,
 

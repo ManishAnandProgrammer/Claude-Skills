@@ -3,10 +3,14 @@ package com.example.app.todo.controller;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.todo.controller.api.TodoApi;
+import com.example.app.todo.dto.request.TimeEntryCreateRequest;
+import com.example.app.todo.dto.request.TimeEntryFilter;
+import com.example.app.todo.dto.request.TimeEntryUpdateRequest;
 import com.example.app.todo.dto.request.TodoCreateRequest;
 import com.example.app.todo.dto.request.TodoFilter;
 import com.example.app.todo.dto.request.TodoStatusRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
+import com.example.app.todo.dto.response.TimeEntryResponse;
 import com.example.app.todo.dto.response.TodoResponse;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import com.example.app.todo.service.TodoService;
@@ -69,5 +73,39 @@ class TodoController implements TodoApi {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);
+    }
+
+    @Override
+    @GetMapping(path = "/{todoId}/time-entries", version = "v1+")
+    public CursorWrapper<TimeEntryResponse> timeEntries(@PathVariable UUID todoId, @Valid TimeEntryFilter filter) {
+        return service.findTimeEntries(todoId, filter);
+    }
+
+    @Override
+    @GetMapping(path = "/{todoId}/time-entries/{id}", version = "v1+")
+    public ObjectWrapper<TimeEntryResponse> getTimeEntry(@PathVariable UUID todoId, @PathVariable UUID id) {
+        return service.findTimeEntry(todoId, id);
+    }
+
+    @Override
+    @PostMapping(path = "/{todoId}/time-entries", version = "v1+")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ObjectWrapper<TimeEntryResponse> createTimeEntry(@PathVariable UUID todoId,
+                                                            @RequestBody @Valid TimeEntryCreateRequest request) {
+        return service.createTimeEntry(todoId, request);
+    }
+
+    @Override
+    @PutMapping(path = "/{todoId}/time-entries/{id}", version = "v1+")
+    public ObjectWrapper<TimeEntryResponse> updateTimeEntry(@PathVariable UUID todoId, @PathVariable UUID id,
+                                                            @RequestBody @Valid TimeEntryUpdateRequest request) {
+        return service.updateTimeEntry(todoId, id, request);
+    }
+
+    @Override
+    @DeleteMapping(path = "/{todoId}/time-entries/{id}", version = "v1+")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteTimeEntry(@PathVariable UUID todoId, @PathVariable UUID id) {
+        service.deleteTimeEntry(todoId, id);
     }
 }

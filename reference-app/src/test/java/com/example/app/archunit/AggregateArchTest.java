@@ -30,7 +30,8 @@ class AggregateArchTest {
             new Aggregate("User", "UserService", List.of()),
             // example:begin
             new Aggregate("TodoList", "TodoListService", List.of()),
-            new Aggregate("Todo", "TodoService", List.of()),
+            new Aggregate("Todo", "TodoService", List.of("TimeEntry")),
+            new Aggregate("Tag", "TagService", List.of()),
             // example:end
             new Aggregate("RefreshToken", "TokenService", List.of()));
 

@@ -61,5 +61,13 @@ public enum ErrorCode {
 
     // ── Todo ─────────────────────────────────────────────────────────────
     TODO_NOT_FOUND,
+    TODO_IN_USE,
+
+    // ── TimeEntry ────────────────────────────────────────────────────────
+    TIME_ENTRY_NOT_FOUND,
+
+    // ── Tag ──────────────────────────────────────────────────────────────
+    TAG_NOT_FOUND,
+    TAG_NAME_TAKEN,
     // example:end
 }

@@ -8,3 +8,9 @@ databaseChangeLog:
   - include:
       file: changes/0003-todos.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/0004-tags.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0005-time-entries.sql
+      relativeToChangelogFile: true

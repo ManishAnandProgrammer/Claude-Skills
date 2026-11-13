@@ -520,6 +520,26 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("Blank notes are stored as none (null), so \"no notes\" has one representation")
+    void blankNotesAreStoredAsNone() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user, "Blank notes");
+        String notesPayload = """
+                {"todoListId": "%s", "title": "Blank notes", "notes": "%s", "priority": "LOW"}
+                """;
+
+        postAs(user.accessToken(), TODOS, notesPayload.formatted(listId, "Kept"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.response.notes").value("Kept"));
+        postAs(user.accessToken(), TODOS, notesPayload.formatted(listId, "   "))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.response.notes").value(nullValue()));
+        postAs(user.accessToken(), TODOS, notesPayload.formatted(listId, ""))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.response.notes").value(nullValue()));
+    }
+
+    @Test
     @DisplayName("A due date on the configured latest date is accepted; the day after is 400, on create and update")
     void dueDateFollowsTheConfiguredLatestDate() throws Exception {
         TestUser user = newUser();

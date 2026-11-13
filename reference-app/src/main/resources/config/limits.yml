@@ -10,6 +10,10 @@ app:
     cursor-page:
       default-size: 20
       max-size: 100
+    # @NotAfterToday: how many days past today (UTC) a calendar date may be. Every time zone is at
+    # most 14 hours ahead of UTC, so 1 accepts every user's own today; clients check the exact day.
+    not-after-today:
+      tolerance-days: 1
     # Maximum lengths of text the API accepts, by field (@MaxLength("…") on request records).
     # The columns are text; these are the contract.
     text:
@@ -22,8 +26,14 @@ app:
       todo-list.name: 100
       todo.title: 200
       todo.notes: 10000
+      tag.name: 50
+      time-entry.note: 500
       # example:end
     # example:begin
+    # Numbers the API accepts, by entity (@ConfiguredMax("<entity>.max-<field>") on request records).
+    time-entry:
+      # Time logged in one entry, in minutes.
+      max-minutes: 1440
     # Latest dates the API accepts, by field (@LatestDate("…") on request records).
     latest-date:
       # Must stay before 9999-12-31, the due_sort value that puts undated todos last (0003).

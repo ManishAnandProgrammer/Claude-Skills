@@ -35,7 +35,7 @@ class LimitsIntegrationTest extends IntegrationTest {
     private Environment environment;
 
     @Test
-    @DisplayName("Every @MaxLength, @ConfiguredMax and @LatestDate key in the code has a configured value")
+    @DisplayName("Every @MaxLength, @ConfiguredMax and @LatestDate key in the code, and @NotAfterToday's, has a configured value")
     void everyLimitKeyIsConfigured() {
         JavaClasses classes = new ClassFileImporter()
                 .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -59,6 +59,8 @@ class LimitsIntegrationTest extends IntegrationTest {
                 checkConfigured(missing, key, () -> requireDate("app.limits." + key));
             }
         }
+
+        checkConfigured(missing, NotAfterTodayValidator.TOLERANCE_KEY, () -> limits.get(NotAfterTodayValidator.TOLERANCE_KEY));
 
         assertThat(checked).isPositive();
         assertThat(missing).isEmpty();

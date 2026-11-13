@@ -1,5 +1,6 @@
 package com.example.app.config;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -8,6 +9,7 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.web.servlet.LocaleResolver;
 import org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Locale;
 
@@ -30,10 +32,17 @@ class MessageSourceConfig {
         return messageSource;
     }
 
+    /**
+     * {@code @PastOrPresent}, {@code @FutureOrPresent} and their kind read "now" from the application's
+     * {@link Clock}, not the system clock, so a test with a fixed clock fixes them too. Boot's own
+     * validator customisers don't reach a validator defined here. The clock is looked up on use: the
+     * validator is created early, before ordinary beans.
+     */
     @Bean
-    static LocalValidatorFactoryBean validator(MessageSource messageSource) {
+    static LocalValidatorFactoryBean validator(MessageSource messageSource, ObjectProvider<Clock> clock) {
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.setValidationMessageSource(messageSource);
+        validator.setConfigurationInitializer(configuration -> configuration.clockProvider(clock::getObject));
         return validator;
     }
 

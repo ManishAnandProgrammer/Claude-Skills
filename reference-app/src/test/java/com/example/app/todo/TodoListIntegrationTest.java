@@ -550,11 +550,28 @@ class TodoListIntegrationTest extends IntegrationTest {
         assertThat(forFullPageOfMore).isEqualTo(forFullPage);
     }
 
-    /** Statements run by one list request: the page, plus the count only when the page is full. */
+    /** Statements run by one request: for a page, plus the count only when the page is full. */
     private long statementsFor(TestUser user, String path) throws Exception {
         statistics().clear();
         getAs(user.accessToken(), path).andExpect(status().isOk());
         return statistics().getPrepareStatementCount();
+    }
+
+    @Test
+    @DisplayName("A dropdown batch costs exactly one statement, for one option and for a full batch")
+    void dropdownRunsOneStatement() throws Exception {
+        TestUser one = newUser();
+        createList(one, "Single");
+        TestUser many = newUser();
+        for (int index = 0; index < 21; index++) {
+            createList(many, "Option " + index);
+        }
+        getAs(many.accessToken(), DROPDOWN + "?size=20")
+                .andExpect(jsonPath("$.response.length()").value(20))
+                .andExpect(jsonPath("$.pageInfo.hasMore").value(true));
+
+        assertThat(statementsFor(one, DROPDOWN + "?size=20")).isEqualTo(1);
+        assertThat(statementsFor(many, DROPDOWN + "?size=20")).isEqualTo(1);
     }
 
     @Test
