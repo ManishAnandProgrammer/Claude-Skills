@@ -109,7 +109,8 @@ The rules below say which mode they apply to.
   annotation, and a build rule demands it. Examples:
   - unscoped or bypassing queries;
   - `@Scheduled` jobs, which must declare a concurrency posture (a lock annotation, or
-    `@SingleInstanceSafe("why")`) when `{{instances}}` is `multiple`;
+    `@MultiInstanceSafe("why")`: safe when every instance runs it at once) when `{{instances}}` is
+    `multiple`;
   - the tenant bypass, which is profile-optional.
 
   The user's reason: the defect "recurred at least six times… after this rule, it fails the
@@ -153,7 +154,7 @@ Automatable, from the profile:
 | ARCH-08 | `<root>.common..` depends on no feature module |
 | ARCH-11 | `@RestController` classes not public; no `@Transactional` methods in `..controller..`; no dependency on `..repository..` / `..domain..` |
 | ARCH-12 | methods calling bypass API X carry annotation A; every `@Scheduled` method declares its posture |
-| Naming | `*Controller`, `*Repository`; `*RepositoryImpl` not public |
+| Naming | `*Controller`, `*Repository`; `*RepositoryImpl` not public; package names lower-case; test classes end in `Test` (Surefire skips others silently) |
 | Conventions in bytecode | no `@Lob` field; no `@Transactional` private method; no `Optional` field or parameter; no `@TransactionalEventListener` + `REQUIRES_NEW` without `@Async`; no `Executors.newFixedThreadPool` / `newCachedThreadPool`; `GeneralCodingRules` (no `System.out`, no java.util.logging, no field injection, no generic `RuntimeException` thrown) |
 
 Not automatable (they live in source, not bytecode), so they stay review rules:

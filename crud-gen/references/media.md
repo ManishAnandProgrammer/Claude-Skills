@@ -83,15 +83,15 @@ media-file.constraints[N].allowed-roles=any
 
 ---
 
-## 5.4 Payload: embed `{{FileIdsPayload}}` for inline media management
+## 5.4 Request: embed `{{FileIdsPayload}}` for inline media management
 
-The create/update payload carries a `{{FileIdsPayload}}` field, so the client can supply (or
+The create and update requests carry a `{{FileIdsPayload}}` field, so the client can supply (or
 replace) media in the same request as the other fields. **Never use a plain `String` key; always
 use `{{FileIdsPayload}}`.**
 
 ```java
-// a component of the EntityNamePayload record:
-{{FileIdsPayload}} xMediaPayload   // optional, no @Valid; the payload handles its own null-safety
+// a component of the EntityNameCreateRequest / EntityNameUpdateRequest records:
+{{FileIdsPayload}} xMedia   // optional, no @Valid; it handles its own null-safety
 ```
 
 `{{FileIdsPayload}}` contains:
@@ -109,7 +109,7 @@ The mapper **must not** call any storage or repository logic. The service first 
 Update `toEntity` and `update` to take a second parameter:
 
 ```java
-public EntityName toEntity(EntityNamePayload payload, Set<{{MediaFile}}> xMediaFiles) {
+public EntityName toEntity(EntityNameCreateRequest request, Set<{{MediaFile}}> xMediaFiles) {
     EntityName entity = new EntityName();
     // ... set scalar fields ...
     for ({{MediaFile}} file : xMediaFiles) {
@@ -118,7 +118,7 @@ public EntityName toEntity(EntityNamePayload payload, Set<{{MediaFile}}> xMediaF
     return entity;
 }
 
-public void update(EntityName entity, EntityNamePayload payload, Set<{{MediaFile}}> xMediaFiles) {
+public void update(EntityName entity, EntityNameCreateRequest request, Set<{{MediaFile}}> xMediaFiles) {
     // ... set mutable scalar fields (skip updatable=false FKs) ...
     for ({{MediaFile}} file : xMediaFiles) {
         entity.addXMedia(file);
@@ -135,22 +135,22 @@ Add `{{MediaService}} mediaService` to the service's `@RequiredArgsConstructor` 
 ### Two private helpers (shared by create, update, and the PATCH endpoint)
 
 ```java
-private Set<{{MediaFile}}> saveXMediaIfProvided({{FileIdsPayload}} xMediaPayload) {
-    if ({{skipSave}}(xMediaPayload)) {
+private Set<{{MediaFile}}> saveXMediaIfProvided({{FileIdsPayload}} xMedia) {
+    if ({{skipSave}}(xMedia)) {
         return Set.of();
     }
     Set<{{MediaFile}}> result = new HashSet<>();
-    for (String objectKey : xMediaPayload.getNewIds()) {
+    for (String objectKey : xMedia.getNewIds()) {
         result.add(saveMediaFile(objectKey));
     }
     return result;
 }
 
 private void removeExistingXMediaIfRequested(EntityName entity, {{FileIdsPayload}} xMediaPayload) {
-    if ({{skipDelete}}(xMediaPayload)) {
+    if ({{skipDelete}}(xMedia)) {
         return;
     }
-    for (String objectKey : xMediaPayload.getDeletedIds()) {
+    for (String objectKey : xMedia.getDeletedIds()) {
         entity.removeXMedia(objectKey);
     }
 }
@@ -165,7 +165,7 @@ private void removeExistingXMediaIfRequested(EntityName entity, {{FileIdsPayload
 > `deletedIds` case.
 >
 > If the project has no `{{skipDelete}}` helper, write the guard as
-> `Objects.isNull(xMediaPayload) || CollectionUtils.isEmpty(xMediaPayload.getDeletedIds())`.
+> `Objects.isNull(xMedia) || CollectionUtils.isEmpty(xMedia.getDeletedIds())`.
 > Never reuse the save check.
 
 ### No storage call inside the transaction (house-review DATA-01, REL-06)
@@ -191,19 +191,19 @@ local and fine; fetching metadata is not).
 
 ```java
 @Transactional
-public {{ObjectWrapper}}<EntityNameResponse> create(EntityNamePayload payload) {
-    Set<{{MediaFile}}> xMediaFiles = saveXMediaIfProvided(payload.xMediaPayload());
-    EntityName entity = mapper.toEntity(payload, xMediaFiles);
+public {{ObjectWrapper}}<EntityNameResponse> create(EntityNameCreateRequest request) {
+    Set<{{MediaFile}}> xMediaFiles = saveXMediaIfProvided(request.xMedia());
+    EntityName entity = mapper.toEntity(request, xMediaFiles);
     EntityName saved = repository.saveAndFlush(entity);
     return {{objectFactory}}(mapper.toResponse(saved));
 }
 
 @Transactional
-public {{ObjectWrapper}}<EntityNameResponse> update(ID id, EntityNameUpdatePayload payload) {
-    EntityName entity = getEditableEntityName(id, payload.version());
-    removeExistingXMediaIfRequested(entity, payload.xMediaPayload());
-    Set<{{MediaFile}}> xMediaFiles = saveXMediaIfProvided(payload.xMediaPayload());
-    mapper.update(entity, payload, xMediaFiles);
+public {{ObjectWrapper}}<EntityNameResponse> update(ID id, EntityNameUpdateRequest request) {
+    EntityName entity = getEditableEntityName(id, request.version());
+    removeExistingXMediaIfRequested(entity, request.xMedia());
+    Set<{{MediaFile}}> xMediaFiles = saveXMediaIfProvided(request.xMedia());
+    mapper.update(entity, request, xMediaFiles);
     repository.flush();
     return {{objectFactory}}(mapper.toResponse(entity));
 }
@@ -213,17 +213,17 @@ public {{ObjectWrapper}}<EntityNameResponse> update(ID id, EntityNameUpdatePaylo
 
 ```java
 @Transactional
-public void manageXMedia(ID entityId, {{FileIdsPayload}} payload) {
-    if ({{skipSave}}(payload) && {{skipDelete}}(payload)) {
+public void manageXMedia(ID entityId, {{FileIdsPayload}} media) {
+    if ({{skipSave}}(media) && {{skipDelete}}(media)) {
         return;
     }
 
     EntityName entity = getEntityName(entityId);
 
-    removeExistingXMediaIfRequested(entity, payload);
+    removeExistingXMediaIfRequested(entity, media);
 
-    if (!{{skipSave}}(payload)) {
-        for (String objectKey : payload.getNewIds()) {
+    if (!{{skipSave}}(media)) {
+        for (String objectKey : media.getNewIds()) {
             entity.addXMedia(saveMediaFile(objectKey));
         }
     }
@@ -284,8 +284,8 @@ public {{ObjectWrapper}}<{{MediaFileDetail}}> xMediaDetail(@PathVariable ID enti
 @ResponseStatus(HttpStatus.NO_CONTENT)
 @Override
 public void manageXMedia(@PathVariable ID entityId,
-                         @RequestBody {{FileIdsPayload}} payload) {
-    service.manageXMedia(entityId, payload);
+                         @RequestBody {{FileIdsPayload}} media) {
+    service.manageXMedia(entityId, media);
 }
 ```
 

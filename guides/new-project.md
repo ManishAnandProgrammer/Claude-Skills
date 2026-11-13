@@ -32,7 +32,7 @@ self-reviewed.
 
 | Command | When | What it does |
 |---|---|---|
-| `/crud-gen bootstrap` | Once, right after creating the project | Asks the project-level questions, writes both profiles, creates the shared infrastructure, builds, then reviews the whole project |
+| `/crud-gen bootstrap` | Once, right after creating the project | Asks the project-level questions, writes both profiles, **copies the shared infrastructure from the reference application** (`scripts/bootstrap-copy.sh`: tested code, never overwrites), adapts it, builds, then reviews the whole project |
 | `/crud-gen path/to/Entity.java` | For every new entity | Checks the entity and its migration first (offers fixes), generates every layer + ErrorCodes + tests, builds, runs house-review on what it generated |
 | `/house-review [diff \| uncommitted \| <path> \| all]` | Before every merge (`diff`), and a full audit now and then (`all`) | Builds and tests, reviews against the rules, verifies findings, asks you to accept or reject deviations, reports, offers fixes |
 
@@ -48,11 +48,22 @@ self-reviewed.
 | Token revocation | `short-lived(15)` or `blacklist` | What logout must guarantee |
 | Client IP in logs | `truncated` / `hashed` / `raw` / `none` | Personal data in logs |
 | Multi-tenant? | usually `no` | Enables the tenant rules |
+| Sign-in | the app issues its own tokens / an external identity provider / none | Copies the `sign-in` piece or adapts security to the provider |
+| Signup policy | email-verified (never reveals an account) / immediate (reveals registered emails) | Account enumeration (SEC-02) |
+| Breached-password check | yes (fail-open or fail-closed) / no | REST-17; an outbound call |
+| Metrics scrape | how it's secured (`metricsAuth`) | CFG-06; adds the Prometheus registry |
+| Packaging | Dockerfile / `build-image` | Where the JVM flags live (CFG-08) |
 
 Bootstrap **asks before adding any dependency** (libraries-first rule) and shows the current
-version and its compatibility. Expect proposals for: springdoc-openapi, Resilience4j,
-logstash-logback-encoder, Testcontainers, ArchUnit, the Hibernate metamodel processor, and
-commons-collections4 / commons-lang3.
+version and its compatibility. The copy script prints what each piece needs: springdoc-openapi,
+Resilience4j, logstash-logback-encoder, Testcontainers, ArchUnit, the Hibernate metamodel
+processor, the OAuth2 resource server, and for sign-in Redis and Bucket4j. You also need two
+secrets in `.env`: `JWT_SECRET` and `PERSONAL_DATA_PEPPER`.
+
+### What a generated entity looks like
+Like the reference application's `todo` module (`~/.claude/skills-reference`): request records
+with configurable `@MaxLength` limits (`config/limits.yml`), projections for lists, cursor paging
+by default (offset only for bounded admin tables), `text` columns, an index per list order.
 
 ### What a finding means
 - **Critical / High**: fix before merging. The verdict says NOT READY.

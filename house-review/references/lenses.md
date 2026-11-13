@@ -343,7 +343,8 @@ is code-smells.md, java.md and architecture.md.
 ## Tests (TEST): required with new or changed code
 
 A missing required test is a finding against the changed code: Medium, or High for SEC-related
-tests.
+tests (tests of a refusal, an authentication or authorization check, or a secret; a missing
+resilience or failure-injection test is Medium).
 
 ### TEST-01: Positive and negative cases, on more axes than the endpoint
 - **Check:** every new or changed behaviour covers:
@@ -411,6 +412,11 @@ tests.
 - **Check:** every fixture built through the API asserts its own 2xx, or goes through a helper
   that throws. Incident: six specs posted `formFieldIds` instead of `fieldIds`, got 400, and
   passed.
+- **Also:** with `auto-commit: false` on the pool (CFG-01), a direct `jdbc.update` fixture outside a
+  transaction is rolled back when its connection returns: the test silently runs on data that isn't
+  there. Fixture writes go through a helper that commits (`sql(...)` on the test base).
+- **Also:** an order test whose fixtures already come out in the expected order passes with the
+  sort ignored: fixtures must give a different result under every order and direction.
 
 ### TEST-11: A collection needs a bound (`COLLECTION-WITHOUT-A-BOUND`)
 - **Check:** `contains(x)` is never the only assertion on a list endpoint: also check that

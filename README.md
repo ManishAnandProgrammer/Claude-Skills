@@ -7,11 +7,16 @@ Two skills that share one set of house engineering rules:
   required tests, architecture/ArchUnit, error contract, config baseline). Builds and tests,
   verifies findings, handles accepted deviations, reports, offers fixes.
 - **crud-gen**: generates full layered CRUD for a JPA entity (API interface with OpenAPI docs,
-  controller, service, mapper, repository + Criteria impl, record DTOs, ErrorCodes, dropdown,
-  integration tests) so that house-review finds nothing. `/crud-gen bootstrap` sets up the shared
-  house infrastructure once per project.
+  controller, service, mapper, repository with Criteria projections and cursor or offset paging,
+  request/response records, ErrorCodes, configurable limits, dropdown, integration tests) so that
+  house-review finds nothing. `/crud-gen bootstrap` copies the shared house infrastructure into a
+  project once.
+- **reference-app/**: the house reference application, real code that builds and passes its
+  tests. Bootstrap copies its pieces (`scripts/bootstrap-copy.sh`); its `todo` module is crud-gen's
+  golden output; house-review cites it as compliant code. Installed as `~/.claude/skills-reference`.
 
-**Install both together.** crud-gen reads house-review's `references/` as its source of truth.
+**Install everything together.** crud-gen reads house-review's `references/` as its rules and
+`reference-app/` as its examples.
 
 ## Guides
 - [New project](guides/new-project.md): fresh from Spring Initializr, house standards from the
@@ -22,6 +27,14 @@ Two skills that share one set of house engineering rules:
   also how to let Claude do it.
 - [Share as a zip](guides/share-as-zip.md): for someone without access to this repository:
   `scripts/package.sh` makes the zip, `scripts/install-standalone.sh` installs it (no sync).
+
+## Verifying a change (before every push)
+The repository is private, so there is no CI: `scripts/verify.sh` builds and tests
+`reference-app/`, then copies its `core` and `sign-in` pieces into a fresh project under another
+package and builds that too. `install.sh` enables a pre-push hook (`.githooks/pre-push`) that runs
+it whenever the pushed commits touch `reference-app/`, `scripts/` or a skill. It needs Docker
+(`sg docker -c scripts/verify.sh` if your shell isn't in the `docker` group). Skip once with
+`git push --no-verify`.
 
 ## Install (once per machine)
 ```bash

@@ -42,7 +42,7 @@ MySQL-only driver properties (`cachePrepStmts`, `useServerPrepStmts`,
 | `hibernate.jdbc.time_zone` | `UTC` | |
 | `hibernate.jdbc.batch_size` | `30` | With `order_inserts` / `order_updates=true`: batching, and a consistent lock order (no deadlocks across concurrent multi-row writes) |
 | `hibernate.default_batch_fetch_size` | `30` | Removes N+1 queries on lazy collections (measured) |
-| `hibernate.query.fail_on_pagination_over_collection_fetch` | `true` | Fails instead of paginating in memory |
+| `hibernate.query.fail_on_pagination_over_collection_fetch` | `true` | A guard only: Hibernate 7.4 pages collection fetches in SQL and never trips it. The rule that matters is DATA-26 (no collection fetch on list pages) |
 | `hibernate.query.in_clause_parameter_padding` | `true` | Fewer distinct `IN` statements for the plan cache |
 | JSON format mapper | configured explicitly when any `SqlTypes.JSON` attribute exists | DATA-27 |
 
@@ -66,6 +66,8 @@ query plan cache size left at its default.
 | `server.tomcat.max-connections` / `accept-count` / `keep-alive-timeout` / `max-keep-alive-requests` | set for prod (5000 / 1000 / 15s / 1000) | Don't lower `max-connections` to "cap load": it counts idle keep-alive sockets |
 | `server.tomcat.max-http-form-post-size`, `max-swallow-size`, `max-http-response-header-size`, multipart `max-file-size` / `max-request-size` | set | Bounded input |
 | Scheduler | a `TaskScheduler` bean with N named platform threads, `waitForTasksToCompleteOnShutdown`, `awaitTerminationSeconds` | `spring.task.scheduling.pool.size` is ignored under virtual threads (REL-08) |
+| `spring.task.execution.mode` | `force` (whenever a `TaskScheduler` bean exists) | A scheduler is an `Executor`, so Boot otherwise skips its `applicationTaskExecutor`, and the MDC `TaskDecorator` with it (verified 2026-11-13) |
+| `spring.lifecycle.timeout-per-shutdown-phase` | longer than the longest request (pool wait + statement timeout) | A shorter one cuts requests that would have finished |
 | `spring.task.execution.thread-name-prefix` | set | Readable thread dumps |
 | Admission control | a Resilience4j semaphore bulkhead per route group, about 2× the pool for request groups, small for reports and exports, short max-wait, then 503 `SERVER_BUSY` + `Retry-After`; never the thread-pool bulkhead (it undoes virtual threads); runs before the security chain; the actuator is never capped | PERF-03 |
 
@@ -130,6 +132,20 @@ Hibernate is the exception: tolerant, DATA-27.
   past a configured slow threshold. Switched by `app.logging.request-completion.enabled` and
   `…slow-threshold`. In prod the app logger level is WARN except this filter.
 
+## CFG-10: Configuration layout and startup checks
+- `application.yml` only names the app and imports **one file per concern**:
+  `config/{db,server,security,observability,limits,jobs}.yml`, each with profile variants beside it
+  (`db-prod.yml`, `server-dev.yml`). Spring Boot applies a `<name>-<profile>.yml` variant of an
+  imported file on top of it (verified 2026-11-13).
+- Every tunable is in configuration (SMELL-17); `spring.application.name` is the one name the rest
+  derives from.
+- No default profile; **startup fails** on a missing or unknown active profile (an allow-list),
+  on missing secrets, and on inert settings (admission below twice the pool size).
+- API docs are off in the base configuration and on only in `dev` (a forgotten profile must not
+  publish the schema).
+- The prod pool is set explicitly (e.g. 30/10), never the default 10.
+- **Severity:** Medium (High when a missing profile exposes docs or development defaults).
+
 ## CFG-08: JVM flags (container)
 - `-XX:+ExitOnOutOfMemoryError`
 - `-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=<private volume>`: heap dumps are secrets
@@ -139,6 +155,8 @@ Hibernate is the exception: tolerant, DATA-27.
   65–75%; RSS is about heap × 1.3–1.5).
 - The image keeps `jcmd` / JFR (a JDK, or jlink with `jdk.jcmd` and `jdk.jfr`), or the profile
   accepts the gap.
+- No container definition in the repository at all is itself the finding (the flags can't be
+  reviewed): a Dockerfile, or `build-image` with the flags recorded.
 - Unique node id per instance when ids need one (TSID).
 
 ## CFG-09: Outbound clients

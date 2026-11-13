@@ -230,8 +230,11 @@ For every Critical and High finding (yours and the reviewers'):
 Also check any number you report (counts of endpoints, tests, files) by recomputing it.
 
 - **A framework claim needs proof:** cite the framework source or javadoc from `~/.m2`, or a small
-  JVM experiment. Examples: what is ignored under virtual threads, default timeouts, what
-  `cancel(true)` really does.
+  experiment. Examples: what is ignored under virtual threads, default timeouts, what
+  `cancel(true)` really does. The strongest proof is a **probe test**: a throwaway test class
+  extending the project's test base that sends the real request (or reads the real bean) and
+  prints the result, deleted right after. In the first field test it confirmed three claims in
+  one run each (a class-name leak, a locale crash, a missing executor).
 - **Static reading shows the mechanism, not the magnitude.** List each magnitude question under
   "Runtime experiments still to run", with the result that would change the severity. Don't run
   load tests unless asked.
@@ -357,7 +360,10 @@ Each proposed fix names the failure it prevents *in this system*.
 
 Ask with **AskUserQuestion** which findings to fix now: all Critical and High, a chosen set, or
 none (tracker only: the findings go to the tracker as in Step 7). Then:
-1. Fix them, following the rule's **Fix** guidance, the profile and CLAUDE.md.
+1. Fix them, following the rule's **Fix** guidance, the profile and CLAUDE.md. **Compliant code to
+   follow** is the house reference application, `~/.claude/skills-reference` (its `common/` and
+   `config/` for infrastructure, its `todo` module for a feature): when a fix has a counterpart
+   there, make the project's code match it rather than writing a new variant.
 2. Update the API-interface docs for every endpoint touched (REST-20).
 3. Add the missing tests from the report for the code you changed.
 4. Re-run the build and the full test suite.

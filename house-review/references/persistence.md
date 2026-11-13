@@ -194,10 +194,15 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Check:**
   - at most **one** collection fetch-joined or EntityGraph'd per query (two Sets: a Cartesian
     product; two Lists: `MultipleBagFetchException`);
-  - no `Pageable` with a collection fetch join (in-memory pagination; the config makes it fail);
+  - **no collection fetch on a list page.** Hibernate 7.4 no longer paginates such a query in
+    memory: it pages the roots in a derived table and joins the children, so
+    `fail_on_pagination_over_collection_fetch` never fires (measured 2026-11-13). The cost moved:
+    every child of the page comes back (20 lists × 1,000 todos: 111.6 ms against 7.2 ms for two
+    steps). Child data on a list page is an aggregate subquery in the projection, or two steps
+    (a page of ids, then one grouped child query);
   - lazy relations in lists are covered by batch fetching;
-  - list pages that won't be written use projections, not entities.
-- **Severity:** Medium (High for in-memory pagination on a growing table).
+  - list pages use projections, not entities (DATA-11).
+- **Severity:** Medium (High on a growing table).
 
 ### DATA-27: JSON columns use an explicit format mapper
 - **Check:** when any attribute is `@JdbcTypeCode(SqlTypes.JSON)`, Hibernate's JSON format mapper
@@ -210,6 +215,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   in one stored document makes the row unloadable. DynamicForm didn't boot (F-082). Each stored
   JSON type gets a test that loads a document with an extra key. Ordered data in `jsonb` is
   stored as a list, never as object keys (`jsonb` re-sorts keys; `DISPLAY-OPTIONS-ORDER-LOST`).
+- **Also (HelpBook):** a JSON column's content is a typed record where possible. Where a
+  `Map` is unavoidable, its keys are named constants (one class of keys, never repeated string
+  literals), and a closed set of values is an enum, so a typo can't write a key nobody reads.
 - **Severity:** High on Jackson 3 projects.
 
 ### DATA-28: No heavy data work at startup
@@ -250,8 +258,11 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Check:** "exists? then insert", "anything in progress? then start" and "count then insert"
   need a (partial) unique index with the violation translated to **the domain code**, or
   `INSERT … ON CONFLICT`, or a lock. Idempotent operations (pin, follow) use
-  `ON CONFLICT DO NOTHING` and answer 2xx, not 409 (F-084). Code that compares case-insensitively
-  needs a matching `lower()` unique index.
+  `ON CONFLICT DO NOTHING` and answer 2xx, not 409 (F-084).
+- **Unique text (HelpBook):** a unique `text` column gets a unique **index on
+  `lower(trim(col))`**, so case and surrounding spaces don't make a different value ("Groceries" vs
+  " groceries", two accounts for one email). A nullable one is partial: `WHERE col IS NOT NULL`.
+  The code normalises the same way before writing and looking up, so the index is used.
 - **Severity:** High.
 
 ### DATA-06: Optimistic locking
@@ -292,7 +303,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - For JPA entities, generate in the application (Hibernate 7's `UuidVersion7Strategy` via
     `@UuidGenerator`), not with a database `DEFAULT uuidv7()`: a database-generated id must be
     read back after each insert, which costs JDBC insert batching;
-  - application-assigned ids are inserted with `persist`, not `save` (DATA-25).
+  - application-assigned ids are inserted with `persist`, not `save` (DATA-25);
+  - the id is never updatable: `@Column(updatable = false)` (HelpBook).
 
   Random UUIDv4 is a finding.
 - **Severity:** Medium.
@@ -300,8 +312,11 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 ### DATA-10: Indexes
 - **Check:**
   - every foreign key column is indexed;
-  - every filtered or sorted column of a list has a matching (composite or partial) index;
+  - **one index per offered list order**, leading with the scope columns (owner, tenant), then the
+    sort keys, **ending with the id** tie-breaker; filtered columns covered (composite or partial);
   - every sort has a unique tie-breaker;
+  - **a keyset sort key is never null.** A nullable column (a due date) sorts through a stored
+    generated column (`coalesce(due_date, date '9999-12-31')`) that the index and the keyset use;
   - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).
 - **Severity:** Medium (High on unbounded tables).
 
@@ -310,16 +325,22 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - no loading of unbounded data to count, average or filter in Java;
   - no N+1;
   - no `findAll()` behind an endpoint;
-  - count queries are skipped when the page isn't full, and capped on large sets;
-  - read-only lists use projections.
+  - count queries are skipped when the page isn't full; cursor lists never count;
+  - **list pages and dropdowns are projections** (`construct(Row.class, …)` of only the columns they
+    show), never entities: measured 22 ms against 7 ms per page (2026-11-13);
+  - **growing lists are keyset-paged** (`after` cursor); OFFSET reads every skipped row (20,020 rows
+    for row 20,000, against 20 with keyset).
 - **Severity:** High for unbounded loads; Medium for N+1.
 
 ### DATA-12: Columns fit the data
 - **Check:**
-  - columns that take outside input are sized for it, or are `text`, with a matching `@Size`;
-  - never `@Lob` (on PostgreSQL that's an `oid` large object);
-  - no `text` → `varchar(255)` copies.
-- **Severity:** High: an overflow fails the whole write.
+  - **string columns are `text`** (PostgreSQL: `varchar(n)` adds no speed, only a second length
+    contract that drifts); entities carry no length constants;
+  - **the length contract is the request:** every String in a request record carries
+    `@MaxLength("<key>")` with the number in `app.limits.text` (configuration, not code);
+  - never `@Lob` (on PostgreSQL that's an `oid` large object).
+- **Severity:** **High** for a request String with no length limit, unless the author justifies it
+  (ask; a justified exception is an accepted deviation); Medium for a `varchar(n)` column.
 
 ### DATA-13: Migrations
 - **Check:**

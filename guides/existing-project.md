@@ -48,7 +48,9 @@ problems you want to find.
 | 8 | Structure | rich entities, splitting god classes, module boundaries, dead code | Safe only once 5 is done |
 
 ### Adopting the house infrastructure in an old codebase
-`/crud-gen bootstrap` **skips what already exists** and only adds the missing pieces, asking
+`/crud-gen bootstrap` copies from the reference application with `scripts/bootstrap-copy.sh`, which
+**never overwrites**: a file that exists is skipped and reported, and bootstrap then proposes the
+differences between yours and the reference one by one. It only adds the missing pieces, asking
 before every dependency. In an old project, run it **piece by piece**, because some pieces change
 what clients see:
 - **No client impact:** logging pattern, config baseline (database timeouts, Hikari), test

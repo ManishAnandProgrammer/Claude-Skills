@@ -40,12 +40,12 @@ project doesn't have.
 | Key | Value | Notes |
 |---|---|---|
 | `urlPrefix` | `/api/v1` | REST-07 |
-| `DropdownItem` / `DropdownFilter` | FQNs | REST-13 house dropdown standard |
-| `ObjectWrapper` / `ListWrapper` / `PaginationWrapper` | FQNs | REST-11; paginated lists use `PaginationWrapper` (explicit `pageInfo`) |
+| `DropdownItem` / `DropdownFilter` | FQNs | REST-13 house dropdown standard (cursor-paged) |
+| `ObjectWrapper` / `ListWrapper` / `MapWrapper` / `PaginationWrapper` / `CursorWrapper` | FQNs | REST-11 |
 | `exceptionHandler` | FQN | REST-06 |
 | `errorCodeType` | `none` | FQN of the ErrorCode enum once it exists |
-| `cursorLists` | `none` | Lists that must use cursor pagination (feeds, history, growing tables) |
-| `offsetLists` | `admin tables` | Lists where offset paging with a cap is fine |
+| `cursorLists` | `all lists not in offsetLists` | Cursor (keyset) paging, the default: user-facing and growing lists, dropdowns |
+| `offsetLists` | `none` | Bounded admin tables that need page numbers |
 | `NotXss` | `none` | FQN of the anti-XSS validator, or `escape-on-output` with a link to the policy |
 | `noEmojiFields` | `none` | Fields where `@NoEmoji` applies (codes, identifiers) |
 | `tokenRevocation` | `short-lived(15)` | `blacklist` (jti blacklist with a TTL, any store, no DB connection on a cache hit) or `short-lived(<max minutes>)` |

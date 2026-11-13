@@ -453,3 +453,30 @@ What the run showed about the skill, and what changed:
 - **`diff <base>`** added: a branch stacked on another feature branch (news-pulse's
   `chore/user-cleanups` on `chore/pre-work-cleanup`, 36 commits ahead of `staging`) is reviewed
   against its own base, not the whole stack.
+
+## Step 11: second field test (a fresh todo project) and the reference application (2026-11-13)
+
+Full record: `docs/design/2026-11-13-field-test.md` (the gaps found, the owner's observations
+O1–O15 and how each was verified, and sessions 1–3).
+
+What changed:
+- **Reference code instead of prose.** `reference-app/` (built and tested) is what bootstrap copies
+  (`scripts/bootstrap-copy.sh`) and what crud-gen generates like; `scripts/verify.sh` and the
+  pre-push hook keep it green (the repository is private: no CI).
+- **Data access:** list pages are Criteria projections; cursor (keyset) paging by default, offset
+  only for bounded admin tables; no counts on cursor lists; nullable sort keys through a stored
+  generated column; no collection fetch on list pages (Hibernate 7.4 pages them in SQL, so the old
+  in-memory-pagination guard never fires). Spike numbers in the record.
+- **No tunables in code; configuration split by concern** (`config/*.yml` with profile variants);
+  `spring.application.name` drives the names; `@MaxLength` / `@ConfiguredMax` validators read
+  `app.limits.*`; over a limit is a 400, never a clamp.
+- **`text` columns**, the length contract on the request; a request String without a limit is High
+  unless justified.
+- **Naming:** `*Request` bodies, `*Filter` GET parameters; why-only comments; `@MultiInstanceSafe`.
+- **Error contract:** binding failures answer `REQUEST_PARAMETER_INVALID` without class names; a
+  default locale; a status-class fallback for every MVC exception.
+- **HelpBook:** unique `lower(trim())` indexes (partial when nullable), ids not updatable, JSON keys
+  as constants or typed records, lower-case packages.
+- **Rate limiting:** decided in part (own layer over Bucket4j, per-policy store-failure mode with
+  a local fallback, every scope with owner-chosen defaults); placement (transport-neutral for
+  GraphQL) is the last open session.

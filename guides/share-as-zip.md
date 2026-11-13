@@ -72,8 +72,9 @@ commit and push, and the next zip carries them.
    ```
 3. Send the zip, and point them to this guide (it's inside the zip, in `guides/`).
 
-*(GitHub's "Download ZIP" also works, since the repository is public, but `package.sh` is
-the controlled way: the exact commit, and nothing uncommitted.)*
+*(The repository is private, so the receiver can't download it from GitHub: `package.sh` is the
+way, and it ships the exact commit with nothing uncommitted. The zip includes `reference-app/`,
+the code bootstrap copies.)*
 
 ### Them: install (do it yourself)
 1. Unzip into a stable place:

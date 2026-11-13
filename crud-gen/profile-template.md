@@ -26,7 +26,7 @@ Fill values from the codebase, not from memory.
 | `ObjectWrapper` | `com.example.dto.ObjectWrapper` | Fully-qualified single-object response wrapper |
 | `objectFactory` | `ObjectWrapper.withObject` | Static factory that wraps one object (must accept `null`) |
 | `objectSetter` | `setResponse` | Setter that replaces the wrapped object (build-first pattern) |
-| `ListWrapper` | `com.example.dto.ListWrapper` | Fully-qualified wrapper for lists **bounded by nature** (dropdowns, small fixed sets). Never for paginated lists |
+| `ListWrapper` | `com.example.dto.ListWrapper` | Fully-qualified wrapper for lists **bounded by nature** (small fixed sets). Never for paginated lists or dropdowns (cursor-paged) |
 | `listFactory` | `ListWrapper.withList` | Static factory that wraps a list |
 | `extraDetails` | `addExtraDetails` | Method to attach extra key/value data to a wrapper, or `none` |
 | `BaseRepository` | `org.springframework.data.jpa.repository.JpaRepository` | Project base repository interface (FQN) |
@@ -34,7 +34,10 @@ Fill values from the codebase, not from memory.
 | `NoEmoji` | `none` | FQN of a no-emoji constraint annotation |
 | `AuditBase` | `none` | `@MappedSuperclass` that entities extend for audit columns |
 | `auditFields` | `none` | Ordered `name:Type` list, e.g. `createdDate:LocalDateTime, lastModifiedDate:LocalDateTime, createdBy:Long, lastModifiedBy:Long` |
-| `CollectionUtils` | `org.apache.commons.collections4.CollectionUtils` | Or `org.springframework.util.CollectionUtils` if commons-collections4 is absent |
+| `CollectionUtils` | `org.springframework.util.CollectionUtils` | Or commons-collections4's, if the project already uses it |
+| `MapWrapper` | `com.example.common.wrapper.MapWrapper` | Values keyed by name (`MapWrapper.fromMap`) |
+| `Limits` / `MaxLength` / `ConfiguredMax` | `com.example.common.limits.*` | Configurable limits: `@MaxLength("<entity>.<field>")` on request Strings, numbers in `app.limits.*` (`config/limits.yml`) |
+| `TextSearch` | `com.example.common.pagination.TextSearch` | Case-insensitive contains (`position()`), no LIKE escaping |
 | `metamodel` | `true` | `true` if a JPA metamodel annotation processor (`hibernate-jpamodelgen`) is configured |
 | `controllerSecurity` | `none` | Annotation existing controllers carry, e.g. `@PreAuthorize("hasRole('ADMIN')")`, or `none` |
 
@@ -53,14 +56,11 @@ Fill values from the codebase, not from memory.
 
 | Key | Value | Notes |
 |---|---|---|
-| `PageFilter` | `com.example.common.pagination.PageFilter` | Base class of every Filter |
-| `PageRequests` | `com.example.common.pagination.PageRequests` | Caps the size |
-| `CriteriaPages` | `com.example.common.pagination.CriteriaPages` | Count skipped on a partial page |
-| `PaginationWrapper` | `com.example.common.wrapper.PaginationWrapper` | Paginated lists: `response` + an explicit `pageInfo` (in the OpenAPI schema) |
-| `pagedListFactory` | `PaginationWrapper.fromPage` | |
-| `cursorLists` | `none` | Entities whose list uses cursor paging |
-| `CursorFilter` | `none` | Cursor filter base class (created by bootstrap when `cursorLists` is set) |
-| `dropdownMaxItems` | `500` | Cap on dropdown queries |
+| `cursorLists` | `all lists not in offsetLists` | Keyset paging (the default): `CursorFilter`, `CursorWrapper`, `pageInfo {nextCursor, hasMore}`, no count |
+| `offsetLists` | `none` | Bounded admin tables that need page numbers: `PageFilter`, `PaginationWrapper`, count on a full page |
+| `CursorFilter` / `CursorWrapper` / `KeysetPages` | `com.example.common.pagination.CursorFilter` / `…wrapper.CursorWrapper` / `…pagination.KeysetPages` | Cursor lists |
+| `PageFilter` / `PaginationWrapper` / `OffsetPages` | `com.example.common.pagination.PageFilter` / `…wrapper.PaginationWrapper` / `…pagination.OffsetPages` | Offset lists |
+| `Paging` | `com.example.common.pagination.Paging` | Default sizes from configuration (`offset(filter, sort)`, `cursorSize(filter)`) |
 
 ## Validation, ownership, ids
 
@@ -80,7 +80,7 @@ Fill values from the codebase, not from memory.
 | `testRoot` | `src/test/java` | |
 | `testBase` | `com.example.support.IntegrationTest` | One shared context |
 | `httpClient` | `MockMvc` | Or `RestAssured` |
-| `loginAs` / `createUser` | `loginAs(Role)` / `createUser(...)` | Helpers on the test base |
+| `loginAs` / `createUser` | `newUser()` | Helpers on the test base (also `sql(...)` for committed fixtures, `statistics()` for query counts) |
 | `roleAllowed` | per controller | The lowest role allowed; the roles below it get the 403 tests |
 | `buildCommand` | `./mvnw -B verify` | Step 7; include the JDK / env prefix |
 
@@ -90,7 +90,7 @@ Fill values from the codebase, not from memory.
 |---|---|---|
 | `dropdownAnnotation` | `com.example.common.dropdown.DropdownCandidate` | House annotation (references/dropdown.md); created by bootstrap |
 | `DropdownItem` | `com.example.common.dropdown.DropdownItem` | Record `{value, label}`: one shape for every dropdown |
-| `DropdownFilter` | `com.example.common.dropdown.DropdownFilter` | Generic params (`status`, `sortDirection`, `limit`, `query`); subclassed for the annotation's mandatory and optional filters |
+| `DropdownFilter` | `com.example.common.dropdown.DropdownFilter` | Extends `CursorFilter` (`size`, `after`) with `status`, `sortDirection`, `query`; subclassed for the annotation's mandatory and optional filters |
 | `dropdownPackage` | `com.example.common.dropdown` | Where bootstrap puts the dropdown types |
 | `dropdownSecurity` | `@PreAuthorize("isAuthenticated()")` | The user's standard; ask when the resource is more restricted |
 
@@ -136,6 +136,7 @@ These override the skill's defaults. Leave empty to follow the pattern exactly.
   "not found" strings).
 - `ownerField` `none` → no ownership checks or other-user tests.
 - `CollectionUtils` = Spring's → `isNotEmpty(x)` becomes `!CollectionUtils.isEmpty(x)`.
+- `Limits` missing → run `/crud-gen bootstrap` (never fall back to literal `@Size(max = N)`).
 - `metamodel` `false` → offer to add `hibernate-jpamodelgen`; string paths only if declined.
 - `modules` `none` → no `{module}` segment, Step 1.5 skipped.
 - Media `none` → Step 5 skipped. Dropdown types missing → run `/crud-gen bootstrap` (never invent

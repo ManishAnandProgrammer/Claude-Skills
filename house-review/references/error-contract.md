@@ -21,13 +21,13 @@ that hasn't adopted it yet gets one finding per missing piece, not one per endpo
 | `ErrorCode` | One protocol-agnostic enum, grouped by module (`AUTH_…`, `FORM_…`). Each constant is one well-defined failure mode. Constants in a module's `api/` package carry Javadoc. |
 | `ErrorCodeHttpStatusMapper` | `final` utility class with a private constructor, holding a static `EnumMap<ErrorCode, HttpStatus>`. It is the **only** place an ErrorCode meets an HttpStatus. `resolve()` throws `IllegalStateException` for an unmapped code, so a new code can't reach production silently. Other protocols (gRPC) would get their own mapper. |
 | `AppException` | One `RuntimeException` carrying `ErrorCode`, `Object[] args`, optional `failedValidations` and response `extensions`. Private constructor, with static factories: `of(code, args…)`, `withCause(code, cause, args…)`, `withFailedValidations(code, failed)`, `supply(code, args…)` (for `orElseThrow`). Also `withExtension(name, value)`, which rejects the reserved names `type`, `title`, `status`, `detail`, `instance`, `errorCode` and `failed`. |
-| Messages | `messages/message_<locale>.properties`, keyed by `ErrorCode.name()`, with `{0}` arguments. `ReloadableResourceBundleMessageSource` set to `UTF-8` **and** `setAlwaysUseMessageFormat(true)`. Without that setting a message with no arguments skips MessageFormat, and `''` / `{0}` reach the client raw (MESSAGE-PLACEHOLDERS-LEAK). The bean validator uses the same MessageSource. Locale comes from `AcceptHeaderLocaleResolver` (default `en`). |
+| Messages | `messages/message_<locale>.properties`, keyed by `ErrorCode.name()`, with `{0}` arguments. `ReloadableResourceBundleMessageSource` set to `UTF-8` **and** `setAlwaysUseMessageFormat(true)`. Without that setting a message with no arguments skips MessageFormat, and `''` / `{0}` reach the client raw (MESSAGE-PLACEHOLDERS-LEAK). The bean validator uses the same MessageSource. Locale comes from `AcceptHeaderLocaleResolver` **with its supported locales set**, and the MessageSource has **`setDefaultLocale(ENGLISH)`**: otherwise any `Accept-Language` without its own file (`de`, `pa`) throws `NoSuchMessageException` inside the error handler and breaks every error response (verified 2026-11-13). |
 | `GlobalExceptionHandler` | `@RestControllerAdvice extends ResponseEntityExceptionHandler`, so Spring MVC's own errors pass through it too. |
 
 ## ERR-01: Every error response has the same members
 - `Content-Type: application/problem+json`
 - `type`: `urn:<app>:error:<ERROR_CODE>`, a URN and not an https URL. It is a stable category id
-  that nobody will try to fetch.
+  that nobody will try to fetch. `<app>` comes from `spring.application.name`, never a literal.
 - `title`, `status`
 - `detail`: a message from the MessageSource for client errors; a fixed generic sentence for
   every 5xx.
@@ -46,7 +46,8 @@ the generic text.
 |---|---|---|---|
 | `AppException`, 4xx code | from the mapper | the code | DEBUG (WARN for 401/403) |
 | `AppException`, 5xx code | from the mapper | the code | ERROR with stack; body generic |
-| `MethodArgumentNotValidException` | 400 | `VALIDATION_FAILED` + `failed` | DEBUG |
+| `MethodArgumentNotValidException`, constraint failures | 400 | `VALIDATION_FAILED` + `failed` | DEBUG |
+| `MethodArgumentNotValidException`, **binding failures** (`FieldError.isBindingFailure()`: an unknown enum, a malformed date or UUID in a query object) | 400 | `REQUEST_PARAMETER_INVALID` + `failed: ["<field>: invalid value"]`, **never the default message** (it names Java classes) | DEBUG |
 | `HandlerMethodValidationException` (constraints on `@RequestParam` / `@PathVariable`) | 400 | `VALIDATION_FAILED` naming the parameter | DEBUG |
 | `HttpMessageNotReadableException` | 400 | `REQUEST_UNREADABLE` | via `handleExceptionInternal` |
 | `MissingServletRequestParameterException` | 400 | `REQUEST_PARAMETER_MISSING` | |
@@ -61,6 +62,7 @@ the generic text.
 | `IllegalArgumentException` | 400 | `ILLEGAL_ARGUMENT` | DEBUG |
 | Transient database failure (ERR-03) | 503 + `Retry-After` | per kind | WARN (ERROR + stack for query timeout) |
 | A downstream service didn't answer (SDK client error or 5xx, AI provider, circuit breaker open) | 503 + jittered `Retry-After` | `<DEPENDENCY>_UNAVAILABLE` | WARN without stack, and counted on a metric |
+| Any other exception `ResponseEntityExceptionHandler` handles (406, a missing header, an async timeout, `ResponseStatusException`, ...) | its status | a specific code where one exists, else by status class: 404 `RESOURCE_NOT_FOUND`, other 4xx `REQUEST_INVALID`, 5xx `UNEXPECTED_ERROR` with the generic detail; `ConversionNotSupportedException` (a 500) before its parent `TypeMismatchException` | 5xx: ERROR with stack |
 | Anything else | 500 | `UNEXPECTED_ERROR`, generic detail | ERROR with stack |
 
 A downstream **4xx** answered to *our* request (for example S3's 403 for our credentials) is our
@@ -78,7 +80,7 @@ arrive wrapped as a bare `PersistenceException`:
 
 The catch-all handler checks this classification before answering 500. `Retry-After` is
 jittered, picked fresh within the kind's range on every response, so retries after one outage
-don't arrive as one wave.
+don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), not code.
 
 ## ERR-04: Rules for code that throws
 - Throw `AppException.of(ErrorCode.X, args)`. Never `new RuntimeException("…")`. Never a new

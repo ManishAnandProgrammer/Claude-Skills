@@ -118,13 +118,24 @@ Lines are counted without blank or comment lines.
 - **Not a finding when:** a DTO or record. Those are meant to be pure data.
 - **Severity:** Medium.
 
-### SMELL-17: Magic numbers and strings
+### SMELL-17: Magic numbers, and tunables in code
 - **Check:**
   - unexplained literals: HTTP status numbers, `/ 60000`, `* 24 * 60 * 60`, `"localhost"`;
   - repeated header names or error messages;
-  - defaults written in both an annotation and configuration.
-- **Fix:** a named constant, `Duration`, `HttpStatus`, a configuration property (one place).
-- **Severity:** Low (Medium when the same literal is a contract across classes).
+  - defaults written in both an annotation and configuration;
+  - **a tunable in code** (owner's rule, 2026-11-13): page sizes, batch sizes, text lengths, retry
+    ranges, grace windows, cron expressions, path prefixes Boot already configures
+    (`/actuator` vs `management.endpoints.web.base-path`), the application's own name. These live
+    in configuration (`app.limits.*`, `app.jobs.*`, `spring.application.name`): one source of
+    truth that ops can change without a build;
+  - the application name repeated in code (error URNs, metric names, pool names): derive it from
+    `spring.application.name`; metric names stay app-neutral (the `application` tag names the app).
+- **Not a finding when:** an invariant of an algorithm, format or protocol, kept with a
+  why-comment (bcrypt reads 72 bytes; a UUID has 36 characters; a 256-bit token).
+- **Fix:** a configuration property read through a typed record or `Limits`; a named constant
+  only for invariants.
+- **Severity:** Medium for a tunable in code; Low for other literals (Medium when the same literal
+  is a contract across classes).
 
 ### SMELL-18: Dead code
 - **Check:** unused classes, methods, fields, record components, constants, imports,
@@ -137,8 +148,10 @@ Lines are counted without blank or comment lines.
   something.
 
 ### SMELL-19: Comments
-- **Check:** keep comments that give intent, warnings or non-obvious contracts. A finding is:
-  - a comment that restates the code;
+- **Check:** comments are for *why*, on logic the code can't explain (a lock, a security choice, a
+  database or framework behaviour, a non-obvious contract). A finding is:
+  - a comment that restates the code, **including class and method Javadoc that repeats the name**
+    (`/** Accounts. */` on `UserService`, `@param` lists that repeat `@Schema` text);
   - a historical "no longer …" note;
   - a stale or misleading comment;
   - a `TODO` without an owner or ticket;
@@ -152,6 +165,12 @@ Lines are counted without blank or comment lines.
 - **Check:** names are descriptive, pronounceable and searchable, with no encodings or
   prefixes, and a meaningful distinction (`resolvedBy` that also means "dismissed by" is a
   finding). Parameter order consistent across sibling methods.
+  - **HTTP input names:** request bodies are `<Entity><Action>Request` (`TodoCreateRequest`,
+    `TodoStatusRequest`), GET parameter objects `<Entity>Filter`; never `*Payload` beside
+    `*Request` in one codebase;
+  - one name per concept across layers (a filter's `todoListId`, not `listId`, when the payloads
+    and responses say `todoListId`);
+  - **package names are lower-case words** (`transportstaff`, not `transportStaff`; HelpBook).
 - **Severity:** Low (Medium when misleading).
 
 ### SMELL-21: Flag arguments

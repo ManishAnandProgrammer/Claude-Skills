@@ -97,31 +97,38 @@ a finding**. Profile keys are written `{{key}}`.
 
 ### REST-08: Lists
 - **Check:**
-  - **pagination:** cursor-based for lists in `{{cursorLists}}` (feeds, history,
-    notifications, any table that grows without bound); offset with a size cap is fine for the
-    admin tables in `{{offsetLists}}`;
-  - **filters:** validated fail-fast (400 on an unknown value), typed as enums, not free
-    strings;
-  - **free-text search** is the `query` parameter in every list and dropdown (one convention for
-    the frontend);
-  - **sorting:** a sort parameter with an allow-list, and a stable tie-breaker (id);
-  - **response:** offset-paged lists return `{{PaginationWrapper}}` (REST-11);
-  - `POST /x/filter` with a body is allowed only when a query string can't express the filter.
-- **Detect:** a `Pageable` / `PageRequest` built from raw client values without a cap; an
-  unbounded `findAll()` behind an endpoint; a sort given as a free String with a silent
-  default.
+  - **pagination:** **cursor-based by default** for lists in `{{cursorLists}}` (user-facing,
+    growing, feeds, dropdowns): `after` cursor, `CursorWrapper` with `pageInfo {nextCursor,
+    hasMore}`, no count. **Offset** only for bounded admin tables in `{{offsetLists}}`:
+    `PaginationWrapper`, the count only on a full page;
+  - **sizes from configuration** (`app.limits.cursor-page` / `offset-page`); over the maximum is a
+    400, never a silent clamp;
+  - **filters:** validated fail-fast (400 `REQUEST_PARAMETER_INVALID` on an unknown value, naming
+    the parameter and nothing else), typed as enums, not free strings;
+  - **free-text search** is the `query` parameter in every list and dropdown;
+  - **sorting:** a sort enum (allow-list), a stable tie-breaker (id); a cursor carries its sort, and
+    one from another sort is refused;
+  - `POST /x/search` with a body only when a query string can't express the filter. The HTTP
+    `QUERY` method (RFC 10008, June 2026) replaces it once the project's Spring has it in a GA
+    release (merged for Spring Framework 7.1) and the proxies and OpenAPI tooling pass it.
+- **Detect:** a `PageRequest` from raw client values; an unbounded `findAll()` behind an endpoint;
+  a sort as a free String; an OFFSET list over a growing table; a count on a cursor list.
 - **Severity:** High for an unbounded list, otherwise Medium.
 
 ### REST-09: Validation layers
 - **Check:**
-  1. bean validation at the edge: `@Valid` on every `@RequestBody`; `@Size` on every String;
-     ranges on numbers; `@NotEmpty` + max size on collections; constraints on `@RequestParam`
-     / `@PathVariable`;
+  1. bean validation at the edge: `@Valid` on every `@RequestBody`; **a length limit on every
+     String** (`@MaxLength("<key>")`, the number in `app.limits.text`: configurable, one source of
+     truth; a literal `@Size(max = N)` is a finding where the house limits exist); ranges on
+     numbers (`@ConfiguredMax` for tunable ones); `@NotEmpty` + max size on collections;
+     constraints on `@RequestParam` / `@PathVariable`;
   2. security validators (REST-10);
   3. domain validation in the service (existence, state, ownership).
 - **Detect:** request DTO fields without constraints; a body parameter missing `@Valid`; a
   service re-checking by hand what a constraint could declare (duplicated bounds).
-- **Severity:** High for unbounded input from any user, otherwise Medium.
+- **Severity:** **High for a String with no length limit, unless the author justifies it** (ask;
+  a justified exception is an accepted deviation); High for other unbounded input; otherwise
+  Medium.
 
 ### REST-10: Hostile text
 - **Check:** every free-text input has `{{NotXss}}` or a documented output-escaping policy.
@@ -134,15 +141,16 @@ a finding**. Profile keys are written `{{key}}`.
 ### REST-11: Response wrapping
 - **Check:** every response is wrapped. Never a raw array or a raw entity:
   - `{{ObjectWrapper}}` for one object;
-  - `{{PaginationWrapper}}` for a **paginated** list: `response` + an explicit, documented
+  - `{{PaginationWrapper}}` for an **offset-paged** list: `response` + an explicit, documented
     `pageInfo` (number, size, totalElements, totalPages, hasNext, hasPrevious);
+  - `CursorWrapper` for a **cursor-paged** list: `response` + `pageInfo {nextCursor, hasMore}`;
+  - `MapWrapper` for values keyed by name;
   - `{{ListWrapper}}` only for a list bounded by nature.
 - **Detect:** a paged list returned as `{{ListWrapper}}`, or page details put in `extraDetails`
   (they are invisible in the OpenAPI schema). A hand-built `PageInfo` that doesn't come from the
   same `Page` as the items is a finding (TEST-12, FLAG-AND-FIELD-DIVERGE).
-- **Cursor lists** (`{{cursorLists}}`): the same principle, an explicit and documented cursor
-  `pageInfo` (`nextCursor`, `hasMore`), never in `extraDetails`. Design the cursor wrapper when
-  the first cursor list is built.
+- **Cursor lists** (`{{cursorLists}}`): the same principle; the cursor is opaque to clients and
+  carries only a position (the caller's scoping still applies to every batch).
 - **Severity:** Medium (High if an entity is returned).
 
 ### REST-12: Bulk operations
@@ -157,17 +165,19 @@ dropdown.
 - **Check:**
   - path `GET {{urlPrefix}}/<resource-plural>/dropdown`; a parent in the path only for a true
     child resource; no named sub-paths (`by-x-id/dropdown`);
-  - response `{{ListWrapper}}<{{DropdownItem}}>`, a record `{value, label}` with no other fields;
-  - parameters: `{{DropdownFilter}}` (`status`, `sortDirection`, `limit`, `query`), or a subclass
-    adding the entity's mandatory (`@NotNull`) and optional filters. No loose `@RequestParam`s;
-    the generic names are never renamed;
+  - response `CursorWrapper<{{DropdownItem}}>` (cursor-paged, so a large set is browsed in
+    batches or narrowed with `query`), items a record `{value, label}` with no other fields;
+  - parameters: `{{DropdownFilter}}` (`size`, `after`, `status`, `sortDirection`, `query`), or a
+    subclass adding the entity's mandatory (`@NotNull`) and optional filters. No loose
+    `@RequestParam`s; the generic names are never renamed;
   - the entity carries `@DropdownCandidate`, and the code honours it (`displayField`,
     `valueField`, the `activeField` default, `sortField` / `sortDirection`, `searchable`,
     `cacheable`);
   - the **service** builds the wrapper; the controller only delegates;
-  - the query is a Criteria **projection** (no entity loading), ordered by `sortField` then the
-    value, limited, with indexes on the filter and sort columns;
-  - `query` on a non-searchable dropdown is a 400, not silently ignored;
+  - the query is a Criteria **projection** (no entity loading), keyset-paged on `sortField` then the
+    value, with indexes on the filter and sort columns;
+  - `query` on a non-searchable dropdown is a 400, not silently ignored; so is a `status` other
+    than `ACTIVE` on an entity without an active flag;
   - results are scoped like the resource's reads;
   - security per `{{dropdownSecurity}}` (normally `isAuthenticated()`);
   - `cacheable` only for static master data, with eviction on writes, and a shared cache (or a
@@ -177,7 +187,8 @@ dropdown.
   "reassign").
 - **Detect:**
   - other shapes or paths for id+name lists (`/lookup`, `/options`, `{id, name}`);
-  - ad-hoc params (`activeOnly`, `q`, `search`);
+  - ad-hoc params (`activeOnly`, `q`, `search`, `limit`);
+  - a dropdown that can't return more than one batch;
   - controller-side wrapping;
   - `@Query` dropdowns that can't honour the generic params;
   - entity `findAll()` used as a dropdown;

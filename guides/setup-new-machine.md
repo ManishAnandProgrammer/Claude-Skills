@@ -43,8 +43,8 @@ You don't need to repeat any of this to Claude in each project. Anything else yo
 
 ### SSH vs HTTPS
 - Pushing needs your GitHub login: an **SSH key per machine** (steps below).
-- The repository is public, so cloning and pulling would also work over HTTPS. Clone with the SSH
-  URL anyway, so `git push` works from the start.
+- The repository is **private**: cloning, pulling and pushing all need your GitHub login. SSH
+  with a key per machine is the simplest; the daily sync uses it unattended.
 
 ---
 
@@ -65,9 +65,10 @@ On GitHub: **Settings → SSH and GPG keys → New SSH key**. Use a title like "
 ```bash
 ssh -T git@github.com      # "Hi ManishAnandProgrammer! You've successfully authenticated…"
 ```
-A key **without** a passphrase lets the daily sync run unattended over SSH. With a passphrase,
-switch the fetch URL to HTTPS (keeping SSH for pushes):
-`git -C ~/Documents/claude-skills remote set-url origin https://github.com/ManishAnandProgrammer/Claude-Skills.git && git -C ~/Documents/claude-skills remote set-url --push origin git@github.com:ManishAnandProgrammer/Claude-Skills.git`
+A key **without** a passphrase lets the daily sync run unattended over SSH. A key with a
+passphrase works only while it is loaded in `ssh-agent`; otherwise the sync logs a failure and
+retries the next day. (HTTPS is no way around it: the repository is private, so HTTPS pulls need
+credentials too.)
 
 ### 3. Clone and install (do it yourself)
 ```bash

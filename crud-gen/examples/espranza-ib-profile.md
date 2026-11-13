@@ -46,7 +46,7 @@ patterns.
 |---|---|
 | `ErrorCode` / `ErrorCodeMapper` / `AppException` / `messagesFile` | `none`: the project throws `ApplicationException.badRequest` (`com.espranza.shared.exception.custom.ApplicationException`); run bootstrap to add the house contract |
 | `PaginationWrapper` / `pagedListFactory` | `none`: run bootstrap |
-| `PageFilter` / `PageRequests` | (verify) |
+| `PageFilter` / `Paging` | (verify) |
 | `noEmojiFields` | (verify) e.g. codes |
 | `idStrategy` | `long-sequence` (existing Long ids) |
 | `testBase` / `loginAs` | (verify) |
