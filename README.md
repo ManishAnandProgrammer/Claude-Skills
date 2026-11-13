@@ -18,6 +18,8 @@ Two skills that share one set of house engineering rules:
   first commit.
 - [Existing project](guides/existing-project.md): an old codebase: baseline audit, fix by risk,
   all new code via crud-gen.
+- [Set up on another computer](guides/setup-new-machine.md): SSH key, clone, install, verify;
+  also how to let Claude do it.
 
 ## Install (once per machine)
 ```bash
@@ -29,6 +31,8 @@ This repository is the **single source of truth**:
   Claude Code loads the skills straight from this repository;
 - it schedules `scripts/sync.sh` once a day: a systemd user timer on Linux (catches up after
   the machine was off), cron elsewhere.
+- it writes a marked block into `~/.claude/CLAUDE.md`, so Claude Code in every project knows the
+  skills live here and that changes are committed and pushed here.
 
 The sync is a fast-forward-only `git pull`. It never merges or overwrites, and skips (logged) when
 there are uncommitted local edits. Log: `~/.local/state/claude-skills/sync.log`.

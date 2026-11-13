@@ -27,6 +27,39 @@ done
 
 chmod +x "$REPO/scripts/sync.sh"
 
+# Tell Claude Code, in every project on this machine, where the skills live and how to change them.
+# Written between markers so a re-run replaces the block instead of duplicating it.
+memory="$HOME/.claude/CLAUDE.md"
+begin="<!-- claude-skills:begin -->"
+end="<!-- claude-skills:end -->"
+block="$begin
+## Skills: single source of truth
+The skills in \`~/.claude/skills/\` (house-review, crud-gen, ...) are symlinks into the git
+repository \`$REPO\` (GitHub: $(git -C "$REPO" remote get-url origin)).
+- To change a skill, edit the files in that repository, then commit and push there. Never copy a
+  skill elsewhere, and never edit a copy.
+- A daily job pulls the repository (fast-forward only) and skips while there are uncommitted
+  changes, so push skill edits promptly.
+- To pull now: \`$REPO/scripts/sync.sh\` (log: \`~/.local/state/claude-skills/sync.log\`).
+- Guides: \`$REPO/guides/\`.
+$end"
+touch "$memory"
+if grep -qF "$begin" "$memory"; then
+    python3 - "$memory" "$begin" "$end" "$block" <<'PY'
+import sys
+path, begin, end, block = sys.argv[1:5]
+text = open(path).read()
+start = text.index(begin)
+stop = text.index(end) + len(end)
+open(path, "w").write(text[:start] + block + text[stop:])
+PY
+    echo "updated the skills block in $memory"
+else
+    [ -s "$memory" ] && printf '\n' >> "$memory"
+    printf '%s\n' "$block" >> "$memory"
+    echo "added the skills block to $memory"
+fi
+
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
     units="$HOME/.config/systemd/user"
     mkdir -p "$units"
