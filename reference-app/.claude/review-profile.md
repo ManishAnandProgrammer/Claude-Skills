@@ -42,8 +42,8 @@ nothing: it is the code the skills copy.
 | `ObjectWrapper` / `ListWrapper` / `MapWrapper` / `PaginationWrapper` / `CursorWrapper` | `com.example.app.common.wrapper.*` | |
 | `exceptionHandler` | `com.example.app.common.exception.GlobalExceptionHandler` | |
 | `errorCodeType` | `com.example.app.common.exception.ErrorCode` | |
-| `cursorLists` | `todos, dropdowns` | Keyset; `pageInfo {nextCursor, hasMore}`; no counts |
-| `offsetLists` | `todo lists` | Bounded per user; page numbers and counts |
+| `cursorLists` | `Todo`, dropdowns | Keyset; `pageInfo {nextCursor, hasMore}`; no counts |
+| `offsetLists` | `TodoList` | Bounded per user; page numbers and counts |
 | `NotXss` | `escape-on-output` | JSON API; clients render text |
 | `noEmojiFields` | `none` | |
 | `tokenRevocation` | `short-lived(15)` | |

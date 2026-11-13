@@ -60,6 +60,8 @@ src/test/java/$reference_path/config
 src/test/resources/application-test.yml
 compose.yaml
 .env.example
+Dockerfile
+.dockerignore
 LIST
             ;;
         sign-in) cat <<LIST
