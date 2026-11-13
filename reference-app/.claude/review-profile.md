@@ -82,7 +82,8 @@ nothing: it is the code the skills copy.
 | Create calls `saveAndFlush`; update changes the managed entity and calls `flush()` before mapping | DATA-25 | The response carries the new `version` and audit fields |
 | Filters are mutable classes | JAVA-03 | Query-parameter binding goes through setters |
 | Text columns are `text`; request Strings carry `@MaxLength("<key>")` with the number in `app.limits.text` | DATA-12 | One length contract, configurable (owner's decision 2026-11-13) |
-| Algorithm invariants stay in code with a why-comment (bcrypt's 72 bytes, the 8-character password floor, 256-bit tokens) | O6 no-constants rule | They aren't tunables: changing them breaks security |
+| Algorithm invariants stay in code with a why-comment (bcrypt's 72 bytes, the 8-character password floor, 256-bit tokens, the bcrypt cost `SecurityConfig.BCRYPT_STRENGTH`) | O6 no-constants rule, SMELL-17 | They aren't tunables: changing them breaks security. The bcrypt cost is a security decision taken with a load test (it sets sign-in CPU and the `sign-in` admission cap), never a per-deployment setting: a lowered value would silently weaken every new hash |
+| The house kit keeps methods the reference itself doesn't call: `MapWrapper`, `ListWrapper`, `ObjectWrapper.setResponse`, `addExtraDetails`, `AppException.withCause` / `withFailedValidations` | SMELL-18 | Bootstrap copies the kit and crud-gen's generated code calls it; deleting a method because the reference doesn't use it would break generated modules. Dead code elsewhere is still a finding |
 
 ## Deviation register
 

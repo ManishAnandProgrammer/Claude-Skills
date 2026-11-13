@@ -2,11 +2,8 @@ package com.example.app.common.admission;
 
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.web.ProblemResponses;
-import com.example.app.common.web.RetryAfterProperties;
 import io.github.resilience4j.bulkhead.Bulkhead;
-import io.github.resilience4j.bulkhead.BulkheadConfig;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
-import io.github.resilience4j.micrometer.tagged.TaggedBulkheadMetrics;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
@@ -17,12 +14,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.actuate.autoconfigure.endpoint.web.WebEndpointProperties;
 import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
 import org.springframework.core.Ordered;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -35,43 +33,55 @@ import java.util.concurrent.atomic.AtomicLong;
  * Resilience4j <em>semaphore</em> bulkhead decides at the door instead (never the thread-pool
  * bulkhead, which would undo virtual threads). The permit is released in {@code finally}.</p>
  *
+ * <p><b>Groups:</b> a request under one of {@link AdmissionGroups#pathPrefixes()} takes its permit from
+ * that group's bulkhead, any other from {@value #DEFAULT_GROUP}'s. The bulkheads are the Resilience4j
+ * starter's, configured under {@code resilience4j.bulkhead.instances}; a group missing there stops
+ * startup rather than run on the library's defaults.</p>
+ *
  * <p>Runs before the security chain, so refused requests cost nothing more, and after the
  * log-context filters, so a refusal is still one line in the log. The actuator is never capped:
  * health must answer under overload.</p>
  *
- * <p><b>Signals:</b> {@value #REJECTED_METRIC} (registered at zero), Resilience4j's
- * {@code resilience4j_bulkhead_available_concurrent_calls}, and one WARN per ten seconds at most.</p>
+ * <p><b>Signals:</b> {@value #REJECTED_METRIC} tagged by group (registered at zero), Resilience4j's
+ * {@code resilience4j_bulkhead_available_concurrent_calls}, and one WARN per group per
+ * {@code warn-interval} at most.</p>
  */
 @Slf4j
 @Component
 class AdmissionControlFilter extends OncePerRequestFilter implements Ordered {
 
     static final String REJECTED_METRIC = "admission.rejected";
-    private static final String BULKHEAD_NAME = "api";
-    /** At most one WARN per this many nanoseconds: under overload a line per refusal would itself be load. */
-    private static final long WARN_EVERY_NANOS = Duration.ofSeconds(10).toNanos();
+    static final String GROUP_TAG = "group";
+    static final String DEFAULT_GROUP = "api";
 
-    private final Bulkhead bulkhead;
-    private final Counter rejected;
+    private final List<Group> prefixGroups = new ArrayList<>();
+    private final Group defaultGroup;
     private final ProblemResponses problemResponses;
-    private final RetryAfterProperties.Range retryAfter;
     private final String actuatorBasePath;
-    private final AtomicLong lastWarnAt = new AtomicLong(System.nanoTime() - WARN_EVERY_NANOS);
+    private final long warnEveryNanos;
 
-    AdmissionControlFilter(AdmissionProperties properties, MeterRegistry meterRegistry, ProblemResponses problemResponses,
-                           RetryAfterProperties retryAfter, WebEndpointProperties actuator) {
+    private record Group(String pathPrefix, Bulkhead bulkhead, Counter rejected, AtomicLong lastWarnAt) {
+    }
+
+    AdmissionControlFilter(AdmissionGroups groups, BulkheadRegistry bulkheads, MeterRegistry meterRegistry,
+                           ProblemResponses problemResponses, WebEndpointProperties actuator) {
         this.problemResponses = problemResponses;
-        this.retryAfter = retryAfter.serverBusy();
         this.actuatorBasePath = actuator.getBasePath();
-        BulkheadRegistry registry = BulkheadRegistry.ofDefaults();
-        this.bulkhead = registry.bulkhead(BULKHEAD_NAME, BulkheadConfig.custom()
-                .maxConcurrentCalls(properties.maxConcurrent())
-                .maxWaitDuration(properties.maxWait())
-                .build());
-        this.rejected = Counter.builder(REJECTED_METRIC)
-                .description("Requests refused at the door because the in-flight cap was reached")
+        this.warnEveryNanos = groups.warnInterval().toNanos();
+        this.defaultGroup = group(DEFAULT_GROUP, "", bulkheads, meterRegistry);
+        for (Map.Entry<String, String> entry : groups.pathPrefixes().entrySet()) {
+            prefixGroups.add(group(entry.getKey(), entry.getValue(), bulkheads, meterRegistry));
+        }
+    }
+
+    private Group group(String name, String pathPrefix, BulkheadRegistry bulkheads, MeterRegistry meterRegistry) {
+        Bulkhead bulkhead = bulkheads.find(name).orElseThrow(() -> new IllegalStateException(
+                "Admission group '%s' needs resilience4j.bulkhead.instances.%s".formatted(name, name)));
+        Counter rejected = Counter.builder(REJECTED_METRIC)
+                .description("Requests refused at the door because their group's in-flight cap was reached")
+                .tag(GROUP_TAG, name)
                 .register(meterRegistry);
-        TaggedBulkheadMetrics.ofBulkheadRegistry(registry).bindTo(meterRegistry);
+        return new Group(pathPrefix, bulkhead, rejected, new AtomicLong(System.nanoTime() - warnEveryNanos));
     }
 
     @Override
@@ -87,30 +97,40 @@ class AdmissionControlFilter extends OncePerRequestFilter implements Ordered {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        if (!bulkhead.tryAcquirePermission()) {
-            refuse(request, response);
+        Group group = groupOf(request.getRequestURI());
+        if (!group.bulkhead().tryAcquirePermission()) {
+            refuse(group, request, response);
             return;
         }
         try {
             chain.doFilter(request, response);
         } finally {
-            bulkhead.onComplete();
+            group.bulkhead().onComplete();
         }
     }
 
-    private void refuse(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        rejected.increment();
-        warnAtMostEveryTenSeconds();
-        response.setHeader(HttpHeaders.RETRY_AFTER, retryAfter.pickSeconds());
+    private Group groupOf(String path) {
+        for (Group group : prefixGroups) {
+            if (path.startsWith(group.pathPrefix())) {
+                return group;
+            }
+        }
+        return defaultGroup;
+    }
+
+    private void refuse(Group group, HttpServletRequest request, HttpServletResponse response) throws IOException {
+        group.rejected().increment();
+        warnAtMostOncePerInterval(group);
         problemResponses.write(request, response, ErrorCode.SERVER_BUSY);
     }
 
-    private void warnAtMostEveryTenSeconds() {
+    private void warnAtMostOncePerInterval(Group group) {
         long now = System.nanoTime();
-        long previous = lastWarnAt.get();
-        if (now - previous >= WARN_EVERY_NANOS && lastWarnAt.compareAndSet(previous, now)) {
-            log.warn("Refusing requests at the door: {} in flight is the cap ({} refused since start)",
-                    bulkhead.getBulkheadConfig().getMaxConcurrentCalls(), (long) rejected.count());
+        long previous = group.lastWarnAt().get();
+        if (now - previous >= warnEveryNanos && group.lastWarnAt().compareAndSet(previous, now)) {
+            log.warn("Refusing requests at the door: group={}, cap={} in flight, refusedSinceStart={}",
+                    group.bulkhead().getName(), group.bulkhead().getBulkheadConfig().getMaxConcurrentCalls(),
+                    (long) group.rejected().count());
         }
     }
 }

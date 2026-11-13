@@ -22,11 +22,14 @@ class RedisRateLimiterTest {
     RedisRateLimiterTest() {
         unreachable.afterPropertiesSet();
         unreachable.start();
-        limiter = new RedisRateLimiter(unreachable, new RateLimitProperties(true, Duration.ofMillis(200)), meterRegistry);
+        RateLimitProperties properties = new RateLimitProperties(true, Duration.ofMillis(200), Duration.ofSeconds(10),
+                Duration.ofSeconds(5));
+        limiter = new RedisRateLimiter(unreachable, properties, meterRegistry);
     }
 
     @AfterEach
     void stop() {
+        limiter.destroy();
         unreachable.destroy();
     }
 

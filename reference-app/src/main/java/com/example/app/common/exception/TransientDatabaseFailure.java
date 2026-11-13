@@ -1,6 +1,5 @@
 package com.example.app.common.exception;
 
-import com.example.app.common.web.RetryAfterProperties;
 import org.hibernate.QueryTimeoutException;
 import org.hibernate.TransactionException;
 import org.hibernate.exception.JDBCConnectionException;
@@ -26,7 +25,7 @@ import java.util.Optional;
  * the request shows up as an {@code SQLException} with no SQLSTATE (the pool or driver refused) or
  * one of class {@code 08}; a constraint failure carries {@code 23xxx} and stays a 500.</p>
  *
- * <p>The {@code Retry-After} range per kind is configured ({@code app.retry-after.*}).</p>
+ * <p>The {@code Retry-After} range per kind is configured ({@code app.retry-after.*}, by error code).</p>
  */
 enum TransientDatabaseFailure {
 
@@ -85,13 +84,5 @@ enum TransientDatabaseFailure {
 
     ErrorCode errorCode() {
         return errorCode;
-    }
-
-    RetryAfterProperties.Range retryAfter(RetryAfterProperties retryAfter) {
-        return switch (this) {
-            case CONTENTION -> retryAfter.databaseContention();
-            case QUERY_TIMEOUT -> retryAfter.queryTimeout();
-            case UNAVAILABLE -> retryAfter.databaseUnavailable();
-        };
     }
 }

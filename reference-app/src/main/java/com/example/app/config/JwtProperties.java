@@ -38,8 +38,9 @@ public record JwtProperties(@NotBlank String secret,
             throw new IllegalArgumentException("app.jwt.secret (JWT_SECRET) must be at least 32 bytes");
         }
         if (Objects.nonNull(accessTokenTtl) && (!accessTokenTtl.isPositive() || accessTokenTtl.compareTo(MAX_ACCESS_TOKEN_TTL) > 0)) {
-            throw new IllegalArgumentException("app.jwt.access-token-ttl (JWT_ACCESS_TTL) must be between 1s and 15m: "
-                    + "access tokens aren't checked against the database, so this bounds how long a revoked session lives");
+            throw new IllegalArgumentException("""
+                    app.jwt.access-token-ttl (JWT_ACCESS_TTL) must be between 1s and 15m: access tokens aren't \
+                    checked against the database, so this bounds how long a revoked session lives""");
         }
         if (Objects.nonNull(refreshTokenTtl) && !refreshTokenTtl.isPositive()) {
             throw new IllegalArgumentException("app.jwt.refresh-token-ttl (JWT_REFRESH_TTL) must be positive");

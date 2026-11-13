@@ -1,6 +1,11 @@
 # Scheduled jobs.
 app:
   jobs:
+    scheduler:
+      # Platform threads shared by the @Scheduled jobs (SchedulingConfig).
+      threads: 2
+      # On shutdown, running jobs get this long to finish; within spring.lifecycle.timeout-per-shutdown-phase.
+      shutdown-wait: 10s
     refresh-token-purge:
       cron: "0 15 3 * * *"
       # Tokens are deleted this long after they expired.

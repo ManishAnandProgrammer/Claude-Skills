@@ -24,7 +24,6 @@ import java.util.Objects;
 @Component
 class StartupChecks {
 
-    private static final int DEFAULT_POOL_SIZE = 10;
     private static final List<String> SHARED_PORT_PROFILES = List.of("test");
 
     StartupChecks(Environment environment, AdmissionProperties admission) {
@@ -42,7 +41,7 @@ class StartupChecks {
     }
 
     private static void checkAdmissionLeavesRoomForThePoolQueue(Environment environment, AdmissionProperties admission) {
-        int poolSize = environment.getProperty("spring.datasource.hikari.maximum-pool-size", Integer.class, DEFAULT_POOL_SIZE);
+        int poolSize = environment.getRequiredProperty("spring.datasource.hikari.maximum-pool-size", Integer.class);
         if (admission.maxConcurrent() < 2 * poolSize) {
             throw new IllegalStateException("app.admission.max-concurrent (%d) must be at least twice the pool size (%d)"
                     .formatted(admission.maxConcurrent(), poolSize));

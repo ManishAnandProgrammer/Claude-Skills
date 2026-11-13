@@ -1,5 +1,6 @@
 package com.example.app.common.web;
 
+import com.example.app.common.exception.ErrorCode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -7,6 +8,7 @@ import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -19,6 +21,20 @@ public record RetryAfterProperties(@Valid @NotNull Range serverBusy,
                                    @Valid @NotNull Range databaseContention,
                                    @Valid @NotNull Range queryTimeout,
                                    @Valid @NotNull Range databaseUnavailable) {
+
+    /**
+     * The range for a code a client should come back from: every 503 has one
+     * ({@code ErrorCodeContractTest}), so no refusal of that kind goes out without {@code Retry-After}.
+     */
+    public Optional<Range> rangeFor(ErrorCode code) {
+        return switch (code) {
+            case SERVER_BUSY -> Optional.of(serverBusy);
+            case DATABASE_CONTENTION -> Optional.of(databaseContention);
+            case QUERY_TIMEOUT -> Optional.of(queryTimeout);
+            case DATABASE_UNAVAILABLE -> Optional.of(databaseUnavailable);
+            default -> Optional.empty();
+        };
+    }
 
     public record Range(@NotNull Duration min, @NotNull Duration max) {
 
