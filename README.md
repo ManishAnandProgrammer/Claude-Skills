@@ -13,6 +13,12 @@ Two skills that share one set of house engineering rules:
 
 **Install both together.** crud-gen reads house-review's `references/` as its source of truth.
 
+## Guides
+- [New project](guides/new-project.md): fresh from Spring Initializr, house standards from the
+  first commit.
+- [Existing project](guides/existing-project.md): an old codebase: baseline audit, fix by risk,
+  all new code via crud-gen.
+
 ## Install (once per machine)
 ```bash
 git clone git@github.com:ManishAnandProgrammer/Claude-Skills.git ~/Documents/claude-skills
