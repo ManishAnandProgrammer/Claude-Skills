@@ -15,11 +15,12 @@ CREATE TABLE users (
     updated_by    uuid,
     version       bigint      NOT NULL,
     CONSTRAINT pk_users PRIMARY KEY (id),
+    -- Stored normalised, so a plain unique constraint is unique as people read it (case and
+    -- surrounding spaces don't make a different address), and its index serves "email = ?".
     CONSTRAINT ck_users_email_normalized CHECK (email = lower(trim(email))),
+    CONSTRAINT uq_users_email UNIQUE (email),
     CONSTRAINT ck_users_role CHECK (role IN ('USER'))
 );
--- Unique as people read it: case and surrounding spaces don't make a different address.
-CREATE UNIQUE INDEX uq_users_email ON users (lower(trim(email)));
 --rollback DROP TABLE users;
 
 --changeset dev:0001-refresh-tokens

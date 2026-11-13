@@ -45,9 +45,10 @@ import java.util.List;
  *   <li>Access tokens are HS256 JWTs signed and verified with {@code app.jwt.secret} by Spring
  *       Security's resource server: checked by signature, expiry and issuer, with no database
  *       lookup per request. The {@code sub} claim is the user id, {@code roles} the roles.</li>
- *   <li>Public: the sign-in endpoints, health, and the API docs (disabled in prod). Everything else
- *       needs a token. Role checks, when a role beyond {@code USER} exists, live in
- *       {@code @PreAuthorize} on the controllers (method security is on).</li>
+ *   <li>Public: the sign-in endpoints, health, the prometheus scrape (management port only), and
+ *       the API docs (disabled in prod). Everything else needs a token. Role checks, when a role
+ *       beyond {@code USER} exists, live in {@code @PreAuthorize} on the controllers (method
+ *       security is on).</li>
  *   <li>{@code DispatcherType.ERROR} is permitted, so an exception that escapes to the container's
  *       error page isn't re-answered as a 401.</li>
  *   <li>Security errors are Problem Details with an {@code errorCode}, like every other error.</li>
@@ -61,6 +62,9 @@ class SecurityConfig {
             "/api/v1/auth/**",
             "/actuator/health",
             "/actuator/health/**",
+            // No token (metricsAuth: network-only): served only on the management port, which is
+            // never published publicly; StartupChecks refuses a missing or shared one.
+            "/actuator/prometheus",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html"

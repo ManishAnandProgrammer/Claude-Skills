@@ -1,6 +1,10 @@
 package com.example.app.user;
 
+import com.example.app.support.DistinctClientAddresses;
 import com.example.app.support.IntegrationTest;
+import com.example.app.support.StubBreachedPasswords;
+import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -9,7 +13,10 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -33,6 +40,7 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
 import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -45,10 +53,73 @@ class AuthIntegrationTest extends IntegrationTest {
     @Autowired
     private MeterRegistry meterRegistry;
 
+    @Autowired
+    private BulkheadRegistry bulkheads;
+
+    @Value("${app.jwt.issuer}")
+    private String issuer;
+
+    @Value("${app.rate-limit.sign-in.login-per-ip.requests}")
+    private int loginPerIp;
+
+    @Value("${app.rate-limit.sign-in.login-per-account.requests}")
+    private int loginPerAccount;
+
+    @Value("${app.rate-limit.sign-in.signup-per-ip.requests}")
+    private int signupPerIp;
+
+    @Value("${app.rate-limit.sign-in.refresh-per-ip.requests}")
+    private int refreshPerIp;
+
+    @Value("${app.rate-limit.sign-in.logout-per-ip.requests}")
+    private int logoutPerIp;
+
     private ResultActions refresh(String refreshToken) throws Exception {
         return postAs(null, "/api/v1/auth/refresh-token", """
                 {"refreshToken": "%s"}
                 """.formatted(refreshToken));
+    }
+
+    /** A request from one pinned client address, to trip a per-IP limit (see DistinctClientAddresses). */
+    private ResultActions postFrom(String clientIp, String path, String json) throws Exception {
+        return mvc.perform(post(path).remoteAddress(clientIp).contentType(MediaType.APPLICATION_JSON).content(json));
+    }
+
+    private ResultActions loginFrom(String clientIp, String email, String password) throws Exception {
+        return postFrom(clientIp, "/api/v1/auth/login", """
+                {"email": "%s", "password": "%s"}
+                """.formatted(email, password));
+    }
+
+    @FunctionalInterface
+    private interface Attempt {
+        ResultActions send() throws Exception;
+    }
+
+    /**
+     * Sends the attempt until it is refused and returns how many got through first. The bucket
+     * refills gradually (a 20-a-minute limit gains a token every 3 seconds), so a slow run may get a
+     * few more through than the limit, never fewer.
+     */
+    private static int attemptsBeforeTheLimit(int limit, Attempt attempt) throws Exception {
+        for (int sent = 0; sent < 2 * limit; sent++) {
+            ResultActions result = attempt.send();
+            if (result.andReturn().getResponse().getStatus() == HttpStatus.TOO_MANY_REQUESTS.value()) {
+                assertRateLimited(result);
+                return sent;
+            }
+        }
+        throw new AssertionError("Not rate limited after %d attempts".formatted(2 * limit));
+    }
+
+    private static void assertRateLimited(ResultActions result) throws Exception {
+        result.andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.errorCode").value("RATE_LIMITED"))
+                .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
+    }
+
+    private double breachCheckUnavailable() {
+        return meterRegistry.counter(StubBreachedPasswords.UNAVAILABLE_METRIC).count();
     }
 
     @Test
@@ -125,6 +196,52 @@ class AuthIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("Signup with a password from a known breach is 400 USER_PASSWORD_BREACHED and creates nothing")
+    void signupWithABreachedPasswordIs400() throws Exception {
+        String email = uniqueEmail("breached");
+
+        signup(email, StubBreachedPasswords.BREACHED + "-Horse-9")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("USER_PASSWORD_BREACHED"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE email = ?", Integer.class, email)).isZero();
+
+        signup(email, PASSWORD).andExpect(status().isCreated());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE email = ?", Integer.class, email)).isOne();
+    }
+
+    @Test
+    @DisplayName("While the breached-password check is unreachable, signup proceeds and the outage is counted")
+    void signupProceedsWhileTheBreachCheckIsUnavailable() throws Exception {
+        double before = breachCheckUnavailable();
+
+        signup(uniqueEmail("unreachable"), StubBreachedPasswords.UNREACHABLE + "-Horse-9").andExpect(status().isCreated());
+
+        assertThat(breachCheckUnavailable()).isEqualTo(before + 1);
+    }
+
+    @Test
+    @DisplayName("While the breached-password bulkhead is full, signup skips the check at once and counts it")
+    void signupSkipsTheBreachCheckWhileTheBulkheadIsFull() throws Exception {
+        Bulkhead bulkhead = bulkheads.bulkhead("breached-passwords");
+        assertThat(bulkhead.getBulkheadConfig().getMaxWaitDuration()).isZero();
+        int permits = bulkhead.getBulkheadConfig().getMaxConcurrentCalls();
+        double before = breachCheckUnavailable();
+        for (int held = 0; held < permits; held++) {
+            assertThat(bulkhead.tryAcquirePermission()).isTrue();
+        }
+        try {
+            signup(uniqueEmail("bulkhead"), StubBreachedPasswords.BREACHED + "-Horse-9").andExpect(status().isCreated());
+        } finally {
+            for (int held = 0; held < permits; held++) {
+                bulkhead.onComplete();
+            }
+        }
+
+        assertThat(breachCheckUnavailable()).isEqualTo(before + 1);
+        signup(uniqueEmail("bulkhead"), StubBreachedPasswords.BREACHED + "-Horse-9").andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("Signup refuses an unknown field instead of ignoring it")
     void signupWithAnUnknownFieldIs400() throws Exception {
         postAs(null, "/api/v1/auth/signup", """
@@ -161,18 +278,80 @@ class AuthIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Login is limited per account: the sixth attempt in a minute is 429 with Retry-After")
+    @DisplayName("Login is limited per account: one past the limit is 429 with Retry-After")
     void loginIsRateLimitedPerAccount() throws Exception {
         String email = uniqueEmail("limited");
         signup(email, PASSWORD).andExpect(status().isCreated());
-        for (int attempt = 0; attempt < 5; attempt++) {
+        for (int attempt = 0; attempt < loginPerAccount; attempt++) {
             login(email, "Wrong-Password-1").andExpect(status().isUnauthorized());
         }
 
-        login(email, PASSWORD)
-                .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.errorCode").value("RATE_LIMITED"))
-                .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
+        assertRateLimited(login(email, PASSWORD));
+    }
+
+    @Test
+    @DisplayName("Another account still logs in from the same address while one account is limited")
+    void aLimitedAccountDoesNotLimitOthers() throws Exception {
+        String clientIp = DistinctClientAddresses.next();
+        String limited = uniqueEmail("limited");
+        String other = uniqueEmail("other");
+        signup(limited, PASSWORD).andExpect(status().isCreated());
+        signup(other, PASSWORD).andExpect(status().isCreated());
+        for (int attempt = 0; attempt < loginPerAccount; attempt++) {
+            loginFrom(clientIp, limited, "Wrong-Password-1").andExpect(status().isUnauthorized());
+        }
+        assertRateLimited(loginFrom(clientIp, limited, PASSWORD));
+
+        loginFrom(clientIp, other, PASSWORD)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.accessToken").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("Login is limited per client address, across accounts: once the limit is used up, 429 with Retry-After")
+    void loginIsRateLimitedPerIp() throws Exception {
+        String clientIp = DistinctClientAddresses.next();
+        int accepted = attemptsBeforeTheLimit(loginPerIp,
+                () -> loginFrom(clientIp, uniqueEmail("nobody"), "Wrong-Password-1"));
+
+        assertThat(accepted).isGreaterThanOrEqualTo(loginPerIp);
+    }
+
+    @Test
+    @DisplayName("Signup is limited per client address: once the limit is used up, 429 with Retry-After")
+    void signupIsRateLimitedPerIp() throws Exception {
+        String clientIp = DistinctClientAddresses.next();
+        String email = uniqueEmail("flood");
+        String body = signupBody(email, "Test User", PASSWORD);
+        postFrom(clientIp, "/api/v1/auth/signup", body).andExpect(status().isCreated());
+
+        int accepted = 1 + attemptsBeforeTheLimit(signupPerIp, () -> postFrom(clientIp, "/api/v1/auth/signup", body));
+
+        assertThat(accepted).isGreaterThanOrEqualTo(signupPerIp);
+    }
+
+    @Test
+    @DisplayName("Refresh is limited per client address: once the limit is used up, 429 with Retry-After")
+    void refreshIsRateLimitedPerIp() throws Exception {
+        String clientIp = DistinctClientAddresses.next();
+        String body = """
+                {"refreshToken": "unknown-token"}
+                """;
+        int accepted = attemptsBeforeTheLimit(refreshPerIp, () -> postFrom(clientIp, "/api/v1/auth/refresh-token", body));
+
+        assertThat(accepted).isGreaterThanOrEqualTo(refreshPerIp);
+    }
+
+    @Test
+    @DisplayName("Logout is limited per client address: once the limit is used up, 429 with Retry-After")
+    void logoutIsRateLimitedPerIp() throws Exception {
+        String clientIp = DistinctClientAddresses.next();
+        String body = """
+                {"refreshToken": "unknown-token"}
+                """;
+        int accepted = attemptsBeforeTheLimit(logoutPerIp, () -> postFrom(clientIp, "/api/v1/auth/logout", body));
+
+        assertThat(accepted).isGreaterThanOrEqualTo(logoutPerIp);
     }
 
     @Test
@@ -214,7 +393,9 @@ class AuthIntegrationTest extends IntegrationTest {
         postAs(null, "/api/v1/auth/logout", """
                 {"refreshToken": "%s"}
                 """.formatted(user.refreshToken())).andExpect(status().isNoContent());
-        refresh(user.refreshToken()).andExpect(status().isUnauthorized());
+        refresh(user.refreshToken())
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));
         postAs(null, "/api/v1/auth/logout", """
                 {"refreshToken": "unknown-token"}
                 """).andExpect(status().isNoContent());
@@ -229,7 +410,7 @@ class AuthIntegrationTest extends IntegrationTest {
         getAs(null, "/api/v1/users/me")
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"))
-                .andExpect(jsonPath("$.type").value("urn:reference:error:AUTHENTICATION_REQUIRED"));
+                .andExpect(jsonPath("$.type").value(problemType("AUTHENTICATION_REQUIRED")));
         getAs(forged, "/api/v1/users/me")
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
@@ -285,7 +466,7 @@ class AuthIntegrationTest extends IntegrationTest {
     void expiredOrForeignAccessTokensAreRefused() throws Exception {
         TestUser user = newUser();
         Instant now = Instant.now();
-        String expired = accessToken(user, "reference", now.minus(Duration.ofHours(1)), now.minus(Duration.ofMinutes(1)));
+        String expired = accessToken(user, issuer, now.minus(Duration.ofHours(1)), now.minus(Duration.ofMinutes(1)));
         String foreign = accessToken(user, "someone-else", now, now.plus(Duration.ofMinutes(5)));
 
         getAs(expired, "/api/v1/users/me")
@@ -294,7 +475,7 @@ class AuthIntegrationTest extends IntegrationTest {
         getAs(foreign, "/api/v1/users/me")
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
-        getAs(accessToken(user, "reference", now, now.plus(Duration.ofMinutes(5))), "/api/v1/users/me")
+        getAs(accessToken(user, issuer, now, now.plus(Duration.ofMinutes(5))), "/api/v1/users/me")
                 .andExpect(status().isOk());
     }
 

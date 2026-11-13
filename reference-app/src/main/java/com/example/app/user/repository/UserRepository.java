@@ -6,7 +6,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Emails are stored normalised: look them up with {@code User.normalizeEmail}, so the unique index is used. */
+/**
+ * Emails are stored normalised ({@code ck_users_email_normalized}): look them up with
+ * {@code User.normalizeEmail}, so a lookup matches the stored form and uses {@code uq_users_email}.
+ */
 public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByEmail(String email);

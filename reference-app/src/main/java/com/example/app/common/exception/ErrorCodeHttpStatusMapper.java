@@ -45,6 +45,7 @@ public final class ErrorCodeHttpStatusMapper {
 
         MAPPING.put(ErrorCode.USER_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.USER_EMAIL_TAKEN, HttpStatus.CONFLICT);
+        MAPPING.put(ErrorCode.USER_PASSWORD_BREACHED, HttpStatus.BAD_REQUEST);
         MAPPING.put(ErrorCode.AUTH_INVALID_CREDENTIALS, HttpStatus.UNAUTHORIZED);
         MAPPING.put(ErrorCode.AUTH_INVALID_REFRESH_TOKEN, HttpStatus.UNAUTHORIZED);
 

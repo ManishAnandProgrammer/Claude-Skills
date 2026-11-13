@@ -46,6 +46,7 @@ public enum ErrorCode {
     // ── User and sign-in ─────────────────────────────────────────────────
     USER_NOT_FOUND,
     USER_EMAIL_TAKEN,
+    USER_PASSWORD_BREACHED,
     AUTH_INVALID_CREDENTIALS,
     AUTH_INVALID_REFRESH_TOKEN,
 
