@@ -9,9 +9,18 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 source "$REPO/scripts/lib/common.sh"
 
+case "${1:-}" in
+    -h|--help) sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    "") ;;
+    *) die "unknown option: $1 (see --help)" ;;
+esac
+
+preflight "$REPO"
+acquire_lock
+
 link_skills "$REPO"
 
-write_claude_block "## Skills: single source of truth (standalone copy)
+update_claude_block write "## Skills: single source of truth (standalone copy)
 The skills in \`~/.claude/skills/\` (house-review, crud-gen, ...) are symlinks into the folder
 \`$REPO\`, a standalone copy (not a git clone, no automatic updates).
 - Use the skills from there; never copy a skill elsewhere. Local edits to that folder take effect

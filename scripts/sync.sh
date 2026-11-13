@@ -8,7 +8,7 @@ LOG="${XDG_STATE_HOME:-$HOME/.local/state}/claude-skills/sync.log"
 mkdir -p "$(dirname "$LOG")"
 
 {
-    echo "== $(date -Is)"
+    echo "== $(date '+%Y-%m-%dT%H:%M:%S%z')"   # portable: BSD/macOS date has no -I
     if [ -n "$(git -C "$REPO" status --porcelain)" ]; then
         echo "skipped: uncommitted changes in $REPO; commit and push them, then run this again"
         exit 0

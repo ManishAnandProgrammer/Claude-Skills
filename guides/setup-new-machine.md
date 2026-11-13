@@ -119,10 +119,11 @@ Create `~/Documents/claude-skills/<new-skill>/SKILL.md`, commit and push, then r
 
 ### Removing it from a machine
 ```bash
-systemctl --user disable --now claude-skills-sync.timer   # or remove the claude-skills lines from crontab -e
-rm ~/.claude/skills/house-review ~/.claude/skills/crud-gen # removes the links only
-# delete the block between the claude-skills markers in ~/.claude/CLAUDE.md
+~/Documents/claude-skills/scripts/uninstall.sh
 ```
+This removes the links pointing into this folder, its `CLAUDE.md` block and its daily sync
+(timer or cron lines), and only those that belong to this folder. The folder itself and any
+backups in `~/.claude/skills-backup/` are kept.
 
 ---
 

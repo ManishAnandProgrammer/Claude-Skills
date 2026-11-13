@@ -111,8 +111,7 @@ Start a new Claude Code session.
 
 ### Them: remove
 ```bash
-rm ~/.claude/skills/house-review ~/.claude/skills/crud-gen     # the links only
-# delete the block between the claude-skills markers in ~/.claude/CLAUDE.md
+~/Documents/claude-skills/scripts/uninstall.sh     # links + CLAUDE.md block of this copy only
 rm -rf ~/Documents/claude-skills
 ```
 

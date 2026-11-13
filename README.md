@@ -44,6 +44,21 @@ Start a new Claude Code session afterwards; the skills show up as `/house-review
 Got a **zip** instead of a clone (no `.git`)? Run `scripts/install-standalone.sh`: same links
 and `CLAUDE.md` block, no daily sync. See [guides/share-as-zip.md](guides/share-as-zip.md).
 
+## How the installers behave
+- **Idempotent:** running one twice changes nothing (links refreshed, the `CLAUDE.md` block
+  replaced and never duplicated, timer and cron lines not duplicated).
+- **Safe:**
+  - existing skill folders are moved to `~/.claude/skills-backup/` (outside the skills folder,
+    so a backup is never loaded as a skill);
+  - `CLAUDE.md` is written atomically, your own content in it is kept, a symlinked
+    (dotfiles) `CLAUDE.md` stays a symlink, and damaged markers stop the run with the file
+    untouched.
+- **Refuses** to run as root (`sudo`), from a path with spaces, without `python3`, while
+  another install is running, or (`install.sh`) on a copy without git.
+- **A failed first pull** (offline) is a warning, not a failed install.
+- **`--help`** on every installer. `scripts/uninstall.sh` undoes everything, but only for its
+  own copy: it never removes another copy's links, block or timer.
+
 ## Changing a skill
 Edit the files here (or through `~/.claude/skills/<name>`, the same files), then commit and push.
 The other machines pick the change up within a day, or right away with
