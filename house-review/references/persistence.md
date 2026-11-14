@@ -325,6 +325,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - **also per scoping filter** (a parent id: a list's own screen): `(parent_id, owner_id, sort
     keys…, id)`, which also serves the foreign key, or the page walks every row of the owner;
   - every sort has a unique tie-breaker;
+  - **keyset code:** `Seek.order` names the same columns as `Seek.after`, in the same order, id
+    last; the query fetches `size + 1`;
   - **a keyset sort key is never null.** A nullable column (a due date) sorts through a stored
     generated column (`coalesce(due_date, date '9999-12-31')`) that the index and the keyset use;
   - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).

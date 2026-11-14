@@ -273,12 +273,18 @@ written into it (golden `TodoListRepository`).
 ### 4.7 Custom repository and Criteria projection impl
 Golden: `TodoRepositoryImpl` (cursor), `TodoListRepositoryImpl` (offset + dropdown).
 - **Projections only**: `builder.construct(<Row>.class, …)`; never entities on a list page.
-- The projection is a `ProjectionQuery` (entity, row class, selections, predicates), passed to the
-  injected `keysetPages` / `offsetPages` beans.
-- Cursor: a `Keyset` per sort (keys non-null, last key the id): `keysetPages.fetch(query, keyset,
-  after, size)` returns a `CursorBatch`; **the service** turns it into a `CursorWrapper`.
-- Offset: `offsetPages.fetch(query, pageable)` with the sort from the filter's sort enum; the service
-  wraps the page in `PaginationWrapper.fromPage`.
+- **Each method writes its query top to bottom** (SMELL-29): `builder`, `query`, `root`,
+  `query.select(builder.construct(...))`, a `List<Predicate>`, `where`, `orderBy`, then the plain
+  helpers. No helper that takes lambdas.
+- Cursor: `Cursor cursor = Cursor.read(filter.getAfter(), sort)`; `if (cursor.isPresent())` add
+  `Seek.after(builder, descending, key1, cursor.text(0), …, id, cursor.uuid(n))`;
+  `query.orderBy(Seek.order(builder, descending, key1, …, id))` on **the same columns, id last**;
+  `setMaxResults(size + 1)`; `CursorBatch.of(rows, size, row -> Cursor.write(sort, row.key1(), …,
+  row.id()))`. Keys non-null (a generated sort column for a nullable one). **The service** turns the
+  `CursorBatch` into a `CursorWrapper`.
+- Offset: the select query with `QueryUtils.toOrders(pageable.getSort(), root, builder)` and its own
+  count query, then `OffsetPages.page(rows, count, pageable)` (skips the count on a partial page);
+  the service wraps the page in `PaginationWrapper.fromPage`.
 - Predicates from the `requireXPredicate()` methods; text search with `{{TextSearch}}.contains`.
 - Child data on a list page: an aggregate subquery in the projection, or two steps (a page of ids,
   then one grouped query). Never a collection fetch (DATA-26).

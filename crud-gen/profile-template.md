@@ -58,7 +58,7 @@ Fill values from the codebase, not from memory.
 |---|---|---|
 | `cursorLists` | `all lists not in offsetLists` | Keyset paging (the default): `CursorFilter`, `CursorWrapper`, `pageInfo {nextCursor, hasMore}`, no count |
 | `offsetLists` | `none` | Bounded admin tables that need page numbers, as **entity class names** (`TodoList`): `PageFilter`, `PaginationWrapper`, count on a full page |
-| `CursorFilter` / `CursorWrapper` / `KeysetPages` | `com.example.common.pagination.CursorFilter` / `…wrapper.CursorWrapper` / `…pagination.KeysetPages` | Cursor lists |
+| `CursorFilter` / `CursorWrapper` / `Cursor` / `Seek` / `CursorBatch` | `com.example.common.pagination.CursorFilter` / `…wrapper.CursorWrapper` / `…pagination.Cursor`, `…pagination.Seek` | Cursor lists |
 | `PageFilter` / `PaginationWrapper` / `OffsetPages` | `com.example.common.pagination.PageFilter` / `…wrapper.PaginationWrapper` / `…pagination.OffsetPages` | Offset lists |
 | `Paging` | `com.example.common.pagination.Paging` | Default sizes from configuration (`offset(filter, sort)`, `cursorSize(filter)`) |
 

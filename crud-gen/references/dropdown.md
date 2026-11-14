@@ -37,9 +37,9 @@ annotation's full LLM contract) and, for one entity, `todo/repository/impl/TodoL
 
 ## What to generate per entity (naming fixed: `findDropdownItems`, `dropdown`, `dropdown`)
 1. **Repository** (Criteria, never `@Query`): a **projection**
-   `builder.construct(DropdownItem.class, value, label)` in a `ProjectionQuery`, fetched with the
-   injected `keysetPages` (returning a `CursorBatch`) over the keyset
-   `(sortField, valueField)`; predicates for mandatory, optional, status and search; scoped like the
+   `builder.construct(DropdownItem.class, value, label)`, written top to bottom with `Cursor` /
+   `Seek` (sorts `NAME_ASC` / `NAME_DESC`) over the keyset `(sortField, valueField)`, returning a
+   `CursorBatch`; predicates for mandatory, optional, status and search; scoped like the
    resource's reads (ownership, tenant). Indexes `(scope columns, sortField, valueField)`.
 2. **Service:** `CursorWrapper<DropdownItem> dropdown(<Filter> filter)` builds the wrapper from the
    repository's `CursorBatch`; refuses an inapplicable
