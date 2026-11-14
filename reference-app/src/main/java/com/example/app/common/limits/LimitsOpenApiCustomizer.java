@@ -14,8 +14,8 @@ import java.util.Objects;
 
 /**
  * Writes the configured limits into the API docs: {@code maxLength} for {@link MaxLength} body
- * fields and query parameters, {@code maximum} for {@link ConfiguredMax}. Without it the schema
- * couldn't show a limit that lives in configuration.
+ * fields and query parameters, {@code maximum} for {@link ConfiguredMax}, {@code maxItems} for
+ * {@link ConfiguredMaxSize}. Without it the schema couldn't show a limit that lives in configuration.
  */
 @Component
 class LimitsOpenApiCustomizer implements PropertyCustomizer, ParameterCustomizer {
@@ -51,6 +51,8 @@ class LimitsOpenApiCustomizer implements PropertyCustomizer, ParameterCustomizer
             schema.setMaxLength(limits.maxLength(maxLength.value()));
         } else if (annotation instanceof ConfiguredMax configuredMax) {
             schema.setMaximum(BigDecimal.valueOf(limits.get(configuredMax.value())));
+        } else if (annotation instanceof ConfiguredMaxSize configuredMaxSize) {
+            schema.setMaxItems(limits.get(configuredMaxSize.value()));
         }
     }
 }

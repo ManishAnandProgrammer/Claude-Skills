@@ -1,5 +1,6 @@
 package com.example.app.common.pagination;
 
+import jakarta.persistence.criteria.AbstractQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -19,8 +20,9 @@ public record ProjectionQuery<T, R>(Class<T> entity, Class<R> row, Projection<T,
         Selection<R> select(CriteriaBuilder builder, Root<T> root);
     }
 
+    /** {@code query} is the statement being built, so a condition can correlate a subquery (an exists). */
     @FunctionalInterface
     public interface Conditions<T> {
-        List<Predicate> build(CriteriaBuilder builder, Root<T> root);
+        List<Predicate> build(CriteriaBuilder builder, Root<T> root, AbstractQuery<?> query);
     }
 }

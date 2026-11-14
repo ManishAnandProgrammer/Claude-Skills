@@ -19,4 +19,13 @@ public interface TodoRepository extends JpaRepository<Todo, UUID>, CustomTodoRep
      */
     @Lock(LockModeType.PESSIMISTIC_READ)
     Optional<Todo> findForShareByIdAndOwnerId(UUID id, UUID ownerId);
+
+    /**
+     * The owner's todo, locked {@code FOR NO KEY UPDATE} (Hibernate's PostgreSQL write lock) until the
+     * transaction ends, for the writes that touch its tag rows: a second writer with the same version
+     * waits, then reads the new version and answers 409, instead of colliding on a tag row; and the
+     * todo is always locked before its tag rows, so a tag change and the todo's delete can't deadlock.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<Todo> findForUpdateByIdAndOwnerId(UUID id, UUID ownerId);
 }

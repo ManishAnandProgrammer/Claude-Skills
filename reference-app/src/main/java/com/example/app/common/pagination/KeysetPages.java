@@ -61,7 +61,7 @@ public class KeysetPages {
         CriteriaQuery<R> query = builder.createQuery(projectionQuery.row());
         Root<T> root = query.from(projectionQuery.entity());
         query.select(projectionQuery.projection().select(builder, root));
-        List<Predicate> predicates = new ArrayList<>(projectionQuery.conditions().build(builder, root));
+        List<Predicate> predicates = new ArrayList<>(projectionQuery.conditions().build(builder, root, query));
         if (Objects.nonNull(after)) {
             predicates.add(seekPast(builder, root, keyset, decode(after, keyset)));
         }

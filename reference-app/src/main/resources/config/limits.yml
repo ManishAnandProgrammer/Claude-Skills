@@ -34,6 +34,10 @@ app:
     time-entry:
       # Time logged in one entry, in minutes.
       max-minutes: 1440
+    # Sizes of collections the API accepts, by entity (@ConfiguredMaxSize("<entity>.max-<field>")).
+    todo:
+      # Tags on one todo (distinct ids, on create and on PUT /todos/{id}/tags).
+      max-tags: 10
     # Latest dates the API accepts, by field (@LatestDate("…") on request records).
     latest-date:
       # Must stay before 9999-12-31, the due_sort value that puts undated todos last (0003).

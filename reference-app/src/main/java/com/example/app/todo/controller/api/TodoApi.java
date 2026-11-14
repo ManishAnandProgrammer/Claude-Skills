@@ -8,6 +8,7 @@ import com.example.app.todo.dto.request.TimeEntryUpdateRequest;
 import com.example.app.todo.dto.request.TodoCreateRequest;
 import com.example.app.todo.dto.request.TodoFilter;
 import com.example.app.todo.dto.request.TodoStatusRequest;
+import com.example.app.todo.dto.request.TodoTagsRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
 import com.example.app.todo.dto.response.TimeEntryResponse;
 import com.example.app.todo.dto.response.TodoResponse;
@@ -23,22 +24,22 @@ import org.springframework.http.ProblemDetail;
 import java.util.UUID;
 
 @Tag(name = "Todos", description = """
-        The signed-in user's todos and the time logged on them (/todos/{todoId}/time-entries). Another \
-        user's todo or list answers 404.""")
+        The signed-in user's todos, the time logged on them (/todos/{todoId}/time-entries) and the tags \
+        they carry (/todos/{id}/tags). Another user's todo, list or tag answers 404.""")
 public interface TodoApi {
 
     @Operation(summary = "Your todos, in batches", description = """
             Cursor-paged: the first call returns a batch and pageInfo.nextCursor; send it as after to \
             get the next batch, until hasMore is false. size sets the batch (default and maximum from \
-            configuration). Filters: todoListId, status, priority, dueOnOrBefore (yyyy-MM-dd) and query \
-            (a case-insensitive part of the title). Ordered by sort: DUE_DATE (the default; no due date \
-            last) or NEWEST; a cursor only continues the order it came from. Rows leave out the notes; \
-            GET /todos/{id} has them.""")
+            configuration). Filters: todoListId, tagId (todos carrying that tag), status, priority, \
+            dueOnOrBefore (yyyy-MM-dd) and query (a case-insensitive part of the title). Ordered by sort: \
+            DUE_DATE (the default; no due date last) or NEWEST; a cursor only continues the order it came \
+            from. Rows carry the tags (id and name) and leave out the notes; GET /todos/{id} has them.""")
     @ApiResponse(responseCode = "200", description = "One batch, with pageInfo {nextCursor, hasMore}")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (size, query or after out of range); REQUEST_PARAMETER_INVALID (an unknown \
-            status, priority or sort, a malformed date or id, a non-numeric size, or an after that is \
-            tampered or from another sort; see failed or parameter)""",
+            status, priority or sort, a malformed date, todoListId or tagId, a non-numeric size, or an \
+            after that is tampered or from another sort; see failed or parameter)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -58,13 +59,17 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<TodoResponse> get(UUID id);
 
-    @Operation(summary = "Create a todo", description = "Created OPEN, in one of your lists.")
+    @Operation(summary = "Create a todo", description = """
+            Created OPEN, in one of your lists, carrying the tags in tagIds (your own tags, up to a \
+            configured number; none when absent).""")
     @ApiResponse(responseCode = "201", description = "Created")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE",
+    @ApiResponse(responseCode = "400", description = """
+            VALIDATION_FAILED (see failed; tagIds over the maximum or holding null), REQUEST_UNREADABLE \
+            (a malformed id)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "TODO_LIST_NOT_FOUND (the list is missing, or another user's)",
+    @ApiResponse(responseCode = "404", description = "TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -72,8 +77,8 @@ public interface TodoApi {
 
     @Operation(summary = "Edit a todo", description = """
             Replaces title, notes, priority, due date and list (a different list moves it). The \
-            status changes only through PATCH .../status. Send the version you last read; a stale \
-            one is refused with 409 OPTIMISTIC_LOCK_CONFLICT.""")
+            status changes only through PATCH .../status, the tags only through PUT .../tags. Send the \
+            version you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT.""")
     @ApiResponse(responseCode = "200", description = "Updated; the version increments when something changed")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -103,9 +108,29 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<TodoResponse> changeStatus(UUID id, TodoStatusRequest request);
 
+    @Operation(summary = "Replace a todo's tags", description = """
+            Makes tagIds (your own tags, up to a configured number) its tags, as a whole: [] removes them \
+            all. Send the version you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT. \
+            Deleting a tag removes it from its todos without changing their version.""")
+    @ApiResponse(responseCode = "200", description = "The todo with its tags; the version increments when they changed")
+    @ApiResponse(responseCode = "400", description = """
+            VALIDATION_FAILED (see failed: tagIds or version missing, tagIds over the maximum or holding \
+            null), REQUEST_UNREADABLE (a malformed tag id), REQUEST_PARAMETER_INVALID (the id is not a \
+            UUID)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TAG_NOT_FOUND (missing, or another user's)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ObjectWrapper<TodoResponse> replaceTags(UUID id, TodoTagsRequest request);
+
     @Operation(summary = "Delete a todo", description = """
             Only a todo without time entries: delete its time entries first, so logged (billable) time \
-            is never removed as a side effect.""")
+            is never removed as a side effect. Its tags are taken off it; the tags themselves stay.""")
     @ApiResponse(responseCode = "204", description = "Deleted")
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

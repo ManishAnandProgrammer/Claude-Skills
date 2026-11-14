@@ -44,7 +44,7 @@ class KeysetPagesTest {
 
     private CursorBatch<Row> fetchAfter(String after) {
         ProjectionQuery<Object, Row> query = new ProjectionQuery<>(Object.class, Row.class,
-                (builder, root) -> null, (builder, root) -> List.of());
+                (builder, root) -> null, (builder, root, criteria) -> List.of());
         return keysetPages.fetch(query, BY_AMOUNT, after, 20);
     }
 

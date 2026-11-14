@@ -7,6 +7,9 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import io.swagger.v3.core.converter.AnnotatedType;
+import io.swagger.v3.oas.models.media.ArraySchema;
+import io.swagger.v3.oas.models.media.Schema;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.DisplayName;
@@ -14,10 +17,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 
+import java.lang.annotation.Annotation;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -35,7 +40,7 @@ class LimitsIntegrationTest extends IntegrationTest {
     private Environment environment;
 
     @Test
-    @DisplayName("Every @MaxLength, @ConfiguredMax and @LatestDate key in the code, and @NotAfterToday's, has a configured value")
+    @DisplayName("Every @MaxLength, @ConfiguredMax, @ConfiguredMaxSize and @LatestDate key in the code, and @NotAfterToday's, has a configured value")
     void everyLimitKeyIsConfigured() {
         JavaClasses classes = new ClassFileImporter()
                 .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -52,6 +57,11 @@ class LimitsIntegrationTest extends IntegrationTest {
                 checked++;
                 checkConfigured(missing, field.getAnnotationOfType(ConfiguredMax.class).value(),
                         () -> limits.get(field.getAnnotationOfType(ConfiguredMax.class).value()));
+            }
+            if (field.isAnnotatedWith(ConfiguredMaxSize.class)) {
+                checked++;
+                checkConfigured(missing, field.getAnnotationOfType(ConfiguredMaxSize.class).value(),
+                        () -> limits.get(field.getAnnotationOfType(ConfiguredMaxSize.class).value()));
             }
             if (field.isAnnotatedWith(LatestDate.class)) {
                 checked++;
@@ -109,5 +119,34 @@ class LimitsIntegrationTest extends IntegrationTest {
                 .containsExactlyInAnyOrder("must be at most 100000", "must be at most 100");
         assertThat(validator.validate(cursor)).extracting(ConstraintViolation::getMessage)
                 .containsExactly("must be at most 100");
+    }
+
+    /** A request with a collection limited by a key every project has (offset-page.max-size: 100). */
+    record SomeBulkRequest(@ConfiguredMaxSize("offset-page.max-size") List<Integer> items) {
+    }
+
+    @Test
+    @DisplayName("A collection of the configured maximum size is valid; one element more fails, naming the limit")
+    void collectionSizeLimitComesFromConfiguration() {
+        int max = limits.get("offset-page.max-size");
+        List<Integer> full = IntStream.range(0, max).boxed().toList();
+        List<Integer> overfull = IntStream.rangeClosed(0, max).boxed().toList();
+
+        assertThat(validator.validate(new SomeBulkRequest(full))).isEmpty();
+        assertThat(validator.validate(new SomeBulkRequest(null))).isEmpty();
+        assertThat(validator.validate(new SomeBulkRequest(overfull))).extracting(ConstraintViolation::getMessage)
+                .containsExactly("must have at most 100 items");
+    }
+
+    @Test
+    @DisplayName("The API docs show a configured collection size as maxItems")
+    void apiDocsShowTheConfiguredCollectionSize() throws Exception {
+        Annotation limit = SomeBulkRequest.class.getDeclaredField("items").getAnnotation(ConfiguredMaxSize.class);
+
+        Schema<?> schema = new LimitsOpenApiCustomizer(limits)
+                .customize(new ArraySchema(), new AnnotatedType().ctxAnnotations(new Annotation[]{limit}));
+
+        assertThat(schema.getMaxItems()).isEqualTo(100);
+        assertThat(schema.getMaximum()).isNull();
     }
 }

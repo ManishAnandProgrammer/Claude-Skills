@@ -49,7 +49,7 @@ class TodoListRepositoryImpl implements CustomTodoListRepository {
     @Override
     public Page<TodoListResponse> findByFilter(TodoListFilter filter, UUID ownerId, Pageable pageable) {
         return offsetPages.fetch(new ProjectionQuery<>(TodoList.class, TodoListResponse.class, TodoListRepositoryImpl::listRow,
-                (builder, root) -> ownedAndMatching(builder, root, ownerId, filter)), pageable);
+                (builder, root, query) -> ownedAndMatching(builder, root, ownerId, filter)), pageable);
     }
 
     @Override
@@ -58,7 +58,7 @@ class TodoListRepositoryImpl implements CustomTodoListRepository {
                 ? DROPDOWN_DESC
                 : DROPDOWN_ASC;
         return keysetPages.fetch(new ProjectionQuery<>(TodoList.class, DropdownItem.class, TodoListRepositoryImpl::dropdownRow,
-                (builder, root) -> ownedAndMatching(builder, root, ownerId, filter)), keyset, filter.getAfter(), size);
+                (builder, root, query) -> ownedAndMatching(builder, root, ownerId, filter)), keyset, filter.getAfter(), size);
     }
 
     private static Selection<TodoListResponse> listRow(CriteriaBuilder builder, Root<TodoList> root) {

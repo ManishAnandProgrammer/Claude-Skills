@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,5 +43,30 @@ class TodoTest {
         todo.changeStatus(TodoStatus.OPEN, done.plusSeconds(120));
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.OPEN);
         assertThat(todo.getCompletedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("A todo starts with no tags, takes its owner's tags as a whole, and another owner's tag is an impossible state")
+    void replaceTagsTakesOnlyItsOwnersTagsAsAWhole() {
+        UUID owner = UUID.randomUUID();
+        Todo todo = Todo.builder().ownerId(owner).title("Tagged").build();
+        Tag first = tag(owner, "First");
+        Tag second = tag(owner, "Second");
+        Tag third = tag(owner, "Third");
+        Tag foreign = tag(UUID.randomUUID(), "Foreign");
+        assertThat(todo.tagIds()).isEmpty();
+
+        todo.replaceTags(List.of(first, second));
+        todo.replaceTags(List.of(second, third));
+
+        assertThat(todo.tagIds()).containsExactlyInAnyOrder(second.getId(), third.getId());
+        assertThatThrownBy(() -> todo.replaceTags(List.of(first, foreign))).isInstanceOf(IllegalStateException.class);
+        assertThat(todo.tagIds()).containsExactlyInAnyOrder(second.getId(), third.getId());
+        todo.replaceTags(List.of());
+        assertThat(todo.tagIds()).isEmpty();
+    }
+
+    private static Tag tag(UUID owner, String name) {
+        return Tag.builder().id(UUID.randomUUID()).ownerId(owner).name(name).build();
     }
 }

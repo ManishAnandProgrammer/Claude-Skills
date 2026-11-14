@@ -6,16 +6,21 @@ import com.example.app.common.pagination.Keyset;
 import com.example.app.common.pagination.KeysetPages;
 import com.example.app.common.pagination.ProjectionQuery;
 import com.example.app.common.pagination.TextSearch;
+import com.example.app.todo.domain.Tag_;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.domain.TodoList_;
+import com.example.app.todo.domain.TodoTag;
+import com.example.app.todo.domain.TodoTag_;
 import com.example.app.todo.domain.Todo_;
 import com.example.app.todo.dto.request.TodoFilter;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import com.example.app.todo.repository.custom.CustomTodoRepository;
+import jakarta.persistence.criteria.AbstractQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Selection;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -53,7 +58,7 @@ class TodoRepositoryImpl implements CustomTodoRepository {
             case NEWEST -> NEWEST;
         };
         return keysetPages.fetch(new ProjectionQuery<>(Todo.class, TodoSummaryResponse.class, TodoRepositoryImpl::summaryRow,
-                (builder, root) -> conditions(builder, root, filter, ownerId)), keyset, filter.getAfter(), size);
+                (builder, root, query) -> conditions(builder, root, query, filter, ownerId)), keyset, filter.getAfter(), size);
     }
 
     private static Selection<TodoSummaryResponse> summaryRow(CriteriaBuilder builder, Root<Todo> root) {
@@ -64,11 +69,15 @@ class TodoRepositoryImpl implements CustomTodoRepository {
                 root.get(Todo_.version));
     }
 
-    private static List<Predicate> conditions(CriteriaBuilder builder, Root<Todo> root, TodoFilter filter, UUID ownerId) {
+    private static List<Predicate> conditions(CriteriaBuilder builder, Root<Todo> root, AbstractQuery<?> query,
+                                              TodoFilter filter, UUID ownerId) {
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(builder.equal(root.get(Todo_.ownerId), ownerId));
         if (filter.requireTodoListIdPredicate()) {
             predicates.add(builder.equal(root.get(Todo_.todoList).get(TodoList_.id), filter.getTodoListId()));
+        }
+        if (filter.requireTagIdPredicate()) {
+            predicates.add(builder.exists(taggedWith(builder, root, query, filter.getTagId())));
         }
         if (filter.requireStatusPredicate()) {
             predicates.add(builder.equal(root.get(Todo_.status), filter.getStatus()));
@@ -86,6 +95,15 @@ class TodoRepositoryImpl implements CustomTodoRepository {
             predicates.add(TextSearch.contains(builder, root.get(Todo_.title), filter.getQuery()));
         }
         return predicates;
+    }
+
+    /** An exists on the join table alone: a join would repeat rows, and the tag's own row isn't needed. */
+    private static Subquery<Integer> taggedWith(CriteriaBuilder builder, Root<Todo> root, AbstractQuery<?> query, UUID tagId) {
+        Subquery<Integer> tagged = query.subquery(Integer.class);
+        Root<TodoTag> link = tagged.from(TodoTag.class);
+        return tagged.select(builder.literal(1)).where(
+                builder.equal(link.get(TodoTag_.todo), root),
+                builder.equal(link.get(TodoTag_.tag).get(Tag_.id), tagId));
     }
 
     private static LocalDate dueSortOf(TodoSummaryResponse row) {

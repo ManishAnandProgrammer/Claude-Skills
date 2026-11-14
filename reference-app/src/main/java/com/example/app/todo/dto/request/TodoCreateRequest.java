@@ -1,5 +1,6 @@
 package com.example.app.todo.dto.request;
 
+import com.example.app.common.limits.ConfiguredMaxSize;
 import com.example.app.common.limits.LatestDate;
 import com.example.app.common.limits.MaxLength;
 import com.example.app.todo.domain.TodoPriority;
@@ -8,6 +9,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
+import java.util.Set;
 import java.util.UUID;
 
 @Schema(description = "A new todo; it starts OPEN")
@@ -30,5 +32,12 @@ public record TodoCreateRequest(
 
         @Schema(description = "Due date (yyyy-MM-dd), up to a configured latest date; empty for none", example = "2026-11-20")
         @LatestDate("todo.due-date")
-        LocalDate dueDate) {
+        LocalDate dueDate,
+
+        @Schema(description = """
+                Ids of your tags to put on it, in any order, up to a configured maximum; null, absent or [] \
+                for none. A repeated id counts once. Later changes go through PUT /todos/{id}/tags.""",
+                example = "[\"0190a9c2-8e21-7a3c-9b4d-3e5f7a9b1c2d\"]")
+        @ConfiguredMaxSize("todo.max-tags")
+        Set<@NotNull UUID> tagIds) {
 }

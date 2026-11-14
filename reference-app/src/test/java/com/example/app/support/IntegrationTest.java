@@ -11,6 +11,7 @@ import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfig
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,9 +22,18 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -50,6 +60,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public abstract class IntegrationTest {
 
     protected static final String PASSWORD = "Correct-Horse-9";
+    private static final int RACERS = 6;
+    /** Under lock_timeout (3 s), so a request held by a test lock never times out first. */
+    private static final Duration LOCK_WAIT_DEADLINE = Duration.ofSeconds(2);
 
     @Autowired
     protected MockMvc mvc;
@@ -139,6 +152,84 @@ public abstract class IntegrationTest {
 
     protected ResultActions deleteAs(String token, String path) throws Exception {
         return mvc.perform(authorized(delete(path), token));
+    }
+
+    /** One answer of a raced request: its status and body, so every refusal's body can be checked. */
+    public record Answer(int status, String body) {
+
+        public String errorCode() {
+            return JsonPath.read(body, "$.errorCode");
+        }
+    }
+
+    protected static Answer answerOf(ResultActions result) throws Exception {
+        MockHttpServletResponse response = result.andReturn().getResponse();
+        return new Answer(response.getStatus(), response.getContentAsString());
+    }
+
+    /** Fires {@code request} from {@link #RACERS} threads released together; returns every answer. */
+    protected static List<Answer> race(Callable<ResultActions> request) throws Exception {
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<Answer>> pending = new ArrayList<>();
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int racer = 0; racer < RACERS; racer++) {
+                Callable<Answer> once = () -> {
+                    start.await();
+                    return answerOf(request.call());
+                };
+                pending.add(executor.submit(once));
+            }
+            start.countDown();
+            List<Answer> answers = new ArrayList<>();
+            for (Future<Answer> answer : pending) {
+                answers.add(answer.get());
+            }
+            return answers;
+        }
+    }
+
+    /** A refusal names no constraint, SQL or Java internals anywhere in its body. */
+    protected static void assertNoInternals(String body) {
+        assertThat(body).doesNotContain("uq_", "fk_", "SQL", "Exception", "java.");
+    }
+
+    /** Every answer with {@code status} carries {@code errorCode} and no internals: races reach other code paths. */
+    protected static void assertRefusalsAre(List<Answer> answers, int status, String errorCode) {
+        for (Answer answer : answers) {
+            if (answer.status() == status) {
+                assertThat(answer.errorCode()).isEqualTo(errorCode);
+                assertNoInternals(answer.body());
+            }
+        }
+    }
+
+    /**
+     * Waits until {@code sessions} sessions of this database wait on a lock, or {@code done} has
+     * finished; fails past {@link #LOCK_WAIT_DEADLINE}. Race tests use it to know a request reached
+     * the lock they gate.
+     */
+    protected void awaitLockWaiters(int sessions, Future<?> done) throws InterruptedException {
+        long deadline = System.nanoTime() + LOCK_WAIT_DEADLINE.toNanos();
+        while (lockWaiters() < sessions && (Objects.isNull(done) || !done.isDone())) {
+            assertThat(System.nanoTime()).as("sessions waiting on a lock").isLessThan(deadline);
+            Thread.sleep(10);
+        }
+    }
+
+    private int lockWaiters() {
+        return jdbc.queryForObject("""
+                select count(*) from pg_stat_activity
+                where datname = current_database() and wait_event_type = 'Lock'
+                """, Integer.class);
+    }
+
+    /** For a gate held inside a transaction callback, which can't throw InterruptedException. */
+    protected static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     protected static <T> T read(ResultActions result, String jsonPath) throws Exception {

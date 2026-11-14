@@ -79,7 +79,9 @@ public interface TagApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<TagResponse> update(UUID id, TagUpdateRequest request);
 
-    @Operation(summary = "Delete a tag")
+    @Operation(summary = "Delete a tag", description = """
+            Never blocked by the todos carrying it: it is removed from them, and their version doesn't \
+            change.""")
     @ApiResponse(responseCode = "204", description = "Deleted")
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
