@@ -83,7 +83,7 @@ is code-smells.md, java.md and architecture.md.
      `synchronized` no longer pins, but native frames and class initialisation still can;
   4. **which metric would show a regression in production.**
 
-  Shared expensive reads are cached, and a cache hit takes no connection (`SUPPORTS`, DATA-20).
+  Shared expensive reads are cached, and a cache hit takes no connection (the lazy proxy, DATA-20).
 - **Severity:** Medium (High when it is unbounded).
 
 ### PERF-02: Connection pool

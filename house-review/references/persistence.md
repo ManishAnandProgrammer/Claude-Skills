@@ -126,15 +126,20 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Severity:** High if they are missing (the migration lock timeout included); Medium for the
   order alone.
 
-### DATA-20: readOnly and explicit attributes take the connection at begin
-- **Check:**
-  - with `provider_disables_autocommit=true`, a plain `@Transactional` borrows the connection at
-    the first SQL statement;
-  - `readOnly = true`, any explicit `isolation` and any `timeout` borrow it **at begin**. So a
-    method that may answer from a cache, or only calls out, must not run under a `readOnly`
-    transaction: use `Propagation.SUPPORTS` (cache first) or `NOT_SUPPORTED`;
-  - under a class-level `readOnly` default these methods need that carve-out.
-- **Severity:** Medium (High on per-request paths: the cache stops protecting the pool).
+### DATA-20: Transactions borrow their connection at the first statement
+- **Check:** the pool is wrapped in Spring's `LazyConnectionDataSourceProxy` (CFG-01, reference
+  `config/LazyConnectionConfig`), so every transaction borrows at its first SQL statement. A method
+  that answers from a cache, or returns before any SQL, holds no connection, even under the
+  class-level `readOnly` default.
+- **Without the proxy:** `readOnly = true` and an explicit `isolation` borrow **at begin**, because
+  Spring's `HibernateJpaDialect` prepares the connection then. A plain transaction and one with a
+  `timeout` stay lazy (measured 2026-11-14, Spring 7.0 / Hibernate 7.4). In such a project, a
+  cache-first method under a `readOnly` class default needs `Propagation.SUPPORTS` or
+  `NOT_SUPPORTED`.
+- **With the proxy,** both attributes still reach PostgreSQL when the connection is borrowed
+  (`transaction_read_only = on`, the isolation level), and are reset afterwards.
+- **Severity:** Medium when the proxy is missing (High on per-request paths that answer from a
+  cache: the cache stops protecting the pool).
 
 ### DATA-21: Isolation levels
 - **Check:**
