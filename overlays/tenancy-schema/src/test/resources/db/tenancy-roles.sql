@@ -1,4 +1,4 @@
--- The tenancy piece's database roles in the test container, as docs/runbook.md creates them in a real
+-- The tenancy piece's database roles in the test container, as docs/tenancy-runbook.md creates them in a real
 -- deployment: Liquibase migrates as the owner, the application's pool connects as the app role, which
 -- owns nothing. Tests that bypassed these roles would prove nothing about isolation.
 CREATE ROLE test_owner LOGIN PASSWORD 'test-owner';

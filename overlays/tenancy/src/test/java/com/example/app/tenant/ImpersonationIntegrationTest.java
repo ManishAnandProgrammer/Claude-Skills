@@ -15,10 +15,12 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -79,16 +81,31 @@ class ImpersonationIntegrationTest extends IntegrationTest {
         TestUser member = newUserIn(tenant);
 
         String token = read(impersonate(tenant.id(), """
-                {"userId": "%s"}
+                {"userId": "%s", "reason": "SUP-1235"}
                 """.formatted(member.id())).andExpect(status().isCreated()), "$.response.accessToken");
         assertThat(claim(token, "$.sub")).isEqualTo(member.id().toString());
         assertThat(claim(token, "$.roles[0]")).isEqualTo("USER");
 
         impersonate(tenant.id(), """
-                {"userId": "%s"}
+                {"userId": "%s", "reason": "SUP-1235"}
                 """.formatted(newUser().id()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("MEMBERSHIP_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("Without a reason it is 400 VALIDATION_FAILED naming reason: every token issued is on record with one")
+    void reasonIsRequired() throws Exception {
+        TestTenant tenant = newTenant();
+
+        for (String body : List.of("{}", """
+                {"reason": "  "}
+                """)) {
+            impersonate(tenant.id(), body)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.failed[0]").value(startsWith("reason:")));
+        }
     }
 
     @Test

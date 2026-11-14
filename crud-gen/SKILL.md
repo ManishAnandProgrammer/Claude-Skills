@@ -148,6 +148,8 @@ Check before generating:
 | No soft-delete flag; statuses are enums with a check constraint | DATA-07 |
 | A changeset with `--rollback`; FKs named `fk_<table>_<column>` | DATA-13 |
 | Unique text ignores case and surrounding spaces (one of the two shapes; partial when nullable) | DATA-05 |
+| A value the mapper normalises (an email lower-cased and trimmed) has a `CHECK` with the same expression (`email = lower(trim(email))`, golden `users`) | DATA-05 |
+| A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one | DATA-05 |
 | Indexes: every FK (the list orders and filters are checked after 4.1, once they are chosen); keyset sort keys non-null (a generated column for a nullable one) | DATA-10 |
 | A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column | DATA-33 |
 | `Instant` for moments, `LocalDate` for picked dates, no time zones | JAVA-25 |

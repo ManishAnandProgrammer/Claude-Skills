@@ -1,7 +1,8 @@
 # Tenancy runbook: schema per tenant
 
 The incident runbook (`runbook.md`) covers the application as a whole; this is what schema per tenant
-adds. `<app>` is `spring.application.name`, `<db>` is `DB_NAME`.
+adds. `<app>` is `spring.application.name` with dashes as underscores (`campus_desk`: role names are
+plain lower-case identifiers, which the changesets use unquoted; startup refuses others), `<db>` is `DB_NAME`.
 
 ## 1. Database roles (before the first start, and before a restore)
 
@@ -36,8 +37,8 @@ Staff are rows, not an endpoint: insert one with a bcrypt hash of its password (
 - **Staff create a tenant** (`POST /api/v1/platform/tenants`) for an owner who already has an account:
   it is PENDING until provisioning has created its schema, then ACTIVE.
 - **Self-registration** (when the project has the `tenant-registration` piece): a registered tenant is
-  PENDING and waits for staff: `POST /api/v1/platform/tenants/{id}/approval` approves it (provisioning
-  follows), `PATCH .../{id}` with status `REJECTED` rejects it. The owner's login answers 403
+  PENDING and waits for staff: `POST /api/v1/platform/tenants/{id}/approve` approves it (provisioning
+  follows), `PATCH .../{id}/status` with status `REJECTED` rejects it. The owner's login answers 403
   `TENANT_NOT_ACTIVE` with `tenantStatus: PENDING` meanwhile.
 - **A tenant rejected after approval** but before provisioning ran gets no schema: its
   `tenant_migrations` row becomes `CANCELLED`.
@@ -54,7 +55,7 @@ One tenant alone: `pg_dump -n t_<tenant id without dashes>` and restore that sch
 
 ## 5. Tenant migrations at deploy
 
-- The instance that takes the advisory lock first (`hashtext('tenant-schema-migrations')`) migrates
+- The instance that takes the advisory lock first (`hashtextextended('tenant-schema-migrations', 0)`) migrates
   every tenant schema once it is ready; the others skip. The log says
   `Tenant migrations: ran=true, migrated=N, failed=[...]`.
 - A failed schema: `SELECT tenant_id, schema_name, error FROM platform.tenant_migrations WHERE status = 'FAILED';`.

@@ -140,14 +140,14 @@ class TenantMigrationsIntegrationTest extends IntegrationTest {
     @DisplayName("While another migrator holds the lock, a run and a provisioning run are skipped")
     void runsAreSkippedWhileTheLockIsHeld() {
         TenantMigrations.Run run = owner().execute((ConnectionCallback<TenantMigrations.Run>) connection -> {
-            try (PreparedStatement lock = connection.prepareStatement("select pg_advisory_lock(hashtext('tenant-schema-migrations'))")) {
+            try (PreparedStatement lock = connection.prepareStatement("select pg_advisory_lock(hashtextextended('tenant-schema-migrations', 0))")) {
                 lock.execute();
             }
             try {
                 provisioning.provisionPending();
                 return migrations.run();
             } finally {
-                try (PreparedStatement unlock = connection.prepareStatement("select pg_advisory_unlock(hashtext('tenant-schema-migrations'))")) {
+                try (PreparedStatement unlock = connection.prepareStatement("select pg_advisory_unlock(hashtextextended('tenant-schema-migrations', 0))")) {
                     unlock.execute();
                 }
             }

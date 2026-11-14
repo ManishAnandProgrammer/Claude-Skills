@@ -157,6 +157,7 @@ compose.yaml
 Dockerfile
 .dockerignore
 docs/runbook.md
+docs/local-dev.md
 LIST
             ;;
         sign-in) cat <<LIST
@@ -322,6 +323,8 @@ piece_filter() {
         next if grep { $_ eq "drop" } @open;
         if (grep { $_ eq "uncomment" } @open) {
             s{^(\s*)<!-- ?(.*?) ?-->[ \t]*$}{$1$2} or s{^(\s*)(?://|#|--) ?}{$1};
+            # A bare "//" (a blank line in a commented block) leaves only its indent: no trailing spaces.
+            s{^[ \t]+$}{};
         }
         print;
     '

@@ -1,5 +1,7 @@
 package com.example.app.media.api;
 
+import java.util.List;
+
 /**
  * What an upload is for, and who may upload for it. A new purpose is a constant here (something in
  * code attaches its files) plus its {@code upload_policies} row in a changeset (row-mode tenancy: the
@@ -16,14 +18,19 @@ public enum UploadPurpose {
     // example:end
     ;
 
-    private final String role;
+    private final List<String> roles;
 
-    UploadPurpose(String role) {
-        this.role = role;
+    UploadPurpose(String... roles) {
+        this.roles = List.of(roles);
     }
 
-    /** The role (the token's {@code roles} claim) that may upload for this purpose. */
-    public String role() {
-        return role;
+    /**
+     * The roles (the token's {@code roles} claim) that may upload for this purpose: every role that
+     * writes the owning record. Roles don't include each other unless the project wires a role
+     * hierarchy, so a record that USER members and their tenant's ADMIN both edit names both
+     * ({@code STUDENT_PHOTO("USER", "ADMIN")}).
+     */
+    public List<String> roles() {
+        return roles;
     }
 }

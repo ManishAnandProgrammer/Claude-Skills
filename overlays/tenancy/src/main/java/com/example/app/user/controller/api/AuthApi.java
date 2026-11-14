@@ -43,16 +43,18 @@ public interface AuthApi {
     ResponseEntity<ObjectWrapper<UserResponse>> signup(SignupRequest request, @Parameter(hidden = true) HttpServletRequest http);
 
     @Operation(summary = "Sign in", description = """
-            Returns an access token (send as Authorization: Bearer) and a single-use refresh token. \
-            An unknown email and a wrong password get the same answer.""")
+            Returns an access token (send as Authorization: Bearer) and a single-use refresh token, for \
+            your most recently used tenant that is ACTIVE (switch-tenant picks another). An unknown email \
+            and a wrong password get the same answer.""")
     @ApiResponse(responseCode = "200", description = "Signed in")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTH_INVALID_CREDENTIALS",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = """
-            TENANT_MEMBERSHIP_REQUIRED (the account belongs to no tenant yet); TENANT_NOT_ACTIVE (with \
-            tenantStatus: PENDING means awaiting provisioning or approval)""",
+            TENANT_MEMBERSHIP_REQUIRED (the account belongs to no tenant yet); TENANT_NOT_ACTIVE (none of \
+            your tenants is ACTIVE; tenantStatus is your most recently used one's: PENDING means awaiting \
+            provisioning or approval)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "429", description = "RATE_LIMITED; wait Retry-After seconds",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -69,7 +71,7 @@ public interface AuthApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTH_INVALID_REFRESH_TOKEN (unknown, expired or reused)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus): the tenant was suspended or closed",
+    @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus): the tenant was suspended or closed; the refresh token stays usable",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "429", description = "RATE_LIMITED; wait Retry-After seconds",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -79,7 +81,8 @@ public interface AuthApi {
 
     @Operation(summary = "Switch to another of your tenants", description = """
             Like a refresh (the refresh token is rotated), but the new tokens are for tenantId, one of your \
-            own memberships. A tenant you don't belong to is 404 and the refresh token stays usable.""")
+            own memberships. A tenant you don't belong to is 404, one that isn't ACTIVE 403; either way the \
+            refresh token stays usable.""")
     @ApiResponse(responseCode = "200", description = "Tokens for the other tenant")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

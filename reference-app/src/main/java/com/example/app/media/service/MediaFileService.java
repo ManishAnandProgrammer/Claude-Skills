@@ -59,7 +59,7 @@ public class MediaFileService implements Uploads {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ListWrapper<UploadUrlResponse> issue(UploadUrlRequest request) {
         UploadPurpose purpose = request.purpose();
-        if (!currentUser.hasRole(purpose.role())) {
+        if (purpose.roles().stream().noneMatch(currentUser::hasRole)) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
         }
         UploadPolicy policy = policyService.getPolicy(purpose);

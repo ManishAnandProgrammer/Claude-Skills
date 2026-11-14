@@ -29,6 +29,13 @@ public interface Tenants {
      */
     UUID register(String name, String ownerEmail);
 
+    /**
+     * Locks the tenant in the caller's transaction, which must exist: a change to its memberships takes
+     * it before counting the ADMINs, so two changes can't each leave the other as the last one. 404
+     * {@code TENANT_NOT_FOUND}.
+     */
+    void lockForMemberChange(UUID tenantId);
+
     /** Name and status of each tenant in {@code ids} that exists: a member's list of their tenants. */
     List<TenantView> findAllById(Collection<UUID> ids);
 }

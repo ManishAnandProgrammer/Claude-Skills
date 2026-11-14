@@ -92,8 +92,10 @@ class TokenService {
         // Loaded now: the revoking update clears the persistence context, which detaches the lazy user.
         User user = Hibernate.unproxy(token.getUser(), User.class);
         UUID tenantId = token.getTenantId();
-        // Before the token is spent: no membership there any more is a refusal that keeps it.
+        // Before the token is spent: no membership there any more, or a tenant no longer active, is a
+        // refusal that keeps it.
         memberships.forTenant(user, tenantId);
+        tenants.requireActive(tenantId);
         revokeForRotation(tokenHash, now);
         // Read again: the revoking update cleared the persistence context.
         return issueTokens(user, memberships.forTenant(user, tenantId));
@@ -101,7 +103,8 @@ class TokenService {
 
     /**
      * Rotates the refresh token into tokens for another of the user's tenants: 404
-     * {@code MEMBERSHIP_NOT_FOUND} (the token stays usable) unless the user is a member there.
+     * {@code MEMBERSHIP_NOT_FOUND} unless the user is a member there, 403 {@code TENANT_NOT_ACTIVE} unless
+     * it is ACTIVE; either way the token stays usable.
      */
     @Transactional(noRollbackFor = AppException.class)
     TokenResponse switchTenant(String rawToken, UUID tenantId) {
@@ -109,6 +112,8 @@ class TokenService {
         String tokenHash = Hashes.sha256Hex(rawToken);
         User user = Hibernate.unproxy(usableToken(tokenHash, now).getUser(), User.class);
         memberships.forTenant(user, tenantId);
+        // Before the token is spent: switching to a tenant that isn't active keeps the current session.
+        tenants.requireActive(tenantId);
         revokeForRotation(tokenHash, now);
         return issueTokens(user, memberships.forTenant(user, tenantId));
     }

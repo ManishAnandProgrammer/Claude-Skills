@@ -36,7 +36,7 @@ app:
       tenant.support-reason: 500
   liquibase:
     # Migrations run as the owner role; the pool's role (DB_USER) owns nothing and can't change the
-    # schema (docs/runbook.md, "Database roles").
+    # schema (docs/tenancy-runbook.md, "Database roles").
     username: ${DB_OWNER_USER}
     password: ${DB_OWNER_PASSWORD}
   tenancy:

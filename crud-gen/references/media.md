@@ -16,9 +16,11 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
 
 ## What to generate
 1. **Purpose.** A new `UploadPurpose` constant (`<ENTITY>_<X>`, e.g. `TODO_ATTACHMENT`) with the
-   role that may upload for it (MEDIA-03, MEDIA-04): **the role of whoever writes the owning
-   record**, since only the uploader can claim the upload (an admin edits employees, so
-   `EMPLOYEE_PHOTO("ADMIN")`; ask when the record's subject should change the file too). For a
+   roles that may upload for it (MEDIA-03, MEDIA-04): **every role that writes the owning record**,
+   since only the uploader can claim the upload (an admin edits employees, so
+   `EMPLOYEE_PHOTO("ADMIN")`; ask when the record's subject should change the file too). Roles don't
+   include each other: a record that members and their tenant's ADMIN owner both edit is
+   `STUDENT_PHOTO("USER", "ADMIN")`. For a
    shared root that is the writing role Step 1 decided, never `USER` while signup is public. A
    changeset (next free number) seeds its `upload_policies` row: min/max size, min/max files,
    content types from `AllowedContentTypes` only (MEDIA-09). Ask the user for the limits; never SVG,

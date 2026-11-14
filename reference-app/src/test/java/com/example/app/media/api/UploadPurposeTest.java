@@ -13,12 +13,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class UploadPurposeTest {
 
     @Test
-    @DisplayName("Every purpose's role is a Role constant: a misspelt one would refuse every upload of the purpose")
+    @DisplayName("Every purpose names at least one role, each a Role constant: a misspelt one would refuse its uploads")
     void everyRoleIsARole() {
         List<String> roles = Arrays.stream(Role.values()).map(Role::name).toList();
 
         for (UploadPurpose purpose : UploadPurpose.values()) {
-            assertThat(roles).as(purpose.name()).contains(purpose.role());
+            assertThat(purpose.roles()).as(purpose.name()).isNotEmpty();
+            assertThat(roles).as(purpose.name()).containsAll(purpose.roles());
         }
     }
 }

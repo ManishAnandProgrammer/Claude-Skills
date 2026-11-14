@@ -19,27 +19,36 @@ public final class Seek {
     private Seek() {
     }
 
-    /** {@code first > firstValue OR (first = firstValue AND last > lastValue)}, with {@code <} when descending. */
+    /**
+     * {@code first >= firstValue AND (first > firstValue OR (first = firstValue AND last > lastValue))},
+     * with {@code <} when descending. The leading bound is implied by the rest but is what PostgreSQL can
+     * seek the index to: an OR alone is no index condition, and a later batch would walk the index from
+     * its start.
+     */
     public static <A extends Comparable<? super A>, B extends Comparable<? super B>> Predicate after(
             CriteriaBuilder builder, boolean descending,
             Expression<A> first, A firstValue,
             Expression<B> last, B lastValue) {
-        return builder.or(
-                beyond(builder, descending, first, firstValue),
-                builder.and(builder.equal(first, firstValue), beyond(builder, descending, last, lastValue)));
+        return builder.and(
+                notBefore(builder, descending, first, firstValue),
+                builder.or(
+                        beyond(builder, descending, first, firstValue),
+                        builder.and(builder.equal(first, firstValue), beyond(builder, descending, last, lastValue))));
     }
 
-    /** The same with a middle key: {@code a > a0 OR (a = a0 AND b > b0) OR (a = a0 AND b = b0 AND c > c0)}. */
+    /** The same with a middle key: {@code a >= a0 AND (a > a0 OR (a = a0 AND b > b0) OR (a = a0 AND b = b0 AND c > c0))}. */
     public static <A extends Comparable<? super A>, B extends Comparable<? super B>, C extends Comparable<? super C>> Predicate after(
             CriteriaBuilder builder, boolean descending,
             Expression<A> first, A firstValue,
             Expression<B> middle, B middleValue,
             Expression<C> last, C lastValue) {
-        return builder.or(
-                beyond(builder, descending, first, firstValue),
-                builder.and(builder.equal(first, firstValue), beyond(builder, descending, middle, middleValue)),
-                builder.and(builder.equal(first, firstValue), builder.equal(middle, middleValue),
-                        beyond(builder, descending, last, lastValue)));
+        return builder.and(
+                notBefore(builder, descending, first, firstValue),
+                builder.or(
+                        beyond(builder, descending, first, firstValue),
+                        builder.and(builder.equal(first, firstValue), beyond(builder, descending, middle, middleValue)),
+                        builder.and(builder.equal(first, firstValue), builder.equal(middle, middleValue),
+                                beyond(builder, descending, last, lastValue))));
     }
 
     /** {@code ORDER BY} the seek columns, all in one direction. */
@@ -49,6 +58,11 @@ public final class Seek {
             orders.add(descending ? builder.desc(column) : builder.asc(column));
         }
         return orders;
+    }
+
+    private static <A extends Comparable<? super A>> Predicate notBefore(CriteriaBuilder builder, boolean descending,
+                                                                         Expression<A> column, A value) {
+        return descending ? builder.lessThanOrEqualTo(column, value) : builder.greaterThanOrEqualTo(column, value);
     }
 
     private static <A extends Comparable<? super A>> Predicate beyond(CriteriaBuilder builder, boolean descending,

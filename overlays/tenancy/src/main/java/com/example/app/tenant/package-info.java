@@ -8,8 +8,8 @@
  *       endpoint is the tenant plane, reached only with a tenant token. A second security chain keeps
  *       the two apart (house-review {@code references/tenancy.md}).</li>
  *   <li><b>Lifecycle:</b> {@code PENDING -> ACTIVE <-> SUSPENDED -> CLOSED}, and {@code PENDING -> REJECTED}.
- *       Every change is a {@code tenant_status_changes} row naming its source. {@code activate} is the
- *       one way in: provisioning calls it now, a billing module's payment webhook later.</li>
+ *       Every change is a {@code tenant_status_changes} row naming its source. {@code approve} is the
+ *       one way in: staff call it now, a billing module's payment webhook later; provisioning then activates.</li>
  *   <li><b>Status at token issue:</b> login, refresh and switch-tenant ask {@code api.Tenants#requireActive},
  *       so a suspension takes effect within one access-token lifetime.</li>
  *   <li><b>Creating a tenant</b> publishes {@code api.TenantCreated} in the same transaction: the user

@@ -74,9 +74,30 @@ With **AskUserQuestion** (several per call):
    roles (and, with `schema`, the platform schema) before its first start (`docs/tenancy-runbook.md`;
    locally `compose.yaml` creates them). Record `tenancy` in both profiles.
 
+   Say what tenancy brings and what it doesn't yet. It brings tenant ADMINs managing their members
+   (`/tenant-members`: add an existing account by email, change a role, remove; the last ADMIN stays),
+   switch-tenant, impersonation with an audit row, and a tenant's owner as its ADMIN. Roles don't
+   include each other: a record that members and the owner both write names both roles where a role
+   is listed (an upload purpose: `"USER", "ADMIN"`). Not built: invitations of people without an
+   account, a members list endpoint, a reader for the platform audit trail (SQL only), disabling
+   platform staff, a retention job for CLOSED tenants. Record the ones the project needs as open items.
+
 Write `.claude/crud-profile.md` and `.claude/review-profile.md` from their templates.
 
 ## 1. Copy the pieces
+**No project yet?** Start it from the reference rather than Initializr (same Boot version, the
+wrapper, the pom with every dependency the pieces can need; step 3 trims it to the approved ones):
+```bash
+mkdir -p <project>/src/main/java/<package path> && cd <project> && git init
+cp -r ~/Documents/claude-skills/reference-app/{mvnw,mvnw.cmd,.mvn,.gitignore,.gitattributes} .
+sed -e 's|<groupId>com.example</groupId>|<groupId><group></groupId>|' \
+    -e 's|<artifactId>reference-app</artifactId>|<artifactId><app></artifactId>|' \
+    -e 's|<name>reference-app</name>|<name><app></name>|' -e 's|<description>.*</description>|<description><one line></description>|' \
+    ~/Documents/claude-skills/reference-app/pom.xml > pom.xml
+```
+Then write `<App>Application` (`@SpringBootApplication @ConfigurationPropertiesScan`, a `main`) in
+the root package, and copy the pieces. Step 2's Initializr clean-up doesn't apply.
+
 ```bash
 ~/Documents/claude-skills/scripts/bootstrap-copy.sh --target <project> --package <rootPackage> --with core,sign-in --dry-run
 ~/Documents/claude-skills/scripts/bootstrap-copy.sh --target <project> --package <rootPackage> --with core,sign-in

@@ -62,18 +62,27 @@ class TodoTenantIsolationIntegrationTest extends IntegrationTest {
     void listsShowOneTenantOnly() throws Exception {
         TestUser owner = newUser();
         String listId = createList(owner, "Ours to list");
-        createTodo(owner, listId, "Ours to list");
+        String todoId = createTodo(owner, listId, "Ours to list");
         TestUser stranger = newUserIn(newTenant());
         String strangersList = createList(stranger, "Ours to list");
+        String strangersTodo = createTodo(stranger, strangersList, "Ours to list");
 
+        // Each list first shows its caller's own row: an absence alone would pass on a broken list too.
         getAs(stranger.accessToken(), LISTS)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response[*].id", not(hasItem(listId))))
-                .andExpect(jsonPath("$.response[*].id", hasItem(strangersList)));
+                .andExpect(jsonPath("$.response[*].id", hasItem(strangersList)))
+                .andExpect(jsonPath("$.response[*].id", not(hasItem(listId))));
         getAs(stranger.accessToken(), TODOS)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response").isEmpty());
+                .andExpect(jsonPath("$.response[*].id", hasItem(strangersTodo)))
+                .andExpect(jsonPath("$.response[*].id", not(hasItem(todoId))));
         getAs(owner.accessToken(), LISTS)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].id", hasItem(listId)))
                 .andExpect(jsonPath("$.response[*].id", not(hasItem(strangersList))));
+        getAs(owner.accessToken(), TODOS)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].id", hasItem(todoId)))
+                .andExpect(jsonPath("$.response[*].id", not(hasItem(strangersTodo))));
     }
 }

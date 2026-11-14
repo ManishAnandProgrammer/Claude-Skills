@@ -66,7 +66,7 @@ CREATE INDEX idx_tenant_memberships_tenant_id ON tenant_memberships (tenant_id);
 --rollback DROP TABLE tenant_memberships;
 
 --changeset dev:0012-platform-users
--- Platform staff: separate from tenant users, no tenant. An operator inserts them (docs/runbook.md).
+-- Platform staff: separate from tenant users, no tenant. An operator inserts them (docs/tenancy-runbook.md).
 CREATE TABLE platform_users (
     id            uuid        NOT NULL,
     email         text        NOT NULL,

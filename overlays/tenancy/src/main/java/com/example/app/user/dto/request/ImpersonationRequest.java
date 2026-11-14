@@ -2,6 +2,7 @@ package com.example.app.user.dto.request;
 
 import com.example.app.common.limits.MaxLength;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
 
 import java.util.UUID;
 
@@ -10,7 +11,7 @@ public record ImpersonationRequest(
         @Schema(description = "A member of the tenant; absent: its oldest ADMIN (its owner)")
         UUID userId,
 
-        @Schema(description = "Why, for the audit trail: a ticket reference for example", example = "SUP-1234")
-        @MaxLength("tenant.support-reason")
+        @Schema(description = "Why, for the audit trail: a ticket reference for example; required", example = "SUP-1234")
+        @NotBlank @MaxLength("tenant.support-reason")
         String reason) {
 }

@@ -52,6 +52,9 @@ import java.util.List;
 import java.util.Map;
 // media:end
 import java.util.Objects;
+// media:begin
+import java.util.Optional;
+// media:end
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -161,6 +164,9 @@ public abstract class IntegrationTest {
      * the pool, and the test would silently run against data that isn't there.
      */
     protected int sql(String statement, Object... args) {
+        // The test tenant first: created while this transaction opens its connection, the tenant's
+        // after-commit provisioning (row mode) would never run, and it would stay PENDING.
+        testTenant();
         Integer rows = new TransactionTemplate(transactionManager).execute(status -> jdbc.update(statement, args));
         return rows;
     }
@@ -250,20 +256,22 @@ public abstract class IntegrationTest {
      */
     protected static final String TESTED_PURPOSE = UploadPurpose.values().length == 0 ? "" : UploadPurpose.values()[0].name();
 
-    /** The role that may upload for {@link #TESTED_PURPOSE}. */
-    protected static final String TESTED_PURPOSE_ROLE = UploadPurpose.values().length == 0 ? "" : UploadPurpose.values()[0].role();
+    /** A role that may upload for {@link #TESTED_PURPOSE}: its first. */
+    protected static final String TESTED_PURPOSE_ROLE = UploadPurpose.values().length == 0 ? "" : UploadPurpose.values()[0].roles().getFirst();
 
     /** A new user with the role that may upload for {@link #TESTED_PURPOSE}. */
     protected TestUser newUploader() throws Exception {
         return newUserWithRole(TESTED_PURPOSE_ROLE);
     }
 
-    /** A new user with a role other than {@link #TESTED_PURPOSE_ROLE}: one that may not upload for it. */
+    /** A new user with a role that may not upload for {@link #TESTED_PURPOSE}; skips the test when every role may. */
     protected TestUser newNonUploader() throws Exception {
-        String otherRole = Arrays.stream(Role.values()).map(Role::name)
-                .filter(role -> !role.equals(TESTED_PURPOSE_ROLE))
-                .findFirst().orElseThrow();
-        return newUserWithRole(otherRole);
+        List<String> uploaders = UploadPurpose.values()[0].roles();
+        Optional<String> otherRole = Arrays.stream(Role.values()).map(Role::name)
+                .filter(role -> !uploaders.contains(role))
+                .findFirst();
+        assumeTrue(otherRole.isPresent(), "every role may upload for " + TESTED_PURPOSE);
+        return newUserWithRole(otherRole.get());
     }
 
     /** Skips the calling test until the project declares its first upload purpose (crud-gen Step 5). */
@@ -401,7 +409,7 @@ public abstract class IntegrationTest {
         }
     }
 
-    /** Memberships have no endpoint yet (invitations come later): a fixture row. */
+    /** A membership as a fixture row (the members API, POST /tenant-members, needs an ADMIN token). */
     protected void addMember(TestTenant tenant, UUID userId, String role) {
         assertThat(sql("""
                 insert into tenant_memberships (id, tenant_id, user_id, role, created_at, updated_at, version)

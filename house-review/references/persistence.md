@@ -422,7 +422,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     null (a code), which is already a total order (`code, id` on a unique `code` adds a sort step
     the index can't serve);
   - **keyset code:** `Seek.order` names the same columns as `Seek.after`, in the same order, id
-    last; the query fetches `size + 1`;
+    last; the query fetches `size + 1`. A hand-written seek in OR form (`a > x OR (a = x AND id > y)`)
+    also carries the leading `a >= x`: the OR alone is no index condition, so batch N reads N batches;
+    `Seek.after` adds it;
   - **a keyset sort key is never null.** A nullable column (a due date) sorts through a stored
     generated column (`coalesce(due_date, date '9999-12-31')`) that the index and the keyset use;
   - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).

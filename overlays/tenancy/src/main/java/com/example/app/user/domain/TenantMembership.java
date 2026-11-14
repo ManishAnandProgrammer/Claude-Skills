@@ -52,6 +52,11 @@ public class TenantMembership extends AuditableEntity {
                 .build();
     }
 
+    /** A tenant ADMIN's change; the service keeps the tenant's last ADMIN. */
+    public void changeRole(Role newRole) {
+        role = newRole;
+    }
+
     public void markUsed(Instant now) {
         lastUsedAt = now;
     }

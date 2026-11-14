@@ -66,6 +66,15 @@ public enum ErrorCode {
     // TENANT_STATUS_CHANGE_INVALID,
     // /** The application's support-access policy refused an impersonation. */
     // SUPPORT_ACCESS_DENIED,
+    // /** A tenant ADMIN's member management: the user isn't a member of the caller's tenant. */
+    // TENANT_MEMBER_NOT_FOUND,
+    // /** Members are existing accounts (invitations come later). */
+    // TENANT_MEMBER_ACCOUNT_NOT_FOUND,
+    // TENANT_MEMBER_EXISTS,
+    // /** Every tenant keeps an ADMIN: the last one can't be demoted or removed. */
+    // TENANT_MEMBER_LAST_ADMIN,
+    // /** Nobody changes or removes their own membership (house-review SEC-02). */
+    // TENANT_MEMBER_OWN_CHANGE,
     // tenancy:end
     // metadata:begin
 

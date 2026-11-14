@@ -14,7 +14,7 @@ import lombok.experimental.SuperBuilder;
 /**
  * A platform staff member (the tenancy piece): separate from tenant users, with no tenant, their own
  * login and tokens for {@code /api/v1/platform/**} only. No endpoint creates one: an operator inserts
- * the row (docs/runbook.md).
+ * the row (docs/tenancy-runbook.md, "Platform staff").
  */
 @Entity
 @Table(name = "platform_users")

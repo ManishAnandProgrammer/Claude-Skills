@@ -24,6 +24,7 @@ import com.example.app.tenant.repository.TenantStatusChangeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
@@ -147,6 +148,12 @@ public class TenantService implements Tenants {
     @Override
     public List<UUID> activeIds() {
         return repository.findIdsByStatus(TenantStatus.ACTIVE);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockForMemberChange(UUID tenantId) {
+        repository.findForUpdateById(tenantId).orElseThrow(AppException.supply(ErrorCode.TENANT_NOT_FOUND, tenantId));
     }
 
     /** 404 {@code TENANT_NOT_FOUND}. */

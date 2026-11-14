@@ -25,11 +25,5 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
     @EntityGraph(attributePaths = "user")
     Optional<TenantMembership> findFirstByTenantIdAndRoleOrderById(UUID tenantId, Role role);
 
-    /** The membership login picks: the most recently used, else the oldest. */
-    @Query("""
-            select m from TenantMembership m
-             where m.user.id = :userId
-             order by m.lastUsedAt desc nulls last, m.id
-             limit 1""")
-    Optional<TenantMembership> findMostRecentlyUsed(UUID userId);
+    long countByTenantIdAndRole(UUID tenantId, Role role);
 }

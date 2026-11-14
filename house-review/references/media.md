@@ -50,7 +50,7 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
 - **Check:**
   - `POST /upload-urls` checks only "may this person upload for this purpose", which the
     `UploadPurpose` constant names (a role). The purpose arrives in the body, so this one check is
-    `currentUser.hasRole(purpose.role())` in the service (403 `ACCESS_DENIED`), not an annotation
+    `purpose.roles().stream().anyMatch(currentUser::hasRole)` in the service (403 `ACCESS_DENIED`), not an annotation
     (REST-25 covers checks a method can name up front);
   - attaching happens inside the owning resource's own create or update (`POST /todos`,
     `PUT /todos/{id}`), which keeps its own checks (whose record, is it editable), takes the count
@@ -60,7 +60,10 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
     file is about: the claim requires the uploader to be the claimer (MEDIA-05), so if admins edit
     employees, admins upload their photos (`EMPLOYEE_PHOTO("ADMIN")`). When the record's subject may
     change the file too (an employee's own photo), that is a second write path with its own checks,
-    and the purpose names a role both hold (or the project's role hierarchy covers both: REST-25).
+    and the purpose names both roles. A purpose lists **every** role that writes the record: roles
+    don't include each other (no hierarchy unless the project wires one, REST-25), and with tenancy a
+    tenant's owner is its ADMIN, so a record every member edits is `STUDENT_PHOTO("USER", "ADMIN")`;
+    a purpose naming `USER` alone shuts the owner out.
 - **Detect:** an `attach` endpoint in the media module; an interface in `media` implemented by a
   feature module; `switch (purpose)` in media code.
 - **Severity:** High (an attach outside the owner's write skips the owner's rules).

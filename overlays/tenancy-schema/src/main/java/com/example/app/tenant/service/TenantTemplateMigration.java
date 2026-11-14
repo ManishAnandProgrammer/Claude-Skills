@@ -8,8 +8,9 @@ import org.springframework.stereotype.Component;
 /**
  * Migrates the {@code tenant_template} schema at every start, after the platform changelog (tenant
  * tables refer to platform ones) and before Hibernate validates the entities against it: Hibernate
- * validates one schema only, and this is the one that is always current. Liquibase's own lock
- * serialises instances starting together, as it does for the platform changelog.
+ * validates one schema only, and this is the one that is always current. Instances starting together
+ * take turns on an advisory lock of the template's own ({@code TenantSchemaMigrator.migrateTemplate}):
+ * Liquibase's lock table doesn't exist yet in a new schema, so it can't serialise them.
  */
 @Component
 @DependsOn("liquibase")

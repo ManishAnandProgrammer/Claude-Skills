@@ -41,29 +41,36 @@ class SeekTest {
     private final Predicate idBefore = mock(Predicate.class);
     private final Predicate tieThenId = mock(Predicate.class);
     private final Predicate tieThenMinutes = mock(Predicate.class);
+    private final Predicate alternatives = mock(Predicate.class);
+    private final Predicate dayFrom = mock(Predicate.class);
+    private final Predicate dayUpTo = mock(Predicate.class);
     private final Predicate seek = mock(Predicate.class);
 
     @Test
-    @DisplayName("Ascending: a later first key, or the same first key (a tie) and a later id")
+    @DisplayName("Ascending: from the first key on (the index's start), a later first key, or a tie and a later id")
     void ascendingSeek() {
         when(builder.greaterThan(day, DAY)).thenReturn(dayAfter);
         when(builder.equal(day, DAY)).thenReturn(dayTie);
         when(builder.greaterThan(id, ID)).thenReturn(idAfter);
         when(builder.and(dayTie, idAfter)).thenReturn(tieThenId);
-        when(builder.or(dayAfter, tieThenId)).thenReturn(seek);
+        when(builder.or(dayAfter, tieThenId)).thenReturn(alternatives);
+        when(builder.greaterThanOrEqualTo(day, DAY)).thenReturn(dayFrom);
+        when(builder.and(dayFrom, alternatives)).thenReturn(seek);
 
         assertThat(Seek.after(builder, false, day, DAY, id, ID)).isSameAs(seek);
         verify(builder, never()).lessThan(day, DAY);
     }
 
     @Test
-    @DisplayName("Descending: an earlier first key, or a tie and an earlier id")
+    @DisplayName("Descending: up to the first key, an earlier first key, or a tie and an earlier id")
     void descendingSeek() {
         when(builder.lessThan(day, DAY)).thenReturn(dayBefore);
         when(builder.equal(day, DAY)).thenReturn(dayTie);
         when(builder.lessThan(id, ID)).thenReturn(idBefore);
         when(builder.and(dayTie, idBefore)).thenReturn(tieThenId);
-        when(builder.or(dayBefore, tieThenId)).thenReturn(seek);
+        when(builder.or(dayBefore, tieThenId)).thenReturn(alternatives);
+        when(builder.lessThanOrEqualTo(day, DAY)).thenReturn(dayUpTo);
+        when(builder.and(dayUpTo, alternatives)).thenReturn(seek);
 
         assertThat(Seek.after(builder, true, day, DAY, id, ID)).isSameAs(seek);
         verify(builder, never()).greaterThan(day, DAY);
@@ -79,7 +86,9 @@ class SeekTest {
         when(builder.lessThan(id, ID)).thenReturn(idBefore);
         when(builder.and(dayTie, minutesBefore)).thenReturn(tieThenMinutes);
         when(builder.and(dayTie, minutesTie, idBefore)).thenReturn(tieThenId);
-        when(builder.or(dayBefore, tieThenMinutes, tieThenId)).thenReturn(seek);
+        when(builder.or(dayBefore, tieThenMinutes, tieThenId)).thenReturn(alternatives);
+        when(builder.lessThanOrEqualTo(day, DAY)).thenReturn(dayUpTo);
+        when(builder.and(dayUpTo, alternatives)).thenReturn(seek);
 
         assertThat(Seek.after(builder, true, day, DAY, minutes, MINUTES, id, ID)).isSameAs(seek);
     }

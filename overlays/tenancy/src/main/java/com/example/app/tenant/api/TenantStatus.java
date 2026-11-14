@@ -14,7 +14,7 @@ public enum TenantStatus {
     ACTIVE,
     /** Temporarily refused (staff, later billing); reactivated or closed. */
     SUSPENDED,
-    /** For good; its data is exported and deleted after the retention period. */
+    /** For good: nobody signs in to it again. Exporting and deleting its data is an owner's step; no job does it. */
     CLOSED,
     /** A registration staff turned down. */
     REJECTED;

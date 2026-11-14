@@ -30,6 +30,8 @@ import java.util.UUID;
 class TenantSchemaMigrator {
 
     private static final String MIGRATIONS_LOCK = "tenant-schema-migrations";
+    /** The template's own: instances starting together wait on it, and never on a long tenant run. */
+    private static final String TEMPLATE_LOCK = "tenant-template-migration";
     private static final String LAST_CHANGESET = """
             select id from %s.databasechangelog order by orderexecuted desc limit 1""";
 
@@ -48,13 +50,13 @@ class TenantSchemaMigrator {
     /** Runs {@code work} holding the migrations lock; false, without running it, when another migrator holds it. */
     boolean runLocked(Runnable work) {
         Boolean ran = ownerJdbc.execute((ConnectionCallback<Boolean>) connection -> {
-            if (!advisoryLock(connection, "select pg_try_advisory_lock(hashtext(?))")) {
+            if (!advisoryLock(connection, "select pg_try_advisory_lock(hashtextextended(?, 0))", MIGRATIONS_LOCK)) {
                 return false;
             }
             try {
                 work.run();
             } finally {
-                advisoryLock(connection, "select pg_advisory_unlock(hashtext(?))");
+                advisoryLock(connection, "select pg_advisory_unlock(hashtextextended(?, 0))", MIGRATIONS_LOCK);
             }
             return true;
         });
@@ -71,10 +73,21 @@ class TenantSchemaMigrator {
         return update(TenantSchemas.of(tenantId));
     }
 
-    /** The template Hibernate validates against, created on the first start. */
+    /**
+     * The template Hibernate validates against, created on the first start. Every starting instance runs
+     * it, one at a time (a lock of its own, waited for): two Liquibase runs on a new schema fail.
+     */
     void migrateTemplate() {
-        create(TenantSchemas.TEMPLATE);
-        update(TenantSchemas.TEMPLATE);
+        ownerJdbc.execute((ConnectionCallback<Boolean>) connection -> {
+            waitForLock(connection, TEMPLATE_LOCK);
+            try {
+                create(TenantSchemas.TEMPLATE);
+                update(TenantSchemas.TEMPLATE);
+            } finally {
+                advisoryLock(connection, "select pg_advisory_unlock(hashtextextended(?, 0))", TEMPLATE_LOCK);
+            }
+            return true;
+        });
     }
 
     private void create(String schema) {
@@ -109,9 +122,16 @@ class TenantSchemaMigrator {
         return ownerJdbc.queryForObject("select quote_ident(?)", String.class, role);
     }
 
-    private static boolean advisoryLock(Connection connection, String sql) throws SQLException {
+    private static void waitForLock(Connection connection, String lock) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("select pg_advisory_lock(hashtextextended(?, 0))")) {
+            statement.setString(1, lock);
+            statement.execute();
+        }
+    }
+
+    private static boolean advisoryLock(Connection connection, String sql, String lock) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, MIGRATIONS_LOCK);
+            statement.setString(1, lock);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() && result.getBoolean(1);
             }

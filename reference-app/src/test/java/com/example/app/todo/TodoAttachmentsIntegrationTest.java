@@ -250,6 +250,54 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         assertThat(statusOfKey(othersKey)).isEqualTo("PENDING");
     }
 
+    /** Sends {@code refusedKey} in an update of a todo without files: 409, and the todo is unchanged. */
+    private void assertUpdateClaimRefused(TestUser user, String refusedKey) throws Exception {
+        String listId = createList(user);
+        String todoId = createTodo(user, listId, List.of());
+
+        String body = update(user, listId, todoId, 0, "With files", List.of(refusedKey), List.of())
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_NOT_AVAILABLE"))
+                .andReturn().getResponse().getContentAsString();
+        assertNoInternals(body);
+        assertThat(attachmentIds(user, todoId)).isEmpty();
+        assertThat(jdbc.queryForObject("select version from todos where id = ?::uuid", Long.class, todoId)).isZero();
+    }
+
+    @Test
+    @DisplayName("Update refuses every other unclaimable key too: already attached, expired, another purpose's, unknown")
+    void updateRefusesEveryUnclaimableKey() throws Exception {
+        TestUser user = newUser();
+        String attached = upload(user);
+        createTodo(user, createList(user), List.of(attached));
+        String expired = upload(user);
+        assertThat(sql("update media_files set upload_expires_at = now() - interval '2 hours', expires_at = now() - interval '1 minute' where key = ?",
+                expired)).isEqualTo(1);
+        String otherPurposeKey = "OTHER_PURPOSE/" + UUID.randomUUID();
+        sql("""
+                insert into media_files (id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
+                                         upload_expires_at, expires_at, created_at, updated_at, version)
+                values (gen_random_uuid(), ?, 'OTHER_PURPOSE', 'a.pdf', 'application/pdf', 10, 'PENDING', ?,
+                        now() + interval '5 minutes', now() + interval '1 hour', now(), now(), 0)
+                """, otherPurposeKey, user.id());
+
+        for (String refused : List.of(attached, expired, otherPurposeKey, PURPOSE + "/" + UUID.randomUUID())) {
+            assertUpdateClaimRefused(user, refused);
+        }
+    }
+
+    @Test
+    @DisplayName("An update that ends exactly at the purpose's maxFiles is accepted")
+    void updateUpToTheMaximumIsAccepted() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user);
+        String todoId = createTodo(user, listId, uploads(user, 4));
+
+        update(user, listId, todoId, 0, "With files", List.of(upload(user)), List.of())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.attachments", hasSize(5)));
+    }
+
     @Test
     @DisplayName("Fewer files than the purpose's minFiles on create is 400 UPLOAD_FILE_COUNT_OUT_OF_RANGE")
     void createBelowTheMinimumIs400() throws Exception {

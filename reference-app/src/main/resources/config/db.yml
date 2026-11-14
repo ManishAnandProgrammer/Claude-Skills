@@ -29,8 +29,9 @@ spring:
       max-lifetime: 1800000
       leak-detection-threshold: 30000
       transaction-isolation: TRANSACTION_READ_COMMITTED
-      # Together with provider_disables_autocommit and config/LazyConnectionConfig: a connection is
-      # borrowed at the first statement, not when the transaction begins (read-only ones included).
+      # Together with provider_disables_autocommit and config/LazyConnectionConfig (with tenancy, the
+      # connection hook instead): a connection is borrowed at the first statement, not when the
+      # transaction begins (read-only ones included).
       auto-commit: false
       data-source-properties:
         # Server-side limits for the app pool only (Liquibase opens its own connection).
@@ -62,6 +63,7 @@ spring:
           fail_on_pagination_over_collection_fetch: true
           in_clause_parameter_padding: true
   liquibase:
+    # Schema per tenant replaces it with platform.yaml (config/tenancy.yml).
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
 app:

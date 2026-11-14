@@ -2,7 +2,8 @@
 
 The incident runbook (`runbook.md`) covers the application as a whole; this is what row mode adds:
 one schema, a `tenant_id` on every tenant table, and PostgreSQL row-level security (RLS) as the barrier.
-`<app>` is `spring.application.name`, `<db>` is `DB_NAME`.
+`<app>` is `spring.application.name` with dashes as underscores (`campus_desk`: role names are plain
+lower-case identifiers, which the changesets use unquoted; startup refuses others), `<db>` is `DB_NAME`.
 
 ## 1. Database roles (before the first start, and before a restore)
 
@@ -43,8 +44,8 @@ Staff are rows, not an endpoint: insert one with a bcrypt hash of its password (
   The response says PENDING; right after it commits, provisioning seeds the tenant's defaults and makes
   it ACTIVE (there is no schema to create).
 - **Self-registration** (when the project has the `tenant-registration` piece): a registered tenant is
-  PENDING and waits for staff: `POST /api/v1/platform/tenants/{id}/approval` approves it (activated at
-  once), `PATCH .../{id}` with status `REJECTED` rejects it. The owner's login answers 403
+  PENDING and waits for staff: `POST /api/v1/platform/tenants/{id}/approve` approves it (activated at
+  once), `PATCH .../{id}/status` with status `REJECTED` rejects it. The owner's login answers 403
   `TENANT_NOT_ACTIVE` with `tenantStatus: PENDING` meanwhile.
 - **A tenant still PENDING after its approval**: the log has `Tenant provisioning failed` with the
   cause (a module's seeding). Fix it, then approve the tenant again: provisioning runs again.

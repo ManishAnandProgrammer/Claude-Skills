@@ -92,10 +92,12 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                         List.of("owner_id"),
                         "idx_todos_owner_id_id"),
                 // A later batch adds the cursor's seek (Seek.after, TodoRepositoryImpl.seekAfter): the same
-                // index must still give the order.
-                Arguments.of("todos, DUE_DATE, a later batch",
-                        "todos where owner_id = :owner and (due_sort > :due or (due_sort = :due and id > :after)) order by due_sort, id",
-                        List.of("owner_id"),
+                // index gives the order, and the seek's leading bound starts the scan at the cursor.
+                Arguments.of("todos, DUE_DATE, a later batch", """
+                        todos where owner_id = :owner
+                          and due_sort >= :due and (due_sort > :due or (due_sort = :due and id > :after))
+                        order by due_sort, id""",
+                        List.of("owner_id", "due_sort"),
                         "idx_todos_owner_id_due_sort_id"),
                 Arguments.of("todos, NEWEST, a later batch", "todos where owner_id = :owner and id < :after order by id desc",
                         List.of("owner_id"),
