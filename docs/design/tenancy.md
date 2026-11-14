@@ -12,8 +12,8 @@ properties must hold from day one, because each is expensive to add later:
 - every piece of work knows its tenant;
 - the tests prove all three.
 
-**Out of scope:** schema-per-tenant (`metadata.md` META-09 keeps its notes), a database per tenant,
-and microservices. The microservices rules are written down in *Later*, but not built.
+**Also in scope:** schema-per-tenant, as the second answer to the same bootstrap question (see
+*Schema-per-tenant mode*). **Out of scope:** a database per tenant, and microservices. The microservices rules are written down in *Later*, but not built.
 
 ## Decisions and why
 
@@ -179,12 +179,27 @@ and microservices. The microservices rules are written down in *Later*, but not 
 
 ### Staff access to tenant data
 
-11. **Platform staff see no tenant content in the first setup:** only tenants, statuses and
-    counts.
-    - **Support impersonation comes later,** designed now so tokens don't change shape: a support
-      session gets a tenant token that also carries `act: {sub: <platformUserId>}` (RFC 8693). It
-      is consented, time-boxed, and recorded in an audit log the tenant can read.
-    - **Break-glass access** for incidents comes with it, always reviewed afterwards.
+11. **Platform staff can act as any tenant and edit across tenants (owner decision O6, 2026-11-14).**
+    This is the default. An application that needs more adds a gate in front of it; it doesn't
+    redesign the access.
+    - **Impersonation:**
+      - `POST /api/v1/platform/tenants/{id}/impersonations` issues a short-lived tenant token
+        (`tenant_id` = that tenant), with `act: {sub: <platformUserId>}` (RFC 8693) and a role
+        chosen by the platform user (by default the tenant's ADMIN);
+      - the tenant plane accepts it like any tenant token;
+      - `CurrentUser` exposes the actor, so audit columns and logs record both the impersonated
+        role and the real person.
+    - **Direct cross-tenant edits:** a platform endpoint names its tenant in the path
+      (`/api/v1/platform/tenants/{id}/...`) and runs the tenant module's service under
+      `TenantScope.runAs(id, …)`. It never reads another tenant's rows in one transaction.
+    - **Always on, even by default:** an append-only `platform_audit` row for every
+      impersonation and every direct edit (who, which tenant, what, when). It's cheap, and it is
+      what a later consent or ticket step builds on.
+    - **The gate:** a `SupportAccessPolicy` interface called before an impersonation is issued.
+      The default allows it. A strict application plugs in a consent check (the tenant's admin
+      approved, time-boxed) or a ticket reference, without changing the endpoints.
+    - **Break-glass and a support-access log the tenant can read** come later. They are what a
+      strict policy adds.
 
 ### Provisioning
 
@@ -388,6 +403,124 @@ production that is about one network round trip.
   tenant. For a large one, `EXPLAIN` as the app role, and add a marked bypass reader with an
   explicit tenant predicate only when measured.
 
+## Schema-per-tenant mode (2026-11-14)
+
+Bootstrap asks one question: **tenancy `none | row | schema`**. Schema mode is written fresh on
+the shared design. It takes the parts of ERP's schema-per-tenant code that held up, and avoids
+ERP's three traps:
+- `SET SESSION search_path` leaks to the next borrower;
+- an unknown tenant becomes `public`;
+- a tenant set inside an open transaction is ignored.
+
+The ERP study and E4–E7 below are the evidence.
+
+### What is shared with row mode (unchanged)
+
+- The tenant comes from the verified token.
+- `TenantContext` and `TenantScope.runAs`, the `NO_TENANT` sentinel, and the platform (decisions
+  7–12):
+  - `tenants`, `platform_users`, global users with memberships;
+  - staff endpoints instead of secret keys;
+  - one way in, `activate`;
+  - registration as a bootstrap choice.
+- Release-after-transaction mode with a connection hook (decision 4).
+- Tests in a fresh tenant, jobs per tenant, the tenant in cache keys and the MDC.
+
+### What differs
+
+| Topic | Row mode | Schema mode |
+|---|---|---|
+| Isolation | `@TenantId` + RLS on `tenant_id` | One schema per tenant: `t_<tenant id without dashes>`, derived and quoted (`quote_ident`), never from input. Tenant tables have no `tenant_id` |
+| The hook's statement | `set_config('app.tenant_id', ?, true)` | `set_config('search_path', quote_ident(?), true)` with the read-only flag; one parameterised statement |
+| No tenant | Policies see `''`: 0 rows | The role's default `search_path = platform`: tenant tables don't exist (`relation "notes" does not exist`), platform tables work |
+| Platform entities | Unqualified | `@Table(schema = "platform")`, so they resolve under any `search_path` |
+| Login | Users and memberships in one schema | Users and memberships in `platform`; login finds the tenants in one query (ERP needed a Redis username directory and an all-schema scan) |
+| Migrations | One changelog | Two masters: `db/changelog/platform.yaml` (Spring's Liquibase at startup) and `db/changelog/tenant.yaml`, run per schema by a `TenantMigrations` job, with `liquibaseSchema` = the tenant schema |
+| Hibernate validation | `ddl-auto: validate` as is | `getAnyConnection` points at a **`tenant_template` schema** that the migration job keeps current. Hibernate validates that schema only |
+| Export, delete, restore one tenant | A query per table | `pg_dump -n`, `DROP SCHEMA … CASCADE` after retention, restore one schema |
+| Scale | Millions of tenants | Thousands. Tens of thousands strain the catalog, `pg_dump` and autovacuum; row mode is the answer there (the bootstrap question says so) |
+| Defence in depth | RLS | One app role reaches every schema. ArchUnit plus a test: no native SQL names a schema (`t_` or `platform.` outside platform entities). A role per tenant is a later option |
+
+### Provisioning and migrations (from E6)
+
+- **Provisioning a tenant** is a job row, run once, resumable:
+  1. `CREATE SCHEMA` and grant usage to the app role;
+  2. Liquibase runs the tenant master into the new schema; this first run creates Liquibase's own
+     lock table;
+  3. seed the tenant's defaults;
+  4. ACTIVE.
+
+  The first migration of a schema runs **only** in provisioning. Two migrators racing on a
+  brand-new schema fail while creating Liquibase's own tables (E6e, 3 of 3 runs).
+- **At deploy:**
+  - `TenantMigrations` runs once, on one instance, under a PostgreSQL advisory lock. It
+    migrates the template and then every tenant schema, with bounded parallelism.
+  - It records each schema's last changeset in `platform.tenant_migrations`.
+  - A failing schema is recorded and skipped, and the others continue. A rerun applies only
+    what's missing (E6c/E6d).
+- **Not at every instance's startup.** Liquibase's own lock does serialise two migrators on one
+  schema, but the waiter polls every 10 s (E6f). N instances times M schemas would stall deploys.
+- **Changesets are expand-then-contract.** Schemas are migrated one after another, so old code
+  runs against new schemas and new code against old ones during the rollout.
+- **Health:** `tenant_migrations` behind the expected changeset counts as "migrations lagging".
+  It is readable on the platform API, never through `/health`.
+
+### Experiment results E4–E7 (2026-11-14)
+
+**Setup:** same as E1–E3. The role's default `search_path` is `platform`; three tenant schemas
+hold 10, 20 and 30 rows. The code lives with the E1–E3 code.
+
+**E4: the transaction-local `search_path` hook**, compared with ERP's approach (`setAutoCommit(true)`,
+`setSchema`, `setAutoCommit(false)` on borrow, no reset):
+
+| Check | Transaction-local hook | ERP's approach |
+|---|---|---|
+| Read-only transaction borrows at | first statement | **begin** (Spring's default mode) |
+| Read-only transaction without SQL | no borrow | **borrows** |
+| `search_path` inside, rows seen | tenant schema, its rows | tenant schema, its rows |
+| PostgreSQL read-only; a write in it | on; refused | on; refused |
+| **Plain JDBC borrower after commit** | `platform`; tenant tables invisible | **previous tenant's schema; reads its rows** |
+| Plain JDBC borrower after rollback | `platform` | **previous tenant's schema** |
+| `REQUIRES_NEW` under another tenant, outer afterwards | own connection and schema; outer unchanged | same |
+| Two transactions on one thread, retry, `NOT_SUPPORTED` | correct | correct |
+| Tenant changed inside a transaction | ignored | ignored |
+| `NO_TENANT` | platform reads work; `relation "notes" does not exist` | n/a (ERP uses `public`) |
+
+**E5: plan caching across schemas.**
+- **Setup:** pool size 1, `prepareThreshold=1`; `pg_prepared_statements` confirmed the
+  statements were prepared on the server.
+- **Through Hibernate:** 60 transactions alternating three tenants, a native and a JPQL query
+  each: **0 wrong results**.
+- **Raw JDBC:** one `PreparedStatement` object reused across `search_path` changes: correct
+  every time. PostgreSQL replans a cached plan when `search_path` changes.
+- **Generic plans:** the same with `plan_cache_mode=force_generic_plan` set through the driver
+  options.
+- **ERP's approach** left **78** server-prepared statements on one connection, one per distinct
+  `SET SESSION search_path TO '<schema>'` text. The hook's one parameterised statement left 9.
+
+**E6: Liquibase per schema** (as the owner role, master YAML including numbered SQL files):
+
+| Run | Result |
+|---|---|
+| v1 into 50 new schemas | 4.5 s (about 90 ms each); `databasechangelog` and the lock table inside each schema |
+| v1 again, nothing to do | 1.3–1.4 s (about 28 ms per schema, at every deploy) |
+| v2 with schema 25 broken on purpose | only schema 25 fails (`column "priority" already exists`), its lock is released, the 49 others are migrated |
+| v2 after fixing schema 25 | only the missing changeset runs |
+| two migrators, **new** schema | one fails (`duplicate key … pg_type_typname_nsp_index`), 3 of 3 runs; changesets applied once |
+| two migrators, schema with its lock table | both succeed; the second waits about 10 s (Liquibase polls its lock) and finds nothing to do; applied once |
+
+- **Changesets are identified by id, author and file path.** Moving a changeset to another file
+  re-runs it. My first attempt with two separate files proved it: every schema failed with
+  "relation already exists". Tenant changesets live in numbered files included by one master.
+
+**E7: `ddl-auto: validate`** goes through `getAnyConnection`:
+- in `platform` it fails with "missing table [notes]";
+- in `tenant_template` it passes;
+- a drifted template (`title` renamed) fails with "missing column [title] in table [notes]".
+
+Hibernate validates only that one schema. The other tenant schemas are covered by
+`tenant_migrations` (every schema reached the expected changeset), not by Hibernate.
+
 ## Later (rules and notes, not in the first setup)
 
 - **Support impersonation and break-glass access** (decision 11).
@@ -415,3 +548,7 @@ status checked at token issue (suspension effective within one access-token life
 
 O5 registration: staff only, or self-registration with staff approval (decision 12); billing later
 only adds a caller of `activate`.
+
+O6 staff access (decision 11): impersonation and direct cross-tenant edits by default, always
+audited; a `SupportAccessPolicy` gate (default allow) for applications that need consent or
+tickets.
