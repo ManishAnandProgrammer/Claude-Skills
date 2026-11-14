@@ -4,7 +4,20 @@
 -- only when both pieces are chosen.
 
 -- tenancy-row:begin
--- -- Row mode seeds the TODO_ATTACHMENT purpose's starting limits per tenant (TodoAttachmentPolicySeed).
+-- -- Row mode: tenants provisioned from now on get the TODO_ATTACHMENT purpose's starting limits from
+-- -- TodoAttachmentPolicySeed; the tenants that already exist when the purpose ships get them here, with
+-- -- the same numbers (none on a new database). RLS is lifted for this changeset's own transaction only,
+-- -- so the owner writes every tenant's row (docs/tenancy-runbook.md, section 4).
+-- --changeset dev:0010-todo-attachment-policy-existing-tenants
+-- ALTER TABLE upload_policies NO FORCE ROW LEVEL SECURITY;
+-- INSERT INTO upload_policies (id, tenant_id, purpose, min_size_bytes, max_size_bytes, min_files, max_files,
+--                              content_types, created_at, updated_at, version)
+-- SELECT uuidv7(), t.id, 'TODO_ATTACHMENT', 1, 10485760, 0, 5, ARRAY ['application/pdf', 'image/jpeg', 'image/png'],
+--        now(), now(), 0
+--   FROM tenants t
+--  WHERE NOT EXISTS (SELECT 1 FROM upload_policies p WHERE p.tenant_id = t.id AND p.purpose = 'TODO_ATTACHMENT');
+-- ALTER TABLE upload_policies FORCE ROW LEVEL SECURITY;
+-- --rollback SELECT 1;
 -- tenancy-row:else
 --changeset dev:0010-todo-attachment-policy
 -- The TODO_ATTACHMENT purpose's starting limits; an admin changes them through PUT /upload-policies/{purpose}.

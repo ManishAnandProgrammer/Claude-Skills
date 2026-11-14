@@ -62,8 +62,13 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
+    // media:begin
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY, MEDIA_STORAGE_UNAVAILABLE (the files' read URLs)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:else
+    // @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
     ObjectWrapper<TodoResponse> get(UUID id);
 
     @Operation(summary = "Create a todo", description = """
@@ -88,8 +93,13 @@ public interface TodoApi {
             or expired: upload the file again)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:end
-    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+    // media:begin
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY, MEDIA_STORAGE_UNAVAILABLE (the files' read URLs)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:else
+    // @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
     ObjectWrapper<TodoResponse> create(TodoCreateRequest request);
 
     @Operation(summary = "Edit a todo", description = """
@@ -121,8 +131,13 @@ public interface TodoApi {
             // media:end
             ,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+    // media:begin
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY, MEDIA_STORAGE_UNAVAILABLE (the files' read URLs)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:else
+    // @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
     ObjectWrapper<TodoResponse> update(UUID id, TodoUpdateRequest request);
 
     @Operation(summary = "Complete or reopen a todo", description = """
@@ -137,8 +152,13 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+    // media:begin
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY, MEDIA_STORAGE_UNAVAILABLE (the files' read URLs)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:else
+    // @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
     ObjectWrapper<TodoResponse> changeStatus(UUID id, TodoStatusRequest request);
 
     @Operation(summary = "Replace a todo's tags", description = """
@@ -159,8 +179,13 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT (a stale version, or a dropped tag deleted meanwhile)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+    // media:begin
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY, MEDIA_STORAGE_UNAVAILABLE (the files' read URLs)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:else
+    // @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
     ObjectWrapper<TodoResponse> replaceTags(UUID id, TodoTagsRequest request);
 
     @Operation(summary = "Delete a todo", description = """

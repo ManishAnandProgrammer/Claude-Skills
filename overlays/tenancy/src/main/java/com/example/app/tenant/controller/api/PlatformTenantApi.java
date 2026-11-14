@@ -1,10 +1,13 @@
 package com.example.app.tenant.controller.api;
 
+import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
+import com.example.app.tenant.dto.request.PlatformAuditFilter;
 import com.example.app.tenant.dto.request.TenantCreateRequest;
 import com.example.app.tenant.dto.request.TenantFilter;
 import com.example.app.tenant.dto.request.TenantStatusRequest;
+import com.example.app.tenant.dto.response.PlatformAuditResponse;
 import com.example.app.tenant.dto.response.TenantResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -59,9 +62,10 @@ public interface PlatformTenantApi {
     ObjectWrapper<TenantResponse> create(TenantCreateRequest request);
 
     @Operation(summary = "Approve a registered tenant", description = """
-            Starts its provisioning: it stays PENDING until its tables exist, then becomes ACTIVE (usually \
-            within seconds). Approving an approved tenant again changes nothing. A billing module's payment \
-            webhook would approve the same way.""")
+            Starts its provisioning. The answer shows the tenant as approved: PENDING. Row mode has \
+            provisioned it by the time the answer arrives (a GET shows ACTIVE); with a schema per tenant it \
+            stays PENDING until its tables exist, usually seconds. Approving a tenant that is no longer \
+            PENDING is 409. A billing module's payment webhook would approve the same way.""")
     @ApiResponse(responseCode = "202", description = "Approved; provisioning follows")
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -88,4 +92,20 @@ public interface PlatformTenantApi {
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<TenantResponse> changeStatus(@Parameter(description = "Tenant id") UUID id, TenantStatusRequest request);
+
+    @Operation(summary = "A tenant's support history, in batches", description = """
+            Every impersonation and direct edit by platform staff inside the tenant, newest first. Pass \
+            pageInfo.nextCursor as after for the next batch; the batch size defaults and is bounded by \
+            configuration.""")
+    @ApiResponse(responseCode = "200", description = "A batch of entries")
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_PARAMETER_INVALID (a bad id or cursor)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "TENANT_NOT_FOUND",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    CursorWrapper<PlatformAuditResponse> audit(@Parameter(description = "Tenant id") UUID id,
+                                               @ParameterObject PlatformAuditFilter filter);
 }

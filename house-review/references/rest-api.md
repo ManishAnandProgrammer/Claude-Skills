@@ -408,13 +408,14 @@ types.
   enum, a changeset widening the role check constraint (`ck_users_role` in the reference,
   widened for `ADMIN` by `0007-users-admin-role.sql`), and the test base's `new<Role>()` (through
   `newUserWithRole`). Without the changeset the first user given the role fails the insert.
-- **Does a higher role include a lower one?** In the reference, no: an account has exactly one role,
-  `hasRole('USER')` is false for an ADMIN, and an upload purpose names the one role that may upload
-  (`UploadUrlIntegrationTest`: another role is 403). A project where a MANAGER is also a USER says so
-  once, as a `RoleHierarchy` bean (`RoleHierarchyImpl.fromHierarchy("ROLE_ADMIN > ROLE_USER ...")`)
-  read by method security **and** by `CurrentUser.hasRole` (through
-  `getReachableGrantedAuthorities`), never in the HTTP request matchers; the copied tests that assert
-  "another role is 403" change with it, and both profiles record it. Bootstrap asks (step 0).
+- **Roles don't include each other**, and the house ships no role hierarchy: an account has exactly
+  one role, `hasRole('USER')` is false for an ADMIN, and every check that names roles lists each role
+  it lets in, so it reads on its own line: an upload purpose's roles (`UploadPurpose("USER", "ADMIN")`;
+  `UploadUrlIntegrationTest`: a role it doesn't list is 403, a test skipped when it lists them all), a
+  role annotation declared once with `hasAnyRole('ADMIN', 'MANAGER')`. USER-level endpoints carry no
+  role check, so every role passes them. A `RoleHierarchy` bean is a finding unless the profile
+  records it as a deviation: it must then be read by method security **and** `CurrentUser.hasRole`,
+  and the copied media 403 tests rewritten against it.
 - Role names that live in data or in another module's code (`UploadPurpose("USER")`, where the media
   module can't depend on the user module's enum) are checked by a test against the `Role` constants
   (reference: `UploadPurposeTest`).

@@ -39,7 +39,8 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
 - **Check:** each purpose is an `UploadPurpose` constant (a new purpose always needs code: something
   attaches the file). Its limits (min/max size, min/max files, content types) are an
   `upload_policies` row, changed by an admin through `PUT /upload-policies/{purpose}` without a
-  restart, and seeded by the changeset that adds the purpose. The frontend reads
+  restart, and seeded by the changeset that adds the purpose, for every tenant with tenancy, the
+  existing ones included (row mode: a `TenantProvisioned` listener plus a backfill changeset, TEN-34). The frontend reads
   `GET /upload-policies`; it never keeps a copy of the limits. A purpose without a row is 404
   `UPLOAD_POLICY_NOT_FOUND`.
 - **Detect:** sizes or types in `application.yml` or in an enum constructor; purposes as free
@@ -61,7 +62,7 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
     employees, admins upload their photos (`EMPLOYEE_PHOTO("ADMIN")`). When the record's subject may
     change the file too (an employee's own photo), that is a second write path with its own checks,
     and the purpose names both roles. A purpose lists **every** role that writes the record: roles
-    don't include each other (no hierarchy unless the project wires one, REST-25), and with tenancy a
+    don't include each other (the house ships no hierarchy, REST-25), and with tenancy a
     tenant's owner is its ADMIN, so a record every member edits is `STUDENT_PHOTO("USER", "ADMIN")`;
     a purpose naming `USER` alone shuts the owner out.
 - **Detect:** an `attach` endpoint in the media module; an interface in `media` implemented by a

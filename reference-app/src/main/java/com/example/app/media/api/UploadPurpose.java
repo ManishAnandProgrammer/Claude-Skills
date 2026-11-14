@@ -26,9 +26,8 @@ public enum UploadPurpose {
 
     /**
      * The roles (the token's {@code roles} claim) that may upload for this purpose: every role that
-     * writes the owning record. Roles don't include each other unless the project wires a role
-     * hierarchy, so a record that USER members and their tenant's ADMIN both edit names both
-     * ({@code STUDENT_PHOTO("USER", "ADMIN")}).
+     * writes the owning record. Roles don't include each other (no role hierarchy), so a record that
+     * USER members and their tenant's ADMIN both edit names both ({@code STUDENT_PHOTO("USER", "ADMIN")}).
      */
     public List<String> roles() {
         return roles;

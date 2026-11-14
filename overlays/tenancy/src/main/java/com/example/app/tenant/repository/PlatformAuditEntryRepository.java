@@ -1,9 +1,10 @@
 package com.example.app.tenant.repository;
 
 import com.example.app.tenant.domain.PlatformAuditEntry;
+import com.example.app.tenant.repository.custom.CustomPlatformAuditEntryRepository;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.UUID;
 
-public interface PlatformAuditEntryRepository extends JpaRepository<PlatformAuditEntry, UUID> {
+public interface PlatformAuditEntryRepository extends JpaRepository<PlatformAuditEntry, UUID>, CustomPlatformAuditEntryRepository {
 }

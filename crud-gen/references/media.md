@@ -21,9 +21,19 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
    `EMPLOYEE_PHOTO("ADMIN")`; ask when the record's subject should change the file too). Roles don't
    include each other: a record that members and their tenant's ADMIN owner both edit is
    `STUDENT_PHOTO("USER", "ADMIN")`. For a
-   shared root that is the writing role Step 1 decided, never `USER` while signup is public. A
-   changeset (next free number) seeds its `upload_policies` row: min/max size, min/max files,
-   content types from `AllowedContentTypes` only (MEDIA-09). Ask the user for the limits; never SVG,
+   shared root that is the writing role Step 1 decided, never `USER` while signup is public. Its
+   starting limits (min/max size, min/max files, content types from `AllowedContentTypes` only,
+   MEDIA-09) reach **every** tenant, the existing ones included: the owner's write reads the count
+   range, so a tenant without the row answers every create 404 `UPLOAD_POLICY_NOT_FOUND`. Per mode:
+   - no tenancy: a changeset (next free number) seeds the `upload_policies` row (golden `0010`);
+   - `schema`: the same changeset, in the tenant changelog: the deploy-time migrations run it in every
+     existing tenant schema, provisioning in every new one (TEN-24);
+   - `row`: a changeset can't seed a tenant's row. New tenants get it from a `TenantProvisioned`
+     listener (golden `overlays/tenancy-row/.../todo/service/TodoAttachmentPolicySeed`), the tenants
+     that exist when the purpose ships from a backfill changeset that lifts `FORCE` for its own
+     transaction, with the listener's numbers (golden: `0010`'s `…-existing-tenants` changeset; its test
+     `TodoAttachmentPolicyBackfillIntegrationTest`, which runs the changeset for a tenant without the
+     row). Generate both, and their test. Ask the user for the limits; never SVG,
    HTML or XML. With the **project's first purpose**, the media piece's own endpoint tests
    (`UploadUrlIntegrationTest`, `UploadPolicyIntegrationTest`, `PresignedUploadIntegrationTest`)
    stop being skipped: they run against `UploadPurpose.values()[0]` with its role; run them.

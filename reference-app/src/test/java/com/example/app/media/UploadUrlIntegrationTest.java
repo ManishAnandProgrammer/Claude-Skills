@@ -118,7 +118,7 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A role the purpose doesn't name (one role per account, no hierarchy) is 403 ACCESS_DENIED, and nothing is recorded")
+    @DisplayName("A role the purpose doesn't list (roles don't include each other) is 403 ACCESS_DENIED, and nothing is recorded; skipped when it lists every role")
     void aRoleThePurposeDoesNotNameIs403() throws Exception {
         TestUser other = newNonUploader();
 

@@ -35,10 +35,10 @@ CREATE INDEX idx_tenant_migrations_status_updated_at_id ON tenant_migrations (st
 -- schema (the tenant schemas included), is granted to it; the migrator revokes Liquibase's own tables
 -- again after each run. Usage on each tenant schema is granted when the schema is created.
 GRANT USAGE ON SCHEMA platform TO ${appRole};
-GRANT SELECT, INSERT, UPDATE, DELETE ON users, refresh_tokens, tenants, tenant_status_changes, tenant_memberships,
+GRANT SELECT, INSERT, UPDATE, DELETE ON users, refresh_tokens, tenants, tenant_memberships,
     platform_users, tenant_migrations TO ${appRole};
--- Append-only: the application may add audit rows, never change or remove them.
-GRANT SELECT, INSERT ON platform_audit TO ${appRole};
+-- Append-only: the application may add audit and status-history rows, never change or remove them.
+GRANT SELECT, INSERT ON platform_audit, tenant_status_changes TO ${appRole};
 ALTER DEFAULT PRIVILEGES GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${appRole};
 --rollback ALTER DEFAULT PRIVILEGES REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM ${appRole};
 --rollback REVOKE ALL ON ALL TABLES IN SCHEMA platform FROM ${appRole};

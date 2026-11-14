@@ -127,7 +127,9 @@ only an AVAILABLE book), the facade adds a locked view, `get<Parent>ViewForUpdat
 race answers 409 only, and the parent's delete waits for them (row 23's locked-parent outcome), so
 the golden plan texts about a 503 and `<PARENT>_GONE` don't apply there: don't copy them. A
 module without a facade (the sign-in piece's `user`) gets one in the same change: an interface in
-`<module>.api` that its service implements, with its view record. **The view never goes on the
+`<module>.api` that its service implements, with its view record. With tenancy, a lookup of a
+**member** is scoped by `TenantContext.current()` and answers the tenancy piece's
+`TENANT_MEMBER_NOT_FOUND` (no second "member not found" code). **The view never goes on the
 wire:** the consuming module maps it into a response record of its own (golden `PlanTodoResponse`,
 `TodoAttachmentResponse`; ARCH-06, enforced by `ModuleBoundaryArchTest`).
 
@@ -186,8 +188,9 @@ names as such; it joins `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES` with
 | `tenant_id uuid NOT NULL DEFAULT nullif(current_setting('app.tenant_id', true), '')::uuid` and `fk_<table>_tenant_id → tenants (id)` | TEN-30 |
 | `ENABLE` + `FORCE ROW LEVEL SECURITY` and the one `tenant_isolation` policy (`USING` and `WITH CHECK`, the same predicate) **in the changeset that creates the table** | TEN-30 |
 | Every unique constraint and list index has `tenant_id` among its equality columns, after the owner (`(owner_id, tenant_id, sort…, id)`), leading when the tenant alone scopes the list; names as in single-tenant | TEN-33, DATA-10 |
-| A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last (a new changeset when the parent's is applied); a reference to `users` stays plain | TEN-33, DATA-33 |
-| No seed rows in the changeset: a tenant's starting rows come from a `TenantProvisioned` listener in the module (golden `TodoAttachmentPolicySeed`) | TEN-34 |
+| A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually applied by then; the key exists for the child); a reference to `users`: **ask** "any account, or a member of this tenant?". An account stays a plain key; a member is a composite key `(user_id, tenant_id) → tenant_memberships (user_id, tenant_id)` (its unique pair), and removing that member is then refused while referenced (409, ask whether that is right) | TEN-33, DATA-33 |
+| A changeset already applied gets no new comment (its checksum changes): a later note (a TEN-36 search warning) goes in the runbook or the entity's javadoc | DATA-13 |
+| No seed rows in the entity's changeset: a new tenant's starting rows come from a `TenantProvisioned` listener in the module (golden `TodoAttachmentPolicySeed`), the existing tenants' from a backfill changeset that lifts `FORCE` for its own transaction (golden `0010`'s `…-existing-tenants`, tested by `TodoAttachmentPolicyBackfillIntegrationTest`) | TEN-34 |
 | A native query adds no tenant parameter (the policy filters it, and its predicate is an index condition); a search on `jsonb @>`, `LIKE`/`ILIKE` or range `&&` is flagged as a filter over the tenant's rows | TEN-32, TEN-36 |
 | Statuses `text` with a check constraint, never a PostgreSQL enum (its `=` isn't leakproof) | DATA-07, TEN-36 |
 
@@ -242,7 +245,11 @@ at its end.
 
 **Shapes without golden code yet** (money, exactly one current, month values, a record two parties
 see with different rights (REST-16), a use case writing two aggregates (a `<UseCase>Manager`,
-ARCH-15's shape)): follow the house-review rules and ask; don't invent a shape. Their tests take each
+ARCH-15's shape)): follow the house-review rules and ask; don't invent a shape. A **status workflow**
+(several states, only some moves allowed) copies the tenant lifecycle with tenancy, or its shape
+without it: the moves as one `canBecome(target)` switch on the status enum (`TenantStatus`), the
+entity's change method refusing the rest with 409 `<ENTITY>_STATUS_CHANGE_INVALID` naming both
+states, and a test per allowed and per refused move. Their tests take each
 party × each action, and for a Manager each aggregate's refusal rolling both back.
 
 ---
@@ -293,7 +300,12 @@ description and its 400 response name it.
   backed by a database `CHECK`.
 - **Ranges in a body** (a plan's `startsOn`/`endsOn`): one `@AssertTrue @Schema(hidden = true)
   boolean is<X>RangeOrdered()` on the request record, like a range filter, backed by a `CHECK`
-  (golden `PlanCreateRequest`); the API text says whether the ends are inclusive.
+  (golden `PlanCreateRequest`); the API text says whether the ends are inclusive. An updatable range
+  changes through **one** entity method that takes both ends and guards them (`reschedule(from, to)`,
+  `IllegalStateException` on an inverted range; no golden code: `Plan` is immutable), never a setter
+  per end. A filter for "what is on during [from, to]" is an overlap, written as two comparisons
+  (`startsOn <= :to AND endsOn >= :from`, both inclusive), not the range `&&` operator (not leakproof
+  under row-level security, TEN-36).
 - **"None" is null:** optional text and pattern fields store blank as `null`; the `@Schema` says
   "null, absent or blank for none (returned as null)".
 - **Calendar dates:** every date that reaches a column or a query, filters included, carries
@@ -319,7 +331,11 @@ an empty collection is meaningless (an optional set of tags may be empty); a dat
 `<Entity>Response` (every field, FKs as ids, ending with `{{auditFields}}`; a reference to another
 aggregate that clients display is `{id, name}`, a list of them for a many-to-many) for the detail; for list
 rows a `<Entity>SummaryResponse` without heavy columns (long text), still ending with the audit
-fields. Golden: `TodoResponse`, `TodoSummaryResponse`.
+fields. Golden: `TodoResponse`, `TodoSummaryResponse`. A list row's displayed parent name comes in
+**two steps**, in the same module as across modules: the batch, then one lookup of the batch's parent
+ids for their names (golden `PlanService`'s facade batch lookup; statement count + 1), never a join in
+the keyset query (with tenancy the join carries the tenant predicate twice and its plan turns on the
+cursor's position).
 
 ### 4.4 ErrorCodes and messages (error-contract.md)
 `ERROR_PREFIX_NOT_FOUND`, `ERROR_PREFIX_<FIELD>_TAKEN` per unique field, `ERROR_PREFIX_IN_USE` when

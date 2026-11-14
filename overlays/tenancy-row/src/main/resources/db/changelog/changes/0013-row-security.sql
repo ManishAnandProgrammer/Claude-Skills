@@ -10,8 +10,8 @@
 -- later. Liquibase's own tables stay the owner's alone.
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${appRole};
 REVOKE ALL ON databasechangelog, databasechangeloglock FROM ${appRole};
--- Append-only: the application may add audit rows, never change or remove them.
-REVOKE UPDATE, DELETE ON platform_audit FROM ${appRole};
+-- Append-only: the application may add audit and status-history rows, never change or remove them.
+REVOKE UPDATE, DELETE ON platform_audit, tenant_status_changes FROM ${appRole};
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${appRole};
 --rollback ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM ${appRole};
 --rollback REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${appRole};

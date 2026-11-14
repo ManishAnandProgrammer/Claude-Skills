@@ -23,10 +23,12 @@ With **AskUserQuestion** (several per call):
    piece brings `User (UserService)` and `RefreshToken (TokenService)`.
 2. **Sign-in:** the app issues its own tokens (the `sign-in` piece), an external identity
    provider (copy `core` only, then adapt `SecurityConfig` to the provider's issuer and JWK set),
-   or none. **Roles:** which beyond USER (and ADMIN with metadata or media), and does a higher one
-   include a lower one (is a MANAGER also a USER)? The pieces give an account exactly one role; an
-   inclusion is a `RoleHierarchy` bean read by method security and `CurrentUser.hasRole` (house-review
-   REST-25), and the copied "another role is 403" tests change with it. With public signup, any
+   or none. **Roles:** which beyond USER (and ADMIN with metadata, media or tenancy, where a tenant's
+   owner is its ADMIN). An account has exactly one role and roles don't include each other: the
+   pieces ship no role hierarchy, on purpose (house-review REST-25). Every signed-in account passes a
+   USER-level endpoint (it has no role check); where a role is named, the code lists every role that
+   may: an upload purpose its roles (`"USER", "ADMIN"` when members and the owner both write the
+   record), a role annotation `hasAnyRole`. So ask which roles write what, not whether roles nest. With public signup, any
    internet account is a USER: a table nobody owns (a catalogue, reference data) needs a role for its
    writes, asked per entity by crud-gen (SKILL.md Step 1, *Owned or shared*).
 3. **Signup policy** (with sign-in): the `sign-in` piece implements **immediate accounts** only
@@ -76,11 +78,12 @@ With **AskUserQuestion** (several per call):
 
    Say what tenancy brings and what it doesn't yet. It brings tenant ADMINs managing their members
    (`/tenant-members`: add an existing account by email, change a role, remove; the last ADMIN stays),
-   switch-tenant, impersonation with an audit row, and a tenant's owner as its ADMIN. Roles don't
+   switch-tenant, impersonation (a reason required) with an audit row that staff read at
+   `GET /platform/tenants/{id}/audit`, and a tenant's owner as its ADMIN. Roles don't
    include each other: a record that members and the owner both write names both roles where a role
    is listed (an upload purpose: `"USER", "ADMIN"`). Not built: invitations of people without an
-   account, a members list endpoint, a reader for the platform audit trail (SQL only), disabling
-   platform staff, a retention job for CLOSED tenants. Record the ones the project needs as open items.
+   account, a members list endpoint, disabling platform staff, a retention job for CLOSED tenants,
+   a metric for a failed provisioning. Record the ones the project needs as open items.
 
 Write `.claude/crud-profile.md` and `.claude/review-profile.md` from their templates.
 

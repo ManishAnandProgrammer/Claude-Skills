@@ -8,13 +8,19 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,6 +36,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TodoListIntegrationTest extends IntegrationTest {
 
     private static final String LISTS = "/api/v1/todo-lists";
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
     private static final String DROPDOWN = LISTS + "/dropdown";
 
     private static String namePayload(String name) {
@@ -188,6 +197,42 @@ class TodoListIntegrationTest extends IntegrationTest {
         deleteAs(user.accessToken(), unknown)
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("TODO_LIST_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("A delete that loses the race to a rename is 409 OPTIMISTIC_LOCK_CONFLICT, and the renamed list stays")
+    void deleteRacingARenameIs409() throws Exception {
+        TestUser user = newUser();
+        String id = createList(user, "Before");
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch renamed = new CountDownLatch(1);
+        CountDownLatch commit = new CountDownLatch(1);
+
+        try (ExecutorService executor = newExecutor()) {
+            // The rename holds the row uncommitted: the delete reads the old version, then waits at its DELETE.
+            Future<?> rename = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.update("update todo_lists set name = 'After', version = version + 1 where id = ?::uuid", id);
+                renamed.countDown();
+                awaitQuietly(commit);
+            }));
+            awaitLatch(renamed);
+            Future<Answer> delete;
+            try {
+                delete = executor.submit(() -> answerOf(deleteAs(user.accessToken(), LISTS + "/" + id)));
+                awaitLockWaiters(1, delete);
+            } finally {
+                commit.countDown();
+            }
+            within(rename);
+
+            Answer answer = within(delete);
+            assertThat(answer.status()).isEqualTo(409);
+            assertThat(answer.errorCode()).isEqualTo("OPTIMISTIC_LOCK_CONFLICT");
+            assertNoInternals(answer.body());
+        }
+        getAs(user.accessToken(), LISTS + "/" + id)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.name").value("After"));
     }
 
     @Test

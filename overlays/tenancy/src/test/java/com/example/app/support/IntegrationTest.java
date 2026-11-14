@@ -14,6 +14,7 @@ import com.jayway.jsonpath.JsonPath;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -367,6 +368,16 @@ public abstract class IntegrationTest {
     }
 
     // media:end
+    /**
+     * The test tenant exists before any test body, @WithoutTestTenant classes included: the fixture
+     * {@code jdbc} names it on every connection, and created inside a fixture's transaction it would
+     * stay PENDING (row mode provisions after the creating transaction commits).
+     */
+    @BeforeEach
+    void createTheTestTenantFirst() {
+        testTenant();
+    }
+
     /** The run's test tenant; the first call creates it, owned by an account of its own. */
     protected TestTenant testTenant() {
         synchronized (IntegrationTest.class) {

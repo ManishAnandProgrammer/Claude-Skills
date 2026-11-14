@@ -1,12 +1,16 @@
 package com.example.app.tenant.controller;
 
+import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.tenant.controller.api.PlatformTenantApi;
+import com.example.app.tenant.dto.request.PlatformAuditFilter;
 import com.example.app.tenant.dto.request.TenantCreateRequest;
 import com.example.app.tenant.dto.request.TenantFilter;
 import com.example.app.tenant.dto.request.TenantStatusRequest;
+import com.example.app.tenant.dto.response.PlatformAuditResponse;
 import com.example.app.tenant.dto.response.TenantResponse;
+import com.example.app.tenant.service.PlatformAuditService;
 import com.example.app.tenant.service.TenantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +33,7 @@ import java.util.UUID;
 class PlatformTenantController implements PlatformTenantApi {
 
     private final TenantService service;
+    private final PlatformAuditService audit;
 
     @Override
     @GetMapping(version = "v1+")
@@ -60,5 +65,11 @@ class PlatformTenantController implements PlatformTenantApi {
     @PatchMapping(path = "/{id}/status", version = "v1+")
     public ObjectWrapper<TenantResponse> changeStatus(@PathVariable UUID id, @RequestBody @Valid TenantStatusRequest request) {
         return service.changeStatus(id, request);
+    }
+
+    @Override
+    @GetMapping(path = "/{id}/audit", version = "v1+")
+    public CursorWrapper<PlatformAuditResponse> audit(@PathVariable UUID id, @Valid PlatformAuditFilter filter) {
+        return audit.findByTenant(id, filter);
     }
 }

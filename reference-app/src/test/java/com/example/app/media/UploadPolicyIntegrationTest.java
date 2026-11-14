@@ -58,7 +58,7 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Every signed-in user reads the limits; canUpload says whether their role may upload")
+    @DisplayName("Every signed-in user reads the limits; canUpload is true for a role the purpose lists")
     void listShowsLimitsAndCanUpload() throws Exception {
         getAs(newUploader().accessToken(), POLICIES)
                 .andExpect(status().isOk())
@@ -68,12 +68,17 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath(ENTRY + ".maxFiles").value(5))
                 .andExpect(jsonPath(ENTRY + ".contentTypes[*]", containsInAnyOrder("image/jpeg", "image/png", "application/pdf")))
                 .andExpect(jsonPath(ENTRY + ".canUpload").value(true));
-        getAs(newNonUploader().accessToken(), POLICIES)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath(ENTRY + ".canUpload").value(false));
         getAs(null, POLICIES)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+    }
+
+    @Test
+    @DisplayName("canUpload is false for a role the purpose doesn't list (skipped when it lists every role)")
+    void canUploadIsFalseForAnUnlistedRole() throws Exception {
+        getAs(newNonUploader().accessToken(), POLICIES)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(ENTRY + ".canUpload").value(false));
     }
 
     @Test

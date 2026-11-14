@@ -18,7 +18,7 @@ public interface Tenants {
 
     /**
      * The one way in: a PENDING tenant may be provisioned ({@link TenantApproved}), and becomes ACTIVE once
-     * its tables exist. Staff call it now, a billing module's payment webhook later; idempotent. 409
+     * its tables exist. Staff call it now, a billing module's payment webhook later. 409
      * {@code TENANT_STATUS_CHANGE_INVALID} unless the tenant is PENDING.
      */
     void approve(UUID tenantId, TenantChangeSource source);

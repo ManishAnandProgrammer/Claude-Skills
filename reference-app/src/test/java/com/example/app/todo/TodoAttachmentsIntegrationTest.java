@@ -299,6 +299,42 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("Create at exactly minFiles and at exactly maxFiles is 201; one past maxFiles is 400 and claims nothing")
+    void createAtBothEndsOfTheCountRange() throws Exception {
+        setUploadPolicy(PURPOSE, 1, MAX_SIZE, 2, 5);
+        TestUser user = newUser();
+        String listId = createList(user);
+
+        create(user, listId, uploads(user, 2)).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.response.attachments", hasSize(2)));
+        create(user, listId, uploads(user, 5)).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.response.attachments", hasSize(5)));
+        List<String> six = uploads(user, 6);
+        create(user, listId, six)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_FILE_COUNT_OUT_OF_RANGE"));
+        for (String key : six) {
+            assertThat(statusOfKey(key)).isEqualTo("PENDING");
+        }
+    }
+
+    @Test
+    @DisplayName("An add with a stale version is 409 OPTIMISTIC_LOCK_CONFLICT and attaches nothing: the upload stays claimable")
+    void staleAddAttachesNothing() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user);
+        String todoId = createTodo(user, listId, List.of());
+        update(user, listId, todoId, 0, "Renamed", List.of(), List.of()).andExpect(status().isOk());
+        String key = upload(user);
+
+        update(user, listId, todoId, 0, "Stale", List.of(key), List.of())
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("OPTIMISTIC_LOCK_CONFLICT"));
+        assertThat(attachmentIds(user, todoId)).isEmpty();
+        assertThat(statusOfKey(key)).isEqualTo("PENDING");
+    }
+
+    @Test
     @DisplayName("Fewer files than the purpose's minFiles on create is 400 UPLOAD_FILE_COUNT_OUT_OF_RANGE")
     void createBelowTheMinimumIs400() throws Exception {
         setUploadPolicy(PURPOSE, 1, MAX_SIZE, 2, 5);

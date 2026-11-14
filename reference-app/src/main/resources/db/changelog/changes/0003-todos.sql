@@ -47,6 +47,8 @@ CREATE TABLE todos (
 -- repository also bounds due_sort; under NEWEST a filter), and query (a contains search no btree
 -- serves; add pg_trgm if it gets slow).
 -- tenancy-row:begin
+-- -- Row mode: ILIKE isn't leakproof, so under the policy it filters the owner's rows even with a pg_trgm
+-- -- index (TEN-36): the owner-scoped order index is what bounds the search.
 -- CREATE INDEX idx_todos_todo_list_id_owner_id_due_sort_id ON todos (todo_list_id, owner_id, tenant_id, due_sort, id);
 -- CREATE INDEX idx_todos_todo_list_id_owner_id_id ON todos (todo_list_id, owner_id, tenant_id, id);
 -- CREATE INDEX idx_todos_owner_id_due_sort_id ON todos (owner_id, tenant_id, due_sort, id);

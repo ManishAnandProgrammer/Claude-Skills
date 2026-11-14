@@ -84,6 +84,7 @@ BEGIN;
 SELECT set_config('app.tenant_id', '<tenant id>', true);
 EXPLAIN (ANALYZE, BUFFERS) <the statement from the log>;
 ROLLBACK;
+RESET ROLE;
 ```
 
 An operator that isn't leakproof (`jsonb @>`, `LIKE`, `ILIKE`, range `&&`, a PostgreSQL enum's `=`)
@@ -91,7 +92,11 @@ can't use its own index under a policy: it becomes a filter over the tenant's ro
 TEN-36). Fine for a bounded tenant; for a large one, a measured fix (a leakproof shape, or a reader on a
 bypass role behind a marker) is a design decision.
 
-## 6. Restore order
+## 6. Backup and restore order
+
+`pg_dump` as the owner fails on every table whose policy is forced (it runs with `row_security = off`,
+which is an error where a policy applies): back up as the cluster's superuser, or as a backup role created for it (`CREATE ROLE <app>_backup
+LOGIN BYPASSRLS PASSWORD '...'`, granted `SELECT` on every table), never by lifting `FORCE`.
 
 1. The roles above (a dump doesn't carry them).
 2. `pg_restore` the dump.

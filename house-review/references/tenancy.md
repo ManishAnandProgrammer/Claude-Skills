@@ -378,9 +378,13 @@ E1–E3 and the row tests named below, which run as the real application role.
   approved tenant right after the approval commits, in a new transaction opened inside
   `TenantScope.runAs` (the approving one has no tenant, and the tenant is fixed when a transaction
   begins). A migration across existing tenants' rows lifts `FORCE` for its own transaction
-  (`docs/tenancy-runbook.md`, section 4; proven in the catalogue test). A failed provisioning leaves the
+  (`docs/tenancy-runbook.md`, section 4; proven in the catalogue test): that is how a default added
+  later (a new upload purpose's policy) reaches the tenants that already exist, beside the listener
+  for new ones (golden `0010`'s `…-existing-tenants` changeset and its test). A listener alone leaves
+  every existing tenant without the row. A failed provisioning leaves the
   tenant PENDING and logs it; approving again retries.
-- **Detect:** `INSERT` into a tenant table in a changeset; a seed listener on `TenantCreated` or
+- **Detect:** `INSERT` into a tenant table in a changeset outside a `NO FORCE` … `FORCE` backfill; a
+  new seed listener without the backfill for existing tenants; a seed listener on `TenantCreated` or
   `TenantApproved` (no tenant scope yet, or no committed tenant); seeding inside the approving
   transaction; `NO FORCE` without `FORCE` again in the same changeset.
 - **Severity:** High.
