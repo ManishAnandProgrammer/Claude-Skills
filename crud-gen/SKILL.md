@@ -187,6 +187,14 @@ child table fails the build of the parent too.
   - **offset**: bounded admin tables that need page numbers. `PageFilter`, `PaginationWrapper`,
     the count only on a full page. Golden: `TodoListFilter`, `TodoListRepositoryImpl.findByFilter`.
 
+- **A feature that needs configuration, not an entity** (rules an admin chooses per tenant or per
+  context, read often, changed rarely): with the `metadata` piece, don't generate an entity. Add a
+  record to `metadata.api` (defaults in the compact constructor, bean validation, `@ConfiguredMax`
+  limits), a key constant or a per-context factory (`UUID` context id) to `MetadataKeys` with its
+  `byName` branch, and seed it in the feature's lifecycle code (`create` / `createFrom`). Tests
+  follow `MetadataIntegrationTest`. A gapless number uses `Counters`. Rules: house-review
+  `metadata.md`.
+
 ---
 
 ## Step 4: Generate

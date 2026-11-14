@@ -33,7 +33,10 @@ With **AskUserQuestion** (several per call):
    the metrics scrape is secured), multi-tenant or not.
 5. **Packaging:** a Dockerfile (JDK or jlink runtime with `jcmd` and JFR, non-root, the CFG-08
    flags) or Boot's `build-image` (record which flags Paketo sets).
-6. **Rate limiting:** the rate-limiting design is pending a dedicated session; until then the
+6. **Configuration metadata:** does the project need per-tenant, per-feature configuration (rules a
+   tenant or a session chooses) or gapless business numbers? Then the `metadata` piece. Tenancy:
+   single, schema-per-tenant or row-based (the piece's `package-info.java` says what changes).
+7. **Rate limiting:** the rate-limiting design is pending a dedicated session; until then the
    `sign-in` piece's per-IP and per-account sign-in limits.
 
 Write `.claude/crud-profile.md` and `.claude/review-profile.md` from their templates.
@@ -47,6 +50,7 @@ Write `.claude/crud-profile.md` and `.claude/review-profile.md` from their templ
 |---|---|
 | `core` | `common/` (error contract with `ErrorCode`, mapper, `AppException`, transient-failure 503s; wrappers `Object`/`List`/`Map`/`Pagination`/`Cursor`; `PageFilter`, `CursorFilter`, `Paging`, `OffsetPages`, `Cursor`, `Seek`, `TextSearch`; `Limits` with `@MaxLength` / `@ConfiguredMax` and their OpenAPI customizer; the dropdown types; `AuditableEntity`; logging context and filters; admission control; `ProblemTypes`, `ProblemResponses`, `RetryAfterProperties`; `CurrentUser`, `PersonalDataHasher`; `@MultiInstanceSafe`); `config/` (security, JWT validation, messages, auditing, scheduling, OpenAPI, startup checks, pool readiness, clock); `application.yml` + `config/*.yml` split by concern with `-dev`/`-prod` variants; logback; messages; the test base, ArchUnit and contract tests; `compose.yaml`, `.env.example` |
 | `sign-in` | The `user` module (signup, login, refresh rotation with a grace window, logout, purge job), its changeset, the Redis rate limiter, its tests. **core's tests need it**: they sign users in |
+| `metadata` | Optional: configuration metadata (one record per key, `MetadataKeys`, `MetadataService`, admin `GET`/`PUT /metadata/{key}`, the `ADMIN` role with `sign-in`) and gapless `Counters`; changesets 0007 (with sign-in) and 0008; rules in house-review `metadata.md` |
 | `example` | The golden todo module, for study only; not copied into real projects |
 
 ## 2. Adapt

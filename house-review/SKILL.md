@@ -21,6 +21,7 @@ The rules are fixed and identical across projects. They live in `references/`:
 | `references/architecture.md` | ARCH-xx | Module map, boundaries, layers, events, ArchUnit enforcement |
 | `references/error-contract.md` | ERR-xx | The house error contract (ErrorCode, mapper, ProblemDetail, 503 + Retry-After) |
 | `references/config-baseline.md` | CFG-xx | Hikari/JPA/PostgreSQL, server and threads, Jackson, actuator, logging, JVM |
+| `references/metadata.md` | META-xx | Configuration metadata and counters; only for projects with the `metadata` piece |
 
 Everything that differs between projects (conventions, thresholds, pagination style, token
 revocation, accepted deviations) is in the project profile, `.claude/review-profile.md`.

@@ -218,6 +218,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Also (HelpBook):** a JSON column's content is a typed record where possible. Where a
   `Map` is unavoidable, its keys are named constants (one class of keys, never repeated string
   literals), and a closed set of values is an enum, so a typo can't write a key nobody reads.
+- **Not a finding when:** every `SqlTypes.JSON` attribute is a `String` the application maps with its
+  own `JsonMapper` (Hibernate 7.4 passes a `String` through its format mapper untouched; verified
+  2026-11-14): the reference's metadata piece does this.
 - **Severity:** High on Jackson 3 projects.
 
 ### DATA-28: No heavy data work at startup
