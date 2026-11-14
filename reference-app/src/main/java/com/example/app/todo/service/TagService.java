@@ -19,9 +19,13 @@ import com.example.app.todo.mapper.TagMapper;
 import com.example.app.todo.repository.TagRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /** Every read and write is scoped to the caller: another user's tag answers 404, like a missing one. */
 @Service
@@ -59,6 +63,10 @@ public class TagService {
         return ObjectWrapper.withObject(mapper.toResponse(tag));
     }
 
+    /**
+     * Never blocked by the todos carrying the tag: the database removes it from them (changeset 0006),
+     * and their versions don't change.
+     */
     @Transactional
     public void delete(UUID id) {
         repository.delete(getOwnedTag(id, currentUser.id()));
@@ -69,6 +77,29 @@ public class TagService {
     public CursorWrapper<DropdownItem> dropdown(DropdownFilter filter) {
         CursorBatch<DropdownItem> batch = repository.findDropdownItems(filter, currentUser.id(), paging.cursorSize(filter));
         return CursorWrapper.of(batch.items(), batch.nextCursor());
+    }
+
+    /**
+     * The owner's tags with these ids, in id order, locked {@code FOR KEY SHARE} until the caller's
+     * transaction ends, so putting one on a todo can't race its delete. Only inside that write
+     * transaction: a lock outside one would end at once. An id that isn't one of the owner's tags is
+     * {@code TAG_NOT_FOUND}, naming the lowest of them, so the answer is repeatable.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<Tag> getOwnedTagsForWrite(Set<UUID> ids, UUID ownerId) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        List<Tag> tags = repository.findForKeyShareByIdInAndOwnerId(ids, ownerId);
+        if (tags.size() < ids.size()) {
+            throw AppException.of(ErrorCode.TAG_NOT_FOUND, lowestMissing(ids, tags));
+        }
+        return tags;
+    }
+
+    private static UUID lowestMissing(Set<UUID> ids, List<Tag> found) {
+        Set<UUID> foundIds = found.stream().map(Tag::getId).collect(Collectors.toSet());
+        return ids.stream().filter(id -> !foundIds.contains(id)).sorted().findFirst().orElseThrow();
     }
 
     private Tag getOwnedTag(UUID id, UUID ownerId) {

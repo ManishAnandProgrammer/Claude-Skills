@@ -3,7 +3,6 @@ package com.example.app.todo;
 import com.example.app.support.IntegrationTest;
 import com.example.app.todo.domain.TodoPriority;
 import com.example.app.todo.domain.TodoStatus;
-import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -12,12 +11,10 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
-import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -45,23 +42,11 @@ class TodoIntegrationTest extends IntegrationTest {
 
     private static final String TODOS = "/api/v1/todos";
     private static final String LISTS = "/api/v1/todo-lists";
-    private static final int RACERS = 6;
     /** Below the pool size (10) with the delete, the gate and the polling connection. */
     private static final int CREATORS = 4;
-    /** Under lock_timeout (3 s), so a request held by a test lock never times out first. */
-    private static final Duration LOCK_WAIT_DEADLINE = Duration.ofSeconds(2);
 
     @Autowired
     private PlatformTransactionManager transactionManager;
-
-    /** One answer of a raced request: its status and body, so every refusal's body can be checked. */
-    private record Answer(int status, String body) {
-
-        String errorCode() {
-            return JsonPath.read(body, "$.errorCode");
-        }
-    }
-
     private String createList(TestUser user, String name) throws Exception {
         return read(postAs(user.accessToken(), LISTS, """
                 {"name": "%s"}
@@ -91,46 +76,6 @@ class TodoIntegrationTest extends IntegrationTest {
     private String createTodo(TestUser user, String listId, String title, String priority, String dueDate) throws Exception {
         return read(postAs(user.accessToken(), TODOS, todoPayload(listId, title, priority, dueDate))
                 .andExpect(status().isCreated()), "$.response.id");
-    }
-
-    private static Answer answerOf(ResultActions result) throws Exception {
-        MockHttpServletResponse response = result.andReturn().getResponse();
-        return new Answer(response.getStatus(), response.getContentAsString());
-    }
-
-    /** A refusal names no constraint, SQL or Java internals anywhere in its body. */
-    private static void assertNoInternals(String body) {
-        assertThat(body).doesNotContain("uq_", "fk_", "SQL", "Exception", "java.");
-    }
-
-    private static void assertRefusalsAre(List<Answer> answers, int status, String errorCode) {
-        for (Answer answer : answers) {
-            if (answer.status() == status) {
-                assertThat(answer.errorCode()).isEqualTo(errorCode);
-                assertNoInternals(answer.body());
-            }
-        }
-    }
-
-    /** Fires {@code request} from {@link #RACERS} threads released together; returns every answer. */
-    private static List<Answer> race(Callable<ResultActions> request) throws Exception {
-        CountDownLatch start = new CountDownLatch(1);
-        List<Future<Answer>> pending = new ArrayList<>();
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (int racer = 0; racer < RACERS; racer++) {
-                Callable<Answer> once = () -> {
-                    start.await();
-                    return answerOf(request.call());
-                };
-                pending.add(executor.submit(once));
-            }
-            start.countDown();
-            List<Answer> answers = new ArrayList<>();
-            for (Future<Answer> answer : pending) {
-                answers.add(answer.get());
-            }
-            return answers;
-        }
     }
 
     /**
@@ -426,26 +371,6 @@ class TodoIntegrationTest extends IntegrationTest {
             assertThat(todos).isEqualTo((int) created);
         }
     }
-
-    /**
-     * Waits until {@code sessions} sessions of this database wait on a lock, or {@code done} has
-     * finished; fails past {@link #LOCK_WAIT_DEADLINE}.
-     */
-    private void awaitLockWaiters(int sessions, Future<?> done) throws InterruptedException {
-        long deadline = System.nanoTime() + LOCK_WAIT_DEADLINE.toNanos();
-        while (lockWaiters() < sessions && (Objects.isNull(done) || !done.isDone())) {
-            assertThat(System.nanoTime()).as("sessions waiting on a lock").isLessThan(deadline);
-            Thread.sleep(10);
-        }
-    }
-
-    private int lockWaiters() {
-        return jdbc.queryForObject("""
-                select count(*) from pg_stat_activity
-                where datname = current_database() and wait_event_type = 'Lock'
-                """, Integer.class);
-    }
-
     @Test
     @DisplayName("Create without a list, title or priority is 400 naming each field")
     void createWithoutRequiredFieldsIs400() throws Exception {
@@ -880,7 +805,7 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A batch of todos is one statement, for 1 row and for a full batch")
+    @DisplayName("A batch of todos is two statements, for 1 row and for a full batch")
     void listRunsAConstantNumberOfQueries() throws Exception {
         TestUser one = newUser();
         createTodo(one, createList(one, "Single"), "Only", "LOW", null);
@@ -892,10 +817,13 @@ class TodoIntegrationTest extends IntegrationTest {
         long forOne = statementsFor(one, TODOS);
         long forPage = statementsFor(many, TODOS);
 
-        assertThat(forPage).isEqualTo(forOne).isEqualTo(1);
+        assertThat(forPage).isEqualTo(forOne).isEqualTo(2);
     }
 
-    /** Statements run by one list request: a cursor list never counts, so always one. */
+    /**
+     * Statements run by one list request. A cursor list never counts; the rows carry their tags, read
+     * for the whole batch in a second statement (two steps instead of a collection fetch), so two.
+     */
     private long statementsFor(TestUser user, String path) throws Exception {
         statistics().clear();
         getAs(user.accessToken(), path).andExpect(status().isOk());
@@ -926,14 +854,6 @@ class TodoIntegrationTest extends IntegrationTest {
                 release.countDown();
             }
             holder.get();
-        }
-    }
-
-    private static void awaitQuietly(CountDownLatch latch) {
-        try {
-            latch.await();
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
         }
     }
 

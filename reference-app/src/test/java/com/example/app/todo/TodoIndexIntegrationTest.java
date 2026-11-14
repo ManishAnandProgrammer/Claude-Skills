@@ -36,6 +36,8 @@ class TodoIndexIntegrationTest extends IntegrationTest {
 
     private UUID ownerId;
     private UUID listId;
+    private UUID tagId;
+    private List<UUID> taggedTodos;
 
     @BeforeAll
     void seedOneOwnerWithManyTodos() throws Exception {
@@ -54,7 +56,22 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                 where list.owner_id = ?
                 """, ownerId);
         listId = jdbc.queryForObject("select id from todo_lists where owner_id = ? limit 1", UUID.class, ownerId);
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze todo_lists, todos"));
+        // Ten tags, each on one todo in ten.
+        sql("""
+                insert into tags (id, owner_id, name, active, created_at, updated_at, version)
+                select gen_random_uuid(), ?, 'Seeded ' || n, true, now(), now(), 0 from generate_series(0, 9) n
+                """, ownerId);
+        sql("""
+                insert into todo_tags (id, todo_id, tag_id, owner_id, created_at, updated_at, version)
+                select gen_random_uuid(), todo.id, tag.id, todo.owner_id, now(), now(), 0
+                from todos todo join tags tag
+                  on tag.owner_id = todo.owner_id and tag.name = 'Seeded ' || ((todo.due_date - date '2026-01-01') % 10)
+                where todo.owner_id = ?
+                """, ownerId);
+        tagId = jdbc.queryForObject("select id from tags where owner_id = ? and name = 'Seeded 0'", UUID.class, ownerId);
+        taggedTodos = jdbc.queryForList("select todo_id from todo_tags where tag_id = ? limit 21", UUID.class, tagId);
+        new TransactionTemplate(transactionManager)
+                .executeWithoutResult(status -> jdbc.execute("analyze todo_lists, todos, tags, todo_tags"));
     }
 
     static Stream<Arguments> scopedOrders() {
@@ -117,5 +134,60 @@ class TodoIndexIntegrationTest extends IntegrationTest {
         assertThat(plan).as(plan).contains("using " + index + " on").doesNotContain("Sort");
         String indexCondition = plan.lines().filter(line -> line.contains("Index Cond:")).findFirst().orElse("");
         assertThat(indexCondition).as(plan).contains(scope);
+    }
+
+    static Stream<Arguments> tagShapes() {
+        return Stream.of(
+                Arguments.of("todos with a tag, DUE_DATE (the order's index, probing the pair)", """
+                        select t.id from todos t
+                        where t.owner_id = :owner
+                          and exists (select 1 from todo_tags tt where tt.todo_id = t.id and tt.tag_id = :tag)
+                        order by t.due_sort, t.id limit 21""",
+                        List.of("idx_todos_owner_id_due_sort_id", "uq_todo_tags_todo_id_tag_id")),
+                Arguments.of("todos with a tag, NEWEST (the order's index, probing the pair)", """
+                        select t.id from todos t
+                        where t.owner_id = :owner
+                          and exists (select 1 from todo_tags tt where tt.todo_id = t.id and tt.tag_id = :tag)
+                        order by t.id desc limit 21""",
+                        List.of("idx_todos_owner_id_id", "uq_todo_tags_todo_id_tag_id")),
+                Arguments.of("the tags of a batch (the list's second step)", """
+                        select tt.todo_id, g.id, g.name from todo_tags tt join tags g on g.id = tt.tag_id
+                        where tt.todo_id in (:todos) order by g.id""",
+                        List.of("uq_todo_tags_todo_id_tag_id")),
+                Arguments.of("the tags of one todo (the detail, the todo's delete)", """
+                        select tt.id, g.id, g.name from todo_tags tt join tags g on g.id = tt.tag_id
+                        where tt.todo_id = :todo order by g.id""",
+                        List.of("uq_todo_tags_todo_id_tag_id")),
+                Arguments.of("a tag's delete (the cascade)", "delete from todo_tags where tag_id = :tag and owner_id = :owner",
+                        List.of("idx_todo_tags_tag_id_owner_id_todo_id")));
+    }
+
+    /**
+     * Every read of the join table goes through one of its two indexes, the one each shape needs: the
+     * pair leading with todo_id (the probe of the tagId filter, the tags of a batch or of one todo) or
+     * the tag's foreign key (the cascade of a tag's delete). Under tagId the list still walks its order's
+     * index; the join table has no order of its own.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tagShapes")
+    @DisplayName("Every todo_tags shape reads its intended indexes, never the whole table")
+    void everyTagShapeReadsItsIndexes(String name, String statement, List<String> indexes) {
+        MapSqlParameterSource parameters = new MapSqlParameterSource()
+                .addValue("owner", ownerId)
+                .addValue("tag", tagId)
+                .addValue("todo", taggedTodos.getFirst())
+                .addValue("todos", taggedTodos);
+
+        List<String> planLines = new TransactionTemplate(transactionManager).execute(status -> {
+            jdbc.execute("set local enable_seqscan = off");
+            jdbc.execute("set local enable_bitmapscan = off");
+            return new NamedParameterJdbcTemplate(jdbc).queryForList("explain " + statement, parameters, String.class);
+        });
+        String plan = String.join("\n", planLines);
+
+        for (String index : indexes) {
+            assertThat(plan).as(plan).containsPattern("using " + index + " on");
+        }
+        assertThat(plan).as(plan).doesNotContain("Seq Scan");
     }
 }

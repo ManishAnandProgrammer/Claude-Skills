@@ -31,7 +31,7 @@ public class OffsetPages {
         CriteriaQuery<R> query = builder.createQuery(projectionQuery.row());
         Root<T> root = query.from(projectionQuery.entity());
         query.select(projectionQuery.projection().select(builder, root));
-        query.where(projectionQuery.conditions().build(builder, root).toArray(new Predicate[0]));
+        query.where(projectionQuery.conditions().build(builder, root, query).toArray(new Predicate[0]));
         query.orderBy(QueryUtils.toOrders(pageable.getSort(), root, builder));
         List<R> content = entityManager.createQuery(query)
                 .setFirstResult(Math.toIntExact(pageable.getOffset()))
@@ -44,7 +44,7 @@ public class OffsetPages {
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaQuery<Long> query = builder.createQuery(Long.class);
         Root<T> root = query.from(projectionQuery.entity());
-        query.select(builder.count(root)).where(projectionQuery.conditions().build(builder, root).toArray(new Predicate[0]));
+        query.select(builder.count(root)).where(projectionQuery.conditions().build(builder, root, query).toArray(new Predicate[0]));
         return entityManager.createQuery(query).getSingleResult();
     }
 }

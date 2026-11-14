@@ -23,6 +23,9 @@ public class TodoFilter extends CursorFilter {
     @Schema(description = "Only the todos of this list")
     private UUID todoListId;
 
+    @Schema(description = "Only todos carrying this tag (another user's tag matches none)")
+    private UUID tagId;
+
     @Schema(description = "Only todos in this status")
     private TodoStatus status;
 
@@ -43,6 +46,10 @@ public class TodoFilter extends CursorFilter {
 
     public boolean requireTodoListIdPredicate() {
         return Objects.nonNull(todoListId);
+    }
+
+    public boolean requireTagIdPredicate() {
+        return Objects.nonNull(tagId);
     }
 
     public boolean requireStatusPredicate() {

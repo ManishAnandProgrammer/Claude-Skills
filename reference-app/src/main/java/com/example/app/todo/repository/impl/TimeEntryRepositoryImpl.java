@@ -48,7 +48,7 @@ class TimeEntryRepositoryImpl implements CustomTimeEntryRepository {
             case MINUTES -> BY_MINUTES;
         };
         return keysetPages.fetch(new ProjectionQuery<>(TimeEntry.class, TimeEntryResponse.class, TimeEntryRepositoryImpl::row,
-                (builder, root) -> conditions(builder, root, filter, todoId, ownerId)), keyset, filter.getAfter(), size);
+                (builder, root, query) -> conditions(builder, root, filter, todoId, ownerId)), keyset, filter.getAfter(), size);
     }
 
     private static Selection<TimeEntryResponse> row(CriteriaBuilder builder, Root<TimeEntry> root) {

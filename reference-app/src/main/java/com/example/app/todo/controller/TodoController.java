@@ -9,6 +9,7 @@ import com.example.app.todo.dto.request.TimeEntryUpdateRequest;
 import com.example.app.todo.dto.request.TodoCreateRequest;
 import com.example.app.todo.dto.request.TodoFilter;
 import com.example.app.todo.dto.request.TodoStatusRequest;
+import com.example.app.todo.dto.request.TodoTagsRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
 import com.example.app.todo.dto.response.TimeEntryResponse;
 import com.example.app.todo.dto.response.TodoResponse;
@@ -66,6 +67,12 @@ class TodoController implements TodoApi {
     @PatchMapping(path = "/{id}/status", version = "v1+")
     public ObjectWrapper<TodoResponse> changeStatus(@PathVariable UUID id, @RequestBody @Valid TodoStatusRequest request) {
         return service.changeStatus(id, request);
+    }
+
+    @Override
+    @PutMapping(path = "/{id}/tags", version = "v1+")
+    public ObjectWrapper<TodoResponse> replaceTags(@PathVariable UUID id, @RequestBody @Valid TodoTagsRequest request) {
+        return service.replaceTags(id, request);
     }
 
     @Override

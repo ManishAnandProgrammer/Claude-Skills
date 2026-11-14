@@ -2,7 +2,6 @@ package com.example.app.todo;
 
 import com.example.app.common.dropdown.DropdownStatus;
 import com.example.app.support.IntegrationTest;
-import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -11,18 +10,12 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpHeaders;
-import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,15 +33,6 @@ class TagIntegrationTest extends IntegrationTest {
 
     private static final String TAGS = "/api/v1/tags";
     private static final String DROPDOWN = TAGS + "/dropdown";
-    private static final int RACERS = 6;
-
-    /** One answer of a raced request: its status and body, so every refusal's body can be checked. */
-    private record Answer(int status, String body) {
-
-        String errorCode() {
-            return JsonPath.read(body, "$.errorCode");
-        }
-    }
 
     private static String createPayload(String name, String color) {
         String colorJson = Objects.isNull(color) ? "null" : "\"" + color + "\"";
@@ -74,42 +58,6 @@ class TagIntegrationTest extends IntegrationTest {
         String id = createTag(user, name);
         putAs(user.accessToken(), TAGS + "/" + id, updatePayload(name, null, false, 0)).andExpect(status().isOk());
         return id;
-    }
-
-    /** A refusal names no constraint, SQL or Java internals anywhere in its body. */
-    private static void assertNoInternals(String body) {
-        assertThat(body).doesNotContain("uq_", "fk_", "SQL", "Exception", "java.");
-    }
-
-    /** Fires {@code request} from {@link #RACERS} threads released together; returns every answer. */
-    private static List<Answer> race(Callable<ResultActions> request) throws Exception {
-        CountDownLatch start = new CountDownLatch(1);
-        List<Future<Answer>> pending = new ArrayList<>();
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (int racer = 0; racer < RACERS; racer++) {
-                Callable<Answer> once = () -> {
-                    start.await();
-                    MockHttpServletResponse response = request.call().andReturn().getResponse();
-                    return new Answer(response.getStatus(), response.getContentAsString());
-                };
-                pending.add(executor.submit(once));
-            }
-            start.countDown();
-            List<Answer> answers = new ArrayList<>();
-            for (Future<Answer> answer : pending) {
-                answers.add(answer.get());
-            }
-            return answers;
-        }
-    }
-
-    private static void assertRefusalsAre(List<Answer> answers, int status, String errorCode) {
-        for (Answer answer : answers) {
-            if (answer.status() == status) {
-                assertThat(answer.errorCode()).isEqualTo(errorCode);
-                assertNoInternals(answer.body());
-            }
-        }
     }
 
     /**

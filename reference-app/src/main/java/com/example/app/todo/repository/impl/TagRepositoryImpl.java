@@ -50,7 +50,7 @@ class TagRepositoryImpl implements CustomTagRepository {
     @Override
     public Page<TagResponse> findByFilter(TagFilter filter, UUID ownerId, Pageable pageable) {
         return offsetPages.fetch(new ProjectionQuery<>(Tag.class, TagResponse.class, TagRepositoryImpl::listRow,
-                (builder, root) -> pageConditions(builder, root, ownerId, filter)), pageable);
+                (builder, root, query) -> pageConditions(builder, root, ownerId, filter)), pageable);
     }
 
     @Override
@@ -59,7 +59,7 @@ class TagRepositoryImpl implements CustomTagRepository {
                 ? DROPDOWN_DESC
                 : DROPDOWN_ASC;
         return keysetPages.fetch(new ProjectionQuery<>(Tag.class, DropdownItem.class, TagRepositoryImpl::dropdownRow,
-                (builder, root) -> dropdownConditions(builder, root, ownerId, filter)), keyset, filter.getAfter(), size);
+                (builder, root, query) -> dropdownConditions(builder, root, ownerId, filter)), keyset, filter.getAfter(), size);
     }
 
     private static Selection<TagResponse> listRow(CriteriaBuilder builder, Root<Tag> root) {
