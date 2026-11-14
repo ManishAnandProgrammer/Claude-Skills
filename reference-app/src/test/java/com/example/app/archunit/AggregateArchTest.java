@@ -28,6 +28,10 @@ class AggregateArchTest {
     // entity inside an aggregate into its root's `members` (that entity gets no service of its own).
     private static final List<Aggregate> AGGREGATES = List.of(
             new Aggregate("User", "UserService", List.of()),
+            // metadata:begin
+            new Aggregate("ConfigurationMetadata", "MetadataService", List.of()),
+            new Aggregate("Counter", "CounterService", List.of()),
+            // metadata:end
             // example:begin
             new Aggregate("TodoList", "TodoListService", List.of()),
             new Aggregate("Todo", "TodoService", List.of("TimeEntry", "TodoTag")),
