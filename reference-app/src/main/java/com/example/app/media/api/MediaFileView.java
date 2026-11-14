@@ -1,25 +1,18 @@
 package com.example.app.media.api;
 
-import io.swagger.v3.oas.annotations.media.Schema;
-
 import java.util.UUID;
 
-@Schema(description = "A file attached to a record")
-public record MediaFileView(
-        @Schema(description = "The file's id: send it in removeAttachmentIds to remove it", example = "0190a9c2-9f00-7a3c-8b4d-3e5f7a9b1c2d")
-        UUID id,
-        @Schema(description = "The name it was uploaded with", example = "receipt.pdf")
-        String fileName,
-        @Schema(description = "Its content type", example = "application/pdf")
-        String contentType,
-        @Schema(description = "Its size in bytes", example = "48213")
-        long sizeBytes,
-        @Schema(description = """
-                IN_REVIEW (usable; the check that it arrived runs after its upload URL expired), UPLOADED \
-                (confirmed) or MISSING (never arrived: remove it and attach a new upload)""", example = "UPLOADED")
-        MediaFileStatus status,
-        @Schema(description = """
-                A short-lived URL that downloads it (as an attachment, with its name); null while MISSING. \
-                Read it again from the record rather than storing it.""")
-        String url) {
+/**
+ * A file attached to a record, as the owning module reads it ({@link Uploads#describe}). A module
+ * contract, never a response body: the owning module maps it into its own response record, so a
+ * change here never reshapes another module's API.
+ *
+ * @param id          the file's id, which the owner's update takes to remove it
+ * @param fileName    the name it was uploaded with
+ * @param contentType its content type
+ * @param sizeBytes   its size in bytes
+ * @param status      IN_REVIEW, UPLOADED or MISSING while attached
+ * @param url         a short-lived read URL; null while MISSING
+ */
+public record MediaFileView(UUID id, String fileName, String contentType, long sizeBytes, MediaFileStatus status, String url) {
 }

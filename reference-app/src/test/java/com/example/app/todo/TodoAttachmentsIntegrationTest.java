@@ -2,23 +2,37 @@ package com.example.app.todo;
 
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.ResourceLock;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.endsWith;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.startsWith;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -28,18 +42,29 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * removed by id, the count kept within the purpose's range, the claim refusing every key that isn't
  * the caller's to use. Bootstrap copies this class with the example and media pieces together.
  */
-@ResourceLock(TodoAttachmentsIntegrationTest.POLICY_LOCK)
+@ResourceLock(IntegrationTest.UPLOAD_POLICIES_LOCK)
 class TodoAttachmentsIntegrationTest extends IntegrationTest {
 
-    static final String POLICY_LOCK = "TODO_ATTACHMENT_POLICY";
     private static final String PURPOSE = "TODO_ATTACHMENT";
     private static final long MAX_SIZE = 10_485_760;
     private static final String TODOS = "/api/v1/todos";
     private static final byte[] PDF = "%PDF-1.7 a small test file".getBytes(StandardCharsets.US_ASCII);
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    private UploadPolicyLimits saved;
+
+    /** Known limits before each test, whatever ran before it; the stored ones back after it, for every other class. */
+    @BeforeEach
+    void setThePolicy() {
+        saved = uploadPolicyOf(PURPOSE);
+        setUploadPolicy(PURPOSE, 1, MAX_SIZE, 0, 5);
+    }
+
     @AfterEach
     void restoreThePolicy() {
-        setUploadPolicy(PURPOSE, 1, MAX_SIZE, 0, 5);
+        restoreUploadPolicy(saved);
     }
 
     private String createList(TestUser user) throws Exception {
@@ -151,9 +176,11 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         String goodKey = upload(user);
         int todosBefore = todosOf(user);
 
-        create(user, listId, List.of(goodKey, refusedKey))
+        String body = create(user, listId, List.of(goodKey, refusedKey))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errorCode").value("UPLOAD_NOT_AVAILABLE"));
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_NOT_AVAILABLE"))
+                .andReturn().getResponse().getContentAsString();
+        assertNoInternals(body);
 
         assertThat(todosOf(user)).isEqualTo(todosBefore);
         assertThat(statusOfKey(goodKey)).isEqualTo("PENDING");
@@ -203,6 +230,25 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
 
         assertClaimRefused(user, otherPurposeKey);
         assertClaimRefused(user, PURPOSE + "/" + UUID.randomUUID());
+    }
+
+    @Test
+    @DisplayName("Update refuses a key the caller can't claim (another user's) with 409 UPLOAD_NOT_AVAILABLE, and the todo is unchanged")
+    void updateRefusesAnUnclaimableKey() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user);
+        String todoId = createTodo(user, listId, List.of());
+        String othersKey = upload(newUser());
+
+        String body = update(user, listId, todoId, 0, "With files", List.of(othersKey), List.of())
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_NOT_AVAILABLE"))
+                .andReturn().getResponse().getContentAsString();
+        assertNoInternals(body);
+
+        assertThat(attachmentIds(user, todoId)).isEmpty();
+        assertThat(jdbc.queryForObject("select version from todos where id = ?::uuid", Long.class, todoId)).isZero();
+        assertThat(statusOfKey(othersKey)).isEqualTo("PENDING");
     }
 
     @Test
@@ -336,6 +382,159 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("Concurrent replacements of a file (remove it, add another) with one version: one applies, the others are 409, never 503")
+    void concurrentReplacementsWithOneVersionApplyOnce() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user);
+        String todoId = createTodo(user, listId, uploads(user, 1));
+        String original = attachmentIds(user, todoId).getFirst();
+        List<String> replacements = uploads(user, RACERS);
+        AtomicInteger racer = new AtomicInteger();
+
+        List<Answer> answers = race(() -> update(user, listId, todoId, 0, "With files",
+                List.of(replacements.get(racer.getAndIncrement())), List.of(original)));
+
+        assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).containsOnly(200, 409);
+        assertRefusalsAre(answers, 409, "OPTIMISTIC_LOCK_CONFLICT");
+        assertThat(jdbc.queryForObject("select version from todos where id = ?::uuid", Long.class, todoId)).isEqualTo(1L);
+        assertThat(attachmentIds(user, todoId)).hasSize(1);
+        assertThat(statusOf(original)).isEqualTo("RELEASED");
+        List<String> statuses = replacements.stream().map(this::statusOfKey).toList();
+        assertThat(statuses).containsOnlyOnce("IN_REVIEW").containsOnly("IN_REVIEW", "PENDING");
+    }
+
+    /** The tables (not their indexes) on which a session that waits for a lock already holds one. */
+    private List<String> tablesLockedByWaitingSessions() {
+        return jdbc.queryForList("""
+                select distinct c.relname
+                  from pg_locks l
+                  join pg_class c on c.oid = l.relation
+                  join pg_stat_activity a on a.pid = l.pid
+                 where a.datname = current_database() and a.wait_event_type = 'Lock' and l.granted
+                   and c.relkind = 'r'
+                """, String.class);
+    }
+
+    /**
+     * The guard of the replacement race above: todos has no unique column, so here two replacements
+     * without the lock would still end in one 200 and 409s; an owner whose update changes a unique column
+     * would deadlock instead (media.md). So the order is proven directly: held at the todo, the update
+     * has touched nothing else yet.
+     */
+    @Test
+    @DisplayName("An update of the files locks the todo before any other table: its list, its files, its attachment rows")
+    void updateLocksTheTodoFirst() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user);
+        String todoId = createTodo(user, listId, uploads(user, 1));
+        String original = attachmentIds(user, todoId).getFirst();
+        String replacement = upload(user);
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Future<Answer> replace;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> holder = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.queryForList("select id from todos where id = ?::uuid for no key update", todoId);
+                locked.countDown();
+                awaitQuietly(release);
+            }));
+            awaitLatch(locked);
+            try {
+                replace = executor.submit(() -> answerOf(update(user, listId, todoId, 0, "With files",
+                        List.of(replacement), List.of(original))));
+                awaitLockWaiters(1, replace);
+
+                assertThat(tablesLockedByWaitingSessions()).containsExactly("todos");
+            } finally {
+                release.countDown();
+            }
+            within(holder);
+        }
+
+        assertThat(within(replace).status()).isEqualTo(200);
+    }
+
+    private int statementsOfGet(TestUser user, String todoId) throws Exception {
+        statistics().clear();
+        getAs(user.accessToken(), TODOS + "/" + todoId).andExpect(status().isOk());
+        return (int) statistics().getPrepareStatementCount();
+    }
+
+    @Test
+    @DisplayName("A todo's response costs the same statements with one file and with five")
+    void responseStatementsDoNotGrowWithTheFiles() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user);
+        String oneFile = createTodo(user, listId, uploads(user, 1));
+        String fiveFiles = createTodo(user, listId, uploads(user, 5));
+
+        assertThat(statementsOfGet(user, fiveFiles)).isEqualTo(statementsOfGet(user, oneFile));
+    }
+
+    private static List<String> randomKeys(int count) {
+        return Stream.generate(() -> PURPOSE + "/" + UUID.randomUUID()).limit(count).toList();
+    }
+
+    private static List<String> randomIdList(int count) {
+        return Stream.generate(() -> UUID.randomUUID().toString()).limit(count).toList();
+    }
+
+    @Test
+    @DisplayName("An upload key of the configured length passes validation; one character more is 400 with the limit, on create and update")
+    void uploadKeyLengthFollowsTheConfiguredLimit() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user);
+        String todoId = createTodo(user, listId, List.of());
+        String longest = PURPOSE + "/" + "k".repeat(100 - PURPOSE.length() - 1);
+        String tooLong = longest + "k";
+
+        Answer created = answerOf(create(user, listId, List.of(longest)));
+        Answer updated = answerOf(update(user, listId, todoId, 0, "With files", List.of(longest), List.of()));
+
+        assertThat(List.of(created.status(), updated.status())).containsOnly(409);
+        assertRefusalsAre(List.of(created, updated), 409, "UPLOAD_NOT_AVAILABLE");
+        create(user, listId, List.of(tooLong))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", hasItem(allOf(startsWith("attachmentKeys"), endsWith(": must be at most 100 characters")))));
+        update(user, listId, todoId, 0, "With files", List.of(tooLong), List.of())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", hasItem(allOf(startsWith("addAttachmentKeys"), endsWith(": must be at most 100 characters")))));
+    }
+
+    @Test
+    @DisplayName("50 keys or ids (upload-policy.max-files) pass validation; 51 are 400 with the limit, on create and on both update fields")
+    void fileListsAreBoundedByTheConfiguredMaximum() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user);
+        String todoId = createTodo(user, listId, List.of());
+
+        create(user, listId, randomKeys(50))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_FILE_COUNT_OUT_OF_RANGE"));
+        create(user, listId, randomKeys(51))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("attachmentKeys: must have at most 50 items")));
+        update(user, listId, todoId, 0, "With files", randomKeys(50), List.of())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_FILE_COUNT_OUT_OF_RANGE"));
+        update(user, listId, todoId, 0, "With files", randomKeys(51), List.of())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("addAttachmentKeys: must have at most 50 items")));
+        update(user, listId, todoId, 0, "With files", List.of(), randomIdList(50))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("TODO_ATTACHMENT_NOT_FOUND"));
+        update(user, listId, todoId, 0, "With files", List.of(), randomIdList(51))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("removeAttachmentIds: must have at most 50 items")));
+    }
+
+    @Test
     @DisplayName("A policy shrunk below a todo's files doesn't block other edits; the next change of its files must end inside it")
     void shrunkPolicyDoesNotBlockOtherEdits() throws Exception {
         TestUser user = newUser();
@@ -373,6 +572,9 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].put.responses['400'].description", containsString("UPLOAD_FILE_COUNT_OUT_OF_RANGE")))
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].put.responses['404'].description", containsString("TODO_ATTACHMENT_NOT_FOUND")))
                 .andExpect(jsonPath("$.components.schemas.TodoUpdateRequest.properties.removeAttachmentIds").exists())
+                .andExpect(jsonPath("$.components.schemas.TodoCreateRequest.properties.attachmentKeys.items.maxLength").value(100))
+                .andExpect(jsonPath("$.components.schemas.TodoUpdateRequest.properties.addAttachmentKeys.items.maxLength").value(100))
+                .andExpect(jsonPath("$.components.schemas.TodoCreateRequest.properties.attachmentKeys.maxItems").value(50))
                 .andExpect(jsonPath("$.components.schemas.TodoResponse.properties.attachments").exists());
     }
 }

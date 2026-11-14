@@ -159,7 +159,7 @@ class AuthIntegrationTest extends IntegrationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             for (int attempt = 0; attempt < attempts; attempt++) {
                 Callable<Integer> signupOnce = () -> {
-                    start.await();
+                    awaitLatch(start);
                     return signup(email, PASSWORD).andReturn().getResponse().getStatus();
                 };
                 statuses.add(executor.submit(signupOnce));
@@ -167,7 +167,7 @@ class AuthIntegrationTest extends IntegrationTest {
             start.countDown();
             List<Integer> results = new ArrayList<>();
             for (Future<Integer> status : statuses) {
-                results.add(status.get());
+                results.add(within(status));
             }
             assertThat(results).containsOnlyOnce(201).containsOnly(201, 409);
         }
@@ -434,7 +434,7 @@ class AuthIntegrationTest extends IntegrationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             for (int attempt = 0; attempt < 5; attempt++) {
                 Callable<Integer> refreshOnce = () -> {
-                    start.await();
+                    awaitLatch(start);
                     return refresh(user.refreshToken()).andReturn().getResponse().getStatus();
                 };
                 statuses.add(executor.submit(refreshOnce));
@@ -442,7 +442,7 @@ class AuthIntegrationTest extends IntegrationTest {
             start.countDown();
             List<Integer> results = new ArrayList<>();
             for (Future<Integer> status : statuses) {
-                results.add(status.get());
+                results.add(within(status));
             }
             assertThat(results).containsOnlyOnce(200).containsOnly(200, 401);
         }

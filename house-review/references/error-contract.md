@@ -17,7 +17,7 @@ that hasn't adopted it yet gets one finding per missing piece, not one per endpo
 | `ErrorCode` | One protocol-agnostic enum, grouped by module (`AUTH_…`, `ORDER_…`). Each constant is one well-defined failure mode. Constants in a module's `api/` package carry Javadoc. |
 | `ErrorCodeHttpStatusMapper` | `final` utility class with a private constructor, holding a static `EnumMap<ErrorCode, HttpStatus>`. It is the **only** place an ErrorCode meets an HttpStatus. `resolve()` throws `IllegalStateException` for an unmapped code, so a new code can't reach production silently. Other protocols (gRPC) would get their own mapper. |
 | `AppException` | One `RuntimeException` carrying `ErrorCode`, `Object[] args`, optional `failedValidations` and response `extensions`. Private constructor, with static factories: `of(code, args…)`, `withCause(code, cause, args…)`, `withFailedValidations(code, failed)`, `supply(code, args…)` (for `orElseThrow`). Also `withExtension(name, value)`, which rejects the reserved names `type`, `title`, `status`, `detail`, `instance`, `errorCode` and `failed`. |
-| Messages | `messages/message_<locale>.properties`, keyed by `ErrorCode.name()`, with `{0}` arguments. `ReloadableResourceBundleMessageSource` set to `UTF-8` **and** `setAlwaysUseMessageFormat(true)`. Without that setting a message with no arguments skips MessageFormat, and `''` / `{0}` reach the client raw (MESSAGE-PLACEHOLDERS-LEAK). The bean validator uses the same MessageSource. Locale comes from `AcceptHeaderLocaleResolver` **with its supported locales set**, and the MessageSource has **`setDefaultLocale(ENGLISH)`**: otherwise any `Accept-Language` without its own file (`de`, `pa`) throws `NoSuchMessageException` inside the error handler and breaks every error response (verified 2026-11-13). |
+| Messages | `messages/message_<locale>.properties`, keyed by `ErrorCode.name()`, with `{0}` arguments, written for `MessageFormat` (ERR-06). `ReloadableResourceBundleMessageSource` set to `UTF-8` **and** `setAlwaysUseMessageFormat(true)`. Without that setting a message with no arguments skips MessageFormat, and `''` / `{0}` reach the client raw (MESSAGE-PLACEHOLDERS-LEAK). The bean validator uses the same MessageSource. Locale comes from `AcceptHeaderLocaleResolver` **with its supported locales set**, and the MessageSource has **`setDefaultLocale(ENGLISH)`**: otherwise any `Accept-Language` without its own file (`de`, `pa`) throws `NoSuchMessageException` inside the error handler and breaks every error response (verified 2026-11-13). |
 | `GlobalExceptionHandler` | `@RestControllerAdvice extends ResponseEntityExceptionHandler`, so Spring MVC's own errors pass through it too. |
 
 ## ERR-01: Every error response has the same members
@@ -118,6 +118,24 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
 - **Detect:** a `…_NOT_ACTIVE`, `…_ALREADY_…`, `…_ENDED`, `…_IN_USE` code mapped to 400; a range or
   format check mapped to 409.
 - **Severity:** Medium (the client can't tell "fix your input" from "reload and retry").
+
+## ERR-06: Messages survive MessageFormat
+- **Check:** every message goes through `MessageFormat` (`setAlwaysUseMessageFormat(true)`, above), so:
+  - an apostrophe is written twice (`can''t`): a single one opens a quoted section, is dropped, and
+    leaves the rest of the message unformatted ("cant", a literal `{0}`);
+  - a number that names something rather than counts it (a year, an id, a code, a version) is
+    `{0,number,#}`, or the caller passes it as a String: a plain `{0}` formats a `Number` by locale,
+    so 2026 reads "2,026". A quantity may keep the grouping ("48,213 bytes");
+  - a code answered from a constraint name (`*_TAKEN`, `*_IN_USE`, an exclusion's `*_OVERLAPS`) has a
+    message without placeholders: the handler has no argument to give it, and `{0}` would reach the
+    client as is.
+
+  Reference: the comment heading `message_en.properties`; `ErrorCodeContractTest.everyApostropheIsDoubled`,
+  `ConstraintNamesIntegrationTest.constraintCodesTakeNoArguments`, `MessageSourceConfigTest.messageFormatRules`.
+- **Detect:** `[^']'[^']` in a messages file; `{N}` fed a year, an id or an `int` code; `{` in the
+  message of a code a `ConstraintErrorCodes` bean maps; a test asserting only the `errorCode` of a
+  refusal whose message carries a number (assert `$.detail` once per such message).
+- **Severity:** Medium (wrong client-facing text; a lost apostrophe Low).
 
 ## Detect
 - An `ErrorCode` constant missing from the mapper or the messages file. Grep both against the

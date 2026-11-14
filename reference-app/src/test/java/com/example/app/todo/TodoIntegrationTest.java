@@ -313,7 +313,7 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Todo creates racing their list's delete: creates are 201 or 404, the delete 204 or 409, no todo outlives its list")
+    @DisplayName("Todo creates racing their list's delete: the creates that read the list first all land, and the delete is 409 TODO_LIST_IN_USE")
     void createsRacingTheListDeleteNeverOrphanATodo() throws Exception {
         TestUser user = newUser();
         String listId = createList(user, "Contested");
@@ -325,52 +325,84 @@ class TodoIntegrationTest extends IntegrationTest {
         Future<Answer> delete;
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             // Holds every todo insert until the delete has run, so the delete lands between each
-            // create's read of the list and its insert: the interleaving the FOR SHARE lock is for.
+            // create's read of the list and its insert: the interleaving the FOR KEY SHARE lock is for.
             Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
                 jdbc.execute("lock table todos in share mode");
                 gateClosed.countDown();
                 awaitQuietly(openGate);
             }));
-            gateClosed.await();
+            awaitLatch(gateClosed);
             try {
                 for (int creator = 0; creator < CREATORS; creator++) {
                     Callable<Answer> create = () -> {
-                        start.await();
+                        awaitLatch(start);
                         return answerOf(postAs(user.accessToken(), TODOS, todoPayload(listId, "Racer", "LOW", null)));
                     };
                     creates.add(executor.submit(create));
                 }
                 start.countDown();
-                awaitLockWaiters(CREATORS, null);
+                // One deadline for both waits: the first waiters' lock_timeout runs through the second.
+                long deadline = lockWaitDeadline();
+                awaitLockWaiters(CREATORS, null, deadline);
                 delete = executor.submit(() -> answerOf(deleteAs(user.accessToken(), LISTS + "/" + listId)));
-                awaitLockWaiters(CREATORS + 1, delete);
+                awaitLockWaiters(CREATORS + 1, delete, deadline);
             } finally {
                 openGate.countDown();
             }
-            gate.get();
+            within(gate);
         }
         List<Answer> createAnswers = new ArrayList<>();
         for (Future<Answer> create : creates) {
-            createAnswers.add(create.get());
+            createAnswers.add(within(create));
         }
-        Answer deleteAnswer = delete.get();
+        Answer deleteAnswer = within(delete);
 
-        assertThat(createAnswers).extracting(Answer::status).isSubsetOf(201, 404);
-        assertRefusalsAre(createAnswers, 404, "TODO_LIST_NOT_FOUND");
-        assertThat(deleteAnswer.status()).isIn(204, 409);
+        // Every create held its FOR KEY SHARE lock on the list before the delete came, so the delete
+        // waited for their inserts and then found them: without the lock it would delete the list under them.
+        assertThat(createAnswers).extracting(Answer::status).containsOnly(201);
+        assertThat(deleteAnswer.status()).isEqualTo(409);
         assertRefusalsAre(List.of(deleteAnswer), 409, "TODO_LIST_IN_USE");
-        long created = createAnswers.stream().filter(answer -> answer.status() == 201).count();
         Integer lists = jdbc.queryForObject("select count(*) from todo_lists where id = ?::uuid", Integer.class, listId);
         Integer todos = jdbc.queryForObject("select count(*) from todos where todo_list_id = ?::uuid", Integer.class, listId);
-        if (lists == 0) {
-            assertThat(deleteAnswer.status()).isEqualTo(204);
-            assertThat(created).isZero();
-            assertThat(todos).isZero();
-        } else {
-            assertThat(deleteAnswer.status()).isEqualTo(409);
-            assertThat(todos).isEqualTo((int) created);
-        }
+        assertThat(lists).isOne();
+        assertThat(todos).isEqualTo(CREATORS);
     }
+
+    @Test
+    @DisplayName("Renaming a list isn't held up by a todo being created in it")
+    void listRenameIsNotBlockedByATodoCreateInFlight() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user, "Before");
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch gateClosed = new CountDownLatch(1);
+        CountDownLatch openGate = new CountDownLatch(1);
+        Future<Answer> create;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            // Holds the create after it has locked the list and before it writes its row.
+            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.execute("lock table todos in share mode");
+                gateClosed.countDown();
+                awaitQuietly(openGate);
+            }));
+            awaitLatch(gateClosed);
+            try {
+                create = executor.submit(() -> answerOf(postAs(user.accessToken(), TODOS, todoPayload(listId, "In flight", "LOW", null))));
+                awaitLockWaiters(1, create);
+
+                putAs(user.accessToken(), LISTS + "/" + listId, """
+                        {"name": "After %s", "version": 0}
+                        """.formatted(UUID.randomUUID()))
+                        .andExpect(status().isOk());
+            } finally {
+                openGate.countDown();
+            }
+            within(gate);
+        }
+        Answer created = within(create);
+
+        assertThat(created.status()).as(created.body()).isEqualTo(201);
+    }
+
     @Test
     @DisplayName("Create without a list, title or priority is 400 naming each field")
     void createWithoutRequiredFieldsIs400() throws Exception {
@@ -481,6 +513,38 @@ class TodoIntegrationTest extends IntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.failed[0]").value("dueDate: must be on or before 2999-12-31"));
+    }
+
+    @Test
+    @DisplayName("A due date on the configured earliest date is accepted; the day before is 400, on create and update, never a database error")
+    void dueDateFollowsTheConfiguredEarliestDate() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user, "Long ago");
+        String id = createTodo(user, listId, "First day", "LOW", "1900-01-01");
+
+        postAs(user.accessToken(), TODOS, todoPayload(listId, "Too early", "LOW", "1899-12-31"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed[0]").value("dueDate: must be on or after 1900-01-01"));
+        putAs(user.accessToken(), TODOS + "/" + id, """
+                {"todoListId": "%s", "title": "Too early", "priority": "LOW", "dueDate": "-300000-01-01", "version": 0}
+                """.formatted(listId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed[0]").value("dueDate: must be on or after 1900-01-01"));
+    }
+
+    @Test
+    @DisplayName("dueOnOrBefore outside the configured dates is 400 VALIDATION_FAILED naming it, never a database error")
+    void dueOnOrBeforeIsBounded() throws Exception {
+        TestUser user = newUser();
+
+        for (String date : List.of("-300000-01-01", "+300000-01-01")) {
+            mvc.perform(get(TODOS).param("dueOnOrBefore", date).header(HttpHeaders.AUTHORIZATION, "Bearer " + user.accessToken()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.failed[0]").value(containsString("dueOnOrBefore: must be on or")));
+        }
     }
 
     @Test
@@ -896,7 +960,7 @@ class TodoIntegrationTest extends IntegrationTest {
                 locked.countDown();
                 awaitQuietly(release);
             }));
-            locked.await();
+            awaitLatch(locked);
             try {
                 patchAs(user.accessToken(), TODOS + "/" + id + "/status", statusPayload("DONE", 0))
                         .andExpect(status().isServiceUnavailable())
@@ -905,7 +969,7 @@ class TodoIntegrationTest extends IntegrationTest {
             } finally {
                 release.countDown();
             }
-            holder.get();
+            within(holder);
         }
     }
 

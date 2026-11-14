@@ -12,6 +12,8 @@ import com.example.app.media.api.MediaFileView;
 import com.example.app.media.api.UploadPurpose;
 import com.example.app.media.api.Uploads;
 // media:end
+import com.example.app.todo.api.TodoView;
+import com.example.app.todo.api.Todos;
 import com.example.app.todo.domain.Tag;
 import com.example.app.todo.domain.TimeEntry;
 import com.example.app.todo.domain.Todo;
@@ -37,9 +39,11 @@ import com.example.app.todo.repository.TodoRepository;
 import com.example.app.todo.repository.TodoTagRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -49,12 +53,13 @@ import java.util.UUID;
  * Every read and write is scoped to the caller: another user's todo, or list, answers 404 like a
  * missing one. The todo's aggregate includes its time entries and its tag rows (which tags it
  * carries): they are read and written only here, always through their todo. The tags themselves are
- * another aggregate's, reached through {@link TagService}.
+ * another aggregate's, reached through {@link TagService}. Other modules reach a todo only through
+ * {@link Todos}, which this service implements.
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class TodoService {
+public class TodoService implements Todos {
 
     private final TodoRepository repository;
     private final TodoMapper mapper;
@@ -95,10 +100,19 @@ public class TodoService {
         return CursorWrapper.of(withTags(batch.items()), batch.nextCursor());
     }
 
+    /**
+     * The todo is locked first ({@code FOR NO KEY UPDATE}), before its list, its files or any other row:
+     * the update may change its member rows, and two concurrent changes of them with one version then
+     * queue here and the second answers 409. Without it, both would get as far as inserting their link
+     * rows (each insert's foreign key check holds the todo {@code FOR KEY SHARE}), and an owner whose
+     * update also changes a unique column (a code, an email) needs a key lock for that update: each would
+     * wait for the other's key share, a deadlock answered 503 instead of 409.
+     */
     @Transactional
     public ObjectWrapper<TodoResponse> update(UUID id, TodoUpdateRequest request) {
         UUID ownerId = currentUser.id();
-        Todo todo = getEditableTodo(id, ownerId, request.version());
+        Todo todo = getOwnedTodoForUpdate(id, ownerId);
+        todo.checkVersion(request.version());
         TodoList todoList = todoListService.getOwnedTodoListForWrite(request.todoListId(), ownerId);
         // media:begin
         // Before any other change: the claim's statement flushes what is pending, and a change flushed
@@ -143,7 +157,12 @@ public class TodoService {
     }
     // media:end
 
-    /** Replaces the tags as a whole; the version increments when they change (Todo.tagLinks). */
+    /**
+     * Replaces the tags as a whole; the version increments when they change (Todo.tagLinks). A tag
+     * delete removes its links by the database's cascade, which the todo's lock doesn't cover: a
+     * replace that drops a link such a delete is removing at that moment finds it gone at the flush and
+     * answers 409 {@code OPTIMISTIC_LOCK_CONFLICT}, as documented; the client reloads and retries.
+     */
     @Transactional
     public ObjectWrapper<TodoResponse> replaceTags(UUID id, TodoTagsRequest request) {
         UUID ownerId = currentUser.id();
@@ -163,12 +182,17 @@ public class TodoService {
     }
 
     /**
-     * Its tag rows go with it (the tags stay). A todo with time entries is refused at the flush by
-     * their foreign key: 409 {@code TODO_IN_USE}.
+     * Its tag rows go with it (the tags stay). A todo with time entries or plans is refused at the
+     * flush by their foreign keys: 409 {@code TODO_IN_USE}. Locked first, like the update, so it queues
+     * behind a change of its member rows instead of deadlocking with one. It takes no version and never
+     * answers 409 {@code OPTIMISTIC_LOCK_CONFLICT}: the lock keeps the todo's own writers out, and its
+     * tag rows, which a tag's delete removes by cascade without the todo's lock, go first in one
+     * statement that doesn't count them (a versioned delete per row would miss the removed ones).
      */
     @Transactional
     public void delete(UUID id) {
         Todo todo = getOwnedTodoForUpdate(id, currentUser.id());
+        todoTagRepository.deleteAllOfTodo(id);
         // media:begin
         List<UUID> attachments = attachmentRepository.findMediaFileIdsOfTodo(id);
         // media:end
@@ -180,11 +204,30 @@ public class TodoService {
         // media:end
     }
 
-    /** The todo is locked {@code FOR SHARE}, so the entry can't race the todo's delete. */
+    @Override
+    public TodoView getOwnedTodoView(UUID id, UUID ownerId) {
+        return mapper.toView(getOwnedTodo(id, ownerId));
+    }
+
+    @Override
+    public List<TodoView> getOwnedTodoViews(Collection<UUID> ids, UUID ownerId) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return repository.findByIdInAndOwnerId(ids, ownerId).stream().map(mapper::toView).toList();
+    }
+
+    /** Only inside the caller's write transaction: a lock outside one would end at once. */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public TodoView getOwnedTodoViewForWrite(UUID id, UUID ownerId) {
+        return mapper.toView(getOwnedTodoForKeyShare(id, ownerId));
+    }
+
+    /** The todo is locked {@code FOR KEY SHARE}, so the entry can't race the todo's delete, and an edit of the todo doesn't wait. */
     @Transactional
     public ObjectWrapper<TimeEntryResponse> createTimeEntry(UUID todoId, TimeEntryCreateRequest request) {
-        Todo todo = repository.findForShareByIdAndOwnerId(todoId, currentUser.id())
-                .orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, todoId));
+        Todo todo = getOwnedTodoForKeyShare(todoId, currentUser.id());
         TimeEntry saved = timeEntryRepository.saveAndFlush(timeEntryMapper.toEntity(request, todo));
         return ObjectWrapper.withObject(timeEntryMapper.toResponse(saved));
     }
@@ -244,6 +287,10 @@ public class TodoService {
         Todo todo = getOwnedTodo(id, ownerId);
         todo.checkVersion(expectedVersion);
         return todo;
+    }
+
+    private Todo getOwnedTodoForKeyShare(UUID id, UUID ownerId) {
+        return repository.findForKeyShareByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
     }
 
     private Todo getOwnedTodoForUpdate(UUID id, UUID ownerId) {

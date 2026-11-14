@@ -195,14 +195,14 @@ class MediaJobsIntegrationTest extends IntegrationTest {
                 awaitQuietly(release);
                 return batch;
             }));
-            leased.await();
+            awaitLatch(leased);
             List<MediaFileKey> second;
             try {
                 second = mediaFiles.leaseForVerification(2, LEASE);
             } finally {
                 release.countDown();
             }
-            List<MediaFileKey> firstBatch = Objects.requireNonNull(first.get());
+            List<MediaFileKey> firstBatch = Objects.requireNonNull(within(first));
 
             assertThat(firstBatch).hasSize(2);
             assertThat(second).hasSize(2).doesNotContainAnyElementsOf(firstBatch);

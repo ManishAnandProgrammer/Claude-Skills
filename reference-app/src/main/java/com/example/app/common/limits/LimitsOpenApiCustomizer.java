@@ -16,6 +16,7 @@ import java.util.Objects;
  * Writes the configured limits into the API docs: {@code maxLength} for {@link MaxLength} body
  * fields and query parameters, {@code maximum} for {@link ConfiguredMax}, {@code maxItems} for
  * {@link ConfiguredMaxSize}. Without it the schema couldn't show a limit that lives in configuration.
+ * A limit on a collection's elements is {@link ElementLimitsModelConverter}'s.
  */
 @Component
 class LimitsOpenApiCustomizer implements PropertyCustomizer, ParameterCustomizer {
@@ -51,7 +52,9 @@ class LimitsOpenApiCustomizer implements PropertyCustomizer, ParameterCustomizer
             schema.setMaxLength(limits.maxLength(maxLength.value()));
         } else if (annotation instanceof ConfiguredMax configuredMax) {
             schema.setMaximum(BigDecimal.valueOf(limits.getLong(configuredMax.value())));
-        } else if (annotation instanceof ConfiguredMaxSize configuredMaxSize) {
+        } else if (annotation instanceof ConfiguredMaxSize configuredMaxSize && Objects.nonNull(schema.getItems())) {
+            // Swagger also calls this for the collection's items with the field's annotations: the
+            // size belongs on the collection only.
             schema.setMaxItems(limits.get(configuredMaxSize.value()));
         }
     }

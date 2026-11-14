@@ -4,14 +4,27 @@ import com.example.app.todo.domain.TodoTag;
 import com.example.app.todo.dto.internal.TodoTagRow;
 import com.example.app.todo.dto.response.TodoTagResponse;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
-/** Read models only: a todo's tag rows are written through {@code Todo.replaceTags}. */
+/**
+ * Read models, and the todo's delete: a todo's tag rows are otherwise written through
+ * {@code Todo.replaceTags}.
+ */
 public interface TodoTagRepository extends JpaRepository<TodoTag, UUID> {
+
+    /**
+     * Every tag row of the todo, in one statement whatever is left of them: a tag's delete may have just
+     * removed some by cascade. Before the todo's own delete, whose cascade then finds none. A bulk
+     * delete skips auditing and versions, which is right for rows that are going away.
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("delete from TodoTag link where link.todo.id = :todoId")
+    int deleteAllOfTodo(UUID todoId);
 
     /** In tag id order (creation order), the order of {@link #findTagRowsOfTodos}. */
     @Query("""

@@ -3,12 +3,16 @@ package com.example.app.todo.mapper;
 // media:begin
 import com.example.app.media.api.MediaFileView;
 // media:end
+import com.example.app.todo.api.TodoView;
 import com.example.app.todo.domain.Tag;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.domain.TodoList;
 import com.example.app.todo.dto.internal.TodoTagRow;
 import com.example.app.todo.dto.request.TodoCreateRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
+// media:begin
+import com.example.app.todo.dto.response.TodoAttachmentResponse;
+// media:end
 import com.example.app.todo.dto.response.TodoResponse;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import com.example.app.todo.dto.response.TodoTagResponse;
@@ -36,6 +40,11 @@ public class TodoMapper {
         return todo;
     }
 
+    /** The todo as other modules see it (the todo.api facade). */
+    public TodoView toView(Todo todo) {
+        return new TodoView(todo.getId(), todo.getTitle());
+    }
+
     public void update(Todo todo, TodoUpdateRequest request, TodoList todoList) {
         todo.moveTo(todoList);
         todo.setTitle(request.title().strip());
@@ -61,7 +70,7 @@ public class TodoMapper {
                 todo.getCompletedAt(),
                 tags,
                 // media:begin
-                attachments,
+                attachments.stream().map(TodoMapper::toAttachmentResponse).toList(),
                 // media:end
                 todo.getCreatedAt(),
                 todo.getUpdatedAt(),
@@ -70,6 +79,13 @@ public class TodoMapper {
                 todo.getVersion());
     }
 
+    // media:begin
+    private static TodoAttachmentResponse toAttachmentResponse(MediaFileView file) {
+        return new TodoAttachmentResponse(file.id(), file.fileName(), file.contentType(), file.sizeBytes(),
+                file.status().name(), file.url());
+    }
+
+    // media:end
     /** Each row gets its todo's tags, in the order of {@code tagRows} (tag id order). */
     public List<TodoSummaryResponse> withTags(List<TodoSummaryResponse> rows, List<TodoTagRow> tagRows) {
         Map<UUID, List<TodoTagResponse>> tagsByTodo = tagRows.stream().collect(Collectors.groupingBy(TodoTagRow::todoId,

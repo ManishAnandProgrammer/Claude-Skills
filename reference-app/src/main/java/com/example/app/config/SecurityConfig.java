@@ -75,7 +75,6 @@ class SecurityConfig {
     private static final String ROLES_CLAIM = "roles";
     private static final String ROLE_PREFIX = "ROLE_";
     private static final String HMAC_SHA_256 = "HmacSHA256";
-    private static final int BCRYPT_STRENGTH = 12;
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,
@@ -139,8 +138,8 @@ class SecurityConfig {
     }
 
     @Bean
-    PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(BCRYPT_STRENGTH);
+    PasswordEncoder passwordEncoder(PasswordHashProperties properties) {
+        return new BCryptPasswordEncoder(properties.passwordHashStrength());
     }
 
     @Bean

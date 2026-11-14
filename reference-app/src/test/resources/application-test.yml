@@ -13,6 +13,9 @@ app:
     secret: test-secret-that-is-at-least-thirty-two-bytes-long
   security:
     personal-data-pepper: test-pepper-that-is-at-least-thirty-two-bytes
+    # Each test account costs a bcrypt hash at signup and another at login; at the production cost of
+    # 12 that is about half a second per account. Only the test profile alone may go lower (StartupChecks).
+    password-hash-strength: 4
   cors:
     allowed-origins: http://localhost:3000
   # sign-in:begin

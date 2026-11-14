@@ -78,13 +78,13 @@ public class TodoListService {
     }
 
     /**
-     * Locked {@code FOR SHARE} until the caller's transaction ends, so a todo written into the list
-     * can't race the list's delete. Only inside that write transaction: a lock outside one would end
-     * at once.
+     * Locked {@code FOR KEY SHARE} until the caller's transaction ends, so a todo written into the list
+     * can't race the list's delete, while a rename of the list goes ahead. Only inside that write
+     * transaction: a lock outside one would end at once.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public TodoList getOwnedTodoListForWrite(UUID id, UUID ownerId) {
-        return repository.findForShareByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_LIST_NOT_FOUND, id));
+        return repository.findForKeyShareByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_LIST_NOT_FOUND, id));
     }
 
     private TodoList getOwnedTodoList(UUID id, UUID ownerId) {

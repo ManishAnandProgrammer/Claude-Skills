@@ -74,7 +74,7 @@ public enum ErrorCode {
     /** The object store (or its credentials source) didn't answer. */
     MEDIA_STORAGE_UNAVAILABLE,
     // media:end
-    // example:begin (the golden todo module; bootstrap-copy.sh leaves it out of real projects)
+    // example:begin (the golden todo and planning modules; bootstrap-copy.sh leaves them out of real projects)
 
     // ── TodoList ─────────────────────────────────────────────────────────
     TODO_LIST_NOT_FOUND,
@@ -97,5 +97,10 @@ public enum ErrorCode {
     /** A removeAttachmentIds entry that is not one of this todo's files. */
     TODO_ATTACHMENT_NOT_FOUND,
     // media:end
+
+    // ── Plan (the planning module) ───────────────────────────────────────
+    PLAN_NOT_FOUND,
+    /** Answered from the exclusion constraint ex_plans_owner_id_dates: no arguments. */
+    PLAN_OVERLAPS,
     // example:end
 }

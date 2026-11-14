@@ -92,6 +92,9 @@ class TagRepositoryImpl implements CustomTagRepository {
     /** Shared by the page's select and its count. */
     private static List<Predicate> pageConditions(CriteriaBuilder builder, Root<Tag> root, UUID ownerId, TagFilter filter) {
         List<Predicate> predicates = ownedAndMatching(builder, root, ownerId, filter);
+        if (filter.requireIdsPredicate()) {
+            predicates.add(root.get(Tag_.id).in(filter.getIds()));
+        }
         if (filter.requireStatusPredicate()) {
             predicates.add(hasStatus(builder, root, filter.getStatus()));
         }

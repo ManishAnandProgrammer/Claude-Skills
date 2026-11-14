@@ -55,7 +55,12 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
   - attaching happens inside the owning resource's own create or update (`POST /todos`,
     `PUT /todos/{id}`), which keeps its own checks (whose record, is it editable), takes the count
     range from `Uploads.fileCountRange(purpose)` and calls `Uploads.claim`;
-  - the media module has no hook, callback or per-purpose switch into feature modules.
+  - the media module has no hook, callback or per-purpose switch into feature modules;
+  - **the purpose's role is the role of whoever writes the owning record**, not of the person the
+    file is about: the claim requires the uploader to be the claimer (MEDIA-05), so if admins edit
+    employees, admins upload their photos (`EMPLOYEE_PHOTO("ADMIN")`). When the record's subject may
+    change the file too (an employee's own photo), that is a second write path with its own checks,
+    and the purpose names a role both hold (or the project's role hierarchy covers both: REST-25).
 - **Detect:** an `attach` endpoint in the media module; an interface in `media` implemented by a
   feature module; `switch (purpose)` in media code.
 - **Severity:** High (an attach outside the owner's write skips the owner's rules).
@@ -84,9 +89,14 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
     key, in one request). MISSING means a broken or dishonest client (the frontend attaches only
     after its PUT returned 200), so it is counted in a metric (`media.files.missing`); its view has
     no read URL;
-  - a business step that needs complete files (approve, submit) checks in that transition that
-    every attachment is UPLOADED (`Uploads.allUploaded`) and answers 409 otherwise; saving a draft
-    doesn't;
+  - a business step that needs complete files (approve, submit) checks in that transition, under the
+    record's lock and before it changes anything, that every attachment is UPLOADED
+    (`Uploads.allUploaded`), and answers 409 `<ENTITY>_<X>S_INCOMPLETE` otherwise (a feature code; its
+    message says to try again later); saving a draft doesn't. Files stay IN_REVIEW until their
+    upload URL expired and the job ran, so **at least `app.media.upload-url-expiry` after the last
+    upload**: the action's API text says so, or clients read the refusal as a bug. Tests (statuses set
+    through `sql(...)`, the job's schedule is off): IN_REVIEW refused, MISSING refused, all UPLOADED
+    accepted, a record without files passes the gate;
   - **both jobs share their rows between instances through a lease:** a short transaction marks a
     batch (`UPDATE … SET lease_until = now() + :lease WHERE id IN (SELECT … ORDER BY …, id LIMIT
     :batch FOR UPDATE SKIP LOCKED) RETURNING …`), the storage calls run with no transaction, a second
@@ -112,8 +122,30 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
   isn't this record's file is refused, not ignored (404, e.g. `TODO_ATTACHMENT_NOT_FOUND`). The
   range is checked only when a request changes files, so a policy tightened later doesn't block an
   unrelated edit. Deleting the record releases its files (MEDIA-10).
+- **The owner is locked first.** A write that changes the record's files (and its delete) loads the
+  owner `FOR NO KEY UPDATE` (`findForUpdateBy…`, DATA-29's "owner of a write") before the claim, the
+  release or any other row. Without it, two add+remove requests with one version both insert their
+  link rows, each insert's foreign key check holding the owner `FOR KEY SHARE`; when the update also
+  changes a column with a plain unique index (a code, an email), PostgreSQL needs a key lock for it,
+  each waits for the other's key share, and the deadlock answers 503 `DATABASE_CONTENTION` instead
+  of 409 (run 6: 40 × 503 in 48 racers, until the lock was added). With the lock the second writer
+  queues at the first statement and gets 409. The reference proves the order directly
+  (`TodoAttachmentsIntegrationTest.updateLocksTheTodoFirst`), because `todos` has no unique column
+  and its replacement race passes even without the lock.
+- **Rules of the record on the count** (more than N days of leave needs a document) are the owner's
+  code, never a narrowed `FileCountRange`: their own 400 code (`<ENTITY>_<X>_REQUIRED`, the
+  threshold in the message), on the final count (`current − removed + added`), checked when their
+  inputs change (the fields they read, or the files), after the claim and before the flush, so a
+  refusal rolls the claim back. Like the purpose's range, a changed threshold doesn't block an
+  unrelated edit. Tests: both sides of the threshold, the inputs changing without files, files
+  removed below it.
+- **A single-file purpose** (a profile photo: `maxFiles` 1) keeps the list shape (`photoKeys`,
+  `addPhotoKeys`, `removePhotoIds`, `photos`): one shape for every purpose, and the count check
+  covers it. Replacing is a remove and an add in one request, which the update's `@Schema` says.
 - **Detect:** a count that skips MISSING files; `oldIds`/`newIds`/`deletedIds` payloads; a files
-  change that doesn't touch the record's version; the count check only in the frontend.
+  change that doesn't touch the record's version; the count check only in the frontend; a files
+  update that loads its owner without a lock, or locks it after the claim; a record rule folded into
+  the purpose's count range.
 - **Severity:** High (two concurrent removes each pass and together drop below the minimum).
 
 ### MEDIA-08: Keys are `{purpose}/{uuid}`; the file name travels only in the signed header
@@ -147,11 +179,17 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
 ### MEDIA-11: One class builds read URLs; no URL cache
 - **Check:** every read URL comes from `MediaUrls` (presigned GET today; CloudFront later is a
   configuration change plus this class). Responses carry the URL through `Uploads.describe`
-  (`MediaFileView`). No cache of URLs: signing is a local HMAC. `app.media.read-url-expiry` stays
+  (`MediaFileView`), which the owning module maps into a response record of its own (golden
+  `TodoAttachmentResponse`; the view never goes on the wire, ARCH-06). No cache of URLs: signing is a local HMAC. `app.media.read-url-expiry` stays
   below the lifetime of the credentials that sign it: a URL signed with temporary credentials (an
   IAM role) stops working when they expire, whatever its own expiry says.
+- **Who gets read URLs:** whoever the owning record's read lets in (a leave request's requester and
+  their manager alike); the media module adds no check of its own, so a record visible to two
+  parties shows both its files. A read URL is a bearer link: anyone it is forwarded to can download
+  until `app.media.read-url-expiry`, so that stays short (minutes to an hour), and URLs are never
+  logged.
 - **Detect:** `presignGetObject` outside `MediaUrls`; `@Cacheable` on a URL method; a read-URL
-  expiry of hours or days with role credentials.
+  expiry of hours or days with role credentials; a URL in a log line.
 - **Severity:** Medium.
 
 ### MEDIA-12: The storage client: timeouts, failures, credentials

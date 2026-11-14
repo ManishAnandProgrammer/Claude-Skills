@@ -13,10 +13,11 @@ The house reference application: real, building, tested code that the skills cop
   - `media` (optional): uploads straight from the browser to S3 with presigned PUTs (the `media`
     module: upload policies, upload URLs, the `Uploads` claim/release API, the verification and
     cleanup jobs); with the example, the todo's attachments;
-  - `example` (reference only): the `todo` module below.
+  - `example` (reference only): the `todo` and `planning` modules below.
   - `metadata` and `media` have admin endpoints: with `sign-in`, either brings the `ADMIN` role.
 - The `todo` module is the **golden crud-gen output**: what a generated entity looks like, with its
-  tests. crud-gen generates like it; house-review cites it as compliant code.
+  tests. The `planning` module adds the shapes `todo` can't host: a parent in another module
+  (`todo.api.Todos`) and no overlapping ranges (an exclusion constraint). crud-gen generates like it; house-review cites it as compliant code.
 - Skills find it at `~/.claude/skills-reference` (linked by the installers).
 
 It is not an application anyone deploys. Its domain (todo lists and todos) only exists to show

@@ -10,7 +10,7 @@ import java.util.Objects;
  * in {@code CORS_ALLOWED_ORIGINS}. Credentials are never allowed: auth is a header, not a cookie.
  */
 @ConfigurationProperties(prefix = "app.cors")
-public record CorsProperties(List<String> allowedOrigins) {
+record CorsProperties(List<String> allowedOrigins) {
 
     public CorsProperties {
         allowedOrigins = Objects.isNull(allowedOrigins) ? List.of()

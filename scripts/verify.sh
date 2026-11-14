@@ -7,9 +7,11 @@
 #          with its changesets;
 #      2c. core + sign-in + metadata without the example: the mechanism alone, none of its samples;
 #      2e. core + sign-in + media without the example: uploads, policies and jobs alone (no purpose,
-#          no todo attachments); its integration tests run against an S3-compatible store;
-#      2f. core + sign-in + example + media: the todo attachments and the purpose's tests arrive with
-#          both pieces (the attachment, upload and policy tests run; the rest is 2b's and 1's);
+#          no todo attachments); its integration tests run against an S3-compatible store, and the
+#          upload endpoint tests arrive skipped (they need a purpose);
+#      2f. core + sign-in + example + media: the todo attachments arrive with both pieces (the
+#          attachment, upload and policy tests run against TODO_ATTACHMENT; the rest is 2b's and 1's),
+#          and the dependency lists the script prints cover the reference pom;
 #      2d. core alone (a project signing users in elsewhere), without sign-in's Redis and Bucket4j
 #          dependencies: main and test code compile and the unit tests pass. Its integration and
 #          ArchUnit tests are left out: the integration tests sign users in through sign-in, and the
@@ -85,6 +87,8 @@ JAVA
 "$REPO/scripts/bootstrap-copy.sh" --target "$project" --package com.acme.smoke --with core,sign-in > "$WORK/copy.log"
 grep -q "com.example.app" -r "$project/src" && { echo "FAILED: com.example.app left in the copied sources" >&2; exit 1; }
 [ -f "$project/docs/runbook.md" ] || { echo "FAILED: the incident runbook is missing from the core copy" >&2; exit 1; }
+grep -qiwE "todo|todos" "$project/compose.yaml" "$project/.env.example" && { echo "FAILED: the example's names left in compose.yaml or .env.example" >&2; exit 1; }
+grep -rq "docs/design" "$project/src" && { echo "FAILED: a copied file points to a design note that isn't copied" >&2; exit 1; }
 grep -rqE "sign-in:(begin|end)" "$project/src" "$project/compose.yaml" "$project/.env.example" && { echo "FAILED: sign-in markers left in the copy" >&2; exit 1; }
 grep -rqE "example:(begin|end)|TODO_LIST|todo-list" "$project/src" && { echo "FAILED: example-module entries left in a copy without the example piece" >&2; exit 1; }
 grep -rqE "metadata:(begin|end)|METADATA_|configuration_metadata|MetadataKey" "$project/src" && { echo "FAILED: metadata-piece entries left in a copy without the metadata piece" >&2; exit 1; }
@@ -137,6 +141,10 @@ grep -rqE "(example|metadata|media|admin):(begin|end)|TODO_ATTACHMENT|TodoAttach
 [ -f "$media/src/main/resources/db/changelog/changes/0007-users-admin-role.sql" ] && grep -q "ADMIN" "$media/src/main/java/com/acme/media/user/domain/Role.java" \
     || { echo "FAILED: the ADMIN role is missing from the media copy (its policy admin endpoint needs it)" >&2; exit 1; }
 [ -f "$media/src/main/resources/db/changelog/changes/0010-todo-attachments.sql" ] && { echo "FAILED: the todo attachments changeset in a copy without the example" >&2; exit 1; }
+# The media endpoints' own tests arrive with the piece (skipped until the project declares a purpose).
+for endpoint_test in UploadUrlIntegrationTest UploadPolicyIntegrationTest PresignedUploadIntegrationTest; do
+    [ -f "$media/src/test/java/com/acme/media/media/$endpoint_test.java" ] || { echo "FAILED: $endpoint_test is missing from the media copy" >&2; exit 1; }
+done
 mvn_verify "$media" "$WORK/media.log"
 
 echo "[2f/3] bootstrap-copy with the example and media pieces (package com.acme.files)"
@@ -153,9 +161,14 @@ for attachment in main/java/com/acme/files/todo/domain/TodoAttachment.java test/
                   main/resources/db/changelog/changes/0010-todo-attachments.sql; do
     [ -f "$files/src/$attachment" ] || { echo "FAILED: $attachment is missing from the example and media copy" >&2; exit 1; }
 done
+# The printed dependency lists name every dependency of the reference pom (bootstrap.md §3 proposes them).
+for artifact in $(sed -n '/<dependencyManagement>/,/<\/dependencyManagement>/d; /<dependencies>/,/<\/dependencies>/p' "$REFERENCE/pom.xml" | grep -oP '(?<=<artifactId>)[^<]+'); do
+    grep -qE "(^|[ ,:(])$artifact([ ,;(]|\$)" "$WORK/copy-files.log" \
+        || { echo "FAILED: $artifact (reference pom) is missing from bootstrap-copy.sh's dependency lists" >&2; exit 1; }
+done
 # Everything compiles; the tests that need both pieces run (the others ran in 1, 2b and 2e).
 mvn_verify "$files" "$WORK/files.log" \
-    -Dtest='TodoAttachmentsIntegrationTest,Upload*IntegrationTest,PresignedUploadIntegrationTest,*ArchTest,ErrorCodeContractTest,LimitsIntegrationTest' \
+    -Dtest='TodoAttachmentsIntegrationTest,Upload*IntegrationTest,PresignedUploadIntegrationTest,UploadPurposeTest,*ArchTest,ErrorCodeContractTest,LimitsIntegrationTest' \
     -Dsurefire.failIfNoSpecifiedTests=false
 
 echo "[2d/3] bootstrap-copy of core alone, without the Redis dependencies (package com.acme.core)"

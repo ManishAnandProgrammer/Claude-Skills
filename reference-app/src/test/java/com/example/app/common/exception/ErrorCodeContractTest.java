@@ -2,6 +2,7 @@ package com.example.app.common.exception;
 
 import com.example.app.common.web.RetryAfterProperties;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.http.HttpStatus;
@@ -33,6 +34,14 @@ class ErrorCodeContractTest {
     @DisplayName("Every error code has an English message")
     void everyErrorCodeHasAMessage(ErrorCode code) {
         assertThat(MESSAGES.getProperty(code.name())).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("No message, error code's or bean validation's, has a single apostrophe: MessageFormat would drop it (write can''t)")
+    void everyApostropheIsDoubled() {
+        for (String key : MESSAGES.stringPropertyNames()) {
+            assertThat(MESSAGES.getProperty(key)).as(key).doesNotContainPattern("(?<!')'(?!')");
+        }
     }
 
     @ParameterizedTest

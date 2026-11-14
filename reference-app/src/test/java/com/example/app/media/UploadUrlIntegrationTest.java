@@ -2,6 +2,7 @@ package com.example.app.media;
 
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.ResourceLock;
@@ -26,20 +27,29 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * {@code POST /upload-urls} for the example purpose TODO_ATTACHMENT: who may ask, and the policy's
- * limits. The lock keeps the tests that change the purpose's policy from overlapping.
+ * {@code POST /upload-urls} for the project's first purpose ({@link #TESTED_PURPOSE}; skipped while
+ * there is none): who may ask, and the policy's limits. The lock keeps the tests that change a
+ * purpose's policy from overlapping.
  */
-@ResourceLock(UploadUrlIntegrationTest.POLICY_LOCK)
+@ResourceLock(IntegrationTest.UPLOAD_POLICIES_LOCK)
 class UploadUrlIntegrationTest extends IntegrationTest {
 
-    static final String POLICY_LOCK = "TODO_ATTACHMENT_POLICY";
-    static final String PURPOSE = "TODO_ATTACHMENT";
-    static final long MAX_SIZE = 10_485_760;
+    private static final String PURPOSE = TESTED_PURPOSE;
+    private static final long MAX_SIZE = 10_485_760;
     private static final String UPLOAD_URLS = "/api/v1/upload-urls";
+
+    private UploadPolicyLimits saved;
+
+    @BeforeEach
+    void setThePolicy() {
+        assumeAnUploadPurpose();
+        saved = uploadPolicyOf(PURPOSE);
+        setUploadPolicy(PURPOSE, 1, MAX_SIZE, 0, 5);
+    }
 
     @AfterEach
     void restoreThePolicy() {
-        setUploadPolicy(PURPOSE, 1, MAX_SIZE, 0, 5);
+        restoreUploadPolicy(saved);
     }
 
     private static String file(String fileName, String contentType, long sizeBytes) {
@@ -69,7 +79,7 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("Each file gets a key, a URL signed with its size, type and disposition, the headers to send and the expiry; it is recorded PENDING")
     void issuesOneSignedUploadPerFile() throws Exception {
-        TestUser user = newUser();
+        TestUser user = newUploader();
 
         ResultActions issued = issue(user, PURPOSE, List.of(file("receipt.pdf", "application/pdf", 48_213), file("photo.png", "image/png", 10)))
                 .andExpect(status().isCreated())
@@ -97,21 +107,21 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     @DisplayName("Without a token it is 401 AUTHENTICATION_REQUIRED")
     void withoutATokenIs401() throws Exception {
         postAs(null, UPLOAD_URLS, """
-                {"purpose": "TODO_ATTACHMENT", "files": [%s]}
-                """.formatted(file("a.pdf", "application/pdf", 10)))
+                {"purpose": "%s", "files": [%s]}
+                """.formatted(PURPOSE, file("a.pdf", "application/pdf", 10)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
     }
 
     @Test
-    @DisplayName("A role the purpose doesn't name (an admin, for a USER purpose) is 403 ACCESS_DENIED, and nothing is recorded")
+    @DisplayName("A role the purpose doesn't name (one role per account, no hierarchy) is 403 ACCESS_DENIED, and nothing is recorded")
     void aRoleThePurposeDoesNotNameIs403() throws Exception {
-        TestUser admin = newAdmin();
+        TestUser other = newNonUploader();
 
-        issue(admin, PURPOSE, List.of(file("a.pdf", "application/pdf", 10)))
+        issue(other, PURPOSE, List.of(file("a.pdf", "application/pdf", 10)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
-        assertThat(filesOf(admin)).isZero();
+        assertThat(filesOf(other)).isZero();
     }
 
     @Test
@@ -126,7 +136,7 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     @DisplayName("A size one byte outside the policy's range, either side, is 400 UPLOAD_SIZE_OUT_OF_RANGE; both bounds pass")
     void sizeMustBeWithinThePolicy() throws Exception {
         setUploadPolicy(PURPOSE, 10, 100, 0, 5);
-        TestUser user = newUser();
+        TestUser user = newUploader();
 
         for (long refused : List.of(9L, 101L)) {
             issue(user, PURPOSE, List.of(file("a.pdf", "application/pdf", refused)))
@@ -140,7 +150,7 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("A size of 0 or none is 400 VALIDATION_FAILED: an empty file is never an upload")
     void zeroOrMissingSizeIs400() throws Exception {
-        TestUser user = newUser();
+        TestUser user = newUploader();
 
         issue(user, PURPOSE, List.of(file("a.pdf", "application/pdf", 0)))
                 .andExpect(status().isBadRequest())
@@ -155,7 +165,7 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     @ValueSource(strings = {"image/svg+xml", "text/html", "application/xml", "image/png; charset=utf-8", "IMAGE/PNG", "image/webp"})
     @DisplayName("A type outside the policy (SVG, HTML, XML, a parameter, another case, an allowed type the policy doesn't list) is 400 UPLOAD_TYPE_NOT_ALLOWED")
     void typeMustBeExactlyOneOfThePolicys(String contentType) throws Exception {
-        TestUser user = newUser();
+        TestUser user = newUploader();
 
         issue(user, PURPOSE, List.of(file("a", contentType, 10)))
                 .andExpect(status().isBadRequest())
@@ -166,7 +176,7 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("More files than the policy's maxFiles is 400 UPLOAD_FILE_COUNT_OUT_OF_RANGE; exactly maxFiles passes; none is VALIDATION_FAILED")
     void fileCountMustBeWithinThePolicy() throws Exception {
-        TestUser user = newUser();
+        TestUser user = newUploader();
         List<String> five = new ArrayList<>();
         for (int index = 0; index < 5; index++) {
             five.add(file("f" + index + ".pdf", "application/pdf", 10));
@@ -187,7 +197,7 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("One refused file refuses the request: none of its files is recorded")
     void oneRefusedFileRefusesAll() throws Exception {
-        TestUser user = newUser();
+        TestUser user = newUploader();
 
         issue(user, PURPOSE, List.of(file("ok.pdf", "application/pdf", 10), file("evil.svg", "image/svg+xml", 10)))
                 .andExpect(status().isBadRequest())
@@ -198,7 +208,7 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("A purpose without its policy row is 404 UPLOAD_POLICY_NOT_FOUND")
     void purposeWithoutAPolicyIs404() throws Exception {
-        TestUser user = newUser();
+        TestUser user = newUploader();
         assertThat(sql("update upload_policies set purpose = 'HIDDEN_FOR_TEST' where purpose = ?", PURPOSE)).isEqualTo(1);
         try {
             issue(user, PURPOSE, List.of(file("a.pdf", "application/pdf", 10)))

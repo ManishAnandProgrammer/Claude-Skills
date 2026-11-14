@@ -144,7 +144,9 @@ public interface TodoApi {
     @Operation(summary = "Replace a todo's tags", description = """
             Makes tagIds (your own tags, up to a configured number) its tags, as a whole: [] removes them \
             all. Send the version you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT. \
-            Deleting a tag removes it from its todos without changing their version.""")
+            Deleting a tag removes it from its todos without changing their version, so a replace that \
+            drops a tag being deleted at that moment is refused with the same 409: reload and send it \
+            again.""")
     @ApiResponse(responseCode = "200", description = "The todo with its tags; the version increments when they changed")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (see failed: tagIds or version missing, tagIds over the maximum or holding \
@@ -155,15 +157,15 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TAG_NOT_FOUND (missing, or another user's)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
+    @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT (a stale version, or a dropped tag deleted meanwhile)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<TodoResponse> replaceTags(UUID id, TodoTagsRequest request);
 
     @Operation(summary = "Delete a todo", description = """
-            Only a todo without time entries: delete its time entries first, so logged (billable) time \
-            is never removed as a side effect. Its tags are taken off it; the tags themselves stay.""")
+            Only a todo without time entries or plans: delete them first, so logged (billable) time is \
+            never removed as a side effect. Its tags are taken off it; the tags themselves stay.""")
     @ApiResponse(responseCode = "204", description = "Deleted")
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -171,7 +173,7 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "409", description = "TODO_IN_USE (it has time entries), OPTIMISTIC_LOCK_CONFLICT (it changed while being deleted)",
+    @ApiResponse(responseCode = "409", description = "TODO_IN_USE (it has time entries or plans)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -180,15 +182,17 @@ public interface TodoApi {
     @Operation(summary = "A todo's time entries, in batches", description = """
             Cursor-paged: the first call returns a batch and pageInfo.nextCursor; send it as after to \
             get the next batch, until hasMore is false. size sets the batch (default and maximum from \
-            configuration). Filters, all inclusive: spentOnFrom and spentOnTo (yyyy-MM-dd), minMinutes \
-            and maxMinutes (from 1 to the configured maximum of an entry), and billable; a range whose \
+            configuration). Filters: ids (find by ids: unknown ids, or another todo's, are simply \
+            absent); and, all inclusive, spentOnFrom and spentOnTo (yyyy-MM-dd, within configured \
+            earliest and latest dates), minMinutes and maxMinutes (from 1 to the configured maximum of \
+            an entry), and billable; a range whose \
             lower bound is above its upper one is a 400. Ordered by sort: SPENT_ON (the default; the \
             most recent day first) or MINUTES (the longest first); a cursor only continues the order it \
             came from.""")
     @ApiResponse(responseCode = "200", description = "One batch, with pageInfo {nextCursor, hasMore}")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (size, after, minMinutes or maxMinutes out of range; spentOnFrom after \
-            spentOnTo, or minMinutes above maxMinutes, naming the lower bound); \
+            VALIDATION_FAILED (size, after, minMinutes, maxMinutes or the number of ids out of range; \
+            spentOnFrom after spentOnTo, or minMinutes above maxMinutes, naming the lower bound); \
             REQUEST_PARAMETER_INVALID (a malformed id or date, a non-numeric size or minutes, a billable \
             that is not true or false, an unknown sort, or an after that is tampered or from another \
             sort; see failed or parameter)""",

@@ -11,6 +11,9 @@ app:
   security:
     # HMAC key for personal data in logs and rate-limit keys (PersonalDataHasher). No default.
     personal-data-pepper: ${PERSONAL_DATA_PEPPER}
+    # bcrypt's cost: about 250 ms of CPU per sign-in at 12 (the admission group sign-in is sized for it).
+    # A security decision, not a tunable: StartupChecks refuses any other value outside the test profile.
+    password-hash-strength: 12
     # Signup refuses passwords from known breaches (Have I Been Pwned range API). Fail-open: while
     # the service is unreachable or the bulkhead below is full, signup proceeds and
     # breached_password.check.unavailable counts it.

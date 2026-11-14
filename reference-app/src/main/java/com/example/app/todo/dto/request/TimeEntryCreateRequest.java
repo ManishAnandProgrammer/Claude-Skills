@@ -1,6 +1,7 @@
 package com.example.app.todo.dto.request;
 
 import com.example.app.common.limits.ConfiguredMax;
+import com.example.app.common.limits.EarliestDate;
 import com.example.app.common.limits.MaxLength;
 import com.example.app.common.limits.NotAfterToday;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -16,7 +17,7 @@ public record TimeEntryCreateRequest(
         Integer minutes,
 
         @Schema(description = "The day the time was spent (yyyy-MM-dd), in your own calendar; not in the future", example = "2026-11-12")
-        @NotNull @NotAfterToday
+        @NotNull @EarliestDate("time-entry.spent-on") @NotAfterToday
         LocalDate spentOn,
 
         @Schema(description = "What the time went on; null, absent or blank for none (returned as null)", example = "Pairing on the import")

@@ -254,9 +254,34 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - a "max N per parent" cap locks the parent before counting, or uses a constraint (incident R5:
     a cap of 5, and 6 created);
   - multi-row locks are taken in a consistent order (`ORDER BY id`, `order_updates=true`);
-  - rows locked only so they can't be deleted or re-keyed while a link to them is written (the tags
-    of a todo) take `FOR KEY SHARE … ORDER BY id`, not `FOR SHARE` / `FOR UPDATE`: an ordinary update
-    of those rows (a rename) then isn't blocked;
+  - **one lock vocabulary, chosen by purpose** (each repository method's name says which, with a
+    one-line javadoc of why):
+    - `findForKeyShare…` (native `FOR KEY SHARE`, multi-row `ORDER BY id`): a **delete guard**, a row
+      locked only so it can't be deleted or re-keyed while a row pointing at it is written (the list a
+      todo goes into, the todo a time entry or a plan goes onto, the tags of a todo). An ordinary
+      update of that row (a rename, a status change) isn't blocked, and two such guards never
+      deadlock with an update of either row. `FOR SHARE` here is a finding: it blocks every edit of
+      the parent for the length of the child's write, and two writers that each lock their own row
+      for update and the other's `FOR SHARE` (swap two employees' managers) deadlock: 503 instead of
+      200. JPA's `PESSIMISTIC_READ` is `FOR SHARE`, so the guard is a native query
+      (reference: `TodoListRepository`, `TodoRepository.findForKeyShareByIdAndOwnerId`,
+      `TagRepository`);
+    - `findForShare…` (`@Lock(PESSIMISTIC_READ)`): **a mutable column re-checked** under the lock
+      (ship an order only while its account is active; test row 23b), where a concurrent change of
+      that column must wait;
+    - `findForUpdate…` (`@Lock(PESSIMISTIC_WRITE)`, which Hibernate issues as `FOR NO KEY UPDATE` on
+      PostgreSQL): **the owner of a write**, the row the transaction itself changes, taken first when
+      the write also changes its member rows (attachments, tag links) or deletes it, so concurrent
+      writers queue there (MEDIA-07, the reference's `TodoService.update`, `replaceTags`, `delete`);
+    - pollers' `FOR UPDATE SKIP LOCKED` (below);
+  - **member rows another aggregate's delete removes by cascade** (a tag's delete takes its
+    `todo_tags` rows with it) are outside the root's lock: the root's delete removes them with one
+    statement that doesn't count them (`TodoTagRepository.deleteAllOfTodo`) before its own delete,
+    since Hibernate's versioned delete per loaded row misses the removed ones and answers 409; a
+    write that replaces them documents that 409 (reference: `TodoService.delete`, `replaceTags`);
+  - a lock by id is taken only once the caller may see the row: the ownership check in the same
+    `WHERE` (`findForUpdateByIdAndOwnerId`), or read, check visibility, then lock (DATA-32's steps).
+    A lock by id alone lets any signed-in caller queue behind another user's writers before its 404;
   - pollers claim with `FOR UPDATE SKIP LOCKED` plus a lease in a short claim transaction, do the
     remote work between transactions, and use fencing when several instances run;
   - `lock_timeout` bounds every wait.
@@ -363,7 +388,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     sort keys, **ending with the id** tie-breaker; filtered columns covered (composite or partial);
   - **also per scoping filter** (a parent id: a list's own screen): `(parent_id, owner_id, sort
     keys…, id)`, which also serves the foreign key, or the page walks every row of the owner;
-  - every sort has a unique tie-breaker;
+  - every sort has a unique tie-breaker: the id, unless the sort column is itself unique and not
+    null (a code), which is already a total order (`code, id` on a unique `code` adds a sort step
+    the index can't serve);
   - **keyset code:** `Seek.order` names the same columns as `Seek.after`, in the same order, id
     last; the query fetches `size + 1`;
   - **a keyset sort key is never null.** A nullable column (a due date) sorts through a stored
@@ -395,9 +422,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - the length contract is the request's `@MaxLength` (REST-09, which also sets the severity of a
     missing limit);
   - never `@Lob` (on PostgreSQL that's an `oid` large object);
-  - an `Instant` is truncated to microseconds (`truncatedTo(ChronoUnit.MICROS)`) before it is
-    stored or returned: PostgreSQL rounds nanoseconds, so a stamp sent before the read differs
-    from every later read of it;
+  - an `Instant` has microseconds at most before it is stored or returned: PostgreSQL rounds
+    nanoseconds, so a stamp sent before the read differs from every later read of it. The reference
+    does it once: its `Clock` bean ticks in microseconds (`Clock.tick(..., 1 µs)`, `ClockConfig`) and
+    auditing reads that clock (`JpaAuditingConfig`'s `DateTimeProvider`), so every `clock.instant()`
+    and audit field already fits; elsewhere `truncatedTo(ChronoUnit.MICROS)`. Detect `Clock.systemUTC()`
+    as the bean, or `@EnableJpaAuditing` without a `dateTimeProviderRef`;
   - text keys that are sorted or compared like Java does (keyset cursors, codes) use
     `COLLATE "C"`: a locale collation orders them differently and can change with the OS.
 - **Severity:** Medium for a `varchar(n)` column or a length constant on the entity.
@@ -461,3 +491,34 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   in text or JSON, leaves old records pointing at nothing.
 - **Detect:** a `DELETE` endpoint on a lookup or option table; a stored code with no row behind it.
 - **Severity:** Medium (High when old records stop loading or lose their meaning).
+
+### DATA-35: No overlapping ranges is an exclusion constraint
+- **Check:** "a person's bookings never share a day", "one price per product per period" is an
+  `EXCLUDE USING gist (<scope> WITH =, daterange(start, end, '[]') WITH &&)` constraint, with
+  `WHERE (status <> 'CANCELLED')` when only live records hold their range. Never a check-then-insert:
+  two concurrent creates both see no overlap and both commit. Parts:
+  - `CREATE EXTENSION IF NOT EXISTS btree_gist` in its own changeset (the `=` on a uuid or a number
+    needs it). It is trusted since PostgreSQL 13, so the database owner can create it; a managed
+    database must allow it (RDS and Cloud SQL do), else a DBA creates it before the first migration;
+  - the bounds say inclusive or not (`'[]'` for days a person reads as "from the 20th to the 22nd";
+    `'[)'` for instants), the API text says it, and a `CHECK (start <= end)` backs the request's
+    `@AssertTrue is<X>RangeOrdered()` (400);
+  - **the scope's writers are serialised first:** two concurrent inserts that overlap each wait in
+    the exclusion check for the other's uncommitted row, which PostgreSQL resolves as a deadlock (503)
+    instead of one 409. Lock the scope's row, or, when it is another module's, take a transaction
+    advisory lock with a 64-bit key of the scope (`pg_advisory_xact_lock(hashtextextended('plans:' ||
+    owner_id, 0))`, reference `PlanRepository.lockPlansOfOwner`), before anything else in the write;
+  - the constraint is named (`ex_<table>_<columns>`) and mapped by its module's
+    `ConstraintErrorCodes` to a 409 code (`<ENTITY>_OVERLAPS`, a message without placeholders: ERR-06).
+    Hibernate leaves 23P01 unnamed; the driver names it (error-contract.md ERR-02);
+  - tests: an overlap on the first day and on the last day of an existing range, one inside and one
+    around it, all 409 without internals; the day before and the day after accepted; another scope's
+    same range accepted; concurrent overlapping creates store exactly one and never answer 503; the
+    scope's lock, held by the test, keeps a create waiting before it touches the table (TEST-05,
+    TEST-09).
+
+  Reference: `planning/` (`Plan`, changeset `0011-plans.sql`, `PlanningConstraintErrorCodes`,
+  `PlanIntegrationTest`).
+- **Detect:** a `exists…Overlapping` / `count…Between` query before an insert; an overlap rule only in
+  Java; a daterange without stated bounds.
+- **Severity:** High (two overlapping bookings is corrupt data).

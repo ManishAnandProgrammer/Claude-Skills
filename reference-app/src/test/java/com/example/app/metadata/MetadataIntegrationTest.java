@@ -409,7 +409,7 @@ class MetadataIntegrationTest extends IntegrationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             for (int racer = 0; racer < RACERS; racer++) {
                 Callable<String> create = () -> {
-                    start.await();
+                    awaitLatch(start);
                     return createAnswer(key);
                 };
                 pending.add(executor.submit(create));
@@ -417,7 +417,7 @@ class MetadataIntegrationTest extends IntegrationTest {
             start.countDown();
             List<String> answers = new ArrayList<>();
             for (Future<String> answer : pending) {
-                answers.add(answer.get());
+                answers.add(within(answer));
             }
 
             assertThat(answers).containsOnlyOnce("created").containsOnly("created", "409 METADATA_KEY_TAKEN");

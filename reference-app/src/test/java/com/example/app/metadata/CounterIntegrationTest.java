@@ -96,14 +96,14 @@ class CounterIntegrationTest extends IntegrationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             for (int racer = 0; racer < RACERS; racer++) {
                 Callable<Long> take = () -> {
-                    start.await();
+                    awaitLatch(start);
                     return nextCommitted(name);
                 };
                 pending.add(executor.submit(take));
             }
             start.countDown();
             for (Future<Long> number : pending) {
-                numbers.add(number.get());
+                numbers.add(within(number));
             }
         }
 

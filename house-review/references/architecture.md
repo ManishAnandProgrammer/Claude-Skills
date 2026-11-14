@@ -50,6 +50,19 @@ The rules below say which mode they apply to.
 ### ARCH-04: Module internals stay internal
 - **Check:** another module never uses this module's repositories or internal helpers, nor its
   entities in `api-facades` mode. It goes through the owner's service or `api` contract.
+- **A parent in another module** (`api-facades` mode) is a UUID column with a database foreign key
+  (no entity relation), validated and locked through the owner's facade: `<module>.api.<Things>`, an
+  interface the owner's service implements, returning a view record (`TodoView`), with a
+  `get<Owned><Thing>ViewForWrite` that locks the parent `FOR KEY SHARE` (`MANDATORY`: only inside the
+  caller's write) so the child can't race the parent's delete, and a batch lookup
+  (`getOwnedTodoViews(ids, ownerId)`) for a list page, one statement per batch. Reference:
+  `todo.api.Todos`, used by `planning.service.PlanService`. The view is a module contract, never a
+  response body: the consumer maps it into a record of its own (ARCH-06). A module with no facade yet (the sign-in piece's `user`) gets one
+  in the same change, never a repository call or an unvalidated id (an unknown id would surface as a
+  foreign-key 409 with the wrong code).
+- **The foreign key's mapping belongs to the module that owns the constraint** (whose changeset
+  declares it), even when the code it answers is the parent module's (`fk_plans_todo_id_owner_id` →
+  `TODO_IN_USE`, in `PlanningConstraintErrorCodes`).
 - **Severity:** High for repositories; Medium for entities and helpers.
 - **Not a finding when:** `service-entity-methods` mode allows entity hand-out through service
   methods.
@@ -73,6 +86,11 @@ The rules below say which mode they apply to.
   4. bypasses the owning service's security (scoping, ownership).
 
   Ask the owner's service for what you need instead (ARCH-15).
+- **A facade's view is not a response field either.** `TodoView` or `MediaFileView` in a
+  `*Response` makes the contract a wire format: a field added for another consumer reshapes this API
+  (reason 1). The consuming module maps the view into a response record of its own
+  (`PlanTodoResponse`, `TodoAttachmentResponse`), as DATA-27 keeps the stored, wire and contract
+  types apart. Enforced by `ModuleBoundaryArchTest.responsesCarryNoOtherModulesContract`.
 - **Severity:** High (boundary contamination).
 
 ### ARCH-07: Events are contracts; core workflows are not choreographed
@@ -159,8 +177,20 @@ Within a module as well as across modules.
     services, which join it; it uses no repository. A use case that writes one aggregate needs no
     Manager (SMELL-11, SMELL-12: no layer for the pattern's sake);
   - **read models may join**: a read-only Criteria projection may join another aggregate's table to
-    show its data (a list's name on a todo row); loading or writing another aggregate's entity
-    goes through its service;
+    show its data (a list's name on a todo row), within the module; loading or writing another
+    aggregate's entity goes through its service. **Across modules** (ARCH-04 forbids the join), a list
+    scoped by another module's data (a manager's team) takes the ids from the owner's facade
+    (`Employees.reportIds(managerId)`), **with a configured bound on their number enforced where the
+    relationship is written** (DATA-11: a manager gets at most `max-direct-reports`), then
+    `IN (...)`; its statement count is one more per facade lookup (tests.md row 21). The other way
+    round, a list whose rows show another module's data (a plan's todo title) reads its page, then
+    that data for the whole page in one facade call (reference: `PlanService.findByFilter` with
+    `Todos.getOwnedTodoViews`), never one call per row;
+  - **a Manager's shape** (no golden code yet): `@Transactional` on the Manager method; each aggregate
+    service exposes a `MANDATORY` half that checks, locks, changes and flushes its own aggregate and
+    returns the entity; locks are taken in one documented order (no path takes them in reverse);
+    the owning service of the request's resource builds the response; the controller calls the
+    Manager. Tests: each aggregate's refusal rolls both back;
   - no interface for a single implementation (SMELL-11): services are concrete classes.
 - **Detect:** a `*Repository` import in a service of another aggregate, a mapper or a Manager; a
   member entity with its own service or controller; a Manager that writes one aggregate; entity

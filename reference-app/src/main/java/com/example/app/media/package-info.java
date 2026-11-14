@@ -16,7 +16,6 @@
  *       never-attached files. No request waits on the store; no S3 call runs in a transaction.</li>
  * </ul>
  *
- * The design and its reasons: {@code docs/design/media-uploads.md}; the rules: house-review
- * {@code references/media.md}.
+ * The rules and their reasons: house-review {@code references/media.md} (MEDIA-01…14).
  */
 package com.example.app.media;

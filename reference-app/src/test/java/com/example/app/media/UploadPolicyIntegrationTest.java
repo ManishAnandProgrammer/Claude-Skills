@@ -2,6 +2,7 @@ package com.example.app.media;
 
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.ResourceLock;
@@ -19,25 +20,30 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** The policies through the API: everyone signed in reads them, an admin replaces them, without a restart. */
-@ResourceLock(UploadUrlIntegrationTest.POLICY_LOCK)
+@ResourceLock(IntegrationTest.UPLOAD_POLICIES_LOCK)
 class UploadPolicyIntegrationTest extends IntegrationTest {
 
     private static final String POLICIES = "/api/v1/upload-policies";
-    private static final String TODO_POLICY = POLICIES + "/" + UploadUrlIntegrationTest.PURPOSE;
-    private static final String TODO_ENTRY = "$.response[?(@.purpose == 'TODO_ATTACHMENT')]";
+    private static final String PURPOSE_POLICY = POLICIES + "/" + TESTED_PURPOSE;
+    private static final String ENTRY = "$.response[?(@.purpose == '%s')]".formatted(TESTED_PURPOSE);
+
+    private UploadPolicyLimits saved;
+
+    /** The project's first purpose with known limits; skipped while there is none. */
+    @BeforeEach
+    void setThePolicy() {
+        assumeAnUploadPurpose();
+        saved = uploadPolicyOf(TESTED_PURPOSE);
+        setUploadPolicy(TESTED_PURPOSE, 1, 10_485_760, 0, 5);
+    }
 
     @AfterEach
     void restoreThePolicy() {
-        sql("""
-                update upload_policies
-                   set min_size_bytes = 1, max_size_bytes = 10485760, min_files = 0, max_files = 5,
-                       content_types = array['application/pdf', 'image/jpeg', 'image/png']
-                 where purpose = 'TODO_ATTACHMENT'
-                """);
+        restoreUploadPolicy(saved);
     }
 
     private long currentVersion(TestUser user) throws Exception {
-        List<Integer> versions = read(getAs(user.accessToken(), POLICIES).andExpect(status().isOk()), TODO_ENTRY + ".version");
+        List<Integer> versions = read(getAs(user.accessToken(), POLICIES).andExpect(status().isOk()), ENTRY + ".version");
         return versions.getFirst();
     }
 
@@ -48,23 +54,23 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
     }
 
     private ResultActions replace(TestUser user, String body) throws Exception {
-        return putAs(user.accessToken(), TODO_POLICY, body);
+        return putAs(user.accessToken(), PURPOSE_POLICY, body);
     }
 
     @Test
     @DisplayName("Every signed-in user reads the limits; canUpload says whether their role may upload")
     void listShowsLimitsAndCanUpload() throws Exception {
-        getAs(newUser().accessToken(), POLICIES)
+        getAs(newUploader().accessToken(), POLICIES)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath(TODO_ENTRY + ".minSizeBytes").value(1))
-                .andExpect(jsonPath(TODO_ENTRY + ".maxSizeBytes").value(10485760))
-                .andExpect(jsonPath(TODO_ENTRY + ".minFiles").value(0))
-                .andExpect(jsonPath(TODO_ENTRY + ".maxFiles").value(5))
-                .andExpect(jsonPath(TODO_ENTRY + ".contentTypes[*]", containsInAnyOrder("image/jpeg", "image/png", "application/pdf")))
-                .andExpect(jsonPath(TODO_ENTRY + ".canUpload").value(true));
-        getAs(newAdmin().accessToken(), POLICIES)
+                .andExpect(jsonPath(ENTRY + ".minSizeBytes").value(1))
+                .andExpect(jsonPath(ENTRY + ".maxSizeBytes").value(10485760))
+                .andExpect(jsonPath(ENTRY + ".minFiles").value(0))
+                .andExpect(jsonPath(ENTRY + ".maxFiles").value(5))
+                .andExpect(jsonPath(ENTRY + ".contentTypes[*]", containsInAnyOrder("image/jpeg", "image/png", "application/pdf")))
+                .andExpect(jsonPath(ENTRY + ".canUpload").value(true));
+        getAs(newNonUploader().accessToken(), POLICIES)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath(TODO_ENTRY + ".canUpload").value(false));
+                .andExpect(jsonPath(ENTRY + ".canUpload").value(false));
         getAs(null, POLICIES)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
@@ -74,9 +80,9 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
     @DisplayName("An admin's new limits apply to the next request, without a restart; the version increments")
     void adminUpdateAppliesAtOnce() throws Exception {
         TestUser admin = newAdmin();
-        TestUser user = newUser();
+        TestUser user = newUploader();
         long version = currentVersion(admin);
-        uploadUrl(user, UploadUrlIntegrationTest.PURPOSE, "big.pdf", "application/pdf", 1001);
+        uploadUrl(user, TESTED_PURPOSE, "big.pdf", "application/pdf", 1001);
 
         replace(admin, limits(1, 1000, 0, 5, "[\"application/pdf\"]", version))
                 .andExpect(status().isOk())
@@ -86,16 +92,16 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.version").value(version + 1));
 
         postAs(user.accessToken(), "/api/v1/upload-urls", """
-                {"purpose": "TODO_ATTACHMENT", "files": [{"fileName": "big.pdf", "contentType": "application/pdf", "sizeBytes": 1001}]}
-                """)
+                {"purpose": "%s", "files": [{"fileName": "big.pdf", "contentType": "application/pdf", "sizeBytes": 1001}]}
+                """.formatted(TESTED_PURPOSE))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_SIZE_OUT_OF_RANGE"));
         postAs(user.accessToken(), "/api/v1/upload-urls", """
-                {"purpose": "TODO_ATTACHMENT", "files": [{"fileName": "a.png", "contentType": "image/png", "sizeBytes": 10}]}
-                """)
+                {"purpose": "%s", "files": [{"fileName": "a.png", "contentType": "image/png", "sizeBytes": 10}]}
+                """.formatted(TESTED_PURPOSE))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_TYPE_NOT_ALLOWED"));
-        uploadUrl(user, UploadUrlIntegrationTest.PURPOSE, "fits.pdf", "application/pdf", 1000);
+        uploadUrl(user, TESTED_PURPOSE, "fits.pdf", "application/pdf", 1000);
     }
 
     @Test
@@ -118,10 +124,10 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
         replace(user, body)
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
-        putAs(null, TODO_POLICY, body)
+        putAs(null, PURPOSE_POLICY, body)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
-        getAs(user.accessToken(), POLICIES).andExpect(jsonPath(TODO_ENTRY + ".maxSizeBytes").value(10485760));
+        getAs(user.accessToken(), POLICIES).andExpect(jsonPath(ENTRY + ".maxSizeBytes").value(10485760));
     }
 
     @Test
@@ -144,7 +150,7 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
         replace(admin, limits(1, 1000, 0, 5, "[\"application/pdf\", \"image/svg+xml\"]", currentVersion(admin)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_TYPE_NOT_ALLOWED"));
-        getAs(admin.accessToken(), POLICIES).andExpect(jsonPath(TODO_ENTRY + ".maxSizeBytes").value(10485760));
+        getAs(admin.accessToken(), POLICIES).andExpect(jsonPath(ENTRY + ".maxSizeBytes").value(10485760));
     }
 
     static Stream<Arguments> invalidLimits() {
@@ -175,13 +181,13 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
         putAs(admin.accessToken(), POLICIES + "/NO_SUCH_PURPOSE", body)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"));
-        sql("update upload_policies set purpose = 'HIDDEN_FOR_TEST' where purpose = 'TODO_ATTACHMENT'");
+        sql("update upload_policies set purpose = 'HIDDEN_FOR_TEST' where purpose = ?", TESTED_PURPOSE);
         try {
             replace(admin, body)
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.errorCode").value("UPLOAD_POLICY_NOT_FOUND"));
         } finally {
-            sql("update upload_policies set purpose = 'TODO_ATTACHMENT' where purpose = 'HIDDEN_FOR_TEST'");
+            sql("update upload_policies set purpose = ? where purpose = 'HIDDEN_FOR_TEST'", TESTED_PURPOSE);
         }
     }
 

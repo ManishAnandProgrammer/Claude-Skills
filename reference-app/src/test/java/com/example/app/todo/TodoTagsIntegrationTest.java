@@ -556,33 +556,35 @@ class TodoTagsIntegrationTest extends IntegrationTest {
                 gateClosed.countDown();
                 awaitQuietly(openGate);
             }));
-            gateClosed.await();
+            awaitLatch(gateClosed);
             try {
                 for (int creator = 0; creator < CREATORS; creator++) {
                     Callable<Answer> create = () -> {
-                        start.await();
+                        awaitLatch(start);
                         return answerOf(postAs(user.accessToken(), TODOS, createPayload(listId, "Racer", List.of(tag))));
                     };
                     creates.add(executor.submit(create));
                 }
                 start.countDown();
-                awaitLockWaiters(CREATORS, null);
+                // One deadline for both waits: the first waiters' lock_timeout runs through the second.
+                long deadline = lockWaitDeadline();
+                awaitLockWaiters(CREATORS, null, deadline);
                 delete = executor.submit(() -> answerOf(deleteAs(user.accessToken(), TAGS + "/" + tag)));
-                awaitLockWaiters(CREATORS + 1, delete);
+                awaitLockWaiters(CREATORS + 1, delete, deadline);
             } finally {
                 openGate.countDown();
             }
-            gate.get();
+            within(gate);
         }
         List<String> racers = new ArrayList<>();
         for (Future<Answer> create : creates) {
-            Answer answer = create.get();
+            Answer answer = within(create);
             assertThat(answer.status()).as(answer.body()).isEqualTo(201);
             List<String> carried = JsonPath.read(answer.body(), "$.response.tags[*].id");
             assertThat(carried).as("the create wrote its tag row").containsExactly(tag);
             racers.add(JsonPath.read(answer.body(), "$.response.id"));
         }
-        Answer deleteAnswer = delete.get();
+        Answer deleteAnswer = within(delete);
 
         assertThat(deleteAnswer.status()).as(deleteAnswer.body()).isEqualTo(204);
         assertThat(racers).hasSize(CREATORS);
@@ -607,6 +609,62 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         assertThat(tagRows("todo_id", id)).isEqualTo(3);
     }
 
+    /**
+     * Runs {@code request} while a delete of {@code tagId}, cascading to its todo_tags rows, is held
+     * uncommitted in the test's own transaction, then commits the delete once the request waits on it.
+     */
+    private Answer whileATagDeleteIsInFlight(String tagId, Callable<Answer> request) throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch deleted = new CountDownLatch(1);
+        CountDownLatch commit = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> tagDelete = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                assertThat(jdbc.update("delete from tags where id = ?::uuid", tagId)).isOne();
+                deleted.countDown();
+                awaitQuietly(commit);
+            }));
+            awaitLatch(deleted);
+            Future<Answer> answer = executor.submit(request);
+            try {
+                awaitLockWaiters(1, answer);
+            } finally {
+                commit.countDown();
+            }
+            within(tagDelete);
+            return within(answer);
+        }
+    }
+
+    @Test
+    @DisplayName("A todo delete while one of its tags is being deleted answers 204, never 409: its tag rows go in one statement")
+    void todoDeleteRacingATagDeleteSucceeds() throws Exception {
+        TestUser user = newUser();
+        String tag = createTag(user, "Going");
+        String todo = createTodo(user, createList(user, "Racing"), "Tagged", List.of(tag));
+
+        Answer answer = whileATagDeleteIsInFlight(tag, () -> answerOf(deleteAs(user.accessToken(), TODOS + "/" + todo)));
+
+        assertThat(answer.status()).as(answer.body()).isEqualTo(204);
+        assertThat(jdbc.queryForObject("select count(*) from todos where id = ?::uuid", Integer.class, todo)).isZero();
+        assertThat(tagRows("todo_id", todo)).isZero();
+    }
+
+    @Test
+    @DisplayName("A tag replace that drops a tag being deleted meanwhile is 409 OPTIMISTIC_LOCK_CONFLICT, as documented; the retry applies")
+    void tagReplaceDroppingATagBeingDeletedIs409() throws Exception {
+        TestUser user = newUser();
+        String tag = createTag(user, "Going");
+        String todo = createTodo(user, createList(user, "Racing"), "Tagged", List.of(tag));
+
+        Answer answer = whileATagDeleteIsInFlight(tag, () -> answerOf(putTags(user, todo, List.of(), 0)));
+
+        assertThat(answer.status()).isEqualTo(409);
+        assertRefusalsAre(List.of(answer), 409, "OPTIMISTIC_LOCK_CONFLICT");
+        putTags(user, todo, List.of(), versionOf(todo))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.tags", empty()));
+    }
+
     @Test
     @DisplayName("Renaming a tag isn't held up by a todo being tagged with it, and the todo shows the new name")
     void tagRenameIsNotBlockedByATagAssignmentInFlight() throws Exception {
@@ -624,7 +682,7 @@ class TodoTagsIntegrationTest extends IntegrationTest {
                 gateClosed.countDown();
                 awaitQuietly(openGate);
             }));
-            gateClosed.await();
+            awaitLatch(gateClosed);
             try {
                 create = executor.submit(() -> answerOf(postAs(user.accessToken(), TODOS, createPayload(listId, "Tagged", List.of(tag)))));
                 awaitLockWaiters(1, create);
@@ -637,9 +695,9 @@ class TodoTagsIntegrationTest extends IntegrationTest {
             } finally {
                 openGate.countDown();
             }
-            gate.get();
+            within(gate);
         }
-        Answer created = create.get();
+        Answer created = within(create);
 
         assertThat(created.status()).as(created.body()).isEqualTo(201);
         assertThat(JsonPath.<List<String>>read(created.body(), "$.response.tags[*].name")).containsExactly("After");

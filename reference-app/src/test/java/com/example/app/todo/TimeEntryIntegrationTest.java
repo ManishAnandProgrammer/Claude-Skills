@@ -294,37 +294,39 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         Future<Answer> delete;
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             // Holds every entry insert until the delete has run, so the delete lands between each
-            // create's read of the todo and its insert: the interleaving the FOR SHARE lock is for.
+            // create's read of the todo and its insert: the interleaving the FOR KEY SHARE lock is for.
             Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
                 jdbc.execute("lock table time_entries in share mode");
                 gateClosed.countDown();
                 awaitQuietly(openGate);
             }));
-            gateClosed.await();
+            awaitLatch(gateClosed);
             try {
                 for (int creator = 0; creator < CREATORS; creator++) {
                     Callable<Answer> create = () -> {
-                        start.await();
+                        awaitLatch(start);
                         return answerOf(postAs(user.accessToken(), entries(todoId), createPayload(5, "2026-11-01", false)));
                     };
                     creates.add(executor.submit(create));
                 }
                 start.countDown();
-                awaitLockWaiters(CREATORS, null);
+                // One deadline for both waits: the first waiters' lock_timeout runs through the second.
+                long deadline = lockWaitDeadline();
+                awaitLockWaiters(CREATORS, null, deadline);
                 delete = executor.submit(() -> answerOf(deleteAs(user.accessToken(), TODOS + "/" + todoId)));
-                awaitLockWaiters(CREATORS + 1, delete);
+                awaitLockWaiters(CREATORS + 1, delete, deadline);
             } finally {
                 openGate.countDown();
             }
-            gate.get();
+            within(gate);
         }
         List<Answer> createAnswers = new ArrayList<>();
         for (Future<Answer> create : creates) {
-            createAnswers.add(create.get());
+            createAnswers.add(within(create));
         }
-        Answer deleteAnswer = delete.get();
+        Answer deleteAnswer = within(delete);
 
-        // Every create held its FOR SHARE lock on the todo before the delete came, so the delete waited
+        // Every create held its FOR KEY SHARE lock on the todo before the delete came, so the delete waited
         // for their inserts and then found them: without the lock it would delete the todo under them.
         assertThat(createAnswers).extracting(Answer::status).containsOnly(201);
         assertThat(deleteAnswer.status()).isEqualTo(409);
@@ -699,7 +701,7 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         getAs(null, "/v3/api-docs")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{todoId}/time-entries'].get.parameters[*].name", containsInAnyOrder(
-                        "todoId", "after", "size", "spentOnFrom", "spentOnTo", "minMinutes", "maxMinutes", "billable", "sort")));
+                        "todoId", "after", "size", "ids", "spentOnFrom", "spentOnTo", "minMinutes", "maxMinutes", "billable", "sort")));
     }
 
     @Test
@@ -790,6 +792,123 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         // so the todo is read first. It stays two however many entries there are.
         assertThat(forOne).isEqualTo(2);
         assertThat(forBatch).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("ids returns only the asked entries of this todo, in the list's order; unknown ids and another todo's are simply absent")
+    void filterByIdsReturnsOnlyMatching() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user);
+        String older = createEntry(user, todoId, 10, "2026-11-01", false);
+        String newer = createEntry(user, todoId, 20, "2026-11-03", false);
+        createEntry(user, todoId, 30, "2026-11-02", false);
+        String otherTodos = createEntry(user, createTodo(user), 40, "2026-11-04", false);
+        getAs(user.accessToken(), entries(todoId)).andExpect(jsonPath("$.response[*].minutes", hasItem(30)));
+
+        getAs(user.accessToken(), entries(todoId) + "?ids=" + String.join(",", older, newer, otherTodos, UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].id", contains(newer, older)));
+    }
+
+    @Test
+    @DisplayName("ids takes up to the maximum batch size; one more is 400 VALIDATION_FAILED, a malformed id 400 REQUEST_PARAMETER_INVALID")
+    void idsAreBounded() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user);
+
+        getAs(user.accessToken(), entries(todoId) + "?ids=" + randomIds(100))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.length()").value(0));
+        getAs(user.accessToken(), entries(todoId) + "?ids=" + randomIds(101))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("ids: must have at most 100 items")));
+        getAs(user.accessToken(), entries(todoId) + "?ids=nope," + UUID.randomUUID())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                .andExpect(jsonPath("$.failed", contains("ids: invalid value")));
+    }
+
+    @Test
+    @DisplayName("A list by ids costs the same two statements (the todo's ownership check, the batch), for 1 id and many")
+    void filterByIdsRunsAConstantNumberOfQueries() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user);
+        List<String> ids = new ArrayList<>();
+        for (int index = 0; index < 6; index++) {
+            ids.add(createEntry(user, todoId, 10 + index, "2026-11-01", false));
+        }
+
+        assertThat(statementsFor(user, entries(todoId) + "?ids=" + ids.getFirst())).isEqualTo(2);
+        assertThat(statementsFor(user, entries(todoId) + "?size=5&ids=" + String.join(",", ids))).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("spentOn on the configured earliest date is accepted; the day before is 400, on create and update, never a database error")
+    void spentOnFollowsTheConfiguredEarliestDate() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user);
+        String id = createEntry(user, todoId, 10, "1900-01-01", false);
+
+        postAs(user.accessToken(), entries(todoId), createPayload(10, "-300000-01-01", false))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed[0]").value("spentOn: must be on or after 1900-01-01"));
+        putAs(user.accessToken(), entry(todoId, id), updatePayload(10, "1899-12-31", false, 0))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed[0]").value("spentOn: must be on or after 1900-01-01"));
+    }
+
+    @Test
+    @DisplayName("A spentOn filter outside the configured dates is 400 VALIDATION_FAILED naming it, never a database error")
+    void spentOnFiltersAreBounded() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user);
+
+        getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=-300000-01-01")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", hasItem("spentOnFrom: must be on or after 1900-01-01")));
+        getAs(user.accessToken(), entries(todoId) + "?spentOnTo=3000-01-01")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", hasItem("spentOnTo: must be on or before 2999-12-31")));
+    }
+
+    @Test
+    @DisplayName("Editing a todo isn't held up by a time entry being created on it")
+    void todoEditIsNotBlockedByATimeEntryCreateInFlight() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user);
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch gateClosed = new CountDownLatch(1);
+        CountDownLatch openGate = new CountDownLatch(1);
+        Future<Answer> create;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            // Holds the create after it has locked the todo and before it writes its row.
+            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.execute("lock table time_entries in share mode");
+                gateClosed.countDown();
+                awaitQuietly(openGate);
+            }));
+            awaitLatch(gateClosed);
+            try {
+                create = executor.submit(() -> answerOf(postAs(user.accessToken(), entries(todoId), createPayload(5, "2026-11-01", false))));
+                awaitLockWaiters(1, create);
+
+                patchAs(user.accessToken(), TODOS + "/" + todoId + "/status", """
+                        {"status": "DONE", "version": 0}
+                        """)
+                        .andExpect(status().isOk());
+            } finally {
+                openGate.countDown();
+            }
+            within(gate);
+        }
+        Answer created = within(create);
+
+        assertThat(created.status()).as(created.body()).isEqualTo(201);
     }
 
     /** Statements run by one list request: a cursor list never counts. */

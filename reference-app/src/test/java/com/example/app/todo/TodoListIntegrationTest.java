@@ -92,6 +92,31 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("The moments a write answers are the ones a later read returns (the clock ticks in the column's microseconds)")
+    void writeMomentsMatchALaterRead() throws Exception {
+        TestUser user = newUser();
+        ResultActions created = postAs(user.accessToken(), LISTS, namePayload("Moments")).andExpect(status().isCreated());
+        String id = read(created, "$.response.id");
+        ResultActions updated = putAs(user.accessToken(), LISTS + "/" + id, updatePayload("Moments renamed", 0))
+                .andExpect(status().isOk());
+
+        getAs(user.accessToken(), LISTS + "/" + id)
+                .andExpect(jsonPath("$.response.createdAt").value(read(created, "$.response.createdAt").toString()))
+                .andExpect(jsonPath("$.response.updatedAt").value(read(updated, "$.response.updatedAt").toString()));
+    }
+
+    @Test
+    @DisplayName("A name with a NUL character is 400 VALIDATION_FAILED naming it, not a database error")
+    void nulCharacterIs400() throws Exception {
+        postAs(newUser().accessToken(), LISTS, """
+                {"name": "a\\u0000b"}
+                """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("name: must not contain the NUL character")));
+    }
+
+    @Test
     @DisplayName("Get returns the list")
     void getReturnsTheEntity() throws Exception {
         TestUser user = newUser();
@@ -239,6 +264,9 @@ class TodoListIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.errorCode").value("TODO_LIST_NAME_TAKEN"))
                 .andReturn().getResponse().getContentAsString();
         assertNoInternals(body);
+        Integer lists = jdbc.queryForObject("select count(*) from todo_lists where owner_id = ? and name = 'Shopping'",
+                Integer.class, user.id());
+        assertThat(lists).isOne();
         createList(newUser(), "Shopping");
     }
 

@@ -58,6 +58,13 @@ class ModuleBoundaryArchTest {
             .because("renaming an internal type must never force a contract change across every consuming module (ARCH-05)");
 
     @ArchTest
+    static final ArchRule responsesCarryNoOtherModulesContract = classes().that().resideInAPackage("..dto.response..")
+            .should(notDependOnAnotherModulesApi())
+            .because("""
+                    a response that embeds another module's view changes whenever that contract does; map it into \
+                    a record of your own (ARCH-06)""");
+
+    @ArchTest
     static final ArchRule commonDependsOnNoFeature = noClasses().that().resideInAPackage("com.example.app.common..")
             .should().dependOnClassesThat().resideOutsideOfPackages("com.example.app.common..", "java..", "javax..",
                     "jakarta..", "org.springframework..", "org.slf4j..", "lombok..", "io.swagger..", "io.micrometer..",
@@ -80,6 +87,24 @@ class ModuleBoundaryArchTest {
                             && !targetModule.equals(originModule)
                             && !INFRASTRUCTURE.contains(targetModule.get());
                     if (crossesIntoAFeature && !isApiOf(targetModule.get(), targetPackage)) {
+                        events.add(SimpleConditionEvent.violated(dependency, dependency.getDescription()));
+                    }
+                }
+            }
+        };
+    }
+
+    private static ArchCondition<JavaClass> notDependOnAnotherModulesApi() {
+        return new ArchCondition<>("not depend on another module's api package") {
+            @Override
+            public void check(JavaClass origin, ConditionEvents events) {
+                Optional<String> originModule = moduleOf(origin.getPackageName());
+                for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
+                    String targetPackage = dependency.getTargetClass().getPackageName();
+                    Optional<String> targetModule = moduleOf(targetPackage);
+                    boolean anotherModulesApi = targetModule.isPresent() && !targetModule.equals(originModule)
+                            && isApiOf(targetModule.get(), targetPackage);
+                    if (anotherModulesApi) {
                         events.add(SimpleConditionEvent.violated(dependency, dependency.getDescription()));
                     }
                 }

@@ -145,10 +145,26 @@ the path.
 - **Check:**
   1. bean validation at the edge: `@Valid` on every `@RequestBody`; **a length limit on every
      String** (`@MaxLength("<key>")`, the number in `app.limits.text`: configurable, one source of
-     truth; a literal `@Size(max = N)` is a finding where the house limits exist); ranges on
-     numbers (`@ConfiguredMax` for tunable ones); `@NotEmpty` + max size on collections;
+     truth; a literal `@Size(max = N)` is a finding where the house limits exist), **element
+     Strings included**: `Set<@NotBlank @MaxLength("media.upload-key") String> attachmentKeys`, since
+     each key reaches a query and the error text (every String with the house `@MaxLength` is also
+     refused U+0000, which PostgreSQL `text` can't store: a 500 at the insert otherwise; an element
+     limit is published as the items' `maxLength` by `ElementLimitsModelConverter`, and
+     `LimitsIntegrationTest.everyLimitKeyIsConfigured` checks element keys too); **every date** that
+     reaches a column or a query, filters included, has a configured floor and ceiling
+     (`@EarliestDate`, and `@LatestDate` or `@NotAfterToday`): a `LocalDate` reaches years
+     PostgreSQL's `date` can't hold, and `-300000-01-01` is otherwise a 500 at the database; ranges on numbers
+     (`@ConfiguredMax` for tunable ones); `@NotEmpty` + max size on collections (`@ConfiguredMaxSize`;
+     an upload-key or file-id list takes `upload-policy.max-files`, the most files any policy may
+     allow);
      a boolean is a `Boolean` with `@NotNull` (an absent field must not become a silent `false`);
      constraints on `@RequestParam` / `@PathVariable`;
+     **A `@Pattern` bounds the length only when every part of it is bounded:** closed character
+     classes, every quantifier `{m,n}` (or `?`), and nothing unbounded anywhere, at the ends least of
+     all (`\s*`, `.*`, `+`); bean validation matches the whole value, so no `^…$` is needed. Golden:
+     `TagColor` (`(#[0-9A-Fa-f]{6})?`). A pattern that tolerates surrounding spaces
+     (`^\s*[A-Z]{2,32}\s*$`, to meet "ignores surrounding spaces") accepts megabytes of spaces: drop
+     the `\s*` and refuse them (400), or keep it and add `@MaxLength`;
   2. security validators (REST-10);
   3. domain validation in the service (existence, state, ownership).
 
@@ -160,7 +176,9 @@ the path.
   second one arrives (GraphQL, a CLI, a job calling the same use case), they move to the service
   (`@Validated` class + `@Valid` parameters, `@PreAuthorize` on service methods), so every entry
   point is covered once and none is forgotten.
-- **Detect:** request DTO fields without constraints; a body parameter missing `@Valid`; a
+- **Detect:** request DTO fields without constraints; a `LocalDate` field or filter without
+  `@EarliestDate`; `List<String>` / `Set<String>` whose elements
+  carry no `@MaxLength`; a `@Pattern` with `*`, `+` or `\s*` and no `@MaxLength`; a body parameter missing `@Valid`; a
   service re-checking by hand what a constraint could declare (duplicated bounds); a second entry
   point calling a service whose checks live only on the REST controller (High: unvalidated or
   unauthorized input).
@@ -285,7 +303,15 @@ types.
   - **404** when the caller can't know the record exists (another user's or tenant's record), so
     ids can't be enumerated;
   - **403** when the caller can see the record but this action isn't allowed (view yes, edit
-    no), with a specific `errorCode`; and for a missing role.
+    no), with a specific `errorCode`; and for a missing role;
+  - **a record two parties see with different rights** (a leave request: the requester edits and
+    cancels, their manager decides): one visibility rule (`visibleTo(caller, record)`, 404 for
+    anyone else), then a 403 code per refused action (`<ENTITY>_NOT_YOURS`,
+    `<ENTITY>_DECISION_NOT_ALLOWED`). A relationship that grants the right (the requester's
+    manager) is read under the same lock as the record it decides, or a reassignment between the
+    read and the write lets the former party act. The tests cover each party × each action, plus a
+    stranger (404) and the relationship changing (TEST-02). No golden code yet: ask for the parties
+    and their actions before generating.
 - **Detect:** endpoints that take an id and load a user-owned record without comparing it to
   the caller; `/users/{id}/...` where `/users/me/...` is meant.
 - **Severity:** Critical (IDOR) or High.
@@ -375,9 +401,19 @@ types.
   `@PreAuthorize("hasRole('ADMIN')")`), and endpoints use the annotation. A renamed or misspelt role
   then fails in one place, not silently on one endpoint.
 - **A new role** needs, in one change: its annotation next to `@AdminOnly`, a constant in the `Role`
-  enum, and a changeset widening the role check constraint (`ck_users_role` in the reference,
-  widened for `ADMIN` by `0007-users-admin-role.sql`). Without the changeset the first user given
-  the role fails the insert.
+  enum, a changeset widening the role check constraint (`ck_users_role` in the reference,
+  widened for `ADMIN` by `0007-users-admin-role.sql`), and the test base's `new<Role>()` (through
+  `newUserWithRole`). Without the changeset the first user given the role fails the insert.
+- **Does a higher role include a lower one?** In the reference, no: an account has exactly one role,
+  `hasRole('USER')` is false for an ADMIN, and an upload purpose names the one role that may upload
+  (`UploadUrlIntegrationTest`: another role is 403). A project where a MANAGER is also a USER says so
+  once, as a `RoleHierarchy` bean (`RoleHierarchyImpl.fromHierarchy("ROLE_ADMIN > ROLE_USER ...")`)
+  read by method security **and** by `CurrentUser.hasRole` (through
+  `getReachableGrantedAuthorities`), never in the HTTP request matchers; the copied tests that assert
+  "another role is 403" change with it, and both profiles record it. Bootstrap asks (step 0).
+- Role names that live in data or in another module's code (`UploadPurpose("USER")`, where the media
+  module can't depend on the user module's enum) are checked by a test against the `Role` constants
+  (reference: `UploadPurposeTest`).
 - **Detect:** `hasRole('` or `hasAnyRole('` outside `common/security`; a `Role` constant with no
   changeset widening the constraint.
 - **Severity:** Medium.

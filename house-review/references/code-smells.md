@@ -11,7 +11,9 @@ Lines are counted without blank or comment lines.
   constant) appears more than once.
 - **Detect:** grep for repeated regexes, format strings (`"#PP-"`), hashing or normalisation
   code, identical validation ranges, near-identical classes (copy-paste exception types,
-  summary endpoints).
+  summary endpoints); a derived value (days between two dates, the days left of a balance)
+  computed both in the entity and in a list projection's constructor: one static method of the
+  entity, called by both.
 - **Severity:** Medium; Low for 2 copies of a trivial line.
 - **Fix:** one helper, constant or value type. Prefer a library method (JAVA-12).
 

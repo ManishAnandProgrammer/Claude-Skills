@@ -66,7 +66,7 @@ class SchedulingIntegrationTest extends IntegrationTest {
     private static void hangUntil(CountDownLatch hung, CountDownLatch release) {
         hung.countDown();
         try {
-            release.await();
+            release.await(10, TimeUnit.SECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }

@@ -47,6 +47,27 @@ so the list is kept here.
   (starting values, booleans), REST-09 (request booleans), REST-25 (a new role), TEST-07 (MockMvc
   traps).
 
+## Run 6 fixes (2026-11-14)
+From the review of run 6 (a leave desk) and its gap list G1–G30:
+- New: ERR-06 (messages survive MessageFormat: doubled apostrophes, `{0,number,#}`, no arguments
+  for constraint codes), DATA-35 (no overlapping ranges: an exclusion constraint), with golden code
+  (`planning/`, changeset 0011, which also shows a parent in another module through
+  `todo.api.Todos`).
+- Changed: DATA-29 (one lock vocabulary by purpose: `FOR KEY SHARE` delete guards, `FOR SHARE` only
+  for a re-checked column, `FOR NO KEY UPDATE` for the owner of a write; lock after visibility),
+  MEDIA-04/06/07/11 (purpose role, the approval gate's code and delay, the owner locked first, record
+  rules on the count, single-file purposes, who reads URLs), REST-09 (element strings, bounded
+  patterns, NUL), REST-16 (records two parties see), REST-25 (role inclusion), ARCH-04 (the facade
+  for a parent in another module; who maps a cross-module foreign key), ARCH-15 (lists scoped
+  through another module, a Manager's shape), DATA-10 (a unique sort column is its own
+  tie-breaker), DATA-12 (a microsecond clock), TEST-07 (company-wide lists, cached accounts not
+  tokens, cheap bcrypt in tests).
+- After the review of those fixes: a facade's view is never a response field (ARCH-06, enforced by
+  `ModuleBoundaryArchTest`); plans got a cursor list filtered by the todo's id; dates carry
+  `@EarliestDate` (an extreme year was a 500); exclusion-constraint writers are serialised per scope
+  (overlapping concurrent inserts deadlocked); member rows a cascade removes are deleted set-based;
+  upload policies are restored after each test; every test wait has a deadline.
+
 ## Step 1: shape (decided 2026-11-13)
 
 - **Name:** `house-review`. The built-in `/code-review` already exists, so this name avoids

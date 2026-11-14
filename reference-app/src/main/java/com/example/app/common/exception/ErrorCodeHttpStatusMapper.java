@@ -73,6 +73,8 @@ public final class ErrorCodeHttpStatusMapper {
         // media:begin
         MAPPING.put(ErrorCode.TODO_ATTACHMENT_NOT_FOUND, HttpStatus.NOT_FOUND);
         // media:end
+        MAPPING.put(ErrorCode.PLAN_NOT_FOUND, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.PLAN_OVERLAPS, HttpStatus.CONFLICT);
         // example:end
     }
 

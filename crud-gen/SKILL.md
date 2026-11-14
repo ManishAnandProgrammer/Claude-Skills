@@ -36,6 +36,7 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
 | `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
 | `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@AssertTrue boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
+| `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, validated and locked through the owner's facade; its view mapped into a response record of the plan's own), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409, its writers serialised per owner), a **range in a body** (`isDateRangeOrdered`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 
 The rules behind the shape are the house-review references, which are the source of truth:
 `rest-api.md`, `error-contract.md`, `persistence.md`, `java.md`, `code-smells.md`, `lenses.md`
@@ -103,7 +104,13 @@ without it (member), or does it have its own lifecycle (root)?". Record the answ
 **Module** (if `{{modules}}` is set): every generated class goes under `{{appPackage}}` with
 `{module}` substituted; cross-module access follows `{{moduleContracts}}` (architecture.md
 ARCH-04/05/06): a parent in another module is referenced by id (a UUID column with a database
-foreign key), never by an entity relation, in `api-facades` mode.
+foreign key), never by an entity relation, in `api-facades` mode, and is validated and locked through
+that module's facade (golden `todo.api.Todos` + `TodoView`, used by `PlanService`: a view lookup, a
+batch lookup for a list page, and a `…ViewForWrite` that locks `FOR KEY SHARE`, `MANDATORY`). A
+module without a facade (the sign-in piece's `user`) gets one in the same change: an interface in
+`<module>.api` that its service implements, with its view record. **The view never goes on the
+wire:** the consuming module maps it into a response record of its own (golden `PlanTodoResponse`,
+`TodoAttachmentResponse`; ARCH-06, enforced by `ModuleBoundaryArchTest`).
 
 ---
 
@@ -122,7 +129,7 @@ Check before generating:
 | No soft-delete flag; statuses are enums with a check constraint | DATA-07 |
 | A changeset with `--rollback`; FKs named `fk_<table>_<column>` | DATA-13 |
 | Unique text ignores case and surrounding spaces (one of the two shapes; partial when nullable) | DATA-05 |
-| Indexes: every FK, one per list order and per scoping filter, ending with `id`; keyset sort keys non-null (a generated column for a nullable one) | DATA-10 |
+| Indexes: every FK (the list orders and filters are checked after 4.1, once they are chosen); keyset sort keys non-null (a generated column for a nullable one) | DATA-10 |
 | A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column | DATA-33 |
 | `Instant` for moments, `LocalDate` for picked dates, no time zones | JAVA-25 |
 | The sequence exists for a display number | DATA-14 |
@@ -178,8 +185,10 @@ child table fails the build of the parent too.
   is an endpoint of the module that owns the context (`GET/PUT /todo-lists/{id}/settings`, with
   `version`), generated here with its tests (tests.md).
 
-**Shapes without golden code yet** (money, exactly one current, no overlapping ranges, month
-values, a parent in another module): follow the house-review rules and ask; don't invent a shape.
+**Shapes without golden code yet** (money, exactly one current, month values, a record two parties
+see with different rights (REST-16), a use case writing two aggregates (a `<UseCase>Manager`,
+ARCH-15's shape)): follow the house-review rules and ask; don't invent a shape. Their tests take each
+party × each action, and for a Manager each aggregate's refusal rolling both back.
 
 ---
 
@@ -199,8 +208,13 @@ Cursor: `extends {{CursorFilter}}` (golden `TodoFilter`). Offset: `extends {{Pag
 `TodoListFilter`). One field per filterable attribute: FK ids (named like the request field,
 `todoListId`), enums typed as enums, a `query` with `@MaxLength("search-query")`, a `sort` enum with
 a default; `requireXPredicate()` per optional field (the repository builds predicates only from
-these). A filter with `query` implements `QueryFilter`, so the shared text-search helper takes the
-filter.
+these). A filter whose `query` predicate is shared with the entity's dropdown implements
+`QueryFilter` (golden `TodoListFilter`, `TagFilter`), so one helper serves both; a list without a
+dropdown needs no interface (golden `TodoFilter`).
+
+**Then the indexes** (DATA-10), now that the orders and filters are chosen: one per offered order
+and per scoping filter, ending with the id (none when the sort column is unique and not null), in a
+new changeset if the entity's own one is applied, with test row 28 for each.
 
 **Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
 `List<@NotNull ID> ids` with `@ConfiguredMaxSize("cursor-page.max-size")` (offset:
@@ -216,15 +230,30 @@ description and its 400 response name it.
   inverted range is a 400 naming `<x>RangeOrdered` (golden `TimeEntryFilter`).
 - **Flags:** the list filters a flag as `status` (`DropdownStatus`, default `ALL`), the dropdown
   defaults to `ACTIVE`; a flag without rules is set by the update (`@Setter`).
-- **Pattern fields:** `@Pattern` with a readable message instead of `@MaxLength` (the pattern bounds
-  the length), normalised in the mapper (case), backed by a database `CHECK`.
+- **Pattern fields:** `@Pattern` with a readable message instead of `@MaxLength`, **only when the
+  pattern bounds the length**: closed classes, every quantifier `{m,n}`, nothing unbounded anywhere
+  (golden `TagColor`: `(#[0-9A-Fa-f]{6})?`; `@Pattern` matches the whole value). Never `\s*` or `.*` around it to tolerate
+  spaces: surrounding spaces of a format-validated value are a 400 (and test row 11 tests case
+  only); if spaces must be accepted, add `@MaxLength` too (REST-09). Normalised in the mapper (case),
+  backed by a database `CHECK`.
+- **Ranges in a body** (a plan's `startsOn`/`endsOn`): one `@AssertTrue @Schema(hidden = true)
+  boolean is<X>RangeOrdered()` on the request record, like a range filter, backed by a `CHECK`
+  (golden `PlanCreateRequest`); the API text says whether the ends are inclusive.
 - **"None" is null:** optional text and pattern fields store blank as `null`; the `@Schema` says
   "null, absent or blank for none (returned as null)".
-- **Calendar dates:** `@NotAfterToday`, never `@PastOrPresent` (JAVA-25).
+- **Calendar dates:** every date that reaches a column or a query, filters included, carries
+  `@EarliestDate("<entity>.<field>")` (`app.limits.earliest-date`): a `LocalDate` reaches years
+  PostgreSQL's `date` can't hold, and `-300000-01-01` is otherwise a 500 at the database (REST-09).
+  A date that records the past (a day worked, a birth date) also takes `@NotAfterToday`, never
+  `@PastOrPresent` (JAVA-25); a filter on it a sanity `@LatestDate`. A planned date (a leave, a plan)
+  lies ahead or behind: no `@NotAfterToday`, a sanity `@LatestDate` (golden `plan.dates`), and the
+  rules the business gives (within one calendar year: name it so, e.g. `isInOneCalendarYear`; no
+  golden code).
 
 ### 4.2 Requests (records)
 `<Entity>Create{{requestSuffix}}`, `<Entity>Update{{requestSuffix}}` (with `@NotNull Long version`),
-one per state action (`<Entity>Status{{requestSuffix}}`). **Every String carries `@MaxLength("<entity>.<field>")`** and its
+one per state action (`<Entity>Status{{requestSuffix}}`). **Every String carries `@MaxLength("<entity>.<field>")`**, the
+elements of a String collection too (`Set<@NotBlank @MaxLength("…") String>`), and its
 number is added to `app.limits.text` in `config/limits.yml`; collections carry a configured size
 limit (`@ConfiguredMaxSize("<entity>.<field>")`) and `@NotNull` elements, plus `@NotEmpty` only when
 an empty collection is meaningless (an optional set of tags may be empty); a date with a meaningful upper bound carries `@LatestDate("<entity>.<field>")`
@@ -245,8 +274,13 @@ referenced; the mapper entries; a message in every `{{messagesFile}}`; the handl
 conflict is 409, a wrong value 400 (ERR-05).
 **Bootstrap brings no feature codes**: every code, mapping, message, constraint entry and limit key
 is added here. Constraint mappings go in the module's own `ConstraintErrorCodes` bean (the handler
-aggregates them). A child's composite owner FK `(parent_id, owner_id)` maps to the parent's
-`*_IN_USE` (DATA-33).
+aggregates them): the module **whose changeset declares the constraint** maps it, even to another
+module's code (golden `PlanningConstraintErrorCodes`: `fk_plans_todo_id_owner_id` → `TODO_IN_USE`).
+A child's composite owner FK `(parent_id, owner_id)` maps to the parent's `*_IN_USE` (DATA-33). A
+code answered from a constraint gets a message without `{0}` (the handler has no argument for it);
+an apostrophe is written `''`, and a year or an id passed as a number `{0,number,#}` (ERR-06). No
+overlapping ranges: an exclusion constraint mapped to `<ENTITY>_OVERLAPS`, its writers serialised
+per scope first (DATA-35, golden `0011-plans.sql`, `PlanRepository.lockPlansOfOwner`).
 
 ### 4.5 Mapper
 Golden `TodoMapper`: `toEntity(request, resolvedParents…, ownerId)`, `update(entity, request,
@@ -255,18 +289,31 @@ resolvedParents…)` (only mutable fields; moves through the entity method), `to
 
 ### 4.6 Repository
 `<Entity>Repository extends {{BaseRepository}}<Entity, ID>, Custom<Entity>Repository`, plus
-`findByIdAndOwnerId` when owned, and a `@Lock(PESSIMISTIC_READ) findForShareBy…` when children are
-written into it (golden `TodoListRepository`).
+`findByIdAndOwnerId` when owned, and the locks by purpose (DATA-29), each with a one-line javadoc
+of why: a native `findForKeyShareBy…` (`FOR KEY SHARE`) when children are written into it, a delete
+guard that doesn't block its edits (golden `TodoListRepository`, `TodoRepository`); a
+`@Lock(PESSIMISTIC_WRITE) findForUpdateBy…` when a write changes its member rows (files, links) or
+deletes it (golden `TodoRepository`); `@Lock(PESSIMISTIC_READ) findForShareBy…` only when a mutable
+column is re-checked under the lock (row 23b; no golden code). Always by id and owner, so nobody queues behind a row
+they can't see.
 
 ### 4.7 Custom repository and Criteria projection impl
 Golden: `TodoRepositoryImpl` (cursor), `TodoListRepositoryImpl` (offset + dropdown).
 - **Projections only**: `builder.construct(<Row>.class, …)`; never entities on a list page.
 - **Each method writes its query top to bottom** (SMELL-29): `builder`, `query`, `root`,
-  `query.select(builder.construct(...))`, a `List<Predicate>`, `where`, `orderBy`, then the plain
-  helpers. No helper that takes lambdas.
+  `query.select(...)`, the predicates, `where`, `orderBy`, then the batch. Long parts are plain named
+  steps that return a value (golden `TodoRepositoryImpl`, `TimeEntryRepositoryImpl`,
+  `PlanRepositoryImpl`: `summaryOf`/`rowOf` for the select list, `filterPredicates` for the filter's
+  predicates (the caller adds the scope), `seekAfter` and `orderOf` for the sort's keyset on the same
+  columns, `taggedWith` for a subquery), so the method stays within `maxMethodLines` and
+  `maxParams`. No helper that takes lambdas.
+- **Derived values** (days between two dates, the days left of a balance) are computed by one
+  static method of the entity, which the entity and the projection's constructor both call; never
+  the formula written twice.
 - Cursor: `Cursor cursor = Cursor.read(filter.getAfter(), sort)`; `if (cursor.isPresent())` add
   `Seek.after(builder, descending, key1, cursor.text(0), …, id, cursor.uuid(n))`;
-  `query.orderBy(Seek.order(builder, descending, key1, …, id))` on **the same columns, id last**;
+  `query.orderBy(Seek.order(builder, descending, key1, …, id))` on **the same columns, id last**
+  (no id after a sort column that is itself unique and not null: DATA-10);
   `setMaxResults(size + 1)`; `CursorBatch.of(rows, size, row -> Cursor.write(sort, row.key1(), …,
   row.id()))`. Keys non-null (a generated sort column for a nullable one). **The service** turns the
   `CursorBatch` into a `CursorWrapper`.
@@ -284,7 +331,14 @@ reached only through its service's entity methods, never its repository (ARCH-15
 writes several aggregates goes in a `<UseCase>Manager` that owns the transaction. Class
 `@Transactional(readOnly = true)`, `@Transactional`
 writes; create `saveAndFlush`; update/actions change the managed entity after
-`entity.checkVersion(request.version())` (409 `OPTIMISTIC_LOCK_CONFLICT`), then `flush()`; delete loads (404) then flushes; ownership through
+`entity.checkVersion(request.version())` (409 `OPTIMISTIC_LOCK_CONFLICT`), then `flush()`; a write
+that changes member rows (files, links) or deletes the root loads it `findForUpdateBy…` first
+(golden `TodoService.update`, `replaceTags`, `delete`); member rows that another aggregate's delete
+can remove by cascade (a tag's delete removes its `todo_tags` rows) are deleted with one statement
+before the root's own delete (golden `TodoTagRepository.deleteAllOfTodo`), since a versioned delete
+per row misses the removed ones (409); delete loads (404) then flushes; a state change on an entity
+goes through a method that guards the state (an `edit(...)` calling `requirePending()`; no golden
+code), never public setters a later caller can use in the wrong state; ownership through
 `findByIdAndOwnerId` (another user's record is 404); parents written into are locked with
 `getOwned<Parent>ForWrite` (`MANDATORY`); list sizes from `{{Paging}}`. No remote call inside a
 transaction (DATA-01). Never lock "the current X" by a mutable column (DATA-32).
@@ -295,7 +349,13 @@ status and errorCode the endpoint can return (except `API_VERSION_UNSUPPORTED`: 
 to every operation; error `@Content` needs no `mediaType`, a customizer publishes it as
 `application/problem+json`): 200/201/204, 400 (`VALIDATION_FAILED`,
 `REQUEST_UNREADABLE`, `REQUEST_PARAMETER_INVALID` for a bad id, enum, date or cursor), 401, 403
-(roles), 404, 409 (`*_TAKEN`, `OPTIMISTIC_LOCK_CONFLICT`, also on delete, `*_IN_USE`), 503.
+(roles), 404, 409 (`*_TAKEN`, `OPTIMISTIC_LOCK_CONFLICT`, `*_IN_USE`), 503. A delete documents
+`OPTIMISTIC_LOCK_CONFLICT` only when it can happen: an unlocked delete can lose a race (golden
+`TodoListApi`, `PlanApi`); a delete that loads its row `findForUpdateBy…`, takes no version and
+removes its cascadable member rows set-based can't (golden `TodoApi`; the race test
+`TodoTagsIntegrationTest.todoDeleteRacingATagDeleteSucceeds`). A write whose member rows another
+aggregate's delete may remove meanwhile documents the 409 for that case (golden `replaceTags`). An `@Schema` states exactly what the validation does ("unique ignoring case" for a
+format-validated field, whose surrounding spaces are a 400).
 List descriptions explain the paging (cursor: `after` / `pageInfo.nextCursor`; offset: `page` /
 `size`, limits from configuration). Filters are `@ParameterObject`.
 
@@ -331,7 +391,10 @@ done on a red build. Then prove one guard can fail (tests.md).
 Run house-review on the generated and changed files. **The goal is zero findings.** A finding in
 code that follows the golden files means the reference or this skill is wrong: fix the generated
 file, then offer to fix `~/Documents/claude-skills` (reference-app and skill text together, verified
-with `scripts/verify.sh`).
+with `scripts/verify.sh`). **A run of several entities** reviews each entity as soon as it is
+generated and green (its own files and the shared files it touched), not all of them at the end:
+findings in the first shape the next ones. When the review is delegated to a separate reviewer, the
+checklist's review item stays open until that reviewer's report is clean.
 
 ### Final checklist
 - [ ] No `{{…}}` left in the generated files.

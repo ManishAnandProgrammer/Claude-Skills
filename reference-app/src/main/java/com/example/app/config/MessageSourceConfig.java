@@ -18,8 +18,13 @@ class MessageSourceConfig {
 
     @Bean
     static MessageSource messageSource() {
+        return messageSource("classpath:messages/message");
+    }
+
+    /** The application's settings over any bundle, so a test can render its own messages the same way. */
+    static MessageSource messageSource(String basename) {
         ReloadableResourceBundleMessageSource messageSource = new ReloadableResourceBundleMessageSource();
-        messageSource.setBasename("classpath:messages/message");
+        messageSource.setBasename(basename);
         // The files are UTF-8; read as the default ISO-8859-1, every non-ASCII character would be garbled.
         messageSource.setDefaultEncoding("UTF-8");
         // Without it a message used with no arguments skips MessageFormat, and '' or an unfilled {0}

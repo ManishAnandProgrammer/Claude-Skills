@@ -44,6 +44,7 @@ class AggregateArchTest {
                     // media:end
                     "TimeEntry", "TodoTag")),
             new Aggregate("Tag", "TagService", List.of()),
+            new Aggregate("Plan", "PlanService", List.of()),
             // example:end
             new Aggregate("RefreshToken", "TokenService", List.of()));
 

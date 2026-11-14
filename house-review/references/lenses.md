@@ -458,10 +458,31 @@ resilience or failure-injection test is Medium).
   - no `var`.
 - **Shared test database:**
   - a test that changes a global singleton (the one default record, a fixed setting) carries
-    `@ResourceLock` on it and resets it in a `@BeforeEach`, so parallel runs can't interleave;
+    `@ResourceLock` on it, sets known values in a `@BeforeEach` and puts the values it found back
+    in an `@AfterEach` (golden `uploadPolicyOf` / `setUploadPolicy` / `restoreUploadPolicy`): the
+    first so no test depends on the one before, the second so no class that doesn't hold the lock
+    meets a test's values (a narrowed upload policy fails every todo create elsewhere);
+  - every wait on a latch, a gate or a request the test started has a deadline (`awaitLatch`,
+    `within`, `awaitLockWaiters` against one `lockWaitDeadline()` per gated sequence, which stays
+    under `lock_timeout`): a gate that never opens fails the test instead of hanging the build;
   - a fixture that inherits data from neighbouring rows (a new record copying the previous one's
     settings) resets it to known values, so no test depends on the one that ran before; a direct
-    `sql(...)` fixture seeds what the record's lifecycle would (its configuration, its counter).
+    `sql(...)` fixture seeds what the record's lifecycle would (its configuration, its counter);
+  - **a list over a shared, company-wide table** (types, employees, anything admin-managed) shows
+    every other test's rows: each test scopes its list calls by a filter only its own rows match (a
+    fresh parent id, a unique `query` token), never asserting a page's absolute contents or total.
+    Row 15 ("another user's record is 404") doesn't apply to records nobody owns; the role tests
+    (row 14) cover who may see them.
+- **Shared fixtures and time:**
+  - fixtures several classes use (an employee linked to an account, a manager, a role beyond ADMIN)
+    live in a project base that extends the test base (`<Project>IntegrationTest`), a role's
+    `new<Role>()` beside it (REST-25);
+  - a fixture kept longer than one test caches the **account**, never its access token, and signs
+    it in again on use (`signIn(account)`): the token lives `app.jwt.access-token-ttl` (at most
+    15 minutes, checked at startup), and a run that passes it turns every later call into 401;
+  - the test profile lowers bcrypt's cost (`app.security.password-hash-strength: 4`; at production's
+    12 every account costs about half a second: a hash at signup, another at login). A class that
+    creates many accounts still prefers one per role per test to one per call.
 - **MockMvc traps:**
   - a query value with special characters goes through `.param(...)`: `get(String)` treats the
     string as a URI template and encodes `%25` a second time, so the test sends something else;

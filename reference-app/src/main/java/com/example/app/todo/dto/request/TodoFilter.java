@@ -1,6 +1,8 @@
 package com.example.app.todo.dto.request;
 
 import com.example.app.common.limits.ConfiguredMaxSize;
+import com.example.app.common.limits.EarliestDate;
+import com.example.app.common.limits.LatestDate;
 import com.example.app.common.limits.MaxLength;
 import com.example.app.common.pagination.CursorFilter;
 import com.example.app.todo.domain.TodoPriority;
@@ -41,6 +43,7 @@ public class TodoFilter extends CursorFilter {
     private TodoPriority priority;
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+    @EarliestDate("todo.due-date") @LatestDate("todo.due-date")
     @Schema(description = "Only todos due on or before this date (yyyy-MM-dd)", example = "2026-12-31")
     private LocalDate dueOnOrBefore;
 

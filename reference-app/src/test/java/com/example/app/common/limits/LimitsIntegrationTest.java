@@ -8,7 +8,9 @@ import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import io.swagger.v3.core.converter.AnnotatedType;
+import io.swagger.v3.core.converter.ModelConverters;
 import io.swagger.v3.oas.models.media.ArraySchema;
+import io.swagger.v3.oas.models.media.IntegerSchema;
 import io.swagger.v3.oas.models.media.Schema;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
@@ -18,10 +20,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedParameterizedType;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,7 +45,9 @@ class LimitsIntegrationTest extends IntegrationTest {
     private Environment environment;
 
     @Test
-    @DisplayName("Every @MaxLength, @ConfiguredMax, @ConfiguredMaxSize and @LatestDate key in the code, and @NotAfterToday's, has a configured value")
+    @DisplayName("""
+            Every @MaxLength (on a field or a collection's elements), @ConfiguredMax, @ConfiguredMaxSize, @LatestDate \
+            and @EarliestDate key in the code, and @NotAfterToday's, has a configured value""")
     void everyLimitKeyIsConfigured() {
         JavaClasses classes = new ClassFileImporter()
                 .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -48,6 +55,10 @@ class LimitsIntegrationTest extends IntegrationTest {
         List<String> missing = new ArrayList<>();
         int checked = 0;
         for (JavaField field : classes.stream().flatMap(javaClass -> javaClass.getFields().stream()).toList()) {
+            for (MaxLength elementLimit : elementMaxLengths(field)) {
+                checked++;
+                checkConfigured(missing, "text." + elementLimit.value(), () -> limits.maxLength(elementLimit.value()));
+            }
             if (field.isAnnotatedWith(MaxLength.class)) {
                 checked++;
                 checkConfigured(missing, "text." + field.getAnnotationOfType(MaxLength.class).value(),
@@ -68,12 +79,31 @@ class LimitsIntegrationTest extends IntegrationTest {
                 String key = "latest-date." + field.getAnnotationOfType(LatestDate.class).value();
                 checkConfigured(missing, key, () -> requireDate("app.limits." + key));
             }
+            if (field.isAnnotatedWith(EarliestDate.class)) {
+                checked++;
+                String key = "earliest-date." + field.getAnnotationOfType(EarliestDate.class).value();
+                checkConfigured(missing, key, () -> requireDate("app.limits." + key));
+            }
         }
 
         checkConfigured(missing, NotAfterTodayValidator.TOLERANCE_KEY, () -> limits.get(NotAfterTodayValidator.TOLERANCE_KEY));
 
         assertThat(checked).isPositive();
         assertThat(missing).isEmpty();
+    }
+
+    /** Limits on a collection's elements ({@code Set<@MaxLength("…") String>}), which field annotations don't include. */
+    private static List<MaxLength> elementMaxLengths(JavaField field) {
+        List<MaxLength> found = new ArrayList<>();
+        if (field.reflect().getAnnotatedType() instanceof AnnotatedParameterizedType parameterized) {
+            for (java.lang.reflect.AnnotatedType argument : parameterized.getAnnotatedActualTypeArguments()) {
+                MaxLength maxLength = argument.getAnnotation(MaxLength.class);
+                if (Objects.nonNull(maxLength)) {
+                    found.add(maxLength);
+                }
+            }
+        }
+        return found;
     }
 
     private void requireDate(String property) {
@@ -121,6 +151,18 @@ class LimitsIntegrationTest extends IntegrationTest {
                 .containsExactly("must be at most 100");
     }
 
+    /** A request with a text limited by a key every project has (search-query: 100). */
+    record SomeTextRequest(@MaxLength("search-query") String text) {
+    }
+
+    @Test
+    @DisplayName("A NUL character fails validation (PostgreSQL text refuses it), at any length")
+    void nulCharacterFailsValidation() {
+        assertThat(validator.validate(new SomeTextRequest("a\u0000b"))).extracting(ConstraintViolation::getMessage)
+                .containsExactly("must not contain the NUL character");
+        assertThat(validator.validate(new SomeTextRequest("a b"))).isEmpty();
+    }
+
     /** A request with a collection limited by a key every project has (offset-page.max-size: 100). */
     record SomeBulkRequest(@ConfiguredMaxSize("offset-page.max-size") List<Integer> items) {
     }
@@ -143,10 +185,37 @@ class LimitsIntegrationTest extends IntegrationTest {
     void apiDocsShowTheConfiguredCollectionSize() throws Exception {
         Annotation limit = SomeBulkRequest.class.getDeclaredField("items").getAnnotation(ConfiguredMaxSize.class);
 
-        Schema<?> schema = new LimitsOpenApiCustomizer(limits)
-                .customize(new ArraySchema(), new AnnotatedType().ctxAnnotations(new Annotation[]{limit}));
+        LimitsOpenApiCustomizer customizer = new LimitsOpenApiCustomizer(limits);
+        Schema<?> collection = customizer.customize(new ArraySchema().items(new IntegerSchema()),
+                new AnnotatedType().ctxAnnotations(new Annotation[]{limit}));
+        Schema<?> element = customizer.customize(new IntegerSchema(), new AnnotatedType().ctxAnnotations(new Annotation[]{limit}));
 
-        assertThat(schema.getMaxItems()).isEqualTo(100);
-        assertThat(schema.getMaximum()).isNull();
+        assertThat(collection.getMaxItems()).isEqualTo(100);
+        assertThat(collection.getMaximum()).isNull();
+        assertThat(element.getMaxItems()).as("swagger also passes the field's annotations for the items").isNull();
+    }
+
+    /** A request with element Strings limited by a key every project has (search-query: 100). */
+    record SomeKeysRequest(Set<@MaxLength("search-query") String> keys) {
+    }
+
+    @Test
+    @DisplayName("An element @MaxLength validates each element, naming the limit")
+    void elementLengthLimitComesFromConfiguration() {
+        assertThat(validator.validate(new SomeKeysRequest(Set.of("k".repeat(100))))).isEmpty();
+        assertThat(validator.validate(new SomeKeysRequest(Set.of("k".repeat(101))))).extracting(ConstraintViolation::getMessage)
+                .containsExactly("must be at most 100 characters");
+    }
+
+    @Test
+    @DisplayName("The API docs show an element @MaxLength as the items' maxLength")
+    void apiDocsShowTheConfiguredElementLength() {
+        ModelConverters converters = new ModelConverters();
+        converters.addConverter(new ElementLimitsModelConverter(limits));
+
+        Map<String, Schema> models = converters.readAll(SomeKeysRequest.class);
+
+        Schema<?> keys = (Schema<?>) models.get("SomeKeysRequest").getProperties().get("keys");
+        assertThat(keys.getItems().getMaxLength()).isEqualTo(100);
     }
 }

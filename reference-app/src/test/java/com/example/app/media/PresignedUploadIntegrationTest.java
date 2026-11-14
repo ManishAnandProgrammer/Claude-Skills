@@ -2,8 +2,11 @@ package com.example.app.media;
 
 import com.example.app.support.IntegrationTest;
 import com.example.app.support.MediaStorageContainer;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -26,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * What the signature enforces, against a real S3-compatible store: the PUT must carry exactly the
  * declared size, type and disposition, or the store refuses it with 403 and stores nothing.
  */
+@ResourceLock(IntegrationTest.UPLOAD_POLICIES_LOCK)
 class PresignedUploadIntegrationTest extends IntegrationTest {
 
     private static final int SIZE = 10;
@@ -35,6 +39,21 @@ class PresignedUploadIntegrationTest extends IntegrationTest {
 
     @Value("${app.media.bucket}")
     private String bucket;
+
+    private UploadPolicyLimits saved;
+
+    /** The project's first purpose, taking the PNGs these tests upload; skipped while there is none. */
+    @BeforeEach
+    void setThePolicy() {
+        assumeAnUploadPurpose();
+        saved = uploadPolicyOf(TESTED_PURPOSE);
+        setUploadPolicy(TESTED_PURPOSE, 1, 10_485_760, 0, 5);
+    }
+
+    @AfterEach
+    void restoreThePolicy() {
+        restoreUploadPolicy(saved);
+    }
 
     private HeadObjectResponse head(String key) {
         try (S3Client s3 = storage.client()) {
@@ -55,7 +74,7 @@ class PresignedUploadIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("A PUT of the signed size with the given headers is stored with its length, type and disposition")
     void signedPutIsStored() throws Exception {
-        UploadUrl upload = uploadUrl(newUser(), UploadUrlIntegrationTest.PURPOSE, "scan.png", "image/png", SIZE);
+        UploadUrl upload = uploadUrl(newUploader(), TESTED_PURPOSE, "scan.png", "image/png", SIZE);
 
         assertThat(putToStorage(upload.url(), upload.headers(), new byte[SIZE])).isEqualTo(200);
 
@@ -80,7 +99,7 @@ class PresignedUploadIntegrationTest extends IntegrationTest {
     @MethodSource("tamperedPuts")
     @DisplayName("A PUT of another size, type or disposition is refused 403 and stores nothing")
     void tamperedPutIsRefused(String name, int bodySize, String header, String value) throws Exception {
-        UploadUrl upload = uploadUrl(newUser(), UploadUrlIntegrationTest.PURPOSE, "scan.png", "image/png", SIZE);
+        UploadUrl upload = uploadUrl(newUploader(), TESTED_PURPOSE, "scan.png", "image/png", SIZE);
 
         assertThat(putToStorage(upload.url(), with(upload.headers(), header, value), new byte[bodySize])).isEqualTo(403);
 

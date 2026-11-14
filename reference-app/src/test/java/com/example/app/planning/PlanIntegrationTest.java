@@ -1,0 +1,710 @@
+package com.example.app.planning;
+
+import com.example.app.support.IntegrationTest;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasItem;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * Plans: a parent in another module (the todo, through {@code todo.api.Todos}) and no overlapping
+ * ranges (the exclusion constraint {@code ex_plans_owner_id_dates}). Every user is fresh, so the
+ * exclusion, which is per owner, never meets another test's plans.
+ */
+class PlanIntegrationTest extends IntegrationTest {
+
+    private static final String PLANS = "/api/v1/plans";
+    private static final String TODOS = "/api/v1/todos";
+    private static final int CREATORS = 4;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    private String createTodo(TestUser user, String title) throws Exception {
+        String listId = read(postAs(user.accessToken(), "/api/v1/todo-lists", """
+                {"name": "Plans %s"}
+                """.formatted(UUID.randomUUID())).andExpect(status().isCreated()), "$.response.id");
+        return read(postAs(user.accessToken(), TODOS, """
+                {"todoListId": "%s", "title": "%s", "priority": "LOW"}
+                """.formatted(listId, title)).andExpect(status().isCreated()), "$.response.id");
+    }
+
+    private static String planPayload(String todoId, String startsOn, String endsOn) {
+        return """
+                {"todoId": "%s", "startsOn": "%s", "endsOn": "%s"}
+                """.formatted(todoId, startsOn, endsOn);
+    }
+
+    private ResultActions create(TestUser user, String todoId, String startsOn, String endsOn) throws Exception {
+        return postAs(user.accessToken(), PLANS, planPayload(todoId, startsOn, endsOn));
+    }
+
+    private String createPlan(TestUser user, String todoId, String startsOn, String endsOn) throws Exception {
+        return read(create(user, todoId, startsOn, endsOn).andExpect(status().isCreated()), "$.response.id");
+    }
+
+    private int plansOf(TestUser user) {
+        return jdbc.queryForObject("select count(*) from plans where owner_id = ?", Integer.class, user.id());
+    }
+
+    @Test
+    @DisplayName("Create answers 201 with the days, the todo's id and title, version 0 and the audit fields")
+    void createReturns201WithTheSavedPlan() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Write the report");
+
+        create(user, todoId, "2026-11-20", "2026-11-22")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.response.id").isNotEmpty())
+                .andExpect(jsonPath("$.response.todo.id").value(todoId))
+                .andExpect(jsonPath("$.response.todo.title").value("Write the report"))
+                .andExpect(jsonPath("$.response.ownerId").value(user.id().toString()))
+                .andExpect(jsonPath("$.response.startsOn").value("2026-11-20"))
+                .andExpect(jsonPath("$.response.endsOn").value("2026-11-22"))
+                .andExpect(jsonPath("$.response.version").value(0))
+                .andExpect(jsonPath("$.response.createdAt").isNotEmpty())
+                .andExpect(jsonPath("$.response.updatedAt").isNotEmpty())
+                .andExpect(jsonPath("$.response.createdBy").value(user.id().toString()))
+                .andExpect(jsonPath("$.response.updatedBy").value(user.id().toString()));
+    }
+
+    @Test
+    @DisplayName("Get returns the plan with its todo")
+    void getReturnsThePlan() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Read");
+        String id = createPlan(user, todoId, "2026-12-01", "2026-12-01");
+
+        getAs(user.accessToken(), PLANS + "/" + id)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.todo.id").value(todoId))
+                .andExpect(jsonPath("$.response.todo.title").value("Read"))
+                .andExpect(jsonPath("$.response.startsOn").value("2026-12-01"));
+    }
+
+    @Test
+    @DisplayName("Get of an unknown id is 404 PLAN_NOT_FOUND")
+    void getUnknownIdIs404() throws Exception {
+        getAs(newUser().accessToken(), PLANS + "/" + UUID.randomUUID())
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("A non-UUID id in the path is 400 REQUEST_PARAMETER_INVALID")
+    void malformedIdIs400() throws Exception {
+        getAs(newUser().accessToken(), PLANS + "/not-a-uuid")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"));
+    }
+
+    @Test
+    @DisplayName("Delete answers 204, the plan is gone, and its days are free again")
+    void deleteFreesTheDays() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Paint");
+        String id = createPlan(user, todoId, "2026-11-20", "2026-11-22");
+
+        deleteAs(user.accessToken(), PLANS + "/" + id).andExpect(status().isNoContent());
+
+        getAs(user.accessToken(), PLANS + "/" + id)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+        create(user, todoId, "2026-11-20", "2026-11-22").andExpect(status().isCreated());
+    }
+
+    @Test
+    @DisplayName("Delete of an unknown id is 404 PLAN_NOT_FOUND")
+    void deleteUnknownIdIs404() throws Exception {
+        deleteAs(newUser().accessToken(), PLANS + "/" + UUID.randomUUID())
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("Create without a todo or dates is 400 naming each field")
+    void createWithoutRequiredFieldsIs400() throws Exception {
+        postAs(newUser().accessToken(), PLANS, "{}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", hasItem(containsString("todoId"))))
+                .andExpect(jsonPath("$.failed", hasItem(containsString("startsOn"))))
+                .andExpect(jsonPath("$.failed", hasItem(containsString("endsOn"))));
+    }
+
+    @Test
+    @DisplayName("endsOn before startsOn is 400 naming dateRangeOrdered; the same day twice is a one-day plan")
+    void rangeMustBeOrdered() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Ordered");
+
+        create(user, todoId, "2026-11-22", "2026-11-21")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("dateRangeOrdered: endsOn must not be before startsOn")));
+        create(user, todoId, "2026-11-22", "2026-11-22").andExpect(status().isCreated());
+        assertThat(plansOf(user)).isOne();
+    }
+
+    @Test
+    @DisplayName("Each day up to the configured latest date is accepted on either end; a day later is 400 with the limit, naming that field")
+    void datesFollowTheConfiguredLatestDate() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Far ahead");
+
+        create(user, todoId, "2999-12-31", "2999-12-31").andExpect(status().isCreated());
+        create(user, todoId, "2999-12-29", "3000-01-01")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("endsOn: must be on or before 2999-12-31")));
+        create(user, todoId, "3000-01-01", "3000-01-01")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", hasItem("startsOn: must be on or before 2999-12-31")));
+    }
+
+    @Test
+    @DisplayName("Each day from the configured earliest date is accepted; a day earlier is 400 with the limit, never a database error")
+    void datesFollowTheConfiguredEarliestDate() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Long ago");
+
+        create(user, todoId, "1900-01-01", "1900-01-01").andExpect(status().isCreated());
+        create(user, todoId, "1899-12-31", "1900-01-02")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("startsOn: must be on or after 1900-01-01")));
+        // A year PostgreSQL's date can't hold: refused here, not at the insert.
+        create(user, todoId, "-300000-01-01", "2026-01-01")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("A malformed todoId or date in the body is 400 REQUEST_UNREADABLE without internals")
+    void unconvertibleBodyValuesAre400() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Strict");
+
+        for (String body : List.of(planPayload("not-a-uuid", "2026-11-20", "2026-11-22"), planPayload(todoId, "20-11-2026", "2026-11-22"))) {
+            String answer = postAs(user.accessToken(), PLANS, body)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
+                    .andReturn().getResponse().getContentAsString();
+            assertNoInternals(answer);
+        }
+    }
+
+    @Test
+    @DisplayName("An unknown todo, or another user's, is 404 TODO_NOT_FOUND, and no plan is stored")
+    void todoMustBeTheCallersOwn() throws Exception {
+        TestUser user = newUser();
+        String othersTodo = createTodo(newUser(), "Not yours");
+
+        for (String todoId : List.of(UUID.randomUUID().toString(), othersTodo)) {
+            create(user, todoId, "2026-11-20", "2026-11-22")
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.errorCode").value("TODO_NOT_FOUND"));
+        }
+        assertThat(plansOf(user)).isZero();
+    }
+
+    @Test
+    @DisplayName("A plan sharing a day with another of yours, even on another todo and only its first or last day, is 409 PLAN_OVERLAPS")
+    void overlappingPlansAre409() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Busy");
+        String otherTodo = createTodo(user, "Also busy");
+        createPlan(user, todoId, "2026-11-20", "2026-11-22");
+
+        for (List<String> days : List.of(List.of("2026-11-22", "2026-11-24"), List.of("2026-11-18", "2026-11-20"),
+                List.of("2026-11-21", "2026-11-21"), List.of("2026-11-01", "2026-11-30"))) {
+            String body = create(user, otherTodo, days.get(0), days.get(1))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.errorCode").value("PLAN_OVERLAPS"))
+                    .andReturn().getResponse().getContentAsString();
+            assertNoInternals(body);
+        }
+        assertThat(plansOf(user)).isOne();
+    }
+
+    @Test
+    @DisplayName("The days right before and right after a plan are free, and another user's plans never collide with yours")
+    void adjacentDaysAndOtherUsersAreFree() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Edges");
+        createPlan(user, todoId, "2026-11-20", "2026-11-22");
+
+        create(user, todoId, "2026-11-23", "2026-11-25").andExpect(status().isCreated());
+        create(user, todoId, "2026-11-17", "2026-11-19").andExpect(status().isCreated());
+        TestUser other = newUser();
+        create(other, createTodo(other, "Same days"), "2026-11-20", "2026-11-22").andExpect(status().isCreated());
+    }
+
+    @Test
+    @DisplayName("Concurrent creates of overlapping plans store exactly one; the others are 409 PLAN_OVERLAPS")
+    void concurrentOverlappingCreatesStoreOne() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Contested days");
+
+        List<Answer> answers = race(() -> create(user, todoId, "2026-11-20", "2026-11-22"));
+
+        assertThat(answers).extracting(Answer::status).containsOnlyOnce(201).containsOnly(201, 409);
+        assertRefusalsAre(answers, 409, "PLAN_OVERLAPS");
+        assertThat(plansOf(user)).isOne();
+    }
+
+    /**
+     * The guard of the race above, which only sometimes deadlocks without it: overlapping inserts each
+     * wait in the exclusion constraint for the other's uncommitted row. Held by the test, the owner's
+     * lock keeps a create from touching the table at all until it is released.
+     */
+    @Test
+    @DisplayName("A plan create queues on its owner's lock before it reads or writes anything")
+    void createsQueueOnTheOwnersLock() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Queued");
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Future<Answer> create;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> holder = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.queryForList("select pg_advisory_xact_lock(hashtextextended('plans:' || ?, 0))", user.id().toString());
+                locked.countDown();
+                awaitQuietly(release);
+            }));
+            awaitLatch(locked);
+            try {
+                create = executor.submit(() -> answerOf(create(user, todoId, "2026-11-20", "2026-11-22")));
+                awaitLockWaiters(1, create);
+
+                assertThat(create.isDone()).as("the create waits for the owner's lock").isFalse();
+                assertThat(plansOf(user)).isZero();
+            } finally {
+                release.countDown();
+            }
+            within(holder);
+        }
+
+        assertThat(within(create).status()).isEqualTo(201);
+    }
+
+    @Test
+    @DisplayName("Another user's plan is 404 on get and delete, and stays")
+    void anotherUsersPlanIs404() throws Exception {
+        TestUser owner = newUser();
+        String id = createPlan(owner, createTodo(owner, "Mine"), "2026-11-20", "2026-11-22");
+        TestUser stranger = newUser();
+
+        getAs(stranger.accessToken(), PLANS + "/" + id)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+        deleteAs(stranger.accessToken(), PLANS + "/" + id)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+        getAs(owner.accessToken(), PLANS + "/" + id).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Every plan endpoint needs a token: 401 AUTHENTICATION_REQUIRED")
+    void everyEndpointNeedsAToken() throws Exception {
+        String id = UUID.randomUUID().toString();
+
+        getAs(null, PLANS)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+        getAs(null, PLANS + "/" + id)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+        postAs(null, PLANS, planPayload(id, "2026-11-20", "2026-11-22"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+        deleteAs(null, PLANS + "/" + id)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+    }
+
+    @Test
+    @DisplayName("A plan never changes: PUT and PATCH are 405 REQUEST_METHOD_NOT_ALLOWED and the plan is unchanged")
+    void planIsImmutable() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Fixed");
+        String id = createPlan(user, todoId, "2026-11-20", "2026-11-22");
+        String moved = planPayload(todoId, "2026-12-20", "2026-12-22");
+
+        putAs(user.accessToken(), PLANS + "/" + id, moved)
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_METHOD_NOT_ALLOWED"));
+        patchAs(user.accessToken(), PLANS + "/" + id, moved)
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_METHOD_NOT_ALLOWED"));
+        getAs(user.accessToken(), PLANS + "/" + id).andExpect(jsonPath("$.response.startsOn").value("2026-11-20"));
+    }
+
+    @Test
+    @DisplayName("Concurrent deletes of one plan: one 204; each other is 404 PLAN_NOT_FOUND or the documented 409 OPTIMISTIC_LOCK_CONFLICT")
+    void concurrentDeletesRemoveItOnce() throws Exception {
+        TestUser user = newUser();
+        String id = createPlan(user, createTodo(user, "Contested"), "2026-11-20", "2026-11-22");
+
+        List<Answer> answers = race(() -> deleteAs(user.accessToken(), PLANS + "/" + id));
+
+        // A racer that read the plan before the winner's delete committed finds no row to delete (409);
+        // one that read it after finds no plan (404). Which of the two each loser meets is timing.
+        assertThat(answers).extracting(Answer::status).containsOnlyOnce(204).isSubsetOf(204, 404, 409);
+        assertRefusalsAre(answers, 404, "PLAN_NOT_FOUND");
+        assertRefusalsAre(answers, 409, "OPTIMISTIC_LOCK_CONFLICT");
+        assertThat(plansOf(user)).isZero();
+    }
+
+    @Test
+    @DisplayName("An unknown field in the body is 400 REQUEST_UNREADABLE")
+    void unknownJsonFieldIs400() throws Exception {
+        TestUser user = newUser();
+
+        postAs(user.accessToken(), PLANS, """
+                {"todoId": "%s", "startsOn": "2026-11-20", "endsOn": "2026-11-22", "colour": "red"}
+                """.formatted(createTodo(user, "Strict")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"));
+    }
+
+    @Test
+    @DisplayName("Deleting a todo that has plans is 409 TODO_IN_USE without internals; once they are deleted it goes")
+    void todoWithPlansCannotBeDeleted() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Planned");
+        String id = createPlan(user, todoId, "2026-11-20", "2026-11-22");
+
+        String body = deleteAs(user.accessToken(), TODOS + "/" + todoId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("TODO_IN_USE"))
+                .andReturn().getResponse().getContentAsString();
+        assertNoInternals(body);
+        getAs(user.accessToken(), TODOS + "/" + todoId).andExpect(status().isOk());
+
+        deleteAs(user.accessToken(), PLANS + "/" + id).andExpect(status().isNoContent());
+        deleteAs(user.accessToken(), TODOS + "/" + todoId).andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("Plans racing their todo's delete: the creates that read the todo first all land, and the delete is 409 TODO_IN_USE")
+    void childWritesRacingAParentDeleteKeepTheInvariant() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Contested");
+        LocalDate firstDay = LocalDate.parse("2026-11-01");
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch gateClosed = new CountDownLatch(1);
+        CountDownLatch openGate = new CountDownLatch(1);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<Answer>> creates = new ArrayList<>();
+        Future<Answer> delete;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            // Holds every plan insert until the delete has run, so the delete lands between each create's
+            // lock of the todo (through the todo module's facade) and its insert.
+            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.execute("lock table plans in share mode");
+                gateClosed.countDown();
+                awaitQuietly(openGate);
+            }));
+            awaitLatch(gateClosed);
+            try {
+                for (int creator = 0; creator < CREATORS; creator++) {
+                    String day = firstDay.plusDays(creator).toString();
+                    Callable<Answer> create = () -> {
+                        awaitLatch(start);
+                        return answerOf(create(user, todoId, day, day));
+                    };
+                    creates.add(executor.submit(create));
+                }
+                start.countDown();
+                // One deadline for both waits: the first waiters' lock_timeout runs through the second.
+                long deadline = lockWaitDeadline();
+                awaitLockWaiters(CREATORS, null, deadline);
+                delete = executor.submit(() -> answerOf(deleteAs(user.accessToken(), TODOS + "/" + todoId)));
+                awaitLockWaiters(CREATORS + 1, delete, deadline);
+            } finally {
+                openGate.countDown();
+            }
+            within(gate);
+        }
+        List<Answer> createAnswers = new ArrayList<>();
+        for (Future<Answer> create : creates) {
+            createAnswers.add(within(create));
+        }
+        Answer deleteAnswer = within(delete);
+
+        // Every create held the todo FOR KEY SHARE before the delete came, so the delete waited for their
+        // inserts and then found them: without the lock it would delete the todo under them.
+        assertThat(createAnswers).extracting(Answer::status).containsOnly(201);
+        assertThat(deleteAnswer.status()).isEqualTo(409);
+        assertRefusalsAre(List.of(deleteAnswer), 409, "TODO_IN_USE");
+        Integer todos = jdbc.queryForObject("select count(*) from todos where id = ?::uuid", Integer.class, todoId);
+        assertThat(todos).isOne();
+        assertThat(plansOf(user)).isEqualTo(CREATORS);
+    }
+
+    @Test
+    @DisplayName("Editing a todo isn't held up by a plan being created for it")
+    void todoEditIsNotBlockedByAPlanInFlight() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Still editable");
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch gateClosed = new CountDownLatch(1);
+        CountDownLatch openGate = new CountDownLatch(1);
+        Future<Answer> create;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            // Holds the create after it has locked the todo and before it writes its row.
+            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.execute("lock table plans in share mode");
+                gateClosed.countDown();
+                awaitQuietly(openGate);
+            }));
+            awaitLatch(gateClosed);
+            try {
+                create = executor.submit(() -> answerOf(create(user, todoId, "2026-11-20", "2026-11-22")));
+                awaitLockWaiters(1, create);
+
+                patchAs(user.accessToken(), TODOS + "/" + todoId + "/status", """
+                        {"status": "DONE", "version": 0}
+                        """)
+                        .andExpect(status().isOk());
+            } finally {
+                openGate.countDown();
+            }
+            within(gate);
+        }
+        Answer created = within(create);
+
+        assertThat(created.status()).as(created.body()).isEqualTo(201);
+    }
+
+    /** Plans on consecutive days, as {@code user}, across two todos; returns their ids in calendar order. */
+    private List<String> planDays(TestUser user, LocalDate firstDay, int days) throws Exception {
+        List<String> todoIds = List.of(createTodo(user, "Even days"), createTodo(user, "Odd days"));
+        List<String> ids = new ArrayList<>();
+        for (int day = 0; day < days; day++) {
+            String date = firstDay.plusDays(day).toString();
+            ids.add(createPlan(user, todoIds.get(day % 2), date, date));
+        }
+        return ids;
+    }
+
+    /**
+     * Follows {@code pageInfo.nextCursor} from {@code firstBatch} (a path with its query string) to the
+     * last batch, which must say {@code hasMore} false with no cursor; returns each batch's ids.
+     */
+    private List<List<String>> walk(TestUser user, String firstBatch) throws Exception {
+        List<List<String>> batches = new ArrayList<>();
+        String next = firstBatch;
+        while (Objects.nonNull(next)) {
+            assertThat(batches).hasSizeLessThan(20);
+            ResultActions batch = getAs(user.accessToken(), next).andExpect(status().isOk());
+            batches.add(read(batch, "$.response[*].id"));
+            if (Boolean.TRUE.equals(read(batch, "$.pageInfo.hasMore"))) {
+                next = firstBatch + "&after=" + read(batch, "$.pageInfo.nextCursor");
+            } else {
+                batch.andExpect(jsonPath("$.pageInfo.nextCursor").doesNotExist());
+                next = null;
+            }
+        }
+        return batches;
+    }
+
+    private static List<String> flatten(List<List<String>> batches) {
+        return batches.stream().flatMap(List::stream).toList();
+    }
+
+    @Test
+    @DisplayName("The list walks your plans in calendar order (STARTS_ON, the default), every plan once, each with its todo")
+    void cursorBatchesWalkTheWholeListInOrder() throws Exception {
+        TestUser user = newUser();
+        List<String> ids = planDays(user, LocalDate.parse("2026-03-01"), 7);
+        TestUser stranger = newUser();
+        createPlan(stranger, createTodo(stranger, "Not mine"), "2026-03-02", "2026-03-02");
+
+        List<List<String>> batches = walk(user, PLANS + "?size=3");
+
+        assertThat(batches).hasSize(3);
+        assertThat(flatten(batches)).containsExactlyElementsOf(ids);
+        getAs(user.accessToken(), PLANS + "?size=1")
+                .andExpect(jsonPath("$.response[0].todo.title").value("Even days"))
+                .andExpect(jsonPath("$.response[0].startsOn").value("2026-03-01"));
+    }
+
+    @Test
+    @DisplayName("NEWEST walks your plans newest first, every plan once")
+    void newestWalksNewestFirst() throws Exception {
+        TestUser user = newUser();
+        List<String> ids = new ArrayList<>(planDays(user, LocalDate.parse("2026-04-01"), 5));
+        Collections.reverse(ids);
+
+        assertThat(flatten(walk(user, PLANS + "?sort=NEWEST&size=2"))).containsExactlyElementsOf(ids);
+    }
+
+    @Test
+    @DisplayName("todoId returns only that todo's plans; another user's todo id returns none")
+    void filterByTodoIdReturnsOnlyMatching() throws Exception {
+        TestUser user = newUser();
+        String reading = createTodo(user, "Reading");
+        String readingPlan = createPlan(user, reading, "2026-05-01", "2026-05-02");
+        String otherPlan = createPlan(user, createTodo(user, "Writing"), "2026-05-03", "2026-05-04");
+        TestUser stranger = newUser();
+        String strangersTodo = createTodo(stranger, "Theirs");
+        createPlan(stranger, strangersTodo, "2026-05-01", "2026-05-02");
+        getAs(user.accessToken(), PLANS).andExpect(jsonPath("$.response[*].id", hasItem(otherPlan)));
+
+        getAs(user.accessToken(), PLANS + "?todoId=" + reading)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].id", contains(readingPlan)));
+        getAs(user.accessToken(), PLANS + "?todoId=" + strangersTodo)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response", empty()));
+    }
+
+    @Test
+    @DisplayName("todoId walks one todo's plans in both orders, every plan once")
+    void cursorWalkUnderTheTodoFilter() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Walked");
+        List<String> ids = new ArrayList<>();
+        for (int day = 1; day <= 5; day++) {
+            String date = "2026-06-0" + day;
+            ids.add(createPlan(user, todoId, date, date));
+        }
+        createPlan(user, createTodo(user, "Elsewhere"), "2026-06-09", "2026-06-09");
+
+        assertThat(flatten(walk(user, PLANS + "?todoId=" + todoId + "&size=2"))).containsExactlyElementsOf(ids);
+        List<String> newestFirst = new ArrayList<>(ids);
+        Collections.reverse(newestFirst);
+        assertThat(flatten(walk(user, PLANS + "?todoId=" + todoId + "&sort=NEWEST&size=2"))).containsExactlyElementsOf(newestFirst);
+    }
+
+    @Test
+    @DisplayName("ids returns only the asked plans, in the list's order; unknown and another user's ids are simply absent")
+    void filterByIdsReturnsOnlyMatching() throws Exception {
+        TestUser user = newUser();
+        List<String> ids = planDays(user, LocalDate.parse("2026-07-01"), 3);
+        TestUser stranger = newUser();
+        String theirs = createPlan(stranger, createTodo(stranger, "Theirs"), "2026-07-01", "2026-07-01");
+        getAs(user.accessToken(), PLANS).andExpect(jsonPath("$.response[*].id", hasItem(ids.get(1))));
+
+        getAs(user.accessToken(), PLANS + "?ids=" + String.join(",", ids.get(2), ids.get(0), theirs, UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].id", contains(ids.get(0), ids.get(2))));
+    }
+
+    @Test
+    @DisplayName("ids takes up to the maximum batch size; one more is 400 VALIDATION_FAILED, a malformed id 400 REQUEST_PARAMETER_INVALID")
+    void idsAreBounded() throws Exception {
+        TestUser user = newUser();
+
+        getAs(user.accessToken(), PLANS + "?ids=" + randomIds(100))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response", empty()));
+        getAs(user.accessToken(), PLANS + "?ids=" + randomIds(101))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("ids: must have at most 100 items")));
+        getAs(user.accessToken(), PLANS + "?ids=nope," + UUID.randomUUID())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                .andExpect(jsonPath("$.failed", contains("ids: invalid value")));
+    }
+
+    @Test
+    @DisplayName("A malformed todoId or an unknown sort is 400 REQUEST_PARAMETER_INVALID naming only the parameter")
+    void unconvertibleFilterValuesAre400() throws Exception {
+        TestUser user = newUser();
+
+        for (String query : List.of("?todoId=nope", "?sort=OLDEST")) {
+            String body = getAs(user.accessToken(), PLANS + query)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                    .andReturn().getResponse().getContentAsString();
+            assertNoInternals(body);
+        }
+    }
+
+    @Test
+    @DisplayName("A cursor from another sort, or a tampered one, is 400 REQUEST_PARAMETER_INVALID naming after")
+    void foreignOrTamperedCursorIsRefused() throws Exception {
+        TestUser user = newUser();
+        planDays(user, LocalDate.parse("2026-08-01"), 2);
+        String newestCursor = read(getAs(user.accessToken(), PLANS + "?sort=NEWEST&size=1"), "$.pageInfo.nextCursor");
+
+        for (String path : List.of(PLANS + "?sort=STARTS_ON&size=1&after=" + newestCursor, PLANS + "?after=not-a-cursor")) {
+            getAs(user.accessToken(), path)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                    .andExpect(jsonPath("$.parameter").value("after"));
+        }
+    }
+
+    @Test
+    @DisplayName("size up to the configured maximum is accepted; one more is 400 VALIDATION_FAILED with the limit")
+    void sizeIsBounded() throws Exception {
+        TestUser user = newUser();
+
+        getAs(user.accessToken(), PLANS + "?size=100").andExpect(status().isOk());
+        getAs(user.accessToken(), PLANS + "?size=101")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("size: must be at most 100")));
+    }
+
+    private long statementsFor(TestUser user, String path) throws Exception {
+        statistics().clear();
+        getAs(user.accessToken(), path).andExpect(status().isOk());
+        return statistics().getPrepareStatementCount();
+    }
+
+    @Test
+    @DisplayName("A batch costs two statements (the batch, then its todos through the todo module), for 1 row, a full batch and by ids")
+    void listRunsAConstantNumberOfQueries() throws Exception {
+        TestUser one = newUser();
+        createPlan(one, createTodo(one, "Single"), "2026-09-01", "2026-09-01");
+        TestUser many = newUser();
+        List<String> ids = planDays(many, LocalDate.parse("2026-09-01"), 11);
+
+        // Two, not a root list's one: the todos' titles are the todo module's, read in one lookup per batch.
+        assertThat(statementsFor(one, PLANS + "?size=10")).isEqualTo(2);
+        assertThat(statementsFor(many, PLANS + "?size=10")).isEqualTo(2);
+        assertThat(statementsFor(many, PLANS + "?ids=" + String.join(",", ids))).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("The API docs describe the overlap refusal and the todo's 404")
+    void apiDocsDescribeThePlanErrors() throws Exception {
+        getAs(null, "/v3/api-docs")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/plans'].get.responses['400'].description", containsString("REQUEST_PARAMETER_INVALID")))
+                .andExpect(jsonPath("$.paths['/api/v1/plans'].get.parameters[?(@.name == 'ids')].schema.maxItems", contains(100)))
+                .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['409'].description", containsString("PLAN_OVERLAPS")))
+                .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['404'].description", containsString("TODO_NOT_FOUND")))
+                .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].delete.responses['409'].description", containsString("plans")));
+    }
+}

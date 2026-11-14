@@ -598,6 +598,53 @@ class TagIntegrationTest extends IntegrationTest {
         assertThat(forFullPageOfMore).isEqualTo(forFullPage);
     }
 
+    @Test
+    @DisplayName("ids returns only the asked tags, in the page's order; unknown and another user's ids are simply absent")
+    void filterByIdsReturnsOnlyMatching() throws Exception {
+        TestUser user = newUser();
+        String charlie = createTag(user, "Charlie");
+        String alpha = createTag(user, "Alpha");
+        createTag(user, "Bravo");
+        String theirs = createTag(newUser(), "Theirs");
+        getAs(user.accessToken(), TAGS).andExpect(jsonPath("$.response[*].name", hasItem("Bravo")));
+
+        getAs(user.accessToken(), TAGS + "?ids=" + String.join(",", charlie, alpha, theirs, UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].name", contains("Alpha", "Charlie")))
+                .andExpect(jsonPath("$.pageInfo.totalElements").value(2));
+    }
+
+    @Test
+    @DisplayName("ids takes up to the maximum page size; one more is 400 VALIDATION_FAILED, a malformed id 400 REQUEST_PARAMETER_INVALID")
+    void idsAreBounded() throws Exception {
+        TestUser user = newUser();
+
+        getAs(user.accessToken(), TAGS + "?ids=" + randomIds(100))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.length()").value(0));
+        getAs(user.accessToken(), TAGS + "?ids=" + randomIds(101))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("ids: must have at most 100 items")));
+        getAs(user.accessToken(), TAGS + "?ids=nope," + UUID.randomUUID())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                .andExpect(jsonPath("$.failed", contains("ids: invalid value")));
+    }
+
+    @Test
+    @DisplayName("A page by ids costs the same statements as any page: one while partial, two when full")
+    void filterByIdsRunsAConstantNumberOfQueries() throws Exception {
+        TestUser user = newUser();
+        List<String> ids = new ArrayList<>();
+        for (int index = 0; index < 6; index++) {
+            ids.add(createTag(user, "By id " + index));
+        }
+
+        assertThat(statementsFor(user, TAGS + "?size=20&ids=" + ids.getFirst())).isEqualTo(1);
+        assertThat(statementsFor(user, TAGS + "?size=5&ids=" + String.join(",", ids))).isEqualTo(2);
+    }
+
     /** Statements run by one request: for a page, plus the count only when the page is full. */
     private long statementsFor(TestUser user, String path) throws Exception {
         statistics().clear();

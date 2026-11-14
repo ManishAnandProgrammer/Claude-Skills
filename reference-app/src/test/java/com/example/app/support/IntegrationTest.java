@@ -1,6 +1,10 @@
 package com.example.app.support;
 
 import com.example.app.TestcontainersConfiguration;
+// media:begin
+import com.example.app.media.api.UploadPurpose;
+import com.example.app.user.domain.Role;
+// media:end
 import com.jayway.jsonpath.JsonPath;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
@@ -30,6 +34,9 @@ import java.net.http.HttpResponse;
 // media:end
 import java.time.Duration;
 import java.util.ArrayList;
+// media:begin
+import java.util.Arrays;
+// media:end
 import java.util.List;
 // media:begin
 import java.util.Map;
@@ -41,10 +48,14 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+// media:begin
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+// media:end
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -71,9 +82,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public abstract class IntegrationTest {
 
     protected static final String PASSWORD = "Correct-Horse-9";
-    private static final int RACERS = 6;
-    /** Under lock_timeout (3 s), so a request held by a test lock never times out first. */
+    /** How many requests {@link #race} fires at once. */
+    protected static final int RACERS = 6;
+    /**
+     * Under lock_timeout (3 s), so a request held by a test lock never times out first. A test that
+     * waits for several sessions in turn shares one deadline across the waits ({@link #lockWaitDeadline}).
+     */
     private static final Duration LOCK_WAIT_DEADLINE = Duration.ofSeconds(2);
+    /** How long a test waits for a latch or for a request it started, so a broken gate fails instead of hanging. */
+    private static final Duration WAIT_DEADLINE = Duration.ofSeconds(10);
 
     @Autowired
     protected MockMvc mvc;
@@ -133,25 +150,70 @@ public abstract class IntegrationTest {
     protected TestUser newUser() throws Exception {
         String email = uniqueEmail("user");
         String userId = read(signup(email, PASSWORD).andExpect(status().isCreated()), "$.response.id");
-        ResultActions login = login(email, PASSWORD).andExpect(status().isOk());
-        return new TestUser(UUID.fromString(userId), email,
+        return signIn(new TestUser(UUID.fromString(userId), email, null, null));
+    }
+
+    /**
+     * Signs an account in again: fresh tokens carrying its current role. A fixture kept for longer than
+     * one test (an account shared by a class or the whole run) keeps the account and calls this on use,
+     * never a cached access token: that expires after {@code app.jwt.access-token-ttl}, and every later
+     * call would be 401 once a slow run passes it.
+     */
+    protected TestUser signIn(TestUser account) throws Exception {
+        ResultActions login = login(account.email(), PASSWORD).andExpect(status().isOk());
+        return new TestUser(account.id(), account.email(),
                 read(login, "$.response.accessToken"), read(login, "$.response.refreshToken"));
     }
 
     // admin:begin
-    /** A signed-up user promoted to ADMIN (no endpoint grants it), signed in again so the token carries the role. */
-    protected TestUser newAdmin() throws Exception {
+    /** A signed-up user given {@code role} (no endpoint grants one), signed in again so the token carries it. */
+    protected TestUser newUserWithRole(String role) throws Exception {
         TestUser user = newUser();
-        assertThat(sql("update users set role = 'ADMIN' where id = ?", user.id())).isEqualTo(1);
-        ResultActions login = login(user.email(), PASSWORD).andExpect(status().isOk());
-        return new TestUser(user.id(), user.email(),
-                read(login, "$.response.accessToken"), read(login, "$.response.refreshToken"));
+        assertThat(sql("update users set role = ? where id = ?", role, user.id())).isEqualTo(1);
+        return signIn(user);
+    }
+
+    protected TestUser newAdmin() throws Exception {
+        return newUserWithRole("ADMIN");
     }
     // admin:end
 
     // media:begin
     private static final HttpClient STORAGE_CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private static final String UPLOAD_URLS = "/api/v1/upload-urls";
+    /** The content types {@link #setUploadPolicy} allows: those of the files the tests upload. */
+    private static final String TEST_CONTENT_TYPES = "application/pdf,image/jpeg,image/png";
+
+    /** Every test class that sets an upload policy holds this lock, so none sees another's limits. */
+    public static final String UPLOAD_POLICIES_LOCK = "UPLOAD_POLICIES";
+
+    /**
+     * The purpose the media piece's own endpoint tests run against: the project's first
+     * {@link UploadPurpose}, or empty while the project has none (those tests are then skipped, see
+     * {@link #assumeAnUploadPurpose}). Each test sets the purpose's limits itself ({@link #setUploadPolicy}).
+     */
+    protected static final String TESTED_PURPOSE = UploadPurpose.values().length == 0 ? "" : UploadPurpose.values()[0].name();
+
+    /** The role that may upload for {@link #TESTED_PURPOSE}. */
+    protected static final String TESTED_PURPOSE_ROLE = UploadPurpose.values().length == 0 ? "" : UploadPurpose.values()[0].role();
+
+    /** A new user with the role that may upload for {@link #TESTED_PURPOSE}. */
+    protected TestUser newUploader() throws Exception {
+        return newUserWithRole(TESTED_PURPOSE_ROLE);
+    }
+
+    /** A new user with a role other than {@link #TESTED_PURPOSE_ROLE}: one that may not upload for it. */
+    protected TestUser newNonUploader() throws Exception {
+        String otherRole = Arrays.stream(Role.values()).map(Role::name)
+                .filter(role -> !role.equals(TESTED_PURPOSE_ROLE))
+                .findFirst().orElseThrow();
+        return newUserWithRole(otherRole);
+    }
+
+    /** Skips the calling test until the project declares its first upload purpose (crud-gen Step 5). */
+    protected static void assumeAnUploadPurpose() {
+        assumeTrue(!TESTED_PURPOSE.isEmpty(), "no UploadPurpose yet: the media endpoint tests run once the first one exists");
+    }
 
     /** One upload URL as {@code POST /upload-urls} answers it. */
     protected record UploadUrl(String uploadKey, String url, Map<String, String> headers) {
@@ -192,12 +254,52 @@ public abstract class IntegrationTest {
         return upload.uploadKey();
     }
 
-    /** Sets a purpose's limits directly (no admin, no version check), for tests of how they are applied. */
+    /** A purpose's limits as stored, to put back after a test changed them. */
+    protected record UploadPolicyLimits(String purpose, long minSizeBytes, long maxSizeBytes, int minFiles, int maxFiles,
+                                        String contentTypes) {
+    }
+
+    /** The purpose's limits now ({@link #restoreUploadPolicy} puts them back). */
+    protected UploadPolicyLimits uploadPolicyOf(String purpose) {
+        return jdbc.queryForObject("""
+                select min_size_bytes, max_size_bytes, min_files, max_files, array_to_string(content_types, ',') as content_types
+                  from upload_policies
+                 where purpose = ?
+                """, (row, number) -> new UploadPolicyLimits(purpose, row.getLong("min_size_bytes"), row.getLong("max_size_bytes"),
+                row.getInt("min_files"), row.getInt("max_files"), row.getString("content_types")), purpose);
+    }
+
+    /**
+     * Puts a purpose's limits back as {@link #uploadPolicyOf} read them, so no other class sees a test's
+     * limits (every todo create checks the attachment count, even with no files). Nothing when
+     * {@code limits} is null: the test was skipped before it read them.
+     */
+    protected void restoreUploadPolicy(UploadPolicyLimits limits) {
+        if (Objects.isNull(limits)) {
+            return;
+        }
+        assertThat(sql("""
+                update upload_policies
+                   set min_size_bytes = ?, max_size_bytes = ?, min_files = ?, max_files = ?,
+                       content_types = string_to_array(?, ',')
+                 where purpose = ?
+                """, limits.minSizeBytes(), limits.maxSizeBytes(), limits.minFiles(), limits.maxFiles(),
+                limits.contentTypes(), limits.purpose())).isEqualTo(1);
+    }
+
+    /**
+     * Sets a purpose's limits directly (no admin, no version check), with the content types of the test
+     * files (PDF, JPEG, PNG), for tests of how they are applied. A class that relies on a purpose's limits
+     * holds {@link #UPLOAD_POLICIES_LOCK}, reads them ({@link #uploadPolicyOf}) and sets its own in
+     * {@code @BeforeEach}, and puts them back ({@link #restoreUploadPolicy}) in {@code @AfterEach}.
+     */
     protected void setUploadPolicy(String purpose, long minSizeBytes, long maxSizeBytes, int minFiles, int maxFiles) {
         assertThat(sql("""
-                update upload_policies set min_size_bytes = ?, max_size_bytes = ?, min_files = ?, max_files = ?
-                where purpose = ?
-                """, minSizeBytes, maxSizeBytes, minFiles, maxFiles, purpose)).isEqualTo(1);
+                update upload_policies
+                   set min_size_bytes = ?, max_size_bytes = ?, min_files = ?, max_files = ?,
+                       content_types = string_to_array(?, ',')
+                 where purpose = ?
+                """, minSizeBytes, maxSizeBytes, minFiles, maxFiles, TEST_CONTENT_TYPES, purpose)).isEqualTo(1);
     }
 
     // media:end
@@ -253,7 +355,7 @@ public abstract class IntegrationTest {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             for (int racer = 0; racer < RACERS; racer++) {
                 Callable<Answer> once = () -> {
-                    start.await();
+                    awaitLatch(start);
                     return answerOf(request.call());
                 };
                 pending.add(executor.submit(once));
@@ -261,15 +363,15 @@ public abstract class IntegrationTest {
             start.countDown();
             List<Answer> answers = new ArrayList<>();
             for (Future<Answer> answer : pending) {
-                answers.add(answer.get());
+                answers.add(within(answer));
             }
             return answers;
         }
     }
 
-    /** A refusal names no constraint, SQL or Java internals anywhere in its body. */
+    /** A refusal names no constraint (of any kind), SQL or Java internals anywhere in its body. */
     protected static void assertNoInternals(String body) {
-        assertThat(body).doesNotContain("uq_", "fk_", "SQL", "Exception", "java.");
+        assertThat(body).doesNotContain("uq_", "fk_", "ex_", "ck_", "pk_", "SQL", "Exception", "java.");
     }
 
     /** Every answer with {@code status} carries {@code errorCode} and no internals: races reach other code paths. */
@@ -285,10 +387,21 @@ public abstract class IntegrationTest {
     /**
      * Waits until {@code sessions} sessions of this database wait on a lock, or {@code done} has
      * finished; fails past {@link #LOCK_WAIT_DEADLINE}. Race tests use it to know a request reached
-     * the lock they gate.
+     * the lock they gate. It counts every waiting session of the database, which is exact because test
+     * classes run one at a time (no JUnit parallel execution is configured); running them in parallel
+     * would need the count narrowed to the sessions the gate blocks ({@code pg_blocking_pids}).
      */
     protected void awaitLockWaiters(int sessions, Future<?> done) throws InterruptedException {
-        long deadline = System.nanoTime() + LOCK_WAIT_DEADLINE.toNanos();
+        awaitLockWaiters(sessions, done, lockWaitDeadline());
+    }
+
+    /** A deadline for {@link #awaitLockWaiters(int, Future, long)}: one for every wait of one gated sequence. */
+    protected static long lockWaitDeadline() {
+        return System.nanoTime() + LOCK_WAIT_DEADLINE.toNanos();
+    }
+
+    /** As {@link #awaitLockWaiters(int, Future)}, against a deadline shared with the test's earlier waits. */
+    protected void awaitLockWaiters(int sessions, Future<?> done, long deadline) throws InterruptedException {
         while (lockWaiters() < sessions && (Objects.isNull(done) || !done.isDone())) {
             assertThat(System.nanoTime()).as("sessions waiting on a lock").isLessThan(deadline);
             Thread.sleep(10);
@@ -302,10 +415,23 @@ public abstract class IntegrationTest {
                 """, Integer.class);
     }
 
-    /** For a gate held inside a transaction callback, which can't throw InterruptedException. */
+    /** Waits for {@code latch}; fails past {@link #WAIT_DEADLINE} instead of hanging the build. */
+    protected static void awaitLatch(CountDownLatch latch) throws InterruptedException {
+        assertThat(latch.await(WAIT_DEADLINE.toMillis(), TimeUnit.MILLISECONDS)).as("latch released in time").isTrue();
+    }
+
+    /** The result of a request the test started; fails past {@link #WAIT_DEADLINE} instead of hanging the build. */
+    protected static <T> T within(Future<T> future) throws Exception {
+        return future.get(WAIT_DEADLINE.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * For a gate held inside a transaction callback, which can't throw InterruptedException. It gives up
+     * after {@link #WAIT_DEADLINE}, so a test that failed before opening the gate doesn't keep it shut.
+     */
     protected static void awaitQuietly(CountDownLatch latch) {
         try {
-            latch.await();
+            latch.await(WAIT_DEADLINE.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }

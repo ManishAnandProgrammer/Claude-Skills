@@ -24,14 +24,16 @@ public interface TagApi {
 
     @Operation(summary = "A page of your tags", description = """
             Paged with page and size (the default and the maximums come from configuration; beyond them \
-            is a 400), ordered by sort (NAME, the default, or NEWEST), filtered by status and query (a \
-            case-insensitive part of the name). status is the dropdown's: ACTIVE, INACTIVE or ALL; here \
+            is a 400), ordered by sort (NAME, the default, or NEWEST), filtered by ids (find by ids: \
+            unknown or another user's ids are simply absent), status and query (a case-insensitive part \
+            of the name). status is the dropdown's: ACTIVE, INACTIVE or ALL; here \
             the default is ALL, since this page manages every tag, while the dropdown defaults to \
             ACTIVE.""")
     @ApiResponse(responseCode = "200", description = "One page, with pageInfo")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (page, size or query out of range); REQUEST_PARAMETER_INVALID (an unknown \
-            sort or status, a non-numeric page or size; see failed)""",
+            VALIDATION_FAILED (page, size, query or the number of ids out of range); \
+            REQUEST_PARAMETER_INVALID (an unknown sort or status, a non-numeric page or size, a malformed \
+            id; see failed)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

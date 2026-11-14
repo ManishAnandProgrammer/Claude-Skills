@@ -19,17 +19,29 @@ import java.util.Objects;
  *       has no token, so on the application port it would be public. Only the {@code test}
  *       profile alone may share the port (MockMvc reaches the actuator through the application);
  *       there is deliberately no property to allow it, so no deployment can switch it on.</li>
+ *   <li>{@code app.security.password-hash-strength} other than 12: bcrypt's cost is a security decision
+ *       taken with a load test (it sets sign-in CPU and the {@code sign-in} admission cap), not a
+ *       per-deployment setting. Only the {@code test} profile alone may lower it (its accounts are
+ *       throwaway, and each costs two hashes); no property allows it elsewhere.</li>
  * </ul>
  */
 @Component
 class StartupChecks {
 
-    private static final List<String> SHARED_PORT_PROFILES = List.of("test");
+    /** The test profile alone: the only one allowed the shortcuts below. */
+    private static final List<String> TEST_ONLY_PROFILES = List.of("test");
+    /** A security decision, not a tunable: lower, a stolen hash is cheap to crack; higher, sign-in outgrows its CPU. */
+    private static final int PASSWORD_HASH_STRENGTH = 12;
 
-    StartupChecks(Environment environment, AdmissionProperties admission) {
+    StartupChecks(Environment environment, AdmissionProperties admission, PasswordHashProperties passwordHash) {
         checkProfiles(environment);
         checkAdmissionLeavesRoomForThePoolQueue(environment, admission);
         checkManagementPortIsSeparate(environment);
+        checkPasswordHashStrength(environment, passwordHash);
+    }
+
+    private static boolean isTestProfileAlone(Environment environment) {
+        return Arrays.asList(environment.getActiveProfiles()).equals(TEST_ONLY_PROFILES);
     }
 
     private static void checkProfiles(Environment environment) {
@@ -49,7 +61,7 @@ class StartupChecks {
     }
 
     private static void checkManagementPortIsSeparate(Environment environment) {
-        if (Arrays.asList(environment.getActiveProfiles()).equals(SHARED_PORT_PROFILES)) {
+        if (isTestProfileAlone(environment)) {
             return;
         }
         String serverPort = environment.getProperty("server.port");
@@ -57,6 +69,17 @@ class StartupChecks {
         if (Objects.isNull(managementPort) || managementPort.equals(serverPort)) {
             throw new IllegalStateException("management.server.port (%s) must be set and differ from server.port (%s)"
                     .formatted(managementPort, serverPort));
+        }
+    }
+
+    private static void checkPasswordHashStrength(Environment environment, PasswordHashProperties passwordHash) {
+        if (isTestProfileAlone(environment)) {
+            return;
+        }
+        int strength = passwordHash.passwordHashStrength();
+        if (strength != PASSWORD_HASH_STRENGTH) {
+            throw new IllegalStateException("app.security.password-hash-strength (%d) must be %d outside the test profile"
+                    .formatted(strength, PASSWORD_HASH_STRENGTH));
         }
     }
 }

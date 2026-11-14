@@ -24,11 +24,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AdmissionControlFilterTest {
+
+    /** How long a test waits for a held request, so a broken latch fails instead of hanging the build. */
+    private static final long WAIT_SECONDS = 10;
 
     private static final String API_PATH = "/api/v1/todos";
     private static final String SIGN_IN_PATH = "/api/v1/auth/login";
@@ -80,7 +84,7 @@ class AdmissionControlFilterTest {
         CountDownLatch release = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<?> first = executor.submit(() -> holdAPermit(API_PATH, inside, release));
-            inside.await();
+            assertThat(inside.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
 
             MockHttpServletResponse refused = new MockHttpServletResponse();
             filter.doFilter(request(API_PATH), refused, new MockFilterChain());
@@ -88,7 +92,7 @@ class AdmissionControlFilterTest {
             MockFilterChain healthChain = new MockFilterChain();
             filter.doFilter(request("/actuator/health"), health, healthChain);
             release.countDown();
-            first.get();
+            first.get(WAIT_SECONDS, TimeUnit.SECONDS);
 
             assertThat(refused.getStatus()).isEqualTo(503);
             assertThat(refused.getContentAsString()).contains("\"errorCode\":\"SERVER_BUSY\"");
@@ -105,14 +109,14 @@ class AdmissionControlFilterTest {
         CountDownLatch release = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<?> signingIn = executor.submit(() -> holdAPermit(SIGN_IN_PATH, inside, release));
-            inside.await();
+            assertThat(inside.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
 
             MockHttpServletResponse secondSignIn = new MockHttpServletResponse();
             filter.doFilter(request(NEXT_VERSION_SIGN_IN_PATH), secondSignIn, new MockFilterChain());
             MockFilterChain apiChain = new MockFilterChain();
             filter.doFilter(request(API_PATH), new MockHttpServletResponse(), apiChain);
             release.countDown();
-            signingIn.get();
+            signingIn.get(WAIT_SECONDS, TimeUnit.SECONDS);
 
             assertThat(secondSignIn.getStatus()).isEqualTo(503);
             assertThat(apiChain.getRequest()).isNotNull();
@@ -128,14 +132,14 @@ class AdmissionControlFilterTest {
         CountDownLatch release = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<?> signingIn = executor.submit(() -> holdAPermit(SIGN_IN_PATH, inside, release));
-            inside.await();
+            assertThat(inside.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
 
             MockFilterChain refreshChain = new MockFilterChain();
             filter.doFilter(request(REFRESH_PATH), new MockHttpServletResponse(), refreshChain);
             MockHttpServletResponse nextVersionSignIn = new MockHttpServletResponse();
             filter.doFilter(request(NEXT_VERSION_SIGN_IN_PATH), nextVersionSignIn, new MockFilterChain());
             release.countDown();
-            signingIn.get();
+            signingIn.get(WAIT_SECONDS, TimeUnit.SECONDS);
 
             assertThat(refreshChain.getRequest()).isNotNull();
             assertThat(nextVersionSignIn.getStatus()).isEqualTo(503);
@@ -150,12 +154,12 @@ class AdmissionControlFilterTest {
         CountDownLatch release = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<?> busyApi = executor.submit(() -> holdAPermit(API_PATH, inside, release));
-            inside.await();
+            assertThat(inside.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
 
             MockFilterChain signInChain = new MockFilterChain();
             filter.doFilter(request(SIGN_IN_PATH), new MockHttpServletResponse(), signInChain);
             release.countDown();
-            busyApi.get();
+            busyApi.get(WAIT_SECONDS, TimeUnit.SECONDS);
 
             assertThat(signInChain.getRequest()).isNotNull();
         }
@@ -199,7 +203,7 @@ class AdmissionControlFilterTest {
 
     private static void awaitQuietly(CountDownLatch latch) {
         try {
-            latch.await();
+            latch.await(WAIT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }

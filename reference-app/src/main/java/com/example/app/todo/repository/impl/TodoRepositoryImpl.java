@@ -11,11 +11,14 @@ import com.example.app.todo.domain.TodoTag;
 import com.example.app.todo.domain.TodoTag_;
 import com.example.app.todo.domain.Todo_;
 import com.example.app.todo.dto.request.TodoFilter;
+import com.example.app.todo.dto.request.TodoSort;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import com.example.app.todo.repository.custom.CustomTodoRepository;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.CompoundSelection;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -51,14 +54,51 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaQuery<TodoSummaryResponse> query = builder.createQuery(TodoSummaryResponse.class);
         Root<Todo> root = query.from(Todo.class);
-        query.select(builder.construct(TodoSummaryResponse.class,
+        query.select(summaryOf(builder, root));
+        List<Predicate> predicates = filterPredicates(builder, query, root, filter);
+        predicates.add(builder.equal(root.get(Todo_.ownerId), ownerId));
+        if (cursor.isPresent()) {
+            predicates.add(seekAfter(builder, root, filter.getSort(), cursor));
+        }
+        query.where(predicates.toArray(new Predicate[0]));
+        query.orderBy(orderOf(builder, root, filter.getSort()));
+
+        List<TodoSummaryResponse> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();
+        return switch (filter.getSort()) {
+            case DUE_DATE -> CursorBatch.of(rows, size, row -> Cursor.write(sort, dueSortOf(row), row.id()));
+            case NEWEST -> CursorBatch.of(rows, size, row -> Cursor.write(sort, row.id()));
+        };
+    }
+
+    /** The rows after the cursor's, in the sort's keyset (id last). */
+    private static Predicate seekAfter(CriteriaBuilder builder, Root<Todo> root, TodoSort sort, Cursor cursor) {
+        return switch (sort) {
+            case DUE_DATE -> Seek.after(builder, false,
+                    root.get(Todo_.dueSort), cursor.date(0), root.get(Todo_.id), cursor.uuid(1));
+            case NEWEST -> builder.lessThan(root.get(Todo_.id), cursor.uuid(0));
+        };
+    }
+
+    /** On the same columns as {@link #seekAfter}, in the same order. */
+    private static List<Order> orderOf(CriteriaBuilder builder, Root<Todo> root, TodoSort sort) {
+        return switch (sort) {
+            case DUE_DATE -> Seek.order(builder, false, root.get(Todo_.dueSort), root.get(Todo_.id));
+            case NEWEST -> List.of(builder.desc(root.get(Todo_.id)));
+        };
+    }
+
+    private static CompoundSelection<TodoSummaryResponse> summaryOf(CriteriaBuilder builder, Root<Todo> root) {
+        return builder.construct(TodoSummaryResponse.class,
                 root.get(Todo_.id), root.get(Todo_.todoList).get(TodoList_.id), root.get(Todo_.title),
                 root.get(Todo_.status), root.get(Todo_.priority), root.get(Todo_.dueDate), root.get(Todo_.completedAt),
                 root.get(Todo_.createdAt), root.get(Todo_.updatedAt), root.get(Todo_.createdBy), root.get(Todo_.updatedBy),
-                root.get(Todo_.version)));
+                root.get(Todo_.version));
+    }
 
+    /** The predicates of the filters the request sets, in a list the caller adds the owner scope and the seek to. */
+    private static List<Predicate> filterPredicates(CriteriaBuilder builder, CriteriaQuery<?> query, Root<Todo> root,
+                                                    TodoFilter filter) {
         List<Predicate> predicates = new ArrayList<>();
-        predicates.add(builder.equal(root.get(Todo_.ownerId), ownerId));
         if (filter.requireIdsPredicate()) {
             predicates.add(root.get(Todo_.id).in(filter.getIds()));
         }
@@ -66,13 +106,7 @@ class TodoRepositoryImpl implements CustomTodoRepository {
             predicates.add(builder.equal(root.get(Todo_.todoList).get(TodoList_.id), filter.getTodoListId()));
         }
         if (filter.requireTagIdPredicate()) {
-            // An exists on the join table alone: a join would repeat rows, and the tag's own row isn't needed.
-            Subquery<Integer> tagged = query.subquery(Integer.class);
-            Root<TodoTag> link = tagged.from(TodoTag.class);
-            tagged.select(builder.literal(1)).where(
-                    builder.equal(link.get(TodoTag_.todo), root),
-                    builder.equal(link.get(TodoTag_.tag).get(Tag_.id), filter.getTagId()));
-            predicates.add(builder.exists(tagged));
+            predicates.add(taggedWith(builder, query, root, filter.getTagId()));
         }
         if (filter.requireStatusPredicate()) {
             predicates.add(builder.equal(root.get(Todo_.status), filter.getStatus()));
@@ -89,29 +123,17 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         if (filter.requireQueryPredicate()) {
             predicates.add(TextSearch.contains(builder, root.get(Todo_.title), filter.getQuery()));
         }
-        switch (filter.getSort()) {
-            case DUE_DATE -> {
-                if (cursor.isPresent()) {
-                    predicates.add(Seek.after(builder, false,
-                            root.get(Todo_.dueSort), cursor.date(0),
-                            root.get(Todo_.id), cursor.uuid(1)));
-                }
-                query.orderBy(Seek.order(builder, false, root.get(Todo_.dueSort), root.get(Todo_.id)));
-            }
-            case NEWEST -> {
-                if (cursor.isPresent()) {
-                    predicates.add(builder.lessThan(root.get(Todo_.id), cursor.uuid(0)));
-                }
-                query.orderBy(builder.desc(root.get(Todo_.id)));
-            }
-        }
-        query.where(predicates.toArray(new Predicate[0]));
+        return predicates;
+    }
 
-        List<TodoSummaryResponse> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();
-        return switch (filter.getSort()) {
-            case DUE_DATE -> CursorBatch.of(rows, size, row -> Cursor.write(sort, dueSortOf(row), row.id()));
-            case NEWEST -> CursorBatch.of(rows, size, row -> Cursor.write(sort, row.id()));
-        };
+    /** An exists on the join table alone: a join would repeat rows, and the tag's own row isn't needed. */
+    private static Predicate taggedWith(CriteriaBuilder builder, CriteriaQuery<?> query, Root<Todo> root, UUID tagId) {
+        Subquery<Integer> tagged = query.subquery(Integer.class);
+        Root<TodoTag> link = tagged.from(TodoTag.class);
+        tagged.select(builder.literal(1)).where(
+                builder.equal(link.get(TodoTag_.todo), root),
+                builder.equal(link.get(TodoTag_.tag).get(Tag_.id), tagId));
+        return builder.exists(tagged);
     }
 
     /** The row carries the real due date, so its sort key is derived the way {@code due_sort} is. */

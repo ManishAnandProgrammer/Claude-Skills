@@ -25,6 +25,8 @@ app:
       # media:begin
       media.file-name: 255
       media.content-type: 100
+      # An uploadKey a record attaches: <PURPOSE>/<uuid>, so a purpose name of up to 63 characters.
+      media.upload-key: 100
       # media:end
       # example:begin
       todo-list.name: 100
@@ -53,10 +55,20 @@ app:
     todo-list-settings:
       # How long before a todo is due its reminder can go out, in minutes (TodoListSettings, configuration metadata).
       max-reminder-minutes: 1440
-    # Latest dates the API accepts, by field (@LatestDate("…") on request records).
+    # Latest dates the API accepts, by field (@LatestDate("…") on request records and filters).
     latest-date:
       # Must stay before 9999-12-31, the due_sort value that puts undated todos last (0003).
       todo.due-date: "2999-12-31"
+      # Filters only: the entries themselves are bounded by @NotAfterToday.
+      time-entry.spent-on: "2999-12-31"
+      # Planned days lie ahead or behind, so no other bound fits; this one keeps dates sane.
+      plan.dates: "2999-12-31"
+    # Earliest dates the API accepts, by field (@EarliestDate("…")): a LocalDate reaches years
+    # PostgreSQL's date can't hold, so every date that meets a column or a query has a floor.
+    earliest-date:
+      todo.due-date: "1900-01-01"
+      time-entry.spent-on: "1900-01-01"
+      plan.dates: "1900-01-01"
     # example:end
   admission:
     # The `api` group: every API request outside the groups below (resilience4j.bulkhead.instances.api
