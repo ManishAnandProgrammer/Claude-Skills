@@ -212,6 +212,9 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
   origins with the `Content-Type` and `Content-Disposition` headers; an IAM role limited to
   Put/Get/Delete on this bucket; a budget alarm. Before relying on the signed-header refusals in
   production, one manual run against a real AWS bucket confirms the 403s.
+- **Locally:** `docker compose up` starts an S3-compatible store (`media-store`, the image the tests
+  use, data on a named volume) that creates `MEDIA_BUCKET`; `.env.example` points the app at it
+  (`MEDIA_ENDPOINT`, path-style access, local-only keys). Reference: `reference-app/compose.yaml`.
 - **Severity:** High for a public bucket or a wildcard IAM policy; Low otherwise.
 
 ### MEDIA-14: Public forms (no sign-in)

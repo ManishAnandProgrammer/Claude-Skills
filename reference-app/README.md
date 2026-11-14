@@ -37,6 +37,14 @@ with media; core alone), then starts the image. The media tests run an S3-compat
 Run it before pushing: the pre-push hook only checks that it passed on exactly this code, since the
 repository is private and has no CI.
 
+## Running it locally
+
+`cp .env.example .env`, fill in the empty values, `docker compose up -d` (PostgreSQL; Redis with
+sign-in; with media, an S3-compatible store that creates the bucket), then run the app with the
+`.env` values exported (`set -a; . ./.env; set +a; ./mvnw spring-boot:run`). With media, the
+presigned flow works against the local store as against S3: `POST /api/v1/upload-urls`, then `PUT`
+the bytes to the returned URL with its headers. `docker compose down -v` removes the data.
+
 ## Changing it
 
 Every change must keep `scripts/verify.sh` green. Behaviour the skills describe lives here first;

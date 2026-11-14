@@ -17,5 +17,30 @@ services:
     ports:
       - "127.0.0.1:6379:6379"
   # sign-in:end
+  # media:begin
+  # Uploaded files: an S3-compatible store, the image the tests use. Its posix backend keeps each
+  # bucket as a top-level directory, so creating the directory creates the app's bucket.
+  media-store:
+    image: versity/versitygw:v1.11.0
+    entrypoint: sh
+    command: ["-c", "mkdir -p /data/$${MEDIA_BUCKET} && exec versitygw --health /health posix /data"]
+    environment:
+      ROOT_ACCESS_KEY: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID in .env (see .env.example)}
+      ROOT_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY in .env (see .env.example)}
+      VGW_REGION: ${MEDIA_REGION}
+      MEDIA_BUCKET: ${MEDIA_BUCKET:?set MEDIA_BUCKET in .env (see .env.example)}
+    ports:
+      - "127.0.0.1:7070:7070"
+    volumes:
+      - media-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:7070/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  # media:end
 volumes:
   postgres-data:
+  # media:begin
+  media-data:
+  # media:end
