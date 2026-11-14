@@ -66,6 +66,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<ProblemDetail> handleAppException(AppException exception, WebRequest request) {
         ErrorCode code = exception.getErrorCode();
         HttpStatus status = ErrorCodeHttpStatusMapper.resolve(code);
+        if (status == HttpStatus.SERVICE_UNAVAILABLE) {
+            // A dependency that didn't answer (ERR-02): the client comes back after Retry-After; no stack.
+            log.warn("Unavailable: code={}, cause={}", code, String.valueOf(exception.getCause()));
+            return withOwnMessage(code, request);
+        }
         if (status.is5xxServerError()) {
             log.error("Server error: code={}", code, exception);
             return respond(code, serverError(status), request);
@@ -192,12 +197,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                               WebRequest request) {
         log.debug("Optimistic lock conflict: entity={}", exception.getPersistentClassName());
         return withOwnMessage(ErrorCode.OPTIMISTIC_LOCK_CONFLICT, request);
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ProblemDetail> handleIllegalArgument(IllegalArgumentException exception, WebRequest request) {
-        log.debug("Illegal argument: {}", exception.getMessage());
-        return withOwnMessage(ErrorCode.ILLEGAL_ARGUMENT, request);
     }
 
     /**

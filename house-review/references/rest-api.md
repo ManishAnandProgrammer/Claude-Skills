@@ -21,7 +21,10 @@ a finding**. Profile keys are written `{{key}}`.
 ### REST-02: Hierarchy
 - **Check:** sub-resources nest under their parent (`/orders/{id}/shipments`), not the other way
   round (`/shipments/orders/{orderId}`). At most two levels deep.
-- **Severity:** Low.
+- **Also:** the path names the target; the body never chooses it. A request DTO carries no id of
+  the resource (or its parent) that the path names: a controller that overwrites it hides the
+  mismatch, and one that forgets lets a body aim the write at another record.
+- **Severity:** Low (Medium when a body id is present; High when it is used, REST-16).
 
 ### REST-03: Actions
 - **Check:**
@@ -149,6 +152,10 @@ the path.
   2. security validators (REST-10);
   3. domain validation in the service (existence, state, ownership).
 
+  Data rebuilt from stored rows or other sources (a copy, a seed, an import, a restore, a model's
+  output) passes the same validation as a request, through the same validators: writers that
+  skipped the gate stored values no request could, and later reads failed on them.
+
   `@Valid` and `@PreAuthorize` sit on the controller while REST is the only entry point. When a
   second one arrives (GraphQL, a CLI, a job calling the same use case), they move to the service
   (`@Validated` class + `@Valid` parameters, `@PreAuthorize` on service methods), so every entry
@@ -187,6 +194,8 @@ the path.
 ### REST-12: Bulk operations
 - **Check:** take a `Set` of ids (no duplicates) with `@NotEmpty`, a maximum `@Size` and
   element constraints; load in one query; all-or-nothing behaviour documented.
+- **Detect:** a `List` of ids: a lookup that expects one row per id fails on a duplicate (a
+  `findFirst().orElseThrow()` per id answered 500).
 - **Severity:** Medium.
 
 ### REST-13: Dropdowns follow the house standard
@@ -240,7 +249,9 @@ types.
 - **Check:** auth and other abuse-prone endpoints (OTP, signup, anything that costs money such
   as SMS, public writes) are rate limited per IP and per account, with a shared backend when
   several instances run. The client IP comes from `getRemoteAddr()`; `X-Forwarded-For` is
-  honoured only through a trusted-proxy configuration.
+  honoured only through a trusted-proxy configuration: `server.forward-headers-strategy: native`
+  with the proxies' addresses in `server.tomcat.remoteip.internal-proxies`, so a client can't set
+  its own IP and get a fresh bucket.
 - **Also:**
   - a bucket key a caller can multiply by changing the path suffix is a finding (prefix paths
     collapse into one bucket);
@@ -258,7 +269,13 @@ types.
       on each request. A cache hit must not borrow a database connection, and a store failure
       answers 503, not 401 (DATA-17);
     - `short-lived(<n>)`: the access token TTL is ≤ n minutes and the refresh token is revoked
-      on logout.
+      on logout;
+  - each cached security fact (revocation, account status, role) states its staleness bound, per
+    instance, in the configuration and the API docs: a disabled account keeps access for that long;
+  - a refresh token reused after rotation revokes its whole family (reuse detection): only a stolen
+    copy is ever reused;
+  - a role or status change takes effect within the stated bound: a token version claim checked
+    against the user, or an access TTL no longer than the bound.
 - **Severity:** High.
 
 ### REST-16: Authorization
@@ -284,7 +301,9 @@ types.
   - gzip on (`server.compression.enabled`), or documented as done by the edge proxy;
   - security headers on (HSTS, `X-Content-Type-Options`, `X-Frame-Options`), not disabled in
     the security configuration;
-  - CORS origins from configuration, trimmed, no wildcard with credentials.
+  - CORS origins from configuration, trimmed, no wildcard with credentials; credentials off
+    entirely when auth is a header, not a cookie (nothing needs them, and they widen what a
+    misconfigured origin can do).
 - **Severity:** Low / Medium.
 
 ### REST-19: Long-running work

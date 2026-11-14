@@ -6,11 +6,12 @@ package com.example.app.user.domain;
  */
 public enum Role {
     USER,
-    // metadata:begin
+    // admin:begin (with the first piece that has admin endpoints: metadata or media)
     /**
-     * Reads and changes configuration metadata. No endpoint grants it: an operator sets it in the
-     * database ({@code UPDATE users SET role = 'ADMIN'}), and it takes effect at the user's next sign-in.
+     * Changes application-wide settings: configuration metadata, upload policies. No endpoint grants
+     * it: an operator sets it in the database ({@code UPDATE users SET role = 'ADMIN'}), and it takes
+     * effect at the user's next sign-in.
      */
     ADMIN
-    // metadata:end
+    // admin:end
 }

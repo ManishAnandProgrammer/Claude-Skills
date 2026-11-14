@@ -1,7 +1,8 @@
 --liquibase formatted sql
 
--- The ADMIN role, for the first feature that needs one: the configuration-metadata admin API
--- (0008). bootstrap-copy.sh copies this changeset with the sign-in and metadata pieces together.
+-- The ADMIN role, for the features with admin endpoints: the configuration-metadata admin API (0008)
+-- and the upload-policy admin API (0009). bootstrap-copy.sh copies this file with the sign-in piece
+-- and either of the metadata and media pieces.
 
 --changeset dev:0007-users-admin-role
 ALTER TABLE users DROP CONSTRAINT ck_users_role;

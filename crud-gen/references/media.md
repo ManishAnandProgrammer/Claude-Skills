@@ -1,324 +1,71 @@
-# Media file handling (Step 5)
-
-Applies when the entity owns a `@OneToMany` collection to a media join entity (an entity linking
-the parent to `{{MediaFile}}`, optionally with a `Purpose` enum).
-
-## How to detect it
-
-Look for a field on the entity like:
-```java
-@OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY,
-           mappedBy = "parent", orphanRemoval = true)
-@SQLRestriction("purpose = 'SOME_PURPOSE'")   // optional; scopes by purpose
-private Set<XMedia> xMediaCollection = new LinkedHashSet<>();
-```
-
-Also look for existing helper methods on the entity:
-```java
-public void addXMedia({{MediaFile}} mediaFile) { ... }
-public void removeXMedia(String objectKey) { ... }
-```
-
-If those helpers are missing, **add them to the entity** before going further.
-
----
-
-## 5.1 Entity helper methods (add to the parent entity if absent)
-
-```java
-public void addXMedia({{MediaFile}} mediaFile) {
-    XMedia media = new XMedia();
-    media.setMediaFile(mediaFile);
-    media.setParent(this);
-    // media.setPurpose(XMedia.Purpose.SOME_PURPOSE);  // only if the join entity has a Purpose enum
-    xMediaCollection.add(media);
-}
-
-public void removeXMedia(String objectKey) {
-    xMediaCollection.removeIf(
-        media -> media.getMediaFile().{{mediaObjectKeyGetter}}().equals(objectKey)
-    );
-}
-```
-
----
-
-## 5.2 Media constants: add two
-
-**File:** `{{mediaConstants}}`
-
-Add at the bottom (before the closing `}`):
-```java
-public static final String ENTITY_NAME = "ENTITY_NAME";           // module name
-public static final String ENTITY_NAME_MEDIA = "ENTITY_NAME_MEDIA"; // file usage
-```
-
-Convention: `MODULE_NAME` is the domain concept in UPPER_SNAKE_CASE; `FILE_USAGE` is
-`MODULE_NAME_PURPOSE`.
-
----
-
-## 5.3 Config: add a media-file constraint entry
-
-**File / prefix:** `{{mediaConstraintsConfig}}`
-
-Every new media type **must** be registered here. The upload-URL endpoint uses it to validate
-file type, size, and count before it issues upload URLs.
-
-Find the last `[N]` index used with this prefix and append the next block at `N+1`, copying the
-shape of the existing entries exactly. Example (properties style):
-
-```properties
-media-file.constraints[N].module=ENTITY_NAME
-media-file.constraints[N].file-usage=ENTITY_NAME_MEDIA
-media-file.constraints[N].allowed-content-types=image        # image / pdf / video / pdf,image / etc.
-media-file.constraints[N].min-file-size=1KB
-media-file.constraints[N].max-file-size=10MB                 # adjust per use case
-media-file.constraints[N].min-files=1
-media-file.constraints[N].max-files=1                        # 1 for single-file (cover image, logo); more for galleries
-media-file.constraints[N].allowed-roles=any
-```
-
-`module` and `file-usage` must exactly match the string values of the two constants from 5.2.
-
----
-
-## 5.4 Request: embed `{{FileIdsPayload}}` for inline media management
-
-The create and update requests carry a `{{FileIdsPayload}}` field, so the client can supply (or
-replace) media in the same request as the other fields. **Never use a plain `String` key; always
-use `{{FileIdsPayload}}`.**
-
-```java
-// a component of the EntityNameCreateRequest / EntityNameUpdateRequest records:
-{{FileIdsPayload}} xMedia   // optional, no @Valid; it handles its own null-safety
-```
-
-`{{FileIdsPayload}}` contains:
-- `newIds`: object keys just uploaded (to persist)
-- `deletedIds`: object keys to remove
-- `oldIds`: previously saved keys (client-side bookkeeping, not used on the backend)
-
----
-
-## 5.5 Mapper: accept a pre-resolved `Set<{{MediaFile}}>`
-
-The mapper **must not** call any storage or repository logic. The service first resolves
-`{{FileIdsPayload}}` → `Set<{{MediaFile}}>`, then passes the result to the mapper.
-
-Update `toEntity` and `update` to take a second parameter:
-
-```java
-public EntityName toEntity(EntityNameCreateRequest request, Set<{{MediaFile}}> xMediaFiles) {
-    EntityName entity = new EntityName();
-    // ... set scalar fields ...
-    for ({{MediaFile}} file : xMediaFiles) {
-        entity.addXMedia(file);
-    }
-    return entity;
-}
-
-public void update(EntityName entity, EntityNameCreateRequest request, Set<{{MediaFile}}> xMediaFiles) {
-    // ... set mutable scalar fields (skip updatable=false FKs) ...
-    for ({{MediaFile}} file : xMediaFiles) {
-        entity.addXMedia(file);
-    }
-}
-```
-
----
-
-## 5.6 Service additions
-
-Add `{{MediaService}} mediaService` to the service's `@RequiredArgsConstructor` fields.
-
-### Two private helpers (shared by create, update, and the PATCH endpoint)
-
-```java
-private Set<{{MediaFile}}> saveXMediaIfProvided({{FileIdsPayload}} xMedia) {
-    if ({{skipSave}}(xMedia)) {
-        return Set.of();
-    }
-    Set<{{MediaFile}}> result = new HashSet<>();
-    for (String objectKey : xMedia.getNewIds()) {
-        result.add(saveMediaFile(objectKey));
-    }
-    return result;
-}
-
-private void removeExistingXMediaIfRequested(EntityName entity, {{FileIdsPayload}} xMediaPayload) {
-    if ({{skipDelete}}(xMedia)) {
-        return;
-    }
-    for (String objectKey : xMedia.getDeletedIds()) {
-        entity.removeXMedia(objectKey);
-    }
-}
-```
-
-> ⚠️ **The delete guard MUST be `{{skipDelete}}`, never `{{skipSave}}`.**
-> `{{skipSave}}` checks `newIds` (the *save* path); `{{skipDelete}}` checks `deletedIds` (the
-> *delete* path). A delete-only request (the client removes media without uploading anything)
-> carries `deletedIds` but **no** `newIds`. Guarding removal with `{{skipSave}}` short-circuits
-> and silently skips it: the join row stays in the collection, no orphan is produced, and **no
-> `DELETE` is ever issued**. `{{skipDelete}}` is null-safe and already covers the empty
-> `deletedIds` case.
->
-> If the project has no `{{skipDelete}}` helper, write the guard as
-> `Objects.isNull(xMedia) || CollectionUtils.isEmpty(xMedia.getDeletedIds())`.
-> Never reuse the save check.
-
-### No storage call inside the transaction (house-review DATA-01, REL-06)
-
-Check whether `{{MediaService}}.save` (or anything it calls) talks to the object store: an
-existence or size check, a copy, a tagging call.
-- **If it does,** verify the keys **before** the transaction, then do only database work inside
-  it. The service's public `create` / `update` / `manageXMedia` become non-transactional
-  orchestrators (`@Transactional(propagation = Propagation.NOT_SUPPORTED)`), running:
-  1. `{{mediaVerify}}(newIds)`, with no transaction (a storage outage answers 503
-     `MEDIA_STORAGE_UNAVAILABLE` + `Retry-After`, and nothing is written);
-  2. a `TransactionTemplate` (or a separate `@Transactional` bean method) that saves the
-     `{{MediaFile}}` rows and the entity together.
-
-  That way a storage failure after commit can't leave an entity pointing at missing files
-  (MEDIA-LINK-LOST-AFTER-COMMIT).
-- **If `save` only records rows** (no storage I/O), the code below is correct as is.
-
-Building the response with `mediaFileDetail` must not call storage either (pre-signing a URL is
-local and fine; fetching metadata is not).
-
-### Updated `create` and `update` (when `save` records rows only)
-
-```java
-@Transactional
-public {{ObjectWrapper}}<EntityNameResponse> create(EntityNameCreateRequest request) {
-    Set<{{MediaFile}}> xMediaFiles = saveXMediaIfProvided(request.xMedia());
-    EntityName entity = mapper.toEntity(request, xMediaFiles);
-    EntityName saved = repository.saveAndFlush(entity);
-    return {{objectFactory}}(mapper.toResponse(saved));
-}
-
-@Transactional
-public {{ObjectWrapper}}<EntityNameResponse> update(ID id, EntityNameUpdateRequest request) {
-    EntityName entity = getEditableEntityName(id, request.version());
-    removeExistingXMediaIfRequested(entity, request.xMedia());
-    Set<{{MediaFile}}> xMediaFiles = saveXMediaIfProvided(request.xMedia());
-    mapper.update(entity, request, xMediaFiles);
-    repository.flush();
-    return {{objectFactory}}(mapper.toResponse(entity));
-}
-```
-
-### Standalone PATCH handler (dedicated media sub-resource endpoint)
-
-```java
-@Transactional
-public void manageXMedia(ID entityId, {{FileIdsPayload}} media) {
-    if ({{skipSave}}(media) && {{skipDelete}}(media)) {
-        return;
-    }
-
-    EntityName entity = getEntityName(entityId);
-
-    removeExistingXMediaIfRequested(entity, media);
-
-    if (!{{skipSave}}(media)) {
-        for (String objectKey : media.getNewIds()) {
-            entity.addXMedia(saveMediaFile(objectKey));
-        }
-    }
-
-    repository.flush();
-}
-```
-
-### GET handler: returns a pre-signed URL
-
-```java
-public {{ObjectWrapper}}<{{MediaFileDetail}}> xMediaDetail(ID entityId) {
-    EntityName entity = getEntityName(entityId);
-
-    Set<XMedia> mediaFiles = entity.getXMediaCollection();
-    if (CollectionUtils.isEmpty(mediaFiles)) {
-        return {{objectFactory}}(null);   // absent is not an error; caller gets a null response
-    }
-
-    XMedia media = IterableUtils.get(mediaFiles, 0);
-    return {{objectFactory}}(mediaService.mediaFileDetail(media.getMediaFile()));
-}
-```
-
-(`IterableUtils` is from commons-collections4; without it, use `mediaFiles.iterator().next()`.)
-
-### Shared private `saveMediaFile`
-
-```java
-private {{MediaFile}} saveMediaFile(String objectKey) {
-    {{MediaFileCreateRequest}} request = {{MediaFileCreateRequest}}.builder()
-            // {{mediaCreateRequestFields}}, with the object key substituted
-            .withModuleName(<MediaConstants>.ENTITY_NAME)
-            .withFileUsage(<MediaConstants>.ENTITY_NAME_MEDIA)
-            .build();
-    return mediaService.save(request);
-}
-```
-
-Import every FQN used above from the profile, plus `java.util.HashSet`, `java.util.Objects`,
-`java.util.Set`, and `{{CollectionUtils}}`.
-
----
-
-## 5.7 Controller additions: two new endpoints
-
-Declare both in `EntityNameApi` with `@Operation` / `@ApiResponse` (200, 204, 404
-`ERROR_PREFIX_NOT_FOUND`, 503 `MEDIA_STORAGE_UNAVAILABLE`) and implement them in the controller:
-
-```java
-@GetMapping("{{urlPrefix}}/entity-names/{entityId}/media-name")
-@Override
-public {{ObjectWrapper}}<{{MediaFileDetail}}> xMediaDetail(@PathVariable ID entityId) {
-    return service.xMediaDetail(entityId);
-}
-
-@PatchMapping("{{urlPrefix}}/entity-names/{entityId}/media-name")
-@ResponseStatus(HttpStatus.NO_CONTENT)
-@Override
-public void manageXMedia(@PathVariable ID entityId,
-                         @RequestBody {{FileIdsPayload}} media) {
-    service.manageXMedia(entityId, media);
-}
-```
-
-Tests (in the entity's integration test class): attach, then detail (presence); delete-only
-request removes; an unknown entity → 404; a wrong role → 403.
-
-For the `media-name` URL segment, use the purpose or collection name in kebab-case
-(e.g. `cover-image`, `subject-icon`, `fee-receipt`).
-
-No `@Valid` on `{{FileIdsPayload}}`; the payload handles its own null-safety.
-
----
-
-## 5.8 The three-step frontend contract (for reference)
-
-1. **Get a pre-signed upload URL** from the project's upload-URL endpoint. The frontend receives
-   a URL plus form fields.
-2. **Upload directly to storage.** The backend isn't in this path.
-3. **Send `{{FileIdsPayload}}`**, either nested in the create/update payload OR directly to the
-   PATCH sub-resource endpoint, with `newIds` / `deletedIds` / `oldIds`.
-
----
-
-## Checklist
-
-- [ ] Media constants file has two new constants; the constraints config has a new `[N]` block whose `module`/`file-usage` match them; the entity has `add/remove` helpers
-- [ ] Payload has `{{FileIdsPayload}} xMediaPayload` (NOT a plain `String` key)
-- [ ] Mapper `toEntity` and `update` take `Set<{{MediaFile}}>` as a second parameter, with no storage logic inside the mapper
-- [ ] Service has `saveXMediaIfProvided` + `removeExistingXMediaIfRequested` private helpers, plus `manageXMedia` + `xMediaDetail` + `saveMediaFile`
-- [ ] `create` and `update` return `{{ObjectWrapper}}<EntityNameResponse>` wrapping `mapper.toResponse(...)`
-- [ ] `create` calls `saveXMediaIfProvided` before `mapper.toEntity`
-- [ ] `update` calls `removeExistingXMediaIfRequested`, then `saveXMediaIfProvided`, before `mapper.update`
-- [ ] `removeExistingXMediaIfRequested` guards with `{{skipDelete}}` (based on deletedIds), **never** `{{skipSave}}`
-- [ ] `manageXMedia` returns early only when there is nothing to save AND nothing to delete
-- [ ] `xMediaDetail` returns `{{ObjectWrapper}}<{{MediaFileDetail}}>`: it wraps `null` when the collection is empty and the detail otherwise
-- [ ] Controller `xMediaDetail` returns `service.xMediaDetail(entityId)` directly (no wrapping)
+# Media: records that carry files (Step 5)
+
+Applies when the entity's records carry uploaded files (a todo's attachments, a leave's documents)
+and the project has the `media` piece (`{{mediaApi}}` is not `none`). **The rules are house-review
+`media.md` (MEDIA-01…14)**; this file says what to generate. The upload itself (`POST /upload-urls`,
+the browser's PUT, verification, cleanup) is the media piece's job: generate nothing for it.
+
+**Golden code:** `~/.claude/skills-reference/src/main/java/com/example/app/media/api/`
+(`Uploads`, `UploadPurpose`, `MediaFileView`) and, for one owner, the todo attachments:
+`todo/domain/TodoAttachment`, the attachment fields of the todo create/update requests,
+`TodoService` (create and update), `TodoResponse` (`attachments`), their changeset and the
+attachment tests in `src/test/java/com/example/app/todo/`. Copy their shape; don't restate it here.
+
+Names below use `<X>` for the files' role on the entity (`Attachment`, `Document`, `Photo`).
+
+## What to generate
+1. **Purpose.** A new `UploadPurpose` constant (`<ENTITY>_<X>`, e.g. `TODO_ATTACHMENT`) with the
+   role that may upload for it (MEDIA-03, MEDIA-04), and a changeset (next free number) seeding its
+   `upload_policies` row: min/max size, min/max files, content types from `AllowedContentTypes`
+   only (MEDIA-09). Ask the user for the limits; never SVG, HTML or XML.
+2. **Link entity and changeset.** `<Entity><X>` (golden `TodoAttachment`): the owner's id → the
+   media file's id, both `@ManyToOne(fetch = LAZY)`, audit columns. Table `<entity>_<x>s` with
+   foreign keys to the owner and to `media_files` (named `fk_<table>_<column>`, each indexed),
+   `UNIQUE (media_file_id)` (one file, one record). A member of the owner's aggregate (ARCH-15): no
+   service or controller of its own.
+3. **Requests.**
+   - create: `List<String> <x>Keys` (the `uploadKey`s from `POST /upload-urls`);
+   - update: `List<String> add<X>Keys` and `List<UUID> remove<X>Ids` (MEDIA-07), never an
+     old/new/deleted list. Size bounds from configuration (`@ConfiguredMaxSize`), as for any list
+     field.
+4. **Service** (the owner's create and update, one transaction each, no S3 call: MEDIA-06):
+   1. the owner's own checks first (load, ownership 404, version 409, editable);
+   2. every `remove<X>Ids` entry must be one of this record's files (404
+      `<ENTITY>_<X>_NOT_FOUND`, golden `TODO_ATTACHMENT_NOT_FOUND`; refused, not ignored);
+   3. the count range from `Uploads.fileCountRange(purpose)`, only when the request changes files:
+      `minFiles ≤ current − removed + added ≤ maxFiles`, where `current` counts every linked file
+      whatever its status, else 400 `UPLOAD_FILE_COUNT_OUT_OF_RANGE` (create: `current` is 0);
+   4. `Uploads.claim(purpose, keys)` for the added keys **before any other change to the entity**
+      (409 `UPLOAD_NOT_AVAILABLE` on any key it can't claim: MEDIA-05): the claim is a native
+      query, and Hibernate flushes pending changes before it, which would advance the version
+      twice; then insert the link rows;
+   5. the field changes, advancing the owner's version even when only files changed, then flush
+      (MEDIA-07);
+   6. `Uploads.release` for the removed files after that flush (RELEASED; the cleanup job deletes
+      the objects: MEDIA-10) and delete their link rows. Deleting the entity releases all its
+      files.
+   If the entity has a step that needs complete files (submit, approve), that transition checks
+   every file is UPLOADED and answers 409; saving a draft doesn't (MEDIA-06).
+5. **Response.** `List<MediaFileView> <x>s` on the entity's response (id, file name, content type,
+   size, status, read URL), filled by `Uploads.describe` for the record's files in one batch (no
+   N+1: TEST-06). Never build a URL elsewhere (MEDIA-11). On lists, include the files only when
+   the golden list does.
+6. **ErrorCodes and messages:** none new; the media piece owns `UPLOAD_*` and
+   `MEDIA_STORAGE_UNAVAILABLE`. The API interface documents 400, 409 and 503 on create and update.
+
+## Tests (add to the entity's integration test class)
+Mirror the golden todo attachment tests. The S3-compatible server comes with the test base
+(Testcontainers, the media piece). Each refusal asserts its `errorCode` (TEST-08):
+- create with keys from `POST /upload-urls` (after the PUT): 201, the files in the response with
+  status and a working read URL;
+- count range on create and on update, both sides: `minFiles` and `maxFiles` accepted, one below
+  and one above 400 `UPLOAD_FILE_COUNT_OUT_OF_RANGE`; removing below the minimum refused unless
+  the same request adds enough; a MISSING file (set through `sql(...)`) still counts;
+- claim refusals, 409 `UPLOAD_NOT_AVAILABLE`: a key already attached (here or to another record),
+  another user's key, another purpose's key, an expired key, an unknown key; the record unchanged
+  after each;
+- a remove id that isn't this record's file is refused; another user's record is 404 (TEST-02);
+- remove: the file leaves the response and its row is RELEASED;
+- update with a stale version is 409 and attaches nothing; two concurrent file changes with one
+  version apply once (TEST-05);
+- the response's statement count stays constant with 1 and many files (TEST-06).

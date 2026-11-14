@@ -13,13 +13,20 @@
 #              common/ratelimit, config/RedisClientConfig, the Redis settings and Testcontainer
 #     example  the golden crud-gen module (todo lists and todos), for reference only
 #     metadata configuration metadata (a typed record per key, admin GET/PUT of fixed keys), gapless
-#              counters; with sign-in, also the ADMIN role and the test base's newAdmin()
+#              counters
+#     media    uploads straight to S3 with presigned PUTs: upload policies (admin PUT), upload URLs,
+#              the claim/release API for owning records, the verification and cleanup jobs; with the
+#              example, the todo's attachments
+#   metadata and media have admin endpoints: with sign-in, either brings the ADMIN role and the test
+#   base's newAdmin() (the "admin" markers).
 # Shared files (ErrorCode, messages, limits, db.yml, compose.yaml, .env.example, Role, test base,
 # ArchUnit) mark a piece's entries with "<piece>:begin" / "<piece>:end" comment lines (sign-in,
-# example, metadata): without that piece those blocks are left out. A file a piece names on its own
+# example, metadata, media, admin): without that piece those blocks are left out; blocks may nest
+# (a media block inside an example block arrives only with both). A file a piece names on its own
 # belongs to that piece, even inside a directory another piece copies (sign-in's rate limiter in
-# core's common/ and config/). The metadata piece's sample keys and their tests are example content:
-# they arrive only with both pieces.
+# core's common/ and config/, media's todo attachments in the example's todo/). Sample content of an
+# optional piece arrives only with the example too: the metadata piece's sample keys, the media
+# piece's purpose TODO_ATTACHMENT, and their tests.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,7 +42,7 @@ while [ $# -gt 0 ]; do
         --package) package="${2:-}"; shift 2 ;;
         --with) pieces="${2:-}"; shift 2 ;;
         --dry-run) dry_run=true; shift ;;
-        -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown option: $1 (see --help)" ;;
     esac
 done
@@ -50,6 +57,9 @@ reference_path="${REFERENCE_PACKAGE//.//}"
 package_path="${package//.//}"
 
 chosen_piece() { [[ ",$pieces," == *",$1,"* ]]; }
+
+# The ADMIN role (Role.ADMIN, its changeset, newAdmin()) comes with the first piece that has admin endpoints.
+admin_chosen() { chosen_piece metadata || chosen_piece media; }
 
 # Files per piece, relative to reference-app/. Directories are copied recursively.
 files_for() {
@@ -123,7 +133,34 @@ LIST
                 echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
             fi
             ;;
-        *) die "unknown piece: $1 (core, sign-in, example, metadata)" ;;
+        media) cat <<LIST
+src/main/java/$reference_path/media
+src/main/resources/config/media.yml
+src/main/resources/db/changelog/changes/0009-media-files.sql
+src/test/java/$reference_path/support/MediaStorageContainer.java
+src/test/java/$reference_path/media/api/FileCountRangeTest.java
+src/test/java/$reference_path/media/service/AllowedContentTypesTest.java
+src/test/java/$reference_path/media/service/MediaStorageTest.java
+src/test/java/$reference_path/media/service/MediaJobsIntegrationTest.java
+src/test/java/$reference_path/media/MediaFileIndexIntegrationTest.java
+LIST
+            # The todo's attachments, the purpose's seed row, and the tests that need the purpose.
+            if chosen_piece example; then cat <<LIST
+src/main/java/$reference_path/todo/domain/TodoAttachment.java
+src/main/java/$reference_path/todo/repository/TodoAttachmentRepository.java
+src/main/resources/db/changelog/changes/0010-todo-attachments.sql
+src/test/java/$reference_path/todo/TodoAttachmentsIntegrationTest.java
+src/test/java/$reference_path/media/UploadUrlIntegrationTest.java
+src/test/java/$reference_path/media/UploadPolicyIntegrationTest.java
+src/test/java/$reference_path/media/PresignedUploadIntegrationTest.java
+LIST
+            fi
+            # The policy admin API's role, unless the metadata piece already brings it.
+            if chosen_piece sign-in && ! chosen_piece metadata; then
+                echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
+            fi
+            ;;
+        *) die "unknown piece: $1 (core, sign-in, example, metadata, media)" ;;
     esac
 }
 
@@ -133,6 +170,7 @@ dependencies_for() {
         sign-in) echo "spring-boot-starter-data-redis, bucket4j_jdk17-core, bucket4j_jdk17-lettuce" ;;
         example) echo "(none beyond core)" ;;
         metadata) echo "(none beyond core)" ;;
+        media) echo "software.amazon.awssdk:s3, its version from software.amazon.awssdk:bom imported in dependencyManagement; test: the image versity/versitygw (a Testcontainers GenericContainer, no extra dependency)" ;;
     esac
 }
 
@@ -147,8 +185,8 @@ dest_for() {
 
 # Without an optional piece, its blocks in shared files are dropped; with it, only the marker lines.
 piece_filter_script=""
-for optional in sign-in example metadata; do
-    if chosen_piece "$optional"; then
+for optional in sign-in example metadata media admin; do
+    if { [ "$optional" = admin ] && admin_chosen; } || chosen_piece "$optional"; then
         piece_filter_script+="/$optional:\\(begin\\|end\\)/d;"
     else
         piece_filter_script+="/$optional:begin/,/$optional:end/d;"
@@ -180,10 +218,14 @@ IFS=',' read -r -a chosen <<< "$pieces"
 if [[ ",$pieces," == *",core,"* && ",$pieces," != *",sign-in,"* ]]; then
     echo "warning: core's integration tests sign users in through the sign-in piece; without it, adapt them" >&2
 fi
-if chosen_piece metadata && ! chosen_piece sign-in; then
-    echo "warning: the metadata admin API needs role ADMIN in the token's roles claim: map it from your identity provider" >&2
+if admin_chosen && ! chosen_piece sign-in; then
+    echo "warning: the metadata and upload-policy admin APIs need role ADMIN in the token's roles claim: map it from your identity provider" >&2
 fi
-named_files="$(for piece in core sign-in example metadata; do files_for "$piece"; done)"
+if chosen_piece media; then
+    echo "note: the media piece needs MEDIA_BUCKET and MEDIA_REGION, and S3 credentials from the AWS SDK's default chain (an IAM role in production)" >&2
+fi
+# Every file any piece can name, whatever was chosen: a directory copy never takes another piece's file.
+named_files="$(pieces=core,sign-in,example,metadata,media; for piece in core sign-in example metadata media; do files_for "$piece"; done)"
 named_alone() { grep -qxF "$1" <<< "$named_files"; }
 for piece in "${chosen[@]}"; do
     while IFS= read -r entry; do

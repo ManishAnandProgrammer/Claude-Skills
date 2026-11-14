@@ -62,7 +62,11 @@ class AdmissionControlFilterTest {
 
     private static RetryAfterProperties retryAfter() {
         RetryAfterProperties.Range busy = new RetryAfterProperties.Range(Duration.ofSeconds(1), Duration.ofSeconds(3));
-        return new RetryAfterProperties(busy, busy, busy, busy);
+        return new RetryAfterProperties(busy, busy, busy,
+                // media:begin
+                busy,
+                // media:end
+                busy);
     }
 
     private static MockHttpServletRequest request(String path) {

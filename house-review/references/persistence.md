@@ -74,7 +74,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     PostgreSQL the transaction is aborted, and the commit later throws
     `UnexpectedRollbackException`, which hides the cause;
   - no aspect or `finally` block runs SQL after an exception in the same transaction (incident
-    `VERSION-RACE-ANSWERS-500`: a 409 became a 500).
+    `VERSION-RACE-ANSWERS-500`: a 409 became a 500);
+  - any exception, unchecked included, that crosses a joined `@Transactional` boundary rolls back
+    the whole transaction. A write that must persist although the request is refused (a used
+    token's delete, a failed-attempt count) takes `noRollbackFor` on that exception or its own
+    transaction (DATA-03), and a test asserts the row, not only the status: a refused refresh
+    rolled back its own delete, so the token kept working.
 - **Not a finding when:** the catch calls `setRollbackOnly()` and rethrows, or uses its own
   savepoint or transaction.
 - **Severity:** High.
@@ -137,7 +142,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - no `READ_UNCOMMITTED` (PostgreSQL silently runs READ COMMITTED);
   - `REPEATABLE_READ` / `SERIALIZABLE` only with a retry on SQLSTATE `40001`, in a fresh
     transaction each time, and never on hot paths;
-  - point-in-time exports are the legitimate `REPEATABLE_READ` case.
+  - point-in-time exports are the legitimate `REPEATABLE_READ` case;
+  - reads that must agree (a total and its parts, a check and the rows it vouches for) come from
+    one statement: under READ COMMITTED each statement sees its own snapshot, so two queries can
+    disagree with each other.
 - **Severity:** Medium (High without the retry).
 
 ### DATA-22: Propagation pitfalls
@@ -170,7 +178,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - no entity loaded before it is mutated afterwards: it is detached, so the change is silently
     dropped;
   - bulk updates bypass entity methods, auditing, `@Version` and events, so the query sets
-    `version`, `updated_at` and the status guards itself;
+    `version`, `updated_at` and the status guards itself. Its `WHERE` repeats **every**
+    precondition the Java path checks, not only the one that selects the rows: a scheduled bulk
+    activation re-checked only the due time, so records went live without what activation
+    requires;
   - a conditional bulk update checks its row count and answers 409 on 0.
 - **Severity:** High.
 
@@ -216,6 +227,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Also:** a JSON column's content is a typed record where possible. Where a
   `Map` is unavoidable, its keys are named constants (one class of keys, never repeated string
   literals), and a closed set of values is an enum, so a typo can't write a key nobody reads.
+- **Also:** the stored JSON record, the wire DTO and the cross-module contract are three types,
+  mapped explicitly: when one type served as two, renaming a wire field orphaned every stored
+  document that used the old name.
 - **Not a finding when:** every `SqlTypes.JSON` attribute is a `String` the application maps with its
   own `JsonMapper` (Hibernate 7.4 passes a `String` through its format mapper untouched; verified
   2026-11-14): the reference's metadata piece does this.
@@ -230,7 +244,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 ### DATA-29: Locks, pollers and caps
 - **Check:**
   - advisory locks are transaction-scoped (`pg_advisory_xact_lock`) with a 64-bit key.
-    Session-level locks leak on pooled connections;
+    Session-level locks leak on pooled connections. Detect `hashtext(`: it is 32-bit, so unrelated
+    keys collide and wait on each other; use `hashtextextended(key, 0)`;
   - a "max N per parent" cap locks the parent before counting, or uses a constraint (incident R5:
     a cap of 5, and 6 created);
   - multi-row locks are taken in a consistent order (`ORDER BY id`, `order_updates=true`);
@@ -300,7 +315,11 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - business states are a status enum;
   - true removal is a hard `DELETE`, with an archive table when recovery or audit needs it;
   - personal data is truly deletable;
-  - a "hide" or "restore" flag that only filters lists is a disguised soft delete.
+  - a "hide" or "restore" flag that only filters lists is a disguised soft delete;
+  - a "trash with recover" feature is a status (`TRASHED`) plus a purge job that hard-deletes after
+    the window (OPS-03). Restoring re-checks the partial unique index's rule in the service and
+    answers its domain 409: the name may have been taken meanwhile, and the flush otherwise fails
+    with a generic duplicate error.
 - **Not a finding when:**
   - a documented legal retention (`{{retentionExceptions}}`); then the retained rows are
     partitioned;
@@ -324,7 +343,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     `@UuidGenerator`), not with a database `DEFAULT uuidv7()`: a database-generated id must be
     read back after each insert, which costs JDBC insert batching;
   - application-assigned ids are inserted with `persist`, not `save` (DATA-25);
-  - the id is never updatable: `@Column(updatable = false)`.
+  - the id is never updatable: `@Column(updatable = false)`;
+  - TSID needs a unique node id per instance, checked at startup (refuse to start without one when
+    several instances run), or use UUIDv7, which needs none: a node id set under a name the library
+    doesn't read left every instance on the same node.
 
   Random UUIDv4 is a finding.
 - **Severity:** Medium.
@@ -367,7 +389,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     contract that drifts); entities carry no length constants;
   - the length contract is the request's `@MaxLength` (REST-09, which also sets the severity of a
     missing limit);
-  - never `@Lob` (on PostgreSQL that's an `oid` large object).
+  - never `@Lob` (on PostgreSQL that's an `oid` large object);
+  - an `Instant` is truncated to microseconds (`truncatedTo(ChronoUnit.MICROS)`) before it is
+    stored or returned: PostgreSQL rounds nanoseconds, so a stamp sent before the read differs
+    from every later read of it;
+  - text keys that are sorted or compared like Java does (keyset cursors, codes) use
+    `COLLATE "C"`: a locale collation orders them differently and can change with the OS.
 - **Severity:** Medium for a `varchar(n)` column or a length constant on the entity.
 
 ### DATA-13: Migrations
@@ -377,8 +404,13 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - sequences and seed rows needed at runtime are created in migrations;
   - foreign keys are named `fk_<table>_<column>`;
   - Liquibase migrates the app's own database URL;
-  - *profile-optional:* the app uses a DML-only role, and Liquibase the owner role.
-- **Severity:** High for an edited applied changeset; Medium otherwise.
+  - *profile-optional:* the app uses a DML-only role, and Liquibase the owner role;
+  - a data migration checks that every row maps to the new shape and fails the changeset rather
+    than dropping or nulling the rows that don't.
+- **Detect:** an entity `@Index` or `@Table(uniqueConstraints = …)` that no changeset creates:
+  `ddl-auto: validate` doesn't check indexes, so a claimed unique index may never have existed.
+- **Severity:** High for an edited applied changeset, a data migration that drops rows, or a
+  claimed unique index that doesn't exist; Medium otherwise.
 
 ### DATA-14: Display codes come from sequences
 - **Check:** human-readable codes under a unique constraint come from a database sequence, never
@@ -414,3 +446,13 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Detect:** an owned child table whose parent FK is the parent id alone; a parent column on the
   child that is updatable with no owner check.
 - **Severity:** Medium (High when a cross-owner row would leak data, REST-16).
+
+### DATA-34: Values that stored records reference are retired, not deleted
+- **Check:** a reference value that stored rows point at (an option, a status, a category, a
+  type) is retired with a status (DATA-07: a business state, not a soft-delete flag): hidden from
+  pickers and new writes (REST-13 `status`), still resolved for the rows that use it. A hard
+  `DELETE` is only for a value nothing references yet.
+- **Why:** deleting a used value either fails on the foreign key or, where the reference is a code
+  in text or JSON, leaves old records pointing at nothing.
+- **Detect:** a `DELETE` endpoint on a lookup or option table; a stored code with no row behind it.
+- **Severity:** Medium (High when old records stop loading or lose their meaning).

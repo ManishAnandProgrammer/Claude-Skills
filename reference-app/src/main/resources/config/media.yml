@@ -1,0 +1,20 @@
+# Media uploads (the media piece): S3 or an S3-compatible store. Credentials come from the AWS SDK's
+# default provider chain (an IAM role in production), never from configuration.
+app:
+  media:
+    bucket: ${MEDIA_BUCKET}
+    region: ${MEDIA_REGION}
+    # Empty for AWS; an S3-compatible store's URL otherwise (tests, local development).
+    endpoint: ${MEDIA_ENDPOINT:}
+    # Bucket in the path instead of the host name: what most S3-compatible stores need.
+    path-style-access: ${MEDIA_PATH_STYLE_ACCESS:false}
+    # How long an issued upload URL accepts the PUT. The verification job checks a file only after it.
+    upload-url-expiry: 5m
+    # How long a read URL works; below the credentials' lifetime (a role's session), or it dies with them.
+    read-url-expiry: 1h
+    # How long after its upload URL expired a file can still be attached; then the cleanup job deletes it.
+    pending-lifetime: 1h
+    client:
+      # The whole call, retries included, and one attempt: the SDK sets neither by default.
+      api-call-timeout: 10s
+      api-call-attempt-timeout: 3s

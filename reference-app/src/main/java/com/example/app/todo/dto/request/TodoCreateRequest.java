@@ -34,6 +34,15 @@ public record TodoCreateRequest(
         @LatestDate("todo.due-date")
         LocalDate dueDate,
 
+        // media:begin
+        @Schema(description = """
+                uploadKeys from POST /upload-urls (purpose TODO_ATTACHMENT) of files you uploaded, to attach; \
+                null, absent or [] for none. Their number must be within the purpose's minFiles and maxFiles \
+                (GET /upload-policies).""",
+                example = "[\"TODO_ATTACHMENT/0b6f1c1e-3c55-4c3a-9b1e-5f0c2d7a8e41\"]")
+        Set<@NotBlank String> attachmentKeys,
+
+        // media:end
         @Schema(description = """
                 Ids of your tags to put on it, in any order, up to a configured maximum; null, absent or [] \
                 for none. A repeated id counts once. Later changes go through PUT /todos/{id}/tags.""",

@@ -56,7 +56,7 @@ class LimitsIntegrationTest extends IntegrationTest {
             if (field.isAnnotatedWith(ConfiguredMax.class)) {
                 checked++;
                 checkConfigured(missing, field.getAnnotationOfType(ConfiguredMax.class).value(),
-                        () -> limits.get(field.getAnnotationOfType(ConfiguredMax.class).value()));
+                        () -> limits.getLong(field.getAnnotationOfType(ConfiguredMax.class).value()));
             }
             if (field.isAnnotatedWith(ConfiguredMaxSize.class)) {
                 checked++;

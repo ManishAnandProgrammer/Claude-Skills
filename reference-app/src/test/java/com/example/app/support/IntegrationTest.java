@@ -22,9 +22,18 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+// media:begin
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+// media:end
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+// media:begin
+import java.util.Map;
+// media:end
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -129,7 +138,7 @@ public abstract class IntegrationTest {
                 read(login, "$.response.accessToken"), read(login, "$.response.refreshToken"));
     }
 
-    // metadata:begin
+    // admin:begin
     /** A signed-up user promoted to ADMIN (no endpoint grants it), signed in again so the token carries the role. */
     protected TestUser newAdmin() throws Exception {
         TestUser user = newUser();
@@ -138,8 +147,60 @@ public abstract class IntegrationTest {
         return new TestUser(user.id(), user.email(),
                 read(login, "$.response.accessToken"), read(login, "$.response.refreshToken"));
     }
-    // metadata:end
+    // admin:end
 
+    // media:begin
+    private static final HttpClient STORAGE_CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+    private static final String UPLOAD_URLS = "/api/v1/upload-urls";
+
+    /** One upload URL as {@code POST /upload-urls} answers it. */
+    protected record UploadUrl(String uploadKey, String url, Map<String, String> headers) {
+    }
+
+    /** Asks for one upload URL; fails the test unless it answers 201. */
+    protected UploadUrl uploadUrl(TestUser user, String purpose, String fileName, String contentType, long sizeBytes)
+            throws Exception {
+        ResultActions issued = postAs(user.accessToken(), UPLOAD_URLS, """
+                {"purpose": "%s", "files": [{"fileName": "%s", "contentType": "%s", "sizeBytes": %d}]}
+                """.formatted(purpose, fileName, contentType, sizeBytes)).andExpect(status().isCreated());
+        return new UploadUrl(read(issued, "$.response[0].uploadKey"), read(issued, "$.response[0].url"),
+                read(issued, "$.response[0].headers"));
+    }
+
+    /** PUTs {@code body} to a presigned URL with {@code headers}, as a browser would; the store's status. */
+    protected static int putToStorage(String url, Map<String, String> headers, byte[] body) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .PUT(HttpRequest.BodyPublishers.ofByteArray(body));
+        for (Map.Entry<String, String> header : headers.entrySet()) {
+            request.header(header.getKey(), header.getValue());
+        }
+        return STORAGE_CLIENT.send(request.build(), HttpResponse.BodyHandlers.discarding()).statusCode();
+    }
+
+    /** GETs a presigned URL, as a browser would. */
+    protected static HttpResponse<byte[]> getFromStorage(String url) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(10)).GET().build();
+        return STORAGE_CLIENT.send(request, HttpResponse.BodyHandlers.ofByteArray());
+    }
+
+    /** Uploads {@code body} as {@code user} for {@code purpose}; returns the upload key, ready to attach. */
+    protected String uploadedFile(TestUser user, String purpose, String fileName, String contentType, byte[] body)
+            throws Exception {
+        UploadUrl upload = uploadUrl(user, purpose, fileName, contentType, body.length);
+        assertThat(putToStorage(upload.url(), upload.headers(), body)).as("upload of " + fileName).isEqualTo(200);
+        return upload.uploadKey();
+    }
+
+    /** Sets a purpose's limits directly (no admin, no version check), for tests of how they are applied. */
+    protected void setUploadPolicy(String purpose, long minSizeBytes, long maxSizeBytes, int minFiles, int maxFiles) {
+        assertThat(sql("""
+                update upload_policies set min_size_bytes = ?, max_size_bytes = ?, min_files = ?, max_files = ?
+                where purpose = ?
+                """, minSizeBytes, maxSizeBytes, minFiles, maxFiles, purpose)).isEqualTo(1);
+    }
+
+    // media:end
     protected ResultActions signup(String email, String password) throws Exception {
         return postAs(null, "/api/v1/auth/signup", """
                 {"email": "%s", "fullName": "Test User", "password": "%s"}

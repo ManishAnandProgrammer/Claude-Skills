@@ -90,7 +90,7 @@ If it doesn't exist, build it before generating anything:
 ## Step 1: Read and analyse the entity
 
 Extract the class name, every field with its JPA annotations, the FK relations
-(`@ManyToOne` / `@OneToOne`), the module, the `{{dropdownAnnotation}}` and the media collection.
+(`@ManyToOne` / `@OneToOne`), the module, the `{{dropdownAnnotation}}` and whether its records carry uploaded files (Step 5).
 Derive `EntityName` / `entityName`, the URL path (kebab-case plural), and `ERROR_PREFIX`
 (UPPER_SNAKE, e.g. `TODO_LIST`). `ID` means `{{idType}}`.
 
@@ -313,8 +313,12 @@ Read `references/dropdown.md`. Golden: `TodoListRepositoryImpl.findDropdownItems
 
 ---
 
-## Step 5: Media (only with a media collection and a media profile)
-Read `references/media.md`.
+## Step 5: Media (only when the records carry files and the project has the `media` piece)
+Read `references/media.md`: a new `UploadPurpose` with its policy seed row, the link entity and
+its changeset, the `<x>Keys` / `add<X>Keys` / `remove<X>Ids` fields, the claim and release in the
+owner's own write, and the files in the response. Rules: house-review `media.md` (MEDIA-xx).
+Golden: the todo attachments (`TodoAttachment`, `TodoService`). Without the piece, offer
+`/crud-gen bootstrap` (never hand-write an upload flow).
 
 ## Step 6: Integration tests (always)
 Read `references/tests.md` and follow the golden test classes.

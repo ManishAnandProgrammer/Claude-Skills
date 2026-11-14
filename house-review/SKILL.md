@@ -22,6 +22,7 @@ The rules are fixed and identical across projects. They live in `references/`:
 | `references/error-contract.md` | ERR-xx | The house error contract (ErrorCode, mapper, ProblemDetail, 409 vs 400, 503 + Retry-After) |
 | `references/config-baseline.md` | CFG-xx | Hikari/JPA/PostgreSQL, server and threads, Jackson, actuator, logging, JVM |
 | `references/metadata.md` | META-xx | Configuration metadata and counters; only for projects with the `metadata` piece |
+| `references/media.md` | MEDIA-xx | File uploads to S3 (presigned URLs, purposes and policies, claim, verification, cleanup); only for projects with the `media` piece |
 
 Everything that differs between projects (conventions, thresholds, pagination style, token
 revocation, accepted deviations) is in the project profile, `.claude/review-profile.md`.
@@ -227,6 +228,8 @@ For every Critical and High finding (yours and the reviewers'):
   wrongly. Cite the method name when unsure of the line.
 - Prefer proof: a call path, a missing constraint in the migration, a failing test you can name.
 - Downgrade or drop anything you can't confirm. Keep "possible" findings only with a reason.
+- Look for the finding's twins: the single and batch endpoints, user and admin variants, copies of
+  the same logic. Report each one that shares the defect.
 
 Also check any number you report (counts of endpoints, tests, files) by recomputing it.
 
@@ -374,7 +377,10 @@ none (tracker only: the findings go to the tracker as in Step 7). Then:
 1. Fix them, following the rule's **Fix** guidance, the profile and CLAUDE.md. **Compliant code to
    follow** is the house reference application, `~/.claude/skills-reference` (its `common/` and
    `config/` for infrastructure, its `todo` module for a feature): when a fix has a counterpart
-   there, make the project's code match it rather than writing a new variant.
+   there, make the project's code match it rather than writing a new variant. Search for the
+   finding's twins (single and batch endpoints, user and admin variants, copies of the same logic)
+   and fix them too, or report them: a fixed single endpoint left its batch twin with the old
+   authorisation.
 2. Update the API-interface docs for every endpoint touched (REST-20).
 3. Add the missing tests from the report for the code you changed.
 4. Re-run the build and the full test suite.

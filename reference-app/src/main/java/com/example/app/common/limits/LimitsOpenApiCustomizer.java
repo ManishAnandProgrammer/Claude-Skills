@@ -50,7 +50,7 @@ class LimitsOpenApiCustomizer implements PropertyCustomizer, ParameterCustomizer
         if (annotation instanceof MaxLength maxLength) {
             schema.setMaxLength(limits.maxLength(maxLength.value()));
         } else if (annotation instanceof ConfiguredMax configuredMax) {
-            schema.setMaximum(BigDecimal.valueOf(limits.get(configuredMax.value())));
+            schema.setMaximum(BigDecimal.valueOf(limits.getLong(configuredMax.value())));
         } else if (annotation instanceof ConfiguredMaxSize configuredMaxSize) {
             schema.setMaxItems(limits.get(configuredMaxSize.value()));
         }

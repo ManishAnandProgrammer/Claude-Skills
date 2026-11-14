@@ -22,6 +22,10 @@ app:
       user.email: 254
       user.full-name: 100
       user.refresh-token: 100
+      # media:begin
+      media.file-name: 255
+      media.content-type: 100
+      # media:end
       # example:begin
       todo-list.name: 100
       todo.title: 200
@@ -29,6 +33,14 @@ app:
       tag.name: 50
       time-entry.note: 500
       # example:end
+    # media:begin
+    # Upload policies an admin may set (PUT /upload-policies/{purpose}).
+    upload-policy:
+      # One presigned PUT carries at most 5 GiB (S3's limit for a single upload).
+      max-size-bytes: 5368709120
+      max-files: 50
+      max-content-types: 20
+    # media:end
     # example:begin
     # Numbers the API accepts, by entity (@ConfiguredMax("<entity>.max-<field>") on request records).
     time-entry:
@@ -68,6 +80,9 @@ app:
     database-contention: { min: 1s, max: 3s }
     query-timeout: { min: 3s, max: 8s }
     database-unavailable: { min: 4s, max: 8s }
+    # media:begin
+    media-storage-unavailable: { min: 4s, max: 8s }
+    # media:end
   # sign-in:begin
   rate-limit:
     enabled: true

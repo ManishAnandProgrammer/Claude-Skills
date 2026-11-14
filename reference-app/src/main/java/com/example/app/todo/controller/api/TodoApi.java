@@ -26,6 +26,11 @@ import java.util.UUID;
 @Tag(name = "Todos", description = """
         The signed-in user's todos, the time logged on them (/todos/{todoId}/time-entries) and the tags \
         they carry (/todos/{id}/tags). Another user's todo, list or tag answers 404.""")
+// media:begin
+// The media codes are appended with "+" because a piece marker can't sit inside a text block, and
+// this file is copied with and without the media piece. Generated code knows whether a project has
+// media and writes each description as one text block.
+// media:end
 public interface TodoApi {
 
     @Operation(summary = "Your todos, in batches", description = """
@@ -67,12 +72,22 @@ public interface TodoApi {
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (see failed; tagIds over the maximum or holding null), REQUEST_UNREADABLE \
-            (a malformed id)""",
+            (a malformed id)"""
+            // media:begin
+            + "; UPLOAD_FILE_COUNT_OUT_OF_RANGE (attachmentKeys outside the purpose's minFiles and maxFiles)"
+            // media:end
+            ,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:begin
+    @ApiResponse(responseCode = "409", description = """
+            UPLOAD_NOT_AVAILABLE (an attachment key is unknown, another user's or purpose's, already attached \
+            or expired: upload the file again)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<TodoResponse> create(TodoCreateRequest request);
@@ -80,15 +95,31 @@ public interface TodoApi {
     @Operation(summary = "Edit a todo", description = """
             Replaces title, notes, priority, due date and list (a different list moves it). The \
             status changes only through PATCH .../status, the tags only through PUT .../tags. Send the \
-            version you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT.""")
+            version you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT."""
+            // media:begin
+            + " Files are added (addAttachmentKeys) and removed (removeAttachmentIds) here; a change of its files alone also increments the version."
+            // media:end
+            )
     @ApiResponse(responseCode = "200", description = "Updated; the version increments when something changed")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID"
+            // media:begin
+            + "; UPLOAD_FILE_COUNT_OUT_OF_RANGE (its files would end outside the purpose's minFiles and maxFiles)"
+            // media:end
+            ,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TODO_LIST_NOT_FOUND",
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TODO_LIST_NOT_FOUND"
+            // media:begin
+            + ", TODO_ATTACHMENT_NOT_FOUND (a removeAttachmentIds entry is not one of its files)"
+            // media:end
+            ,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
+    @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT"
+            // media:begin
+            + ", UPLOAD_NOT_AVAILABLE (an addAttachmentKeys entry can't be attached: upload the file again)"
+            // media:end
+            ,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

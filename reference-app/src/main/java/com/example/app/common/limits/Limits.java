@@ -25,6 +25,11 @@ public class Limits {
         return environment.getRequiredProperty(PREFIX + key, Integer.class);
     }
 
+    /** {@code app.limits.<key>} for a number that may exceed an int, e.g. a size in bytes. */
+    public long getLong(String key) {
+        return environment.getRequiredProperty(PREFIX + key, Long.class);
+    }
+
     /** {@code app.limits.text.<key>}, e.g. {@code todo.title}. */
     public int maxLength(String key) {
         return environment.getRequiredProperty(TEXT_PREFIX + key, Integer.class);

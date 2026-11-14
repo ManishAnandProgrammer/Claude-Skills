@@ -93,7 +93,7 @@ live there, not in the skills.
 ## Where things are
 - `house-review/SKILL.md`: the review process.
 - `house-review/references/`: the rules: rest-api, code-smells, java, persistence, lenses,
-  architecture, error-contract, config-baseline, metadata.
+  architecture, error-contract, config-baseline, metadata, media.
 - `house-review/DESIGN.md`: every decision behind the rules, and why.
 - `crud-gen/SKILL.md`: the generation steps; `crud-gen/references/`: bootstrap, tests,
   dropdown, media.

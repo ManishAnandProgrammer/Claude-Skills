@@ -28,7 +28,6 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.API_VERSION_UNSUPPORTED, HttpStatus.BAD_REQUEST);
         MAPPING.put(ErrorCode.REQUEST_INVALID, HttpStatus.BAD_REQUEST);
         MAPPING.put(ErrorCode.RESOURCE_NOT_FOUND, HttpStatus.NOT_FOUND);
-        MAPPING.put(ErrorCode.ILLEGAL_ARGUMENT, HttpStatus.BAD_REQUEST);
 
         MAPPING.put(ErrorCode.AUTHENTICATION_REQUIRED, HttpStatus.UNAUTHORIZED);
         MAPPING.put(ErrorCode.ACCESS_DENIED, HttpStatus.FORBIDDEN);
@@ -54,6 +53,14 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.METADATA_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.METADATA_KEY_TAKEN, HttpStatus.CONFLICT);
         // metadata:end
+        // media:begin
+        MAPPING.put(ErrorCode.UPLOAD_POLICY_NOT_FOUND, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.UPLOAD_SIZE_OUT_OF_RANGE, HttpStatus.BAD_REQUEST);
+        MAPPING.put(ErrorCode.UPLOAD_TYPE_NOT_ALLOWED, HttpStatus.BAD_REQUEST);
+        MAPPING.put(ErrorCode.UPLOAD_FILE_COUNT_OUT_OF_RANGE, HttpStatus.BAD_REQUEST);
+        MAPPING.put(ErrorCode.UPLOAD_NOT_AVAILABLE, HttpStatus.CONFLICT);
+        MAPPING.put(ErrorCode.MEDIA_STORAGE_UNAVAILABLE, HttpStatus.SERVICE_UNAVAILABLE);
+        // media:end
         // example:begin
         MAPPING.put(ErrorCode.TODO_LIST_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TODO_LIST_NAME_TAKEN, HttpStatus.CONFLICT);
@@ -63,6 +70,9 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.TIME_ENTRY_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TAG_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TAG_NAME_TAKEN, HttpStatus.CONFLICT);
+        // media:begin
+        MAPPING.put(ErrorCode.TODO_ATTACHMENT_NOT_FOUND, HttpStatus.NOT_FOUND);
+        // media:end
         // example:end
     }
 

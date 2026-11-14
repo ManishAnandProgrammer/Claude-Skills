@@ -185,6 +185,14 @@ Within a module as well as across modules.
   in a comment).
 - **Severity:** High.
 
+### ARCH-17: State a later request depends on is shared
+- **Check:** when `{{instances}}` is `multiple`, state that one request writes and a later request
+  reads (a plan to confirm, a pending challenge, an allowance, a draft) lives in the database or
+  Redis. Otherwise the flow is declared single-instance in the profile.
+- **Why:** the next request lands on another instance and finds nothing, or a different value.
+- **Detect:** a `Map` or local cache field written in one endpoint and read in another (PERF-05).
+- **Severity:** High (Medium while the deployment is single-instance by decision).
+
 ---
 
 ## Enforcing with ArchUnit (house recommendation)

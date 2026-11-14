@@ -55,11 +55,10 @@ the generic text.
 | `DataIntegrityViolationException`, unique violation | 409 | `DUPLICATE_RECORD`, or **the domain code** when the constraint name maps to one | DEBUG |
 | `DataIntegrityViolationException`, other | 500 | `DATA_INTEGRITY_ERROR` | ERROR |
 | `ObjectOptimisticLockingFailureException` (or a known version constraint) | 409 | `OPTIMISTIC_LOCK_CONFLICT` | DEBUG |
-| `IllegalArgumentException` | 400 | `ILLEGAL_ARGUMENT` | DEBUG |
 | Transient database failure (ERR-03) | 503 + `Retry-After` | per kind | WARN (ERROR + stack for query timeout) |
 | A downstream service didn't answer (SDK client error or 5xx, AI provider, circuit breaker open) | 503 + jittered `Retry-After` | `<DEPENDENCY>_UNAVAILABLE` | WARN without stack, and counted on a metric |
 | Any other exception `ResponseEntityExceptionHandler` handles (406, a missing header, an async timeout, `ResponseStatusException`, ...) | its status | a specific code where one exists, else by status class: 404 `RESOURCE_NOT_FOUND`, other 4xx `REQUEST_INVALID`, 5xx `UNEXPECTED_ERROR` with the generic detail; `ConversionNotSupportedException` (a 500) before its parent `TypeMismatchException` | 5xx: ERROR with stack |
-| Anything else | 500 | `UNEXPECTED_ERROR`, generic detail | ERROR with stack |
+| Anything else, `IllegalArgumentException` included (ERR-04) | 500 | `UNEXPECTED_ERROR`, generic detail | ERROR with stack |
 
 A downstream **4xx** answered to *our* request (for example S3's 403 for our credentials) is our
 fault, so it answers 500, not 503.
@@ -94,6 +93,15 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
 - Lookups: `repository.findById(id).orElseThrow(AppException.supply(X_NOT_FOUND, id))`.
 - `IllegalStateException` only for impossible states (JAVA-20); anything a client can cause is an
   `AppException` with an ErrorCode.
+- Code that rejects a user-supplied value throws a client error on purpose: an `AppException` with
+  its own ErrorCode, or bean validation (400 with a specific code). The handler doesn't map
+  `IllegalArgumentException` to 400: it can't tell a bad payload from bad internal data, so an IAE
+  reaching it is a programmer or data error and answers 500, logged at ERROR with the stack (at
+  DEBUG as a 400, such bugs went unseen). Spring's own parsing errors (type mismatch, an invalid
+  API version, ...) keep their 400 codes (ERR-02).
+- An error message echoes back only bounded input: names and values from the request are
+  truncated and their count capped, or a large body full of unknown fields comes back whole in the
+  error.
 - A new `ErrorCode` needs, in the same change:
   - a mapper entry;
   - a message in every `message_*.properties`;
@@ -119,3 +127,5 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
   copied into `detail` for a 5xx or a database exception.
 - Exception classes that differ only by name.
 - No transient-failure classification: pool exhaustion and timeouts answer 500.
+- `@ExceptionHandler(IllegalArgumentException.class)` answering a 4xx; `throw new
+  IllegalArgumentException` on a value that came from the request (ERR-04; Medium).

@@ -22,6 +22,20 @@ app:
   # sign-in:end
   admission:
     max-concurrent: 200
+  # media:begin
+  # The S3-compatible store runs in Testcontainers (TestcontainersConfiguration sets the endpoint and
+  # the SDK's credentials); its bucket is created there.
+  media:
+    bucket: test-media
+    region: us-east-1
+    path-style-access: true
+  # The jobs run only when a test calls them, never on their own in the middle of another test.
+  jobs:
+    media-verification:
+      cron: "-"
+    media-cleanup:
+      cron: "-"
+  # media:end
 springdoc:
   api-docs:
     enabled: true

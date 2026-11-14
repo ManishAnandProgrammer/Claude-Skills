@@ -1,5 +1,8 @@
 package com.example.app.todo.mapper;
 
+// media:begin
+import com.example.app.media.api.MediaFileView;
+// media:end
 import com.example.app.todo.domain.Tag;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.domain.TodoList;
@@ -41,7 +44,11 @@ public class TodoMapper {
         todo.setDueDate(request.dueDate());
     }
 
-    public TodoResponse toResponse(Todo todo, List<TodoTagResponse> tags) {
+    public TodoResponse toResponse(Todo todo,
+                                   // media:begin
+                                   List<MediaFileView> attachments,
+                                   // media:end
+                                   List<TodoTagResponse> tags) {
         return new TodoResponse(
                 todo.getId(),
                 todo.getTodoList().getId(),
@@ -53,6 +60,9 @@ public class TodoMapper {
                 todo.getDueDate(),
                 todo.getCompletedAt(),
                 tags,
+                // media:begin
+                attachments,
+                // media:end
                 todo.getCreatedAt(),
                 todo.getUpdatedAt(),
                 todo.getCreatedBy(),

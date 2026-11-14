@@ -21,6 +21,9 @@ import org.hibernate.annotations.OptimisticLock;
 
 import java.time.Instant;
 import java.time.LocalDate;
+// media:begin
+import java.util.Collection;
+// media:end
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -85,6 +88,19 @@ public class Todo extends AuditableEntity {
     @OptimisticLock(excluded = false)
     @OneToMany(mappedBy = "todo", cascade = {CascadeType.PERSIST, CascadeType.REMOVE}, orphanRemoval = true)
     private Set<TodoTag> tagLinks = new HashSet<>();
+    // media:begin
+
+    /**
+     * Its files, changed only through {@link #attach} and {@link #detach}. Like the tags, a change bumps
+     * the version: two concurrent changes of its files can't both pass the count check. Read through
+     * queries (TodoService).
+     */
+    @Getter(AccessLevel.NONE)
+    @Builder.Default
+    @OptimisticLock(excluded = false)
+    @OneToMany(mappedBy = "todo", cascade = {CascadeType.PERSIST, CascadeType.REMOVE}, orphanRemoval = true)
+    private Set<TodoAttachment> attachmentLinks = new HashSet<>();
+    // media:end
 
     public void moveTo(TodoList target) {
         if (!target.getOwnerId().equals(ownerId)) {
@@ -118,6 +134,20 @@ public class Todo extends AuditableEntity {
         return tagLinks.stream().map(link -> link.getTag().getId()).collect(Collectors.toSet());
     }
 
+    // media:begin
+    /** Attaches files the media module has just claimed for this todo. */
+    public void attach(Collection<UUID> mediaFileIds) {
+        for (UUID mediaFileId : mediaFileIds) {
+            attachmentLinks.add(TodoAttachment.builder().todo(this).mediaFileId(mediaFileId).build());
+        }
+    }
+
+    /** Takes the files off; the service releases them in the media module. */
+    public void detach(Collection<UUID> mediaFileIds) {
+        attachmentLinks.removeIf(link -> mediaFileIds.contains(link.getMediaFileId()));
+    }
+
+    // media:end
     /** Asking for the status it already has changes nothing, so the request is idempotent. */
     public void changeStatus(TodoStatus target, Instant now) {
         if (status == target) {

@@ -53,8 +53,23 @@ is code-smells.md, java.md and architecture.md.
   - hostile text follows the REST-10 policy;
   - validators actually handle the field's type;
   - no internals in error bodies;
-  - strict JSON input (CFG-05).
+  - strict JSON input (CFG-05);
+  - the input grammar is owned: what is valid is a product decision pinned by tests, and only what
+    every layer (Java, the database, the client) reads alike is accepted. Never delegated to a
+    library's parser: one widened what it accepts in a minor release, and Unicode digits passed
+    Java but failed in PostgreSQL;
+  - no regex with overlapping quantifiers (`(a+)+`, `(\w|\d)*`) on user input: one long input
+    takes quadratic or exponential time (REL-05).
 - **Severity:** Critical (SQL) / High.
+
+### SEC-06: "Unknown" is a refusal
+- **Check:** a security predicate that can't decide (a missing claim, an absent row, a null, an
+  unparsable value) refuses. A failing dependency answers 503 (DATA-17), never "allowed".
+- **Why:** a token without the user-id claim skipped the lock and token-version checks, so it
+  outlived both.
+- **Detect:** `orElse(true)` or `return true` in a permission or state check; a check guarded by
+  `if (claim != null)`; a `catch` that lets the request through.
+- **Severity:** Critical when a refused caller gets in; otherwise High.
 
 ---
 
@@ -96,8 +111,25 @@ is code-smells.md, java.md and architecture.md.
   - CPU work and uploads run with no transaction;
   - exact counts over large sets are capped ("10,000+") and computed once per filter set
     (F-079: p50 of 3.4 s from exact counts);
-  - export and report row caps exist.
+  - export and report row caps exist;
+  - CSV is written with a library (Commons CSV, Jackson CSV), never hand-quoted, and a cell
+    starting with `=`, `+`, `-`, `@`, tab or CR is neutralised (prefixed with `'`): a spreadsheet
+    runs it as a formula;
+  - the export is written to a temporary file and sent once complete: streamed straight to the
+    client, a failure halfway delivers a truncated file that looks complete.
 - **Severity:** Medium (High on growing tables).
+
+### PERF-05: Caches stay correct
+- **Check:**
+  - eviction happens after commit: `@CacheEvict` on a transactional method runs before the commit
+    unless the cache manager is transaction-aware (`TransactionAwareCacheManagerProxy`), so a
+    read in between reloads the old value and keeps it;
+  - a local (per-instance) cache of mutable data is refused at startup when `{{instances}}` is
+    `multiple`, unless its staleness bound is stated and accepted (REST-13, ARCH-17): an eviction
+    reaches only its own instance;
+  - loader-based, not check-then-put (CONC-01).
+- **Not a finding when:** immutable values keyed by id: they need no eviction.
+- **Severity:** Medium (High when a stale value is a security fact, REST-15).
 
 ---
 
@@ -183,7 +215,9 @@ is code-smells.md, java.md and architecture.md.
   - a rejection policy is set;
   - async executors propagate the MDC (`TaskDecorator`).
 - **Not a finding when:** a virtual-thread-per-task executor whose downstream is already
-  bounded. Don't recommend lowering `max-connections` or using platform threads for Tomcat.
+  bounded **and** whose backlog is bounded too (rejected past a limit) or held as a durable pending
+  row with a backlog gauge: a semaphore bounds concurrency, not the queue, so parked threads hold
+  the work in memory and lose it on shutdown. Don't recommend lowering `max-connections` or using platform threads for Tomcat.
 - **Severity:** High.
 
 ### REL-10: Outages answer 503 + Retry-After, never 500 or 401
@@ -203,7 +237,8 @@ is code-smells.md, java.md and architecture.md.
 ### REL-11: Writes that clients retry are idempotent
 - **Check:** a POST a client may retry after a 503 or timeout has an `Idempotency-Key` or a
   natural or client-chosen key, and replays the stored result. "A `JDBCConnectionException`
-  during COMMIT… maps to 503, but the commit may have landed."
+  during COMMIT… maps to 503, but the commit may have landed." Clients choose idempotency keys,
+  never primary keys that carry meaning: a client-chosen time-ordered id allowed backdating.
 - **Severity:** Medium (High on payment or submission paths).
 
 ### REL-12: Paid or quota-bearing calls
@@ -215,7 +250,9 @@ is code-smells.md, java.md and architecture.md.
 
 ### REL-13: Graceful shutdown
 - **Check:** `server.shutdown: graceful`; `timeout-per-shutdown-phase` covers the normal request and
-  job, and the container's stop grace is longer than it. Executors wait with a bound. Claims and
+  job, and the container's stop grace is longer than the drain plus every executor's
+  `awaitTermination` that runs after it, in sequence: a 10 s phase and two 10 s waits were killed
+  by Docker's default 10 s grace. Executors wait with a bound. Claims and
   leases stay consistent on SIGTERM.
 - **Not a finding when:** the drain is shorter than a rare worst-case request **by decision** (house
   default 30 s: the load balancer times out around 60 s anyway, and a short predictable drain is

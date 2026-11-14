@@ -62,7 +62,8 @@ and this table disagree, the table wins (and the golden class is a bug to report
 | 28 | `everyScopedOrderReadsAnIndexInOrder` | for each offered order × scoping filter: `EXPLAIN` (with `enable_seqscan = off`) on seeded rows contains the intended index **by name**. Golden: `TodoIndexIntegrationTest` | DATA-10 |
 | 29 | Variant N (golden `TodoTagsIntegrationTest`) | max and max + 1 on create and the link PUT; a repeated id counts once; unknown and foreign ids 404 on both; a malformed id 400 without internals; stale version, missing fields, no token; the version moves only when the set changes; A's PUT leaves the links and refuses `<b>Ids`; list rows and the `<b>Id` filter, a cursor walk under the filter, 2 statements; both deletes (cascade keeps A and its version, or `*_IN_USE`); the gated race of link writes against B's delete (presence in the responses, then absence); concurrent link PUTs apply once; a rename of B isn't blocked; the composite FK refusing a cross-owner link through `sql(...)`; `maxItems` in the docs | TEST-05, DATA-05 |
 
-Dropdown: add the tests from `references/dropdown.md`. Variant B replaces 2, 6 and 16–18 with:
+Dropdown: add the tests from `references/dropdown.md`. Files (media piece): add the tests from
+`references/media.md`. Variant B replaces 2, 6 and 16–18 with:
 GET before create (null object), PUT create, PUT replace, and GET for an unknown parent.
 
 Per-context configuration (metadata piece, `GET/PUT /<contexts>/{id}/<configuration>`): GET and PUT

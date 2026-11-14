@@ -10,7 +10,11 @@ The house reference application: real, building, tested code that the skills cop
     `common/ratelimit`, `config/RedisClientConfig`, the Redis settings, compose service and
     Testcontainer); without it, core keeps only `RateLimitExceededException` (the 429);
   - `metadata` (optional): configuration metadata and gapless counters;
+  - `media` (optional): uploads straight from the browser to S3 with presigned PUTs (the `media`
+    module: upload policies, upload URLs, the `Uploads` claim/release API, the verification and
+    cleanup jobs); with the example, the todo's attachments;
   - `example` (reference only): the `todo` module below.
+  - `metadata` and `media` have admin endpoints: with `sign-in`, either brings the `ADMIN` role.
 - The `todo` module is the **golden crud-gen output**: what a generated entity looks like, with its
   tests. crud-gen generates like it; house-review cites it as compliant code.
 - Skills find it at `~/.claude/skills-reference` (linked by the installers).
@@ -26,7 +30,9 @@ JDK 25 and Docker (Testcontainers):
 ./mvnw -B verify                    # or: sg docker -c "./mvnw -B verify"
 ```
 `../scripts/verify.sh` builds this project **and** fresh bootstrap copies of it (core with sign-in;
-with the example and metadata; metadata without the example; core alone), then starts the image.
+with the example and metadata; metadata without the example; media without the example; the example
+with media; core alone), then starts the image. The media tests run an S3-compatible store
+(`versity/versitygw`) in Testcontainers.
 Run it before pushing: the pre-push hook only checks that it passed on exactly this code, since the
 repository is private and has no CI.
 

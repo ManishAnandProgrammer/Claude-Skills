@@ -32,9 +32,17 @@ class AggregateArchTest {
             new Aggregate("ConfigurationMetadata", "MetadataService", List.of()),
             new Aggregate("Counter", "CounterService", List.of()),
             // metadata:end
+            // media:begin
+            new Aggregate("MediaFile", "MediaFileService", List.of()),
+            new Aggregate("UploadPolicy", "UploadPolicyService", List.of()),
+            // media:end
             // example:begin
             new Aggregate("TodoList", "TodoListService", List.of()),
-            new Aggregate("Todo", "TodoService", List.of("TimeEntry", "TodoTag")),
+            new Aggregate("Todo", "TodoService", List.of(
+                    // media:begin
+                    "TodoAttachment",
+                    // media:end
+                    "TimeEntry", "TodoTag")),
             new Aggregate("Tag", "TagService", List.of()),
             // example:end
             new Aggregate("RefreshToken", "TokenService", List.of()));

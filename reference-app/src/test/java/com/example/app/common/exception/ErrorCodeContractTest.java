@@ -40,7 +40,11 @@ class ErrorCodeContractTest {
     @DisplayName("Every 503 code has a Retry-After range, so the client is told when to come back")
     void every503HasARetryAfterRange(ErrorCode code) {
         RetryAfterProperties.Range range = new RetryAfterProperties.Range(Duration.ofSeconds(1), Duration.ofSeconds(3));
-        RetryAfterProperties retryAfter = new RetryAfterProperties(range, range, range, range);
+        RetryAfterProperties retryAfter = new RetryAfterProperties(range, range, range,
+                // media:begin
+                range,
+                // media:end
+                range);
 
         assertThat(retryAfter.rangeFor(code).isPresent())
                 .isEqualTo(ErrorCodeHttpStatusMapper.resolve(code) == HttpStatus.SERVICE_UNAVAILABLE);

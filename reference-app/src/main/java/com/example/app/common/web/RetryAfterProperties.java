@@ -20,6 +20,9 @@ import java.util.concurrent.ThreadLocalRandom;
 public record RetryAfterProperties(@Valid @NotNull Range serverBusy,
                                    @Valid @NotNull Range databaseContention,
                                    @Valid @NotNull Range queryTimeout,
+                                   // media:begin
+                                   @Valid @NotNull Range mediaStorageUnavailable,
+                                   // media:end
                                    @Valid @NotNull Range databaseUnavailable) {
 
     /**
@@ -32,6 +35,9 @@ public record RetryAfterProperties(@Valid @NotNull Range serverBusy,
             case DATABASE_CONTENTION -> Optional.of(databaseContention);
             case QUERY_TIMEOUT -> Optional.of(queryTimeout);
             case DATABASE_UNAVAILABLE -> Optional.of(databaseUnavailable);
+            // media:begin
+            case MEDIA_STORAGE_UNAVAILABLE -> Optional.of(mediaStorageUnavailable);
+            // media:end
             default -> Optional.empty();
         };
     }

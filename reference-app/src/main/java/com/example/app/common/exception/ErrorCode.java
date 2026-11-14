@@ -27,7 +27,6 @@ public enum ErrorCode {
     /** Any other refusal of the request's form that has no more specific code. */
     REQUEST_INVALID,
     RESOURCE_NOT_FOUND,
-    ILLEGAL_ARGUMENT,
 
     // ── Security ─────────────────────────────────────────────────────────
     AUTHENTICATION_REQUIRED,
@@ -61,6 +60,20 @@ public enum ErrorCode {
     METADATA_NOT_FOUND,
     METADATA_KEY_TAKEN,
     // metadata:end
+    // media:begin
+
+    // ── Media uploads ────────────────────────────────────────────────────
+    /** The purpose is declared in {@code UploadPurpose}, but its policy row was never seeded. */
+    UPLOAD_POLICY_NOT_FOUND,
+    UPLOAD_SIZE_OUT_OF_RANGE,
+    UPLOAD_TYPE_NOT_ALLOWED,
+    /** Too many files in one request, or a record's files outside the purpose's range after a change. */
+    UPLOAD_FILE_COUNT_OUT_OF_RANGE,
+    /** Unknown, someone else's, another purpose's, already used or expired: deliberately one code. */
+    UPLOAD_NOT_AVAILABLE,
+    /** The object store (or its credentials source) didn't answer. */
+    MEDIA_STORAGE_UNAVAILABLE,
+    // media:end
     // example:begin (the golden todo module; bootstrap-copy.sh leaves it out of real projects)
 
     // ── TodoList ─────────────────────────────────────────────────────────
@@ -78,5 +91,11 @@ public enum ErrorCode {
     // ── Tag ──────────────────────────────────────────────────────────────
     TAG_NOT_FOUND,
     TAG_NAME_TAKEN,
+    // media:begin
+
+    // ── Todo attachments ─────────────────────────────────────────────────
+    /** A removeAttachmentIds entry that is not one of this todo's files. */
+    TODO_ATTACHMENT_NOT_FOUND,
+    // media:end
     // example:end
 }

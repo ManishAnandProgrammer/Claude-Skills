@@ -1,5 +1,8 @@
 package com.example.app.todo.dto.response;
 
+// media:begin
+import com.example.app.media.api.MediaFileView;
+// media:end
 import com.example.app.todo.domain.TodoPriority;
 import com.example.app.todo.domain.TodoStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -21,6 +24,9 @@ public record TodoResponse(
         @Schema(description = "Due date", example = "2026-11-20") LocalDate dueDate,
         @Schema(description = "When it was marked done; empty while OPEN") Instant completedAt,
         @Schema(description = "Its tags, in the order they were created; empty for none") List<TodoTagResponse> tags,
+        // media:begin
+        @Schema(description = "Its files, in the order they were uploaded; empty for none") List<MediaFileView> attachments,
+        // media:end
         @Schema(description = "When it was created") Instant createdAt,
         @Schema(description = "When it last changed") Instant updatedAt,
         @Schema(description = "Who created it") UUID createdBy,

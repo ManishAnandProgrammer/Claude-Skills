@@ -15,6 +15,9 @@ spring:
       - classpath:config/observability.yml
       - classpath:config/limits.yml
       - classpath:config/jobs.yml
+      # media:begin
+      - classpath:config/media.yml
+      # media:end
 
 app:
   # The profiles this application may run with; startup fails on any other, or none.

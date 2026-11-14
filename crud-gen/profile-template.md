@@ -85,22 +85,9 @@ Fill values from the codebase, not from memory.
 
 ## Media
 
-Set every key to `none` if the project has no file/media module.
-
 | Key | Value | Notes |
 |---|---|---|
-| `MediaFile` | `none` | FQN of the persisted media-file entity (e.g. `MediaFileS3`) |
-| `FileIdsPayload` | `none` | FQN of the payload carrying `newIds` / `deletedIds` / `oldIds` |
-| `MediaFileDetail` | `none` | FQN of the response DTO with a pre-signed/download URL |
-| `MediaService` | `none` | FQN of the service with `save(request)` and `mediaFileDetail(mediaFile)` |
-| `MediaFileCreateRequest` | `none` | FQN of the create-request builder passed to `MediaService.save` |
-| `mediaCreateRequestFields` | `none` | Builder calls to make, e.g. `.withS3ObjectKey(key).withOwnerId(CurrentUserDetailProvider.authUserId().toString()).withTenantId(Objects.requireNonNull(TenantContext.getTenantId()))` plus their imports |
-| `skipSave` | `none` | Null-safe static check "nothing to save" (on `newIds`), e.g. `FileIdsPayloadS3Utils.skipSavingInS3` |
-| `skipDelete` | `none` | Null-safe static check "nothing to delete" (on `deletedIds`), e.g. `FileIdsPayloadS3Utils.skipDeletingInS3` |
-| `mediaConstants` | `none` | File + class for module-name / file-usage constants, e.g. `src/main/java/.../S3RelatedConstants.java` |
-| `mediaConstraintsConfig` | `none` | Config file + key prefix for media constraints, e.g. `src/main/resources/application.properties`, `media-file.constraints[N]` |
-| `mediaObjectKeyGetter` | `none` | Getter on `MediaFile` for the object key, e.g. `getS3ObjectKey` |
-| `mediaVerify` | `none` | Storage check run **before** the transaction when `MediaService.save` talks to storage (media.md); `none` if `save` only records rows |
+| `mediaApi` | `none` | Package of the media piece's facade (`Uploads`, `UploadPurpose`, `MediaFileView`), e.g. `com.example.media.api`; `none` without the `media` piece (references/media.md) |
 
 ## Deviations
 
@@ -124,6 +111,6 @@ These override the skill's defaults. Leave empty to follow the pattern exactly.
 - `CollectionUtils` = Spring's → `isNotEmpty(x)` becomes `!CollectionUtils.isEmpty(x)`.
 - `Limits` missing → run `/crud-gen bootstrap` (never fall back to literal `@Size(max = N)`).
 - `modules` `none` → no `{module}` segment; Step 1's module paragraph is skipped.
-- Media `none` → Step 5 skipped. Dropdown types missing → run `/crud-gen bootstrap` (never invent
+- `mediaApi` `none` → Step 5 skipped (offer bootstrap's `media` piece when the records carry files). Dropdown types missing → run `/crud-gen bootstrap` (never invent
   a per-entity dropdown shape).
 - No response wrapper in the project → ask the user (create minimal wrappers vs. return DTOs).

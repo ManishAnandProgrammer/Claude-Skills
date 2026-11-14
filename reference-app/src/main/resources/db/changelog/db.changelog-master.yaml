@@ -23,3 +23,9 @@ databaseChangeLog:
   - include:
       file: changes/0008-configuration-metadata.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/0009-media-files.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0010-todo-attachments.sql
+      relativeToChangelogFile: true

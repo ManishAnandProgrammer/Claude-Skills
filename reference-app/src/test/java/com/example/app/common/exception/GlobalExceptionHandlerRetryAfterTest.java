@@ -26,7 +26,11 @@ class GlobalExceptionHandlerRetryAfterTest {
     private static final RetryAfterProperties.Range UNAVAILABLE = range(4, 8);
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler(messages(), new ProblemTypes("reference"),
-            new RetryAfterProperties(BUSY, range(1, 3), range(3, 8), UNAVAILABLE), new ConstraintViolationCodes(List.of()));
+            new RetryAfterProperties(BUSY, range(1, 3), range(3, 8),
+                    // media:begin
+                    range(4, 8),
+                    // media:end
+                    UNAVAILABLE), new ConstraintViolationCodes(List.of()));
     private final WebRequest request = new ServletWebRequest(new MockHttpServletRequest("GET", "/api/v1/todos"));
 
     private static RetryAfterProperties.Range range(long minSeconds, long maxSeconds) {

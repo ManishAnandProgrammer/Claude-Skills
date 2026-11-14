@@ -11,3 +11,16 @@ app:
       # Tokens are deleted this long after they expired.
       keep-after-expiry: 1d
       batch-size: 1000
+    # media:begin
+    # Confirms attached files whose upload URL has expired: present -> UPLOADED, absent -> MISSING.
+    media-verification:
+      cron: "0 */5 * * * *"
+      batch-size: 200
+      # A batch is this instance's for this long (lease_until); a crashed instance's rows are taken over after it.
+      lease: 5m
+    # Deletes removed files and never-attached uploads from storage, then their rows.
+    media-cleanup:
+      cron: "0 20 * * * *"
+      batch-size: 200
+      lease: 5m
+    # media:end

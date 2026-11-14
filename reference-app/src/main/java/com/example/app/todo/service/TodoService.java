@@ -7,6 +7,11 @@ import com.example.app.common.pagination.Paging;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
+// media:begin
+import com.example.app.media.api.MediaFileView;
+import com.example.app.media.api.UploadPurpose;
+import com.example.app.media.api.Uploads;
+// media:end
 import com.example.app.todo.domain.Tag;
 import com.example.app.todo.domain.TimeEntry;
 import com.example.app.todo.domain.Todo;
@@ -25,6 +30,9 @@ import com.example.app.todo.dto.response.TodoSummaryResponse;
 import com.example.app.todo.mapper.TimeEntryMapper;
 import com.example.app.todo.mapper.TodoMapper;
 import com.example.app.todo.repository.TimeEntryRepository;
+// media:begin
+import com.example.app.todo.repository.TodoAttachmentRepository;
+// media:end
 import com.example.app.todo.repository.TodoRepository;
 import com.example.app.todo.repository.TodoTagRepository;
 import lombok.RequiredArgsConstructor;
@@ -58,13 +66,23 @@ public class TodoService {
     private final CurrentUser currentUser;
     private final Clock clock;
     private final Paging paging;
+    // media:begin
+    private final TodoAttachmentRepository attachmentRepository;
+    private final Uploads uploads;
+    // media:end
 
     @Transactional
     public ObjectWrapper<TodoResponse> create(TodoCreateRequest request) {
         UUID ownerId = currentUser.id();
         TodoList todoList = todoListService.getOwnedTodoListForWrite(request.todoListId(), ownerId);
         List<Tag> tags = tagService.getOwnedTagsForWrite(Objects.requireNonNullElse(request.tagIds(), Set.of()), ownerId);
-        Todo saved = repository.saveAndFlush(mapper.toEntity(request, todoList, tags, ownerId));
+        Todo todo = mapper.toEntity(request, todoList, tags, ownerId);
+        // media:begin
+        Set<String> attachmentKeys = Objects.requireNonNullElse(request.attachmentKeys(), Set.of());
+        uploads.fileCountRange(UploadPurpose.TODO_ATTACHMENT).requireWithin(attachmentKeys.size());
+        todo.attach(uploads.claim(UploadPurpose.TODO_ATTACHMENT, attachmentKeys));
+        // media:end
+        Todo saved = repository.saveAndFlush(todo);
         return ObjectWrapper.withObject(toResponse(saved));
     }
 
@@ -82,10 +100,48 @@ public class TodoService {
         UUID ownerId = currentUser.id();
         Todo todo = getEditableTodo(id, ownerId, request.version());
         TodoList todoList = todoListService.getOwnedTodoListForWrite(request.todoListId(), ownerId);
+        // media:begin
+        // Before any other change: the claim's statement flushes what is pending, and a change flushed
+        // there and another at the end would increment the version twice.
+        Set<UUID> removed = changeAttachments(todo,
+                Objects.requireNonNullElse(request.addAttachmentKeys(), Set.of()),
+                Objects.requireNonNullElse(request.removeAttachmentIds(), Set.of()));
+        // media:end
         mapper.update(todo, request, todoList);
         repository.flush();
+        // media:begin
+        // After the flush, which checked the version: a removal racing this one is refused 409 before
+        // either releases anything.
+        uploads.release(removed);
+        // media:end
         return ObjectWrapper.withObject(toResponse(todo));
     }
+    // media:begin
+
+    /**
+     * Applies the add/remove of a todo's files. Every attached file counts (MISSING ones too), and the
+     * count is checked only when the files change, so a shrunk policy doesn't block editing the title.
+     * A removed id must be one of its files: 404 {@code TODO_ATTACHMENT_NOT_FOUND}.
+     *
+     * @return the removed ids, to release once the todo's version check has passed
+     */
+    private Set<UUID> changeAttachments(Todo todo, Set<String> addKeys, Set<UUID> removeIds) {
+        if (addKeys.isEmpty() && removeIds.isEmpty()) {
+            return Set.of();
+        }
+        List<UUID> current = attachmentRepository.findMediaFileIdsOfTodo(todo.getId());
+        for (UUID removeId : removeIds) {
+            if (!current.contains(removeId)) {
+                throw AppException.of(ErrorCode.TODO_ATTACHMENT_NOT_FOUND, removeId);
+            }
+        }
+        uploads.fileCountRange(UploadPurpose.TODO_ATTACHMENT).requireWithin(current.size(), removeIds.size(), addKeys.size());
+        List<UUID> added = uploads.claim(UploadPurpose.TODO_ATTACHMENT, addKeys);
+        todo.detach(removeIds);
+        todo.attach(added);
+        return removeIds;
+    }
+    // media:end
 
     /** Replaces the tags as a whole; the version increments when they change (Todo.tagLinks). */
     @Transactional
@@ -112,8 +168,16 @@ public class TodoService {
      */
     @Transactional
     public void delete(UUID id) {
-        repository.delete(getOwnedTodoForUpdate(id, currentUser.id()));
+        Todo todo = getOwnedTodoForUpdate(id, currentUser.id());
+        // media:begin
+        List<UUID> attachments = attachmentRepository.findMediaFileIdsOfTodo(id);
+        // media:end
+        repository.delete(todo);
         repository.flush();
+        // media:begin
+        // Its files go with it: the cleanup job deletes them.
+        uploads.release(attachments);
+        // media:end
     }
 
     /** The todo is locked {@code FOR SHARE}, so the entry can't race the todo's delete. */
@@ -154,8 +218,18 @@ public class TodoService {
     }
 
     private TodoResponse toResponse(Todo todo) {
-        return mapper.toResponse(todo, todoTagRepository.findTagsOfTodo(todo.getId()));
+        return mapper.toResponse(todo,
+                // media:begin
+                attachmentsOf(todo),
+                // media:end
+                todoTagRepository.findTagsOfTodo(todo.getId()));
     }
+    // media:begin
+
+    private List<MediaFileView> attachmentsOf(Todo todo) {
+        return uploads.describe(attachmentRepository.findMediaFileIdsOfTodo(todo.getId()));
+    }
+    // media:end
 
     /** Two steps, never a collection fetch (DATA-26): the batch, then one query for all its tags. */
     private List<TodoSummaryResponse> withTags(List<TodoSummaryResponse> rows) {

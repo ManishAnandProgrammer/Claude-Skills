@@ -87,7 +87,8 @@
 ### JAVA-12: Libraries first
 - **Check:** no hand-written infrastructure where a maintained library or the platform does it:
   retry, circuit breaker, rate limit, caching, hashing (`DigestUtils`), string checks
-  (`StringUtils.hasText`), date math (`Duration`).
+  (`StringUtils.hasText`), date math (`Duration`). A library's parser is not the input contract,
+  though: what is valid stays the project's own, pinned by tests (SEC-05).
 - **Fix:** present the candidate libraries to the user before adding one (house rule).
 - **Severity:** Medium.
 
@@ -110,6 +111,9 @@
 ### JAVA-15: Exact values
 - **Check:** no `float` / `double` for money or values that must add up exactly. Use
   `BigDecimal` or integer minor units; percentages that must total 100 use one rounding rule.
+- **Also:** `BigDecimal.equals` compares scale (`2` ≠ `2.0`), and records and `Objects.equals`
+  inherit it: compare with `compareTo`, or normalise the scale once, and round once at the end.
+  A change check that compared `2` with `2.0` recorded a change that wasn't one.
 - **Severity:** Medium.
 
 ### JAVA-16: Entities: Lombok, equality, collections
@@ -148,6 +152,8 @@
   return `null`, `0` or a default that hides a bug.
   - ISE is for **bugs** only: it answers 500 and is never caught as a domain signal.
   - Anything a client can cause is an `AppException` with an `ErrorCode` (error-contract.md).
+    The same goes for `IllegalArgumentException`: it answers 500 too, so it never rejects a value
+    from the request (ERR-04).
 - **Not a finding when:** a documented fallback (fail-open).
 - **Severity:** Medium.
 
