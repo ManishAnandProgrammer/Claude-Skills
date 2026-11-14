@@ -348,7 +348,13 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     the reference's login read the whole `users` table).
 
   A nullable one is partial: `WHERE col IS NOT NULL`.
-- **Detect:** an expression index next to a repository lookup on the bare column (`findByEmail`).
+- **NULLs are distinct in a unique key:** `UNIQUE (email, deleted_at)` (or any unique key with a
+  nullable column meant as "only one live row") admits any number of rows with `deleted_at` NULL
+  (measured 2026-11-14: two `('a@x', NULL)` rows accepted). Use a partial unique index
+  (`WHERE deleted_at IS NULL`), or `UNIQUE NULLS NOT DISTINCT` where NULL must count as a value.
+- **Detect:** an expression index next to a repository lookup on the bare column (`findByEmail`); a
+  unique constraint or index including a nullable column, without `NULLS NOT DISTINCT` or a
+  `WHERE … IS NOT NULL`.
 - The constraint's name comes from the driver, for every kind (error-contract.md ERR-02).
 - **Severity:** High (it includes an expression index that turns a request-path lookup, such as
   login, into a sequential scan).
@@ -365,7 +371,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 ### DATA-07: Deletes
 - **Check:**
   - no soft-delete flags (`deleted`, `deleted_at`, `@SQLRestriction`, `@Where`);
-  - business states are a status enum;
+  - business states are a status enum: decisions people take (`APPROVED`, `CANCELLED`), never
+    readings of the clock (DATA-37);
   - true removal is a hard `DELETE`, with an archive table when recovery or audit needs it;
   - personal data is truly deletable;
   - a "hide" or "restore" flag that only filters lists is a disguised soft delete;
@@ -419,6 +426,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - **a keyset sort key is never null.** A nullable column (a due date) sorts through a stored
     generated column (`coalesce(due_date, date '9999-12-31')`) that the index and the keyset use;
   - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).
+- **Detect:** an index on `updated_at` or `version` (or on any column every update changes): every
+  update then writes new index entries and is never a HOT update (measured 2026-11-14 on a
+  todos-shaped table: 0% HOT with the index, about 72% without it at the default fillfactor, 97% at
+  fillfactor 80). Hibernate rewriting unchanged columns with the same value does not stop HOT, so
+  `@DynamicUpdate` is not needed for it. A "recently changed" list is served by a column the
+  business sets (a `published_at`), not the audit column.
 - **Severity:** Medium (High on unbounded tables).
 
 ### DATA-11: Query shape
@@ -550,6 +563,119 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 
   Reference: `planning/` (`Plan`, changeset `0011-plans.sql`, `PlanningConstraintErrorCodes`,
   `PlanIntegrationTest`).
+- **Version chains** (successive versions of one thing: a rate, a price list, contract terms;
+  DATA-36) are a different range from a span a person types:
+  - **half-open `[effective_from, effective_to)`**: the successor starts on the day the predecessor
+    ends (`old.effective_to = new.effective_from`, the same value), never "the day before"
+    (`minusDays(1)`). `'[]'` stays for user-typed day spans ("from the 20th to the 22nd"), as above;
+  - **`CHECK (effective_from < effective_to)`** always (a NULL `effective_to` passes it). `EXCLUDE`
+    lets empty ranges through silently (two `[d, d)` rows in one scope were both accepted), and
+    `from > to` under the range expression is a data exception (22000, a 500); the CHECK names both
+    as a 23514. It also catches closing a version in the transaction that opened it;
+  - **the open end is NULL** (`effective_to` NULL: `daterange(from, NULL)` is unbounded). Never
+    `'infinity'` (Hibernate reads it as year 292278994, and a JPA edit of any other field of that row
+    then fails, 22008), `LocalDate.MAX` (22008 on write and as a parameter) or `Instant.MAX`
+    (`ArithmeticException: long overflow`). `9999-12-31` only as a generated sort key (DATA-10's
+    `due_sort`), never as a stored business value. "Current" is `WHERE effective_to IS NULL`, served
+    by a partial index;
+  - the default form is the **expression `EXCLUDE`**: `EXCLUDE USING gist (<ref>_id WITH =,
+    daterange(effective_from, effective_to, '[)') WITH &&)`, no range column, `btree_gist` as
+    above. PostgreSQL 18's `UNIQUE (<ref>_id, effective WITHOUT OVERLAPS)` gives the same 23P01
+    (the same mapping) but needs a range column, which must be `GENERATED ALWAYS AS (daterange(…))
+    STORED`: PostgreSQL 18 makes a generated column VIRTUAL by default, and a virtual one is refused
+    in a unique or exclusion constraint (0A000). Use that form only when a `PERIOD` foreign key needs
+    a key to reference. Map the scalar columns in the entity, never the range (Hibernate 7 has no
+    range type, and `ddl-auto: validate` ignores the unmapped generated column);
+  - writing the chain (close the open version and insert the next) locks the referent row first
+    (DATA-36): unlike a single insert, it spans two rows of the scope.
+
+  Measured 2026-11-14 on PostgreSQL 18.6 and Hibernate 7.4 (house-review DESIGN.md, temporal
+  experiments).
 - **Detect:** a `exists…Overlapping` / `count…Between` query before an insert; an overlap rule only in
-  Java; a daterange without stated bounds.
+  Java; a daterange without stated bounds; a version chain on `'[]'` or closed with `minusDays(1)`;
+  a version table with no `CHECK (from < to)`; `'infinity'`, `LocalDate.MAX` or `Instant.MAX` as an
+  open end; a `GENERATED` range column without `STORED`.
 - **Severity:** High (two overlapping bookings is corrupt data).
+
+### DATA-36: Versioned documents and the records made from them
+- **Check:** a record made **from** a document that changes (an invoice from a price list, a time
+  entry billed at a rate, a submission of a form, an acceptance of terms) keeps what it was made
+  from:
+  - it points at the **version** it used (`<doc>_version_id`, a foreign key to the version row,
+    not to the document), and **copies the values it computed with** (`rate_applied`, `unit_price`)
+    in columns commented `SNAPSHOT at <event>, never synced`. Its response carries the version id
+    (and `versionNo` or `effectiveFrom`), so a client can show "billed at the rate of 1 March";
+  - a published version is **never edited**: no setters, entity methods refuse once it is
+    `PUBLISHED` (JAVA-20), no update endpoint on it. A new value is a new version. Correcting a
+    published version's past (a backdated change, not a new one) is its own privileged action that
+    records why, never the ordinary update (DESIGN.md: considered);
+  - the stored state is the decision only: `DRAFT` / `PUBLISHED`, with `CHECK ((status =
+    'PUBLISHED') = (published_at IS NOT NULL))`. `CURRENT`, `SUPERSEDED`, `SCHEDULED`, `EXPIRED` are
+    derived from the dates and version numbers in the response (DATA-37);
+  - **superseding locks the document row first** (its `findForUpdate…`, by id, never "the open
+    version" by a mutable column: DATA-32), then reads the open version, closes it and inserts the
+    next, with **one clock read** for the close and the open (JAVA-25). Without the lock, two
+    supersedes deadlock in the exclusion constraint (measured 2026-11-14 with one insert per
+    transaction too); with it, the loser waits, then fails the document's version check (the
+    request carries the version the user saw, DATA-06) and answers 409;
+  - the chain follows DATA-35's version-chain shape (`[from, to)`, CHECK, NULL open end);
+  - **a copy** (a new draft from the latest version, with its child rows) is **one explicit entity
+    method** (`RateVersion.draftFrom(RateVersion previous)`, each field named, children copied
+    through the entity's `add…` methods), never `toBuilder()`: Lombok's `@SuperBuilder(toBuilder =
+    true)` copies the id, the version and the audit fields and shares the collections, and
+    `save(copy)` silently **overwrote the published row** (measured 2026-11-14; after resetting the
+    ids by hand, persist failed on "Found shared references to a collection");
+  - **the copy has a drift test**: an integration test compares `to_jsonb(row)` of the source and
+    the copy, minus the keys that must differ (`id`, `version_no`, `status`, `published_at`,
+    `version`, `created_*`, `updated_*`), for the version row and each child table
+    (`jsonb_agg(to_jsonb(child) - … ORDER BY …)`), and **first asserts the source fixture has no
+    NULL column** (`jsonb_each(to_jsonb(source)) WHERE value = 'null'`, except `created_by` /
+    `updated_by`), with non-default values: a forgotten column that is NULL or default in both rows
+    compares equal (a false green, measured). A new column the copy forgets turns the test red. No
+    reflection in application code.
+- **Why:** a result that reads the live document (`invoice.getPriceList().getPrice()`) changes
+  meaning when the document changes; a copy written field by field forgets the next column added.
+- **Not a finding when:** the record wants the referenced thing's **current** value (a customer's
+  current email): that is a plain reference.
+- **Detect:** a result's foreign key to the document with no version; a mapper or report reading the
+  document's live value for a stored result; a setter or an update endpoint on a published version;
+  `toBuilder()` on an entity; a hand-written copy without a drift test, or with one whose fixture
+  leaves columns NULL; supersede code that locks the open version (`… WHERE effective_to IS NULL FOR
+  UPDATE`) instead of the document.
+- **Tests:** superseding keeps the earlier slice (the old version keeps `[from, newFrom)`); both
+  sides of a boundary (the day before `to` finds the old version, `to` the new one); a stored result
+  is unchanged (its response byte for byte) after a new version is published; an overlapping version
+  is 409; concurrent supersedes of one document store one new version and answer 409, never 503; the
+  copy's drift test.
+- **Reference:** no golden code yet (the planned shape: a per-owner `billing_rates` referent with
+  `billing_rate_versions`, and time entries gaining `billing_rate_version_id` and `rate_applied`).
+- **Severity:** High (a past result changes meaning, or a published version is overwritten).
+
+### DATA-37: No stored status that the passage of time changes
+- **Check:** a status that becomes true because time passes (`ACTIVE` once the start date is
+  reached, `EXPIRED`, `OVERDUE`, `SCHEDULED`, `SUPERSEDED`, `CURRENT`, an `is_current` flag) is
+  **derived** from the stored dates when it is read (in the projection, or one `static` method that
+  the entity and the projection both use, SMELL-01), never stored and flipped by a job. A job that
+  runs late, twice or not at all leaves it wrong, and every reader trusts it.
+- **Not a finding when:** the status is a decision a person or a process takes (`APPROVED`,
+  `CANCELLED`, `PUBLISHED`): that is a real attribute (DATA-07). When the passage of time must cause
+  something exactly once (send the expiry notice), store **the event** (`expiry_notice_sent_at`),
+  not the state.
+- **Detect:** status values of that kind beside date columns; a `@Scheduled` method running
+  `UPDATE … SET status = 'EXPIRED' WHERE ends_at < now()`; code that "recomputes" a stored status
+  defensively; an `is_current` column on a version table (a partial index on `effective_to IS NULL`
+  serves "current", DATA-35).
+- **Severity:** Medium (High when a wrong status gates money or access).
+
+### DATA-38: A lookup for a dated record filters by that record's date
+- **Check:** reading a rate, price, fee, tier, configuration or terms **on behalf of a dated record**
+  (a time entry's day, an invoice's issue date) filters by **that record's date**
+  (`findEffectiveOn(<ref>Id, LocalDate on)`: `effective_from <= :on AND (effective_to > :on OR
+  effective_to IS NULL)`), or reads the version the record already points at (DATA-36). Never "the
+  current one".
+- **Not a finding when:** the record is created now and the as-of date is today, from the `Clock`
+  (JAVA-25); the lookup then still passes that date, not "current".
+- **Detect:** `find…Current…` / `findBy<Code>` on a `*_rate`, `*_price`, `*_fee`, `*_tier`,
+  `*_terms` table called while computing or re-computing a stored record; a recompute or report
+  query joining such a table without a date predicate.
+- **Severity:** High (a past record is recomputed at today's price).

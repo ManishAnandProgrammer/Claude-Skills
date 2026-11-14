@@ -84,6 +84,8 @@ is code-smells.md, java.md and architecture.md.
   4. **which metric would show a regression in production.**
 
   Shared expensive reads are cached, and a cache hit takes no connection (the lazy proxy, DATA-20).
+- **Detect:** a new index on `updated_at` or `version`: every update of that table stops being a HOT
+  update (DATA-10, measured 0% HOT).
 - **Severity:** Medium (High when it is unbounded).
 
 ### PERF-02: Connection pool

@@ -90,6 +90,44 @@ locks in turn on a scratch copy (repeated 6-way races and trigger-gated read-to-
   NULL` with a rows-affected check (identical answers to the lock, measured); logout uses the same
   statement, so a logout racing a refresh never answers 409.
 
+## Temporal rules (2026-11-14)
+
+Harvested from the owner's three data-modeling notes (temporal modeling, data modeling, PostgreSQL),
+then checked by experiment on the house stack (PostgreSQL 18.6, Boot 4.1.2, Hibernate 7.4.13,
+JDK 25; scratch project, not the notes' demo). Where the experiments differed from the harvest plan,
+the experiments won.
+- **Adopted:** DATA-35's version-chain shape (`[from, to)`, `CHECK (from < to)` because `EXCLUDE`
+  admits empty ranges, NULL open end because `'infinity'`, `LocalDate.MAX` and `Instant.MAX` all
+  break under Hibernate 7, expression `EXCLUDE` as the default form, a STORED generated range only
+  for `WITHOUT OVERLAPS`); DATA-36 (versioned documents, explicit `draftFrom` copies because
+  `toBuilder` overwrote the published row, the `to_jsonb` drift test with its no-NULL fixture
+  check); DATA-37 (no clock-driven stored status); DATA-38 (dated lookups name their date);
+  JAVA-25's one clock read per boundary (never mixed with `now()`); DATA-05's NULLs-distinct unique
+  key; DATA-10's `updated_at` index killing HOT updates (0% HOT; same-value rewrites keep HOT, so
+  no `@DynamicUpdate`).
+- **Not adopted from the notes:** `'infinity'` or `9999-12-31` as an open end; `OffsetDateTime`;
+  no `@Version` with an `assert_to` guard; locking "the open version" by a mutable column (DATA-32);
+  DB-clock assertion time; `bigint identity` + public uuid keys; `DEFAULT now()` audit columns; soft
+  delete with views; range columns mapped in JPA.
+- **DATA-36 has no golden code yet.** Planned shape: a per-owner `billing_rates` referent with
+  `billing_rate_versions` (`[effective_from, effective_to)`), time entries gaining
+  `billing_rate_version_id` and `rate_applied`; the module, its tests and a crud-gen variant come
+  together, when a project needs it.
+- **Considered (tier 2, a rule once a project needs it):** events are append-only rows with
+  `occurred_at`, a mistake is a reversing row; two values of one enum true at once (`sub_status`)
+  are two timelines; balances are sums of movement rows, not a mutable column; a retroactive change
+  of a published version is its own privileged action with a reason; a child's period inside its
+  parent's (PostgreSQL 18 `PERIOD` foreign key: coverage by adjacent parent rows, takes `FOR KEY
+  SHARE`, NO ACTION only, needs `WITHOUT OVERLAPS` on the parent); events about versioned data carry
+  `effectiveFrom` and say change or correction; temporal reads take `?on=` and return the period;
+  personal data in its own erasable table, never on history rows; history a feature shows is
+  modelled (DATA-36), never read from `audit_log` (DATA-08).
+- **Considered (tier 3, know it exists):** full bitemporal tables (assertion time, withdraw /
+  replace / supersede), episodes, future assertion time and semantic locks, tritemporality, 6NF
+  satellites and warehouse SCDs, bitemporal joins, partitioning by `assert_to`, fillfactor and
+  per-table autovacuum tuning (steady state reached about 70% HOT at the default fillfactor), a
+  data-driven transition table.
+
 ## Step 1: shape (decided 2026-11-13)
 
 - **Name:** `house-review`. The built-in `/code-review` already exists, so this name avoids
