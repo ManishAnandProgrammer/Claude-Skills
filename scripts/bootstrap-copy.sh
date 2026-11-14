@@ -9,14 +9,17 @@
 #   pieces (comma-separated, default core,sign-in):
 #     core     error contract, wrappers, paging, limits, logging, admission, security config,
 #              persistence base, config files, test base, ArchUnit, the incident runbook (docs/)
-#     sign-in  user module (signup, login, tokens) + Redis rate limiting
+#     sign-in  user module (signup, login, tokens) and its Redis rate limiting: the limiter in
+#              common/ratelimit, config/RedisClientConfig, the Redis settings and Testcontainer
 #     example  the golden crud-gen module (todo lists and todos), for reference only
 #     metadata configuration metadata (a typed record per key, admin GET/PUT of fixed keys), gapless
 #              counters; with sign-in, also the ADMIN role and the test base's newAdmin()
-# Shared files (ErrorCode, messages, limits, Role, test base, ArchUnit) mark a piece's entries with
-# "<piece>:begin" / "<piece>:end" comment lines (example, metadata): without that piece those blocks
-# are left out. The metadata piece's sample keys and their tests are example content: they arrive
-# only with both pieces.
+# Shared files (ErrorCode, messages, limits, db.yml, compose.yaml, .env.example, Role, test base,
+# ArchUnit) mark a piece's entries with "<piece>:begin" / "<piece>:end" comment lines (sign-in,
+# example, metadata): without that piece those blocks are left out. A file a piece names on its own
+# belongs to that piece, even inside a directory another piece copies (sign-in's rate limiter in
+# core's common/ and config/). The metadata piece's sample keys and their tests are example content:
+# they arrive only with both pieces.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,7 +35,7 @@ while [ $# -gt 0 ]; do
         --package) package="${2:-}"; shift 2 ;;
         --with) pieces="${2:-}"; shift 2 ;;
         --dry-run) dry_run=true; shift ;;
-        -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown option: $1 (see --help)" ;;
     esac
 done
@@ -73,8 +76,14 @@ LIST
             ;;
         sign-in) cat <<LIST
 src/main/java/$reference_path/user
+src/main/java/$reference_path/common/ratelimit/RateLimit.java
+src/main/java/$reference_path/common/ratelimit/RateLimitProperties.java
+src/main/java/$reference_path/common/ratelimit/RedisRateLimiter.java
+src/main/java/$reference_path/config/RedisClientConfig.java
 src/main/resources/db/changelog/changes/0001-users-and-refresh-tokens.sql
 src/test/java/$reference_path/user
+src/test/java/$reference_path/common/ratelimit/RedisRateLimiterTest.java
+src/test/java/$reference_path/config/RedisClientIntegrationTest.java
 LIST
             ;;
         example) cat <<LIST
@@ -88,7 +97,7 @@ src/test/java/$reference_path/todo
 LIST
             # The metadata piece's sample configuration and the tests that exercise the mechanism through it.
             if chosen_piece metadata; then cat <<LIST
-src/main/java/$reference_path/metadata/api/AttendanceConfig.java
+src/main/java/$reference_path/metadata/api/TodoListSettings.java
 src/test/java/$reference_path/metadata/MetadataIntegrationTest.java
 LIST
             fi
@@ -138,7 +147,7 @@ dest_for() {
 
 # Without an optional piece, its blocks in shared files are dropped; with it, only the marker lines.
 piece_filter_script=""
-for optional in example metadata; do
+for optional in sign-in example metadata; do
     if chosen_piece "$optional"; then
         piece_filter_script+="/$optional:\\(begin\\|end\\)/d;"
     else
@@ -161,7 +170,7 @@ copy_file() {
     $dry_run && return
     mkdir -p "$(dirname "$target/$dest")"
     case "$relative" in
-        *.java|*.yml|*.yaml|*.xml|*.properties)
+        *.java|*.yml|*.yaml|*.xml|*.properties|.env.example)
             sed "s/${REFERENCE_PACKAGE//./\\.}/$package/g" "$REFERENCE/$relative" | piece_filter > "$target/$dest" ;;
         *) cp "$REFERENCE/$relative" "$target/$dest" ;;
     esac
@@ -174,12 +183,15 @@ fi
 if chosen_piece metadata && ! chosen_piece sign-in; then
     echo "warning: the metadata admin API needs role ADMIN in the token's roles claim: map it from your identity provider" >&2
 fi
+named_files="$(for piece in core sign-in example metadata; do files_for "$piece"; done)"
+named_alone() { grep -qxF "$1" <<< "$named_files"; }
 for piece in "${chosen[@]}"; do
     while IFS= read -r entry; do
         [ -e "$REFERENCE/$entry" ] || die "the reference has no $entry (piece $piece)"
         if [ -d "$REFERENCE/$entry" ]; then
             while IFS= read -r file; do
-                copy_file "${file#$REFERENCE/}"
+                # Copied with the piece that names it, if that piece is chosen.
+                named_alone "${file#$REFERENCE/}" || copy_file "${file#$REFERENCE/}"
             done < <(find "$REFERENCE/$entry" -type f | sort)
         else
             copy_file "$entry"
@@ -194,10 +206,11 @@ if [ -e "$target/$master" ]; then
 else
     copied+=("$master")
     if ! $dry_run; then
-        mkdir -p "$(dirname "$target/$master")"
+        # The changes directory exists even when no piece brings a changeset (core alone).
+        mkdir -p "$target/src/main/resources/db/changelog/changes"
         {
             echo "databaseChangeLog:"
-            find "$target/src/main/resources/db/changelog/changes" -name '*.sql' 2>/dev/null | sort | while IFS= read -r changeset; do
+            find "$target/src/main/resources/db/changelog/changes" -name '*.sql' | sort | while IFS= read -r changeset; do
                 echo "  - include:"
                 echo "      file: changes/$(basename "$changeset")"
                 echo "      relativeToChangelogFile: true"

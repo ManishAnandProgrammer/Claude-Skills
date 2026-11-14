@@ -3,11 +3,12 @@
 Per-tenant, per-feature configuration stored as one row per key with a JSON value: the owner's
 design, proven in a schema-per-tenant SaaS (2026-11-14). Golden code:
 `~/.claude/skills-reference/src/main/java/com/example/app/metadata/` (its `package-info.java` has
-the rules and the tenancy guide). Apply these rules only when the project has that piece.
+the short rules; this file has them with their reasons and the tenancy guide). Apply these rules
+only when the project has that piece.
 
 ### META-01: Metadata is configuration, not a hidden table
-- **Check:** a key holds one value, read often and changed rarely, by an admin (attendance rules
-  of a session, a feature switch, a template choice). Records that grow, are listed, filtered or
+- **Check:** a key holds one value, read often and changed rarely, by an admin (a todo list's
+  settings, a store's opening hours, a feature switch, a template choice). Records that grow, are listed, filtered or
   have their own lifecycle are real tables with columns, indexes and constraints.
 - **Detect:** keys built from timestamps or counters (`SURVEY_FORM_<datetime>`); `key LIKE 'X%'`;
   `value ->> 'field'` in a `WHERE`; a service that loops over many metadata rows.
@@ -23,16 +24,17 @@ the rules and the tenancy guide). Apply these rules only when the project has th
 ### META-03: Keys are declared in one place; per-context values are written by their owner
 - **Check:**
   - every key is a constant or a per-context factory in `MetadataKeys`
-    (`attendance(UUID sessionId)` → `ATTENDANCE_CONFIG_<uuid>`, the canonical UUID form); no key
+    (`todoListSettings(UUID listId)` → `TODO_LIST_SETTINGS_<uuid>`, the canonical UUID form); no key
     strings assembled elsewhere;
   - the generic admin API (`PUT /metadata/{key}`) resolves **fixed keys only**, through
     `MetadataKeys.byName`;
   - per-context configuration is read and written through the owning module's typed endpoint on its
-    own resource (`GET/PUT /school-sessions/{id}/fee-rules`, a typed record body): the owner checks
-    its own rules (an ended session's rules can't change), then calls `Metadata.update`. The metadata
-    piece has no hook, SPI or rule registry for other modules (run 5: a `MetadataUpdateRule` hook
-    needed `ObjectProvider` around a bean cycle, parsed the session id back out of the key name, and
-    kept the contract out of OpenAPI).
+    own resource (`GET/PUT /todo-lists/{id}/settings`, `/stores/{id}/opening-hours`, a typed record
+    body): the owner loads the context (404), checks its own rules (a closed store's opening hours
+    can't change: 409), then calls `Metadata.update`. The metadata piece has no hook, SPI or rule
+    registry for other modules: a hook calling back into the owner needs a workaround for the bean
+    cycle (metadata → owner → metadata), has to parse the context id back out of the key name, and
+    hides the typed contract from OpenAPI, where a typed endpoint documents it.
 - **Detect:** `byName` resolving a per-context prefix; key names parsed back into ids; an interface
   in the metadata piece implemented by a feature module.
 - **Severity:** High (an undeclared key reachable through the API bypasses validation; a
@@ -46,7 +48,7 @@ the rules and the tenancy guide). Apply these rules only when the project has th
 
 ### META-05: Seeding and deleting
 - **Check:** the feature's lifecycle code creates its values (`create`, or `createFrom` to start a
-  new context from the previous one, e.g. a new school session); contexts that already exist are
+  new context from the defaults or from another context, e.g. a new todo list); contexts that already exist are
   seeded by a changeset or a one-off job, never at application startup (DATA-28). Fixed keys and
   fixed counters are seeded by the changeset that needs them. A missing value is 404
   `METADATA_NOT_FOUND`, never a silent default: it means seeding didn't run.
@@ -66,14 +68,15 @@ the rules and the tenancy guide). Apply these rules only when the project has th
 - **Severity:** High.
 
 ### META-08: Counters
-- **Check:** gapless business numbers (admission, receipt) live in the `counters` table, incremented
+- **Check:** gapless business numbers (invoice, order) live in the `counters` table, incremented
   by one atomic `UPDATE … SET last_value = last_value + 1 … RETURNING last_value` in the caller's
   transaction (`MANDATORY`); never in JSON, never read-then-write. A rolled-back business
   transaction returns its number.
 - **Names:** a per-context counter's name comes from `Counters.perContext(prefix, contextId)` (the
   canonical UUID form, as for metadata keys), never assembled by hand. The module that numbers
-  declares the prefix (the fee module owns `RECEIPT`), unless the dependency direction forbids it
-  (ARCH-02); then the context's owner declares it.
+  declares the prefix (the billing module owns `INVOICE`), unless the dependency direction forbids
+  it (ARCH-02: the store module seeds the counter, and billing depends on stores); then the
+  context's owner declares it.
 - **Severity:** High.
 
 ### META-09: Tenancy
@@ -81,7 +84,24 @@ the rules and the tenancy guide). Apply these rules only when the project has th
   `tenant_id` column, unique `(tenant_id, key)`, Hibernate `@TenantId` on both entities, and the
   counter's native `UPDATE` filtered by tenant (native SQL is not filtered by `@TenantId`).
 - **Severity:** Critical when a row-based query can read or write another tenant's row.
+- **Adapting the piece** (the reference is single-tenant; bootstrap picks the model, the code is
+  otherwise the same):
+  - *Schema-per-tenant:* the metadata package and changeset `0008` stay as they are. Each tenant
+    schema gets both tables (Liquibase runs per schema when a tenant registers, and for every schema
+    at deployment); the unique `key` is per schema. The tenant comes from the request (a JWT claim or
+    the host name), and Hibernate's `MultiTenantConnectionProvider` sets `search_path` to its schema,
+    so the native counter update needs no change either.
+  - *Row-based:* changeset `0008` gets `tenant_id uuid NOT NULL` in both tables, and
+    `UNIQUE (tenant_id, key)` replaces `UNIQUE (key)` (keep the constraint names
+    `MetadataConstraintErrorCodes` maps). Both entities get
+    `@org.hibernate.annotations.TenantId @Column(name = "tenant_id") private UUID tenantId;`:
+    Hibernate fills it on insert and filters every entity query by it. The tenant id comes from one
+    `CurrentTenantIdentifierResolver` bean reading the access token's tenant claim. Native SQL is not
+    filtered: `CounterRepository.increment` adds `AND tenant_id = :tenantId`.
+  - In both models, lifecycle code without a request (a scheduled job, tenant registration) opens
+    its session for an explicit tenant.
 
-Not in scope by default: history (audit columns and `version` record the last change; Envers is a
-bootstrap option) and caching (a read is one indexed lookup; cache only a key read repeatedly on a
+Not in scope by default: history (audit columns and `version` record the last change; a project
+that must show earlier values adds Envers, an approved dependency, or an append-only
+`configuration_metadata_history` table at bootstrap) and caching (a read is one indexed lookup; cache only a key read repeatedly on a
 hot path, with eviction on every write across instances).

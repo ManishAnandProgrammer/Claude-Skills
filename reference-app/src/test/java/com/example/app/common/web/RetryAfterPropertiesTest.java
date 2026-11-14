@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -23,6 +25,17 @@ class RetryAfterPropertiesTest {
     void refusesAnInvertedRange() {
         assertThatThrownBy(() -> new RetryAfterProperties.Range(Duration.ofSeconds(3), Duration.ofSeconds(2)))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("A range answers within its bounds, and the value is really jittered")
+    void answersAreJitteredWithinTheRange() {
+        RetryAfterProperties.Range range = new RetryAfterProperties.Range(Duration.ofSeconds(3), Duration.ofSeconds(8));
+        Set<Long> seen = new HashSet<>();
+        for (int attempt = 0; attempt < 200; attempt++) {
+            seen.add(Long.parseLong(range.pickSeconds()));
+        }
+        assertThat(seen).hasSizeGreaterThan(1).allSatisfy(seconds -> assertThat(seconds).isBetween(3L, 8L));
     }
 
     @Test

@@ -1,20 +1,9 @@
 # The eight lenses (SEC / PERF / REL / OPS / CONC / TEST)
 
-Sources:
-- `eight-lenses.md`;
-- DynamicForm `notes/testing-blind-spots.md`;
-- DynamicForm `.claude/skills/monitoring`;
-- DynamicForm `playbooks/jvm-observability-playbook.md`;
-- DynamicForm `reports/resilience-review-2026-11-09.md`.
-
 "Tests verify 'does the feature work as designed?'; they don't verify 'what does the code allow
 that it shouldn't?'"
 
-Lenses per mode (SKILL.md, Step 1):
-- **diff and uncommitted:** 1, 2, 6, 7, plus 8 when concurrency-related code is touched;
-- **path and whole codebase:** all eight.
-
-Lens 1 is the build and tests plus TEST-01; lens 6 is rest-api.md and error-contract.md; lens 7
+Which lenses each review mode runs: SKILL.md, Step 1. Lens 1 is the build and tests plus TEST-01; lens 6 is rest-api.md and error-contract.md; lens 7
 is code-smells.md, java.md and architecture.md.
 
 ---
@@ -198,15 +187,18 @@ is code-smells.md, java.md and architecture.md.
 - **Severity:** High.
 
 ### REL-10: Outages answer 503 + Retry-After, never 500 or 401
-- **Check:** infrastructure exceptions map centrally to 503 + a jittered `Retry-After`:
-  - database (DATA-18);
+- **Check:** infrastructure exceptions map centrally to 503 + a jittered `Retry-After`
+  (error-contract.md ERR-02, ERR-03), never the generic 500:
+  - database: pool exhaustion, statement timeout, lock timeout and an unreachable database,
+    classified by walking the **cause chain and SQLSTATE** (ERR-03);
   - SDK client errors and 5xx;
   - `ResourceAccessException`;
   - `CallNotPermittedException`;
   - AI provider unavailable.
 
   A failure inside the security filter chain answers 503, not 401 (DATA-17).
-- **Severity:** High (filter → 401); Medium (500 instead of 503).
+- **Severity:** High (filter → 401; database failures answering 500, `POOL-EXHAUSTION-IS-500`:
+  clients retry 500s wrongly, or not at all); Medium (other 500s instead of 503).
 
 ### REL-11: Writes that clients retry are idempotent
 - **Check:** a POST a client may retry after a 503 or timeout has an `Idempotency-Key` or a
@@ -403,14 +395,13 @@ resilience or failure-injection test is Medium).
 - **Check:** new transitions, dedupe, caps and uniqueness get N identical requests through a
   `CyclicBarrier` / `CountDownLatch` against Testcontainers PostgreSQL, then assert the
   **database invariant** (row count), not just the status codes.
-- **Racers on different rows that share one global row** (two "make current" calls on two different
-  sessions) may both succeed one after the other, correctly. Assert the invariant (exactly one
-  current row, one of the winners; every refusal carries the expected code), never "exactly one
-  200": that test is flaky (run 5: red in 1 of 2 runs).
-- **A write that checks another row's state under `FOR SHARE`** (pay only while the student is
-  active) gets a race test against a change of that state (a leave), gated so the change really
-  waits on the lock (hold the lock in the test's own transaction, or a latch). Removing the lock
-  must turn the test red (TEST-09).
+- **Racers on different rows that share one global row** (two "make default" calls on two different
+  records) may both succeed one after the other, correctly. Assert the invariant (exactly one
+  default row, one of the winners; every refusal carries the expected code), never "exactly one
+  200": that test is flaky.
+- **A write guarded by another row's state** (checked under `FOR SHARE`) gets a race test against a
+  change of that state, gated so the change really waits on the lock (hold the lock in the test's
+  own transaction, or a latch). Removing the lock must turn the test red (TEST-09).
 
 ### TEST-06: Query count
 - **Check:** new paged lists assert a constant statement count, with a fixture **larger than one
@@ -429,10 +420,16 @@ resilience or failure-injection test is Medium).
   - text blocks for JSON;
   - no `var`.
 - **Shared test database:**
-  - a test that changes a global singleton (the one current session, a fixed setting) carries
-    `@ResourceLock` on it, so parallel runs can't interleave;
-  - a fixture that inherits data from neighbouring rows (a new session copies the last session's
-    rules) resets it to known values, so no test depends on the one that ran before.
+  - a test that changes a global singleton (the one default record, a fixed setting) carries
+    `@ResourceLock` on it and resets it in a `@BeforeEach`, so parallel runs can't interleave;
+  - a fixture that inherits data from neighbouring rows (a new record copying the previous one's
+    settings) resets it to known values, so no test depends on the one that ran before; a direct
+    `sql(...)` fixture seeds what the record's lifecycle would (its configuration, its counter).
+- **MockMvc traps:**
+  - a query value with special characters goes through `.param(...)`: `get(String)` treats the
+    string as a URI template and encodes `%25` a second time, so the test sends something else;
+  - a 403 test sends a **valid** body: argument binding and validation run before method
+    security, so an invalid body answers 400 and the role check is never reached.
 - **Dates:** a date-dependent test computes "today" once, or uses a settable clock; it never calls
   `LocalDate.now()` twice across UTC midnight, and never hard-codes a year that the data will pass.
 

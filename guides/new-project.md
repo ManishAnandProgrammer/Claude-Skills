@@ -38,21 +38,11 @@ self-reviewed.
 
 ### Questions bootstrap asks (have the answers ready)
 
-| Question | Typical answer | Why it matters |
-|---|---|---|
-| Root package | `com.acme.orders` | Package layout, ArchUnit rules |
-| Modules, one line each | `order: owns the order lifecycle`, `catalog: owns products` | If you can't write the line, the module map is weak (ARCH-01) |
-| Module contracts | `api-facades` (modulith) if parts may become services later; otherwise `service-entity-methods` | How modules may talk to each other |
-| Instances | `multiple` if it will ever run more than one copy | Rate limits, locks and schedulers must then be shared |
-| Id strategy | `uuidv7` | Time-ordered ids, application-assigned |
-| Token revocation | `short-lived(15)` or `blacklist` | What logout must guarantee |
-| Client IP in logs | `truncated` / `hashed` / `raw` / `none` | Personal data in logs |
-| Multi-tenant? | usually `no` | Enables the tenant rules |
-| Sign-in | the app issues its own tokens / an external identity provider / none | Copies the `sign-in` piece or adapts security to the provider |
-| Signup policy | email-verified (never reveals an account) / immediate (reveals registered emails) | Account enumeration (SEC-02) |
-| Breached-password check | yes (fail-open or fail-closed) / no | REST-17; an outbound call |
-| Metrics scrape | how it's secured (`metricsAuth`) | CFG-06; adds the Prometheus registry |
-| Packaging | Dockerfile / `build-image` | Where the JVM flags live (CFG-08) |
+The list, with what each answer changes, is step 0 of
+[crud-gen's bootstrap reference](../crud-gen/references/bootstrap.md): root package and modules
+(one owner line each, ARCH-01), module contracts, instances, request suffix, sign-in and signup
+policy, the breached-password check, token revocation, client-IP logging, the metrics scrape,
+multi-tenancy, packaging, configuration metadata and rate limiting.
 
 Bootstrap **asks before adding any dependency** (libraries-first rule) and shows the current
 version and its compatibility. The copy script prints what each piece needs: springdoc-openapi,

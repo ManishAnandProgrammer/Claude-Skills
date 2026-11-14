@@ -2,8 +2,8 @@ package com.example.app.todo.dto.request;
 
 import com.example.app.common.limits.ConfiguredMax;
 import com.example.app.common.pagination.CursorFilter;
-import com.example.app.common.validation.OrderedRange;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -19,8 +19,6 @@ import java.util.Objects;
  */
 @Getter
 @Setter
-@OrderedRange(from = "spentOnFrom", to = "spentOnTo")
-@OrderedRange(from = "minMinutes", to = "maxMinutes")
 public class TimeEntryFilter extends CursorFilter {
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
@@ -47,6 +45,17 @@ public class TimeEntryFilter extends CursorFilter {
     @NotNull
     @Schema(description = "Order of the list; a cursor only continues the order it came from", defaultValue = "SPENT_ON")
     private TimeEntrySort sort = TimeEntrySort.SPENT_ON;
+
+    /** An inverted range is a mistake the client should hear about, not an empty list. */
+    @AssertTrue(message = "{time-entry.spent-on-range}")
+    public boolean isSpentOnRangeOrdered() {
+        return Objects.isNull(spentOnFrom) || Objects.isNull(spentOnTo) || !spentOnFrom.isAfter(spentOnTo);
+    }
+
+    @AssertTrue(message = "{time-entry.minutes-range}")
+    public boolean isMinutesRangeOrdered() {
+        return Objects.isNull(minMinutes) || Objects.isNull(maxMinutes) || minMinutes <= maxMinutes;
+    }
 
     public boolean requireSpentOnFromPredicate() {
         return Objects.nonNull(spentOnFrom);

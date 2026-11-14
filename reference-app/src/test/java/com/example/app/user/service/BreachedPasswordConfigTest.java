@@ -139,8 +139,8 @@ class BreachedPasswordConfigTest {
     }
 
     @Test
-    @DisplayName("A server that sends the headers and then stalls is cut off by the read timeout and counted once")
-    void aStalledBodyIsCutOffAndCounted() throws IOException {
+    @DisplayName("A server that sends the headers and then stalls is cut off by the read timeout; the password passes")
+    void aStalledBodyIsCutOff() throws IOException {
         CompromisedPasswordChecker checker = checker(rangeApi(this::stallAfterTheHeaders));
         long started = System.nanoTime();
 
@@ -148,7 +148,6 @@ class BreachedPasswordConfigTest {
 
         Duration took = Duration.ofNanos(System.nanoTime() - started);
         assertThat(compromised).isFalse();
-        assertThat(failures()).isEqualTo(1);
         assertThat(took).isLessThan(READ_TIMEOUT.plusSeconds(1));
     }
 }

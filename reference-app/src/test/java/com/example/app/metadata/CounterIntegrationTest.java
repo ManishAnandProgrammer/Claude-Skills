@@ -51,16 +51,16 @@ class CounterIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("A new counter hands out lastValue + 1, then one more per call; the row's version and updatedAt follow")
     void numbersAreSequential() {
-        String receipts = newCounterName();
-        String admissions = newCounterName();
-        counters.create(receipts, 0);
-        counters.create(admissions, 999);
-        Map<String, Object> before = jdbc.queryForMap("select version, updated_at from counters where key = ?", receipts);
+        String invoices = newCounterName();
+        String orders = newCounterName();
+        counters.create(invoices, 0);
+        counters.create(orders, 999);
+        Map<String, Object> before = jdbc.queryForMap("select version, updated_at from counters where key = ?", invoices);
 
-        assertThat(List.of(nextCommitted(receipts), nextCommitted(receipts), nextCommitted(receipts))).containsExactly(1L, 2L, 3L);
-        assertThat(nextCommitted(admissions)).isEqualTo(1000L);
+        assertThat(List.of(nextCommitted(invoices), nextCommitted(invoices), nextCommitted(invoices))).containsExactly(1L, 2L, 3L);
+        assertThat(nextCommitted(orders)).isEqualTo(1000L);
 
-        Map<String, Object> after = jdbc.queryForMap("select version, last_value, updated_at from counters where key = ?", receipts);
+        Map<String, Object> after = jdbc.queryForMap("select version, last_value, updated_at from counters where key = ?", invoices);
         assertThat(after.get("last_value")).isEqualTo(3L);
         assertThat(after.get("version")).isEqualTo((Long) before.get("version") + 3);
         assertThat((Timestamp) after.get("updated_at")).isAfterOrEqualTo((Timestamp) before.get("updated_at"));
@@ -153,13 +153,13 @@ class CounterIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("A per-context name is the prefix, an underscore and the canonical id; the database refuses any other spelling")
     void perContextNamesHaveOneSpelling() {
-        UUID sessionId = UUID.randomUUID();
-        String name = Counters.perContext("RECEIPT_NUMBER", sessionId);
-        assertThat(name).isEqualTo("RECEIPT_NUMBER_" + sessionId);
+        UUID storeId = UUID.randomUUID();
+        String name = Counters.perContext("INVOICE_NUMBER", storeId);
+        assertThat(name).isEqualTo("INVOICE_NUMBER_" + storeId);
         counters.create(name, 0);
         assertThat(nextCommitted(name)).isEqualTo(1L);
 
-        for (String other : List.of("RECEIPT_NUMBER_" + sessionId.toString().toUpperCase(), "receipt_number", "RECEIPT-NUMBER")) {
+        for (String other : List.of("INVOICE_NUMBER_" + storeId.toString().toUpperCase(), "invoice_number", "INVOICE-NUMBER")) {
             assertThatThrownBy(() -> sql("""
                     insert into counters (id, key, last_value, created_at, updated_at, version)
                     values (uuidv7(), ?, 0, now(), now(), 0)
@@ -167,7 +167,7 @@ class CounterIntegrationTest extends IntegrationTest {
                     .isInstanceOf(DataIntegrityViolationException.class)
                     .hasMessageContaining("ck_counters_key");
         }
-        assertThatThrownBy(() -> Counters.perContext("RECEIPT_NUMBER", null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> Counters.perContext("INVOICE_NUMBER", null)).isInstanceOf(NullPointerException.class);
     }
 
     @Test

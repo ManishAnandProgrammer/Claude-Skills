@@ -1,15 +1,11 @@
 # House error contract (ERR-xx)
 
-Source: the user's DynamicForm implementation:
-- `shared/exception/GlobalExceptionHandler`
-- `ErrorCode`
-- `ErrorCodeHttpStatusMapper`
-- `custom/AppException`
-- `TransientDatabaseFailure`
-- `config/MessageSourceConfig`
-- `messages/message_en.properties`
+Reference implementation: the reference application's `common/exception/` (`ErrorCode`,
+`ErrorCodeHttpStatusMapper`, `AppException`, `TransientDatabaseFailure`, `GlobalExceptionHandler`,
+`ConstraintViolationCodes` with each module's `ConstraintErrorCodes`), `config/MessageSourceConfig`
+and `messages/message_en.properties`.
 
-This file is the reference shape that REST-05, REST-06 and DATA-18 check against. A project
+This file is the reference shape that REST-05, REST-06 and REL-10 check against. A project
 that hasn't adopted it yet gets one finding per missing piece, not one per endpoint.
 
 ---
@@ -18,7 +14,7 @@ that hasn't adopted it yet gets one finding per missing piece, not one per endpo
 
 | Piece | Shape |
 |---|---|
-| `ErrorCode` | One protocol-agnostic enum, grouped by module (`AUTH_…`, `FORM_…`). Each constant is one well-defined failure mode. Constants in a module's `api/` package carry Javadoc. |
+| `ErrorCode` | One protocol-agnostic enum, grouped by module (`AUTH_…`, `ORDER_…`). Each constant is one well-defined failure mode. Constants in a module's `api/` package carry Javadoc. |
 | `ErrorCodeHttpStatusMapper` | `final` utility class with a private constructor, holding a static `EnumMap<ErrorCode, HttpStatus>`. It is the **only** place an ErrorCode meets an HttpStatus. `resolve()` throws `IllegalStateException` for an unmapped code, so a new code can't reach production silently. Other protocols (gRPC) would get their own mapper. |
 | `AppException` | One `RuntimeException` carrying `ErrorCode`, `Object[] args`, optional `failedValidations` and response `extensions`. Private constructor, with static factories: `of(code, args…)`, `withCause(code, cause, args…)`, `withFailedValidations(code, failed)`, `supply(code, args…)` (for `orElseThrow`). Also `withExtension(name, value)`, which rejects the reserved names `type`, `title`, `status`, `detail`, `instance`, `errorCode` and `failed`. |
 | Messages | `messages/message_<locale>.properties`, keyed by `ErrorCode.name()`, with `{0}` arguments. `ReloadableResourceBundleMessageSource` set to `UTF-8` **and** `setAlwaysUseMessageFormat(true)`. Without that setting a message with no arguments skips MessageFormat, and `''` / `{0}` reach the client raw (MESSAGE-PLACEHOLDERS-LEAK). The bean validator uses the same MessageSource. Locale comes from `AcceptHeaderLocaleResolver` **with its supported locales set**, and the MessageSource has **`setDefaultLocale(ENGLISH)`**: otherwise any `Accept-Language` without its own file (`de`, `pa`) throws `NoSuchMessageException` inside the error handler and breaks every error response (verified 2026-11-13). |
@@ -71,7 +67,8 @@ fault, so it answers 500, not 503.
 **Constraint names come from the driver.** The domain code for a constraint violation is looked up
 by the constraint's name, read from the driver in one place
 (`PSQLException.getServerErrorMessage().getConstraint()`, reference:
-`common/exception/ConstraintViolationCodes`). Hibernate names the constraint only for SQLSTATE
+`common/exception/ConstraintViolationCodes`, which merges the `ConstraintErrorCodes` bean each module
+declares). Hibernate names the constraint only for SQLSTATE
 23505, 23514, 23503 and 23502; an exclusion constraint (23P01) gets no name from it. A custom
 Hibernate dialect or anything on `org.hibernate.internal` to recover the name is a finding (Medium:
 internal API, switched on globally for one constraint), and so is parsing the message text (it is
@@ -95,9 +92,8 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
 - Throw `AppException.of(ErrorCode.X, args)`. Never `new RuntimeException("…")`. Never a new
   exception class per error case: a new class only when a caller must catch it specifically.
 - Lookups: `repository.findById(id).orElseThrow(AppException.supply(X_NOT_FOUND, id))`.
-- `IllegalStateException` is for **impossible states** (bugs): it answers 500 and is never caught
-  as a domain signal. Anything a client can cause is an `AppException` with an ErrorCode (JAVA-09,
-  JAVA-20).
+- `IllegalStateException` only for impossible states (JAVA-20); anything a client can cause is an
+  `AppException` with an ErrorCode.
 - A new `ErrorCode` needs, in the same change:
   - a mapper entry;
   - a message in every `message_*.properties`;
@@ -106,10 +102,9 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
 
 ## ERR-05: 409 for a conflict with state, 400 for wrong values
 - **Check:** a request that is valid in itself but conflicts with the current state of its target
-  or of a related resource is **409** with a domain code (`SCHOOL_SESSION_ENDED`,
-  `RECEIPT_ALREADY_CANCELLED`, `STUDENT_NOT_ACTIVE`). A request whose own values are wrong is
-  **400** (`FEE_MONTH_OUTSIDE_SESSION`: the month is outside the session's range, whatever the
-  state). The test: is it refused because of a status, a flag or existing records, things that
+  or of a related resource is **409** with a domain code (`ORDER_ALREADY_SHIPPED`,
+  `ACCOUNT_NOT_ACTIVE`). A request whose own values are wrong is **400** (`DATE_OUTSIDE_PERIOD`: the
+  date is outside the period's fixed range, whatever the state). The test: is it refused because of a status, a flag or existing records, things that
   change over time? Then 409. Is it wrong against fixed rules or fixed attributes of the target (its
   date range, a format, a bound)? Then 400.
 - **Detect:** a `…_NOT_ACTIVE`, `…_ALREADY_…`, `…_ENDED`, `…_IN_USE` code mapped to 400; a range or

@@ -1,12 +1,5 @@
 # Persistence rules (DATA-xx)
 
-Sources:
-- `Soft-Deletes-Are-A-Pitfall.md`, `AFTER_COMMIT-REQUIRES_NEW-Pool-Deadlock.md`;
-- DynamicForm `notes/transactional-deep-dive.md`;
-- DynamicForm reports: `hibernate-persistence-context-and-fetching-review.md`,
-  `database-concurrency-locking-and-transaction-review.md`, `erp-practices-2026-11-09.md`;
-- the decisions in DESIGN.md.
-
 Configuration values are in `config-baseline.md`; the 503 contract is in `error-contract.md`.
 
 Core idea: **transaction scope is connection scope.** A transaction holds a pooled connection for
@@ -105,11 +98,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     isn't re-dispatched to `/error` and answered 401.
 - **Severity:** High.
 
-### DATA-18: Transient database failures answer 503 + Retry-After
-- **Check:** pool exhaustion, statement timeout, lock timeout and an unreachable database are
-  classified by walking the **cause chain and SQLSTATE**, and answered 503 with a stable code and
-  a jittered `Retry-After` (`error-contract.md` ERR-03). Never the generic 500.
-- **Severity:** High (`POOL-EXHAUSTION-IS-500`: clients retry 500s wrongly, or not at all).
+### DATA-18: merged into REL-10
 
 ### DATA-19: Server-side timeouts on every app connection, in the right order
 - **Check:**
@@ -123,9 +112,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     for a lock blocks every later query on that table behind it, and a rolling deploy migrates while
     old instances still serve traffic: without a lock timeout one waiting migration stops the table.
     A long statement that already holds its lock (an index build, a backfill) must not be cut off,
-    so no statement timeout. Set it for the migration connection (Liquibase's own URL `options`, or
-    `SET lock_timeout` at the top of each changeset that alters a busy table); a migration that hits
-    it fails and is re-run;
+    so no statement timeout. Set it on the migration connection (reference:
+    `config/LiquibaseConnectionConfig`, Liquibase's own data source with `-c lock_timeout`, from
+    `app.liquibase.lock-timeout`), or `SET lock_timeout` at the top of each changeset that alters a
+    busy table; a migration that hits it fails and is re-run;
   - hot paths use a short default, and exports raise it locally (`SET LOCAL statement_timeout`);
   - a test holds the order.
 - **Severity:** High if they are missing (the migration lock timeout included); Medium for the
@@ -220,10 +210,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - no classpath module discovery.
 
   Otherwise Hibernate builds its own strict Jackson 2 mapper beside Jackson 3, and one extra key
-  in one stored document makes the row unloadable. DynamicForm didn't boot (F-082). Each stored
+  in one stored document makes the row unloadable; one application didn't boot (F-082). Each stored
   JSON type gets a test that loads a document with an extra key. Ordered data in `jsonb` is
   stored as a list, never as object keys (`jsonb` re-sorts keys; `DISPLAY-OPTIONS-ORDER-LOST`).
-- **Also (HelpBook):** a JSON column's content is a typed record where possible. Where a
+- **Also:** a JSON column's content is a typed record where possible. Where a
   `Map` is unavoidable, its keys are named constants (one class of keys, never repeated string
   literals), and a closed set of values is an enum, so a typo can't write a key nobody reads.
 - **Not a finding when:** every `SqlTypes.JSON` attribute is a `String` the application maps with its
@@ -244,6 +234,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - a "max N per parent" cap locks the parent before counting, or uses a constraint (incident R5:
     a cap of 5, and 6 created);
   - multi-row locks are taken in a consistent order (`ORDER BY id`, `order_updates=true`);
+  - rows locked only so they can't be deleted or re-keyed while a link to them is written (the tags
+    of a todo) take `FOR KEY SHARE … ORDER BY id`, not `FOR SHARE` / `FOR UPDATE`: an ordinary update
+    of those rows (a rename) then isn't blocked;
   - pollers claim with `FOR UPDATE SKIP LOCKED` plus a lease in a short claim transaction, do the
     remote work between transactions, and use fencing when several instances run;
   - `lock_timeout` bounds every wait.
@@ -254,6 +247,13 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   inverse side doesn't bump the parent's `@Version` (incident R4: 10 of 10 duplicates). Use a
   constraint, or `OPTIMISTIC_FORCE_INCREMENT` / `PESSIMISTIC_WRITE` on the parent. "max + 1"
   numbering needs a unique constraint plus a parent lock, so the loser gets 409.
+- **Also:** when a change to a `mappedBy` collection is meant to change the parent's version (a
+  todo's set of tags, replaced with the todo's `version`), the collection carries
+  `@OptimisticLock(excluded = false)`. Hibernate excludes inverse collections from the version by
+  default, so without it the version never moves and a concurrent replace with the same version
+  isn't refused (reference:
+  `Todo.tagLinks`).
+- **Detect:** a `mappedBy` collection written by a versioned endpoint, without the annotation.
 - **Severity:** High.
 
 ### DATA-31: Bulk imports keep memory bounded
@@ -270,7 +270,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   need a (partial) unique index with the violation translated to **the domain code**, or
   `INSERT … ON CONFLICT`, or a lock. Idempotent operations (pin, follow) use
   `ON CONFLICT DO NOTHING` and answer 2xx, not 409 (F-084).
-- **Unique text (HelpBook):** case and surrounding spaces must not make a different value
+- **Unique text:** case and surrounding spaces must not make a different value
   ("Groceries" vs " groceries", two accounts for one email). Two correct shapes:
   - the code **stores the normalised form** (enforced by `CHECK (col = lower(trim(col)))`) and the
     column gets a **plain unique constraint**, which every `col = ?` lookup uses (emails, codes);
@@ -282,8 +282,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   A nullable one is partial: `WHERE col IS NOT NULL`.
 - **Detect:** an expression index next to a repository lookup on the bare column (`findByEmail`).
 - The constraint's name comes from the driver, for every kind (error-contract.md ERR-02).
-- **Severity:** High on a lookup in a request path (login, signup).
-- **Severity:** High.
+- **Severity:** High (it includes an expression index that turns a request-path lookup, such as
+  login, into a sequential scan).
 
 ### DATA-06: Optimistic locking
 - **Check:**
@@ -324,7 +324,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     `@UuidGenerator`), not with a database `DEFAULT uuidv7()`: a database-generated id must be
     read back after each insert, which costs JDBC insert batching;
   - application-assigned ids are inserted with `persist`, not `save` (DATA-25);
-  - the id is never updatable: `@Column(updatable = false)` (HelpBook).
+  - the id is never updatable: `@Column(updatable = false)`.
 
   Random UUIDv4 is a finding.
 - **Severity:** Medium.
@@ -365,11 +365,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Check:**
   - **string columns are `text`** (PostgreSQL: `varchar(n)` adds no speed, only a second length
     contract that drifts); entities carry no length constants;
-  - **the length contract is the request:** every String in a request record carries
-    `@MaxLength("<key>")` with the number in `app.limits.text` (configuration, not code);
+  - the length contract is the request's `@MaxLength` (REST-09, which also sets the severity of a
+    missing limit);
   - never `@Lob` (on PostgreSQL that's an `oid` large object).
-- **Severity:** **High** for a request String with no length limit, unless the author justifies it
-  (ask; a justified exception is an accepted deviation); Medium for a `varchar(n)` column.
+- **Severity:** Medium for a `varchar(n)` column or a length constant on the entity.
 
 ### DATA-13: Migrations
 - **Check:**
@@ -390,11 +389,28 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Check:** a locked read of a row chosen by a column that other transactions change
   (`SELECT … WHERE is_current FOR SHARE`, `WHERE status = 'OPEN' FOR UPDATE`) is a finding. Under
   READ COMMITTED it waits on the old row, re-checks only that row after the switch commits, finds it
-  no longer matches, and returns nothing: it never sees the new current row (run 5: a payment during
-  a session switch answered a false 400 "no current session"). Instead:
+  no longer matches, and returns nothing: it never sees the new current row, so a valid request is
+  refused. Instead:
   1. read the id without a lock;
   2. lock that row by id;
   3. re-check the condition on the locked row, and answer 409 if it no longer holds (ERR-05).
 - **Detect:** a `@Lock` / `FOR SHARE` / `FOR UPDATE` query whose `WHERE` names a flag, a status or a
   date range rather than the id.
 - **Severity:** Medium (High when the wrong answer is a write, not a refusal).
+
+### DATA-33: A child's owner is its parent's owner, enforced by the database
+- **Check:** a child row that carries its own `owner_id` and belongs to an owned parent (a todo in
+  a list, a link between two owned records) can't point at another owner's parent:
+  - a **composite foreign key** `(parent_id, owner_id) → parent(id, owner_id)`, which needs
+    `UNIQUE (id, owner_id)` on the parent (a new changeset when the parent's is applied);
+  - the plain `owner_id` foreign key keeps its own index (the composite one doesn't lead with it);
+  - the service still loads the parent by id **and** owner before writing the child (a foreign
+    parent is a 404, REST-16), so the composite FK firing can only mean the parent's delete: it maps
+    to the parent's `*_IN_USE`;
+  - a child that can change parent does it through an entity method that checks the owner
+    (`moveTo`); one that can't has `updatable = false` on its parent column.
+- **Why:** the ownership check in the service is one line a later change can drop; the constraint
+  makes a cross-owner row impossible.
+- **Detect:** an owned child table whose parent FK is the parent id alone; a parent column on the
+  child that is updatable with no owner check.
+- **Severity:** Medium (High when a cross-owner row would leak data, REST-16).

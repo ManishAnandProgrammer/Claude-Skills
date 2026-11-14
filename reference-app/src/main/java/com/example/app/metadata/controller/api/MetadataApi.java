@@ -14,7 +14,7 @@ import org.springframework.http.ProblemDetail;
 @Tag(name = "Configuration metadata", description = """
         Application-wide configuration, one value per fixed key, for admins (role ADMIN). Only the fixed \
         keys declared in the application exist here. Configuration that belongs to one record (a \
-        session's fee rules) is read and replaced through that record's own endpoint \
+        store's opening hours) is read and replaced through that record's own endpoint \
         (PUT /<resources>/{id}/<configuration>), which checks the record's rules. Values are created by \
         the application; this API reads and replaces them.""")
 public interface MetadataApi {
@@ -34,7 +34,7 @@ public interface MetadataApi {
     ObjectWrapper<MetadataResponse> get(
             @Parameter(
                     // example:begin
-                    example = "ATTENDANCE_DEFAULTS",
+                    example = "TODO_LIST_DEFAULTS",
                     // example:end
                     description = "A fixed key")
             String key);
@@ -61,7 +61,7 @@ public interface MetadataApi {
     ObjectWrapper<MetadataResponse> update(
             @Parameter(
                     // example:begin
-                    example = "ATTENDANCE_DEFAULTS",
+                    example = "TODO_LIST_DEFAULTS",
                     // example:end
                     description = "A fixed key")
             String key,

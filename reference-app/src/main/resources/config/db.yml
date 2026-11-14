@@ -1,5 +1,6 @@
-# PostgreSQL, the connection pool, JPA and Liquibase; Redis (the rate limiter's buckets).
+# PostgreSQL, the connection pool, JPA and Liquibase; with the sign-in piece, Redis (the rate limiter's buckets).
 spring:
+  # sign-in:begin
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -11,6 +12,7 @@ spring:
       # Command timeout, the backstop just above app.rate-limit.backend-timeout (200ms): Bucket4j gives
       # up first and lets the request through; Lettuce's default (60s) would hold the command that long.
       timeout: 250ms
+  # sign-in:end
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:${spring.application.name}}
     username: ${DB_USER}
@@ -73,7 +75,9 @@ app:
     lock-timeout: ${LIQUIBASE_LOCK_TIMEOUT:5s}
     # The migration's session in pg_stat_activity (docs/runbook.md).
     application-name: ${spring.application.name}-liquibase
+  # sign-in:begin
   redis:
     # Commands queued per connection before Lettuce refuses more (its default is unbounded). While
     # disconnected, commands are refused at once instead of buffered (RedisClientConfig).
     request-queue-size: 1000
+  # sign-in:end

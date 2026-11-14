@@ -25,11 +25,11 @@ project doesn't have.
 | Key | Value | Notes |
 |---|---|---|
 | `rootPackage` | `com.example` | |
-| `modules` | one line each: `story: owns the story lifecycle` | ARCH-01. A module whose line can't be written is a finding |
+| `modules` | one line each: `order: owns the order lifecycle` | ARCH-01. A module whose line can't be written is a finding |
 | `moduleContracts` | `api-facades` | `api-facades` (modulith style: entities stay inside, other modules use `<module>.api`) or `service-entity-methods`. The project owner decides |
 | `layerPackages` | `controller, service, repository, domain, mapper, dto` | ARCH-03 |
 | `repositoryAccess` | `aggregate-service` | Who may use a repository: the service of its aggregate only (ARCH-15). `service, mapper` only for a project that hasn't adopted ARCH-15 |
-| `aggregates` | `none` | ARCH-15: `Root (OwningService): Member, Member`, e.g. `Form (FormService): FormField, FormSection`; one entry per aggregate root, even without members (`Tag (TagService)`), separated by `;`. Mirrors `AggregateArchTest.AGGREGATES` |
+| `aggregates` | `none` | ARCH-15: `Root (OwningService): Member, Member`, e.g. `Order (OrderService): OrderLine, Shipment`; one entry per aggregate root, even without members (`Tag (TagService)`), separated by `;`. Mirrors `AggregateArchTest.AGGREGATES` |
 | `requestSuffix` | `Request` | Suffix of HTTP input bodies (`TodoCreateRequest`), or `Payload` / `Command`: one per project (SMELL-20). GET parameter objects are always `*Filter`, responses `*Response` |
 | `instances` | `multiple` | `single` or `multiple`. Changes the CONC / scheduler / rate-limit severities |
 | `hotPaths` | `none` | Endpoints that answer PERF-01's four questions on every change |

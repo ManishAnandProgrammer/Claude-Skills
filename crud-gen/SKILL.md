@@ -35,7 +35,7 @@ tell the user to run the skills installer.
 | `~/.claude/skills-reference/src/test/java/com/example/app/todo/*IntegrationTest.java` | The tests every entity ships with |
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
 | `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
-| `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@OrderedRange`), a bounded number, a calendar date (`@NotAfterToday`) |
+| `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@AssertTrue boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
 
 The rules behind the shape are the house-review references, which are the source of truth:
 `rest-api.md`, `error-contract.md`, `persistence.md`, `java.md`, `code-smells.md`, `lenses.md`
@@ -113,20 +113,18 @@ Check before generating:
 
 | Check | Rule |
 |---|---|
-| Id time-ordered per `{{idStrategy}}`, assigned in the application, `updatable = false` (from `{{AuditBase}}`) | DATA-09 |
+| Id time-ordered per `{{idStrategy}}`, app-assigned, `updatable = false` (from `{{AuditBase}}`) | DATA-09 |
 | Extends `{{AuditBase}}` (audit columns + `@Version`) | DATA-06 |
-| Lombok: `@Getter @SuperBuilder`, protected no-args constructor, `@Setter` only on freely editable fields; state changes are entity methods | JAVA-16, SMELL-16 |
-| Relations `@ManyToOne(fetch = LAZY)`; collections read-only with `add…` / `remove…` | JAVA-16 |
-| **String columns are `text` in the changeset**; the entity has a plain `@Column` (no `length`, no `columnDefinition`: `validate` accepts `text` for a `String`) and no length constants; the length contract is `@MaxLength` on the request with its number in `app.limits.text` | DATA-12 |
-| A state field (status) has its **starting value in the entity** (`@Builder.Default`), never in the mapper; impossible-state guards in entity methods throw `IllegalStateException` (500, logged), never `IllegalArgumentException` (400) | JAVA-16, ERR-04 |
+| Lombok `@Getter @SuperBuilder`, protected constructor, `@Setter` only on free fields; state changes are entity methods; relations `LAZY`, collections read-only | JAVA-16, SMELL-16 |
+| String columns `text`, plain `@Column`, no length constants | DATA-12 |
+| Starting values (a status, a boolean) in the entity with `@Builder.Default`; booleans primitive, `NOT NULL`, database default | JAVA-16 |
+| Impossible-state guards throw `IllegalStateException` | JAVA-20 |
 | No soft-delete flag; statuses are enums with a check constraint | DATA-07 |
-| A changeset exists, with `--rollback`; FKs named `fk_<table>_<column>` | DATA-13 |
-| A unique text column ignores case and surrounding spaces: **either** the code stores the normalised form (a check constraint `col = lower(trim(col))`) and the column gets a plain unique constraint, **or** the stored text keeps its case and gets a unique index on `lower(trim(col))`, which **only a query on that same expression can use** (a lookup `col = ?` scans the table). Partial (`WHERE col IS NOT NULL`) when nullable | DATA-05 |
-| An index on every FK column, and **one index per offered list order and per filter that scopes the list** (`todoListId`: the list's own screen), leading with the scope columns and **ending with `id`** | DATA-10 |
-| **A keyset sort key is non-null.** A nullable one (a due date) gets a stored generated column, e.g. `due_sort date GENERATED ALWAYS AS (coalesce(due_date, date '9999-12-31')) STORED`, mapped read-only | Session 2; DATA-10 |
-| A child owned through its parent: the child's owner and the parent's owner are tied by a **composite FK** `(parent_id, owner_id) → parent(id, owner_id)`, which needs `UNIQUE (id, owner_id)` on the parent (its own changeset if the parent's is applied). The plain `owner_id` FK still gets its own index (the composite one doesn't lead with it). A child that can change parent has a `moveTo` method that checks the owner; one that can't has `updatable = false` on its parent column | DATA-05, DATA-10, SMELL-16 |
-| Booleans: a primitive `boolean` column `NOT NULL` with a database default; its starting value in the entity (`@Builder.Default`, the builder ignores field initialisers). Editable with the rest of the record → `@Setter`; a transition with rules or side effects (`deactivate()` that also does X) → an entity method. In requests a boolean is a `Boolean` with `@NotNull` (no silent `false`) | JAVA-16, REST-09 |
-| Time: `Instant` for moments (UTC; the client localises), `LocalDate` for calendar dates the user picks (stored and returned as sent, never converted). The backend handles no time zone: a date compared with "today" allows UTC today plus a configured tolerance (1 day) | owner's rule 2026-11-13 |
+| A changeset with `--rollback`; FKs named `fk_<table>_<column>` | DATA-13 |
+| Unique text ignores case and surrounding spaces (one of the two shapes; partial when nullable) | DATA-05 |
+| Indexes: every FK, one per list order and per scoping filter, ending with `id`; keyset sort keys non-null (a generated column for a nullable one) | DATA-10 |
+| A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column | DATA-33 |
+| `Instant` for moments, `LocalDate` for picked dates, no time zones | JAVA-25 |
 | The sequence exists for a display number | DATA-14 |
 
 Golden examples: `~/.claude/skills-reference/src/main/resources/db/changelog/changes/000{2,3,4,5}-*.sql`.
@@ -145,41 +143,24 @@ child table fails the build of the parent too.
 
 ## Step 3: Decide the variant and the list kind
 
-- **Variant M: aggregate member** (from Step 1; golden `TimeEntry`): no service, controller or API
-  interface of its own. Endpoints nested under the root, `/<roots>/{<root>Id}/<members>`, in the
-  **root's** API and controller; methods named `<members>`, `get<Member>`, `create<Member>`,
-  `update<Member>`, `delete<Member>` in the root's service. Every operation loads the root first
-  (owner check: `<ROOT>_NOT_FOUND`), then the member by `findByIdAnd<Root>IdAndOwnerId`
-  (`<MEMBER>_NOT_FOUND`); only create locks the root (`findForShareByIdAndOwnerId`) and the root's
-  version is untouched. The member's FK column is `updatable = false`; the root needs
-  `UNIQUE (id, owner_id)` for the composite FK. Deleting a root that still has members is 409
-  `<ROOT>_IN_USE` unless the owner chooses a cascade (ask). The nested list costs 2 statements
-  (the ownership check, then the batch). Everything else below applies.
-- **Variant N: many-to-many between aggregates** (a `@ManyToMany`, or two roots linked; golden
-  `TodoTag`). Ask which aggregate **writes** the link: the link becomes a member entity of that root
-  (`<A><B>`, extends `{{AuditBase}}`), used only by A's service (ARCH-15).
-  - **Schema** (pre-flight, new changesets): the other side gets `UNIQUE (id, owner_id)`; the link
-    table has `id`, `a_id`, `b_id`, `owner_id`, the audit columns and `version`; `UNIQUE (a_id, b_id)`
-    (leading with `a_id`, it serves A's FK and the links of a batch); composite FKs
-    `(a_id, owner_id) → a(id, owner_id)` and `(b_id, owner_id) → b(id, owner_id)` (the database
-    refuses a link across owners); no FK on `owner_id` alone; index `(b_id, owner_id, a_id)`. Deleting
-    B: `ON DELETE CASCADE` on the B side only when the owner says links simply disappear (a label);
-    otherwise 409 `<B>_IN_USE`. Ask.
-  - **Entity:** A holds a mapped-by `Set<<A><B>>` with `@OptimisticLock(excluded = false)` (Hibernate
-    7.4 excludes mapped-by collections from the version by default), cascade PERSIST/REMOVE,
-    orphan removal, no getter; `replace<Bs>(List<B>)` with the owner guard is the only writer.
-  - **API:** `PUT /<as>/{id}/<bs> {<b>Ids, version}` replaces the set (A's own PUT stays a full
-    replace and refuses `<b>Ids`); optional `<b>Ids` on create; `Set<@NotNull ID>` with
-    `@ConfiguredMaxSize("<a>.max-<bs>")`, no `@NotEmpty`, a repeated id counts once (documented);
-    responses carry `<bs>: [{id, <displayField>}]` in id order. The version changes only when the
-    set does.
-  - **Service:** B through B's service: `getOwned<Bs>ForWrite(ids, ownerId)` (`MANDATORY`; a native
-    `FOR KEY SHARE … ORDER BY id`, so a rename of B isn't blocked and lock order is fixed; 404
-    `<B>_NOT_FOUND` naming the lowest missing id); A locked for update before its link rows; A's
-    delete removes its links through the aggregate.
-  - **List:** the row projection without links, then **one grouped query** for the batch's links
-    (`with<Bs>`): 2 statements per batch, 1 when empty; the `<b>Id` filter is an `exists` on the
-    link table (no join to B).
+- **Variant M: aggregate member** (from Step 1; golden `TimeEntry` and the `*TimeEntry*` methods of
+  `TodoApi` / `TodoController` / `TodoService`): no service, controller or API of its own; endpoints
+  nested under the root (`/<roots>/{<root>Id}/<members>`) in the root's API, controller and service.
+  Ask: may a root with members be deleted (cascade), or is it 409 `<ROOT>_IN_USE`? Follow the golden
+  methods for the rest (owner check on the root first, only create locks the root, the root's
+  version untouched).
+- **Variant N: many-to-many between aggregates** (golden `TodoTag`, `Todo.replaceTags`,
+  `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql`). Ask:
+  which aggregate **writes** the link (the link becomes a member `<A><B>` of that root, ARCH-15)?
+  When B is deleted, do links simply disappear (`ON DELETE CASCADE` on the B side) or is it 409
+  `<B>_IN_USE`? Two facts the golden code relies on:
+  - A's mapped-by link set carries `@OptimisticLock(excluded = false)`, or A's version never moves
+    when the set changes (DATA-30);
+  - B's rows are locked through B's service with a native `FOR KEY SHARE … ORDER BY id`, so a rename
+    of B isn't blocked and the lock order is fixed (DATA-29).
+
+  Schema (composite owner FKs on both sides, DATA-33), API (`PUT /<as>/{id}/<bs>`, A's own PUT
+  refuses `<b>Ids`) and the list (one grouped query for a batch's links) as in the golden files.
 - **Variant A: list CRUD** (no FK with `unique = true`). **Variant B: one per parent** (a unique
   FK): a nested singleton resource; GET returns a null object when absent, PUT creates or
   replaces.
@@ -190,31 +171,12 @@ child table fails the build of the parent too.
     the count only on a full page. Golden: `TodoListFilter`, `TodoListRepositoryImpl.findByFilter`.
 
 - **A feature that needs configuration, not an entity** (rules an admin chooses per tenant or per
-  context, read often, changed rarely): with the `metadata` piece, don't generate an entity. Rules:
-  house-review `metadata.md`.
-  1. **The value:** a record in `metadata.api` (defaults in the compact constructor, bean
-     validation, `@ConfiguredMax` limits).
-  2. **The key**, in `MetadataKeys`: a **fixed** key (one value for the application) is a constant,
-     added to `byName`'s fixed list and seeded by a changeset; the admin API
-     (`GET/PUT /metadata/{key}`) reaches it. A **per-context** key is a factory
-     (`feeRules(UUID sessionId)`) and never goes in `byName`. When the project has no fixed key,
-     leave the fixed list empty with its comment: the admin API then answers
-     `METADATA_KEY_UNKNOWN` for every name, and the first fixed key needs no other code.
-  3. **Per-context configuration is an endpoint of the resource that owns the context**, in that
-     module's API, controller and service: `GET/PUT /school-sessions/{id}/fee-rules` with the typed
-     record as the body (plus `version`), so the contract reaches the API docs. The service loads the
-     context (404), checks the context's own rules (an ended session's rules are 409), then calls
-     `Metadata.update(key, value, version)`. No hook or rule interface in the metadata piece.
-  4. **Lifecycle:** the context's create seeds its configuration in the same transaction
-     (`Metadata.create`, or `createFrom` to copy the previous context's); its delete removes it in
-     the same transaction (`Metadata.delete`, `Counters.delete`).
-  5. **Gapless numbers** use `Counters`: a per-context counter's name is
-     `Counters.perContext(prefix, contextId)`, its prefix declared by the module that numbers (by the
-     context's owner when the dependency direction forbids that); a fixed counter is seeded by a
-     changeset. A record numbered by a counter is never deleted.
-  6. **Tests** follow `~/.claude/skills-reference/src/test/java/com/example/app/metadata/MetadataIntegrationTest.java`
-     and `CounterIntegrationTest.java` (read them from the reference: a project without the example
-     piece doesn't have the first). The owning endpoint gets its own tests (tests.md).
+  context, read often, changed rarely): with the `metadata` piece, generate no entity. Rules:
+  house-review `metadata.md` (META-01…09). Golden: `metadata/` (the fixed key
+  `TODO_LIST_DEFAULTS`; the per-context key `MetadataKeys.todoListSettings(listId)`; the record
+  `TodoListSettings`) and `MetadataIntegrationTest`, `CounterIntegrationTest`. A per-context value
+  is an endpoint of the module that owns the context (`GET/PUT /todo-lists/{id}/settings`, with
+  `version`), generated here with its tests (tests.md).
 
 **Shapes without golden code yet** (money, exactly one current, no overlapping ranges, month
 values, a parent in another module): follow the house-review rules and ask; don't invent a shape.
@@ -224,26 +186,13 @@ values, a parent in another module): follow the house-review rules and ask; don'
 ## Step 4: Generate
 
 ### Conventions (all generated code)
-- **KISS and SRP first** (SMELL-29): code a Java engineer with 2–3 years of experience reads without
-  deep generics or reflection. Each repository method writes its query top to bottom and calls the
-  plain helpers (`Cursor`, `Seek`, `CursorBatch.of`); never invent a helper that takes lambdas.
-- `Objects.isNull` / `Objects.nonNull`; enums compared with `==`; no `var`; text blocks for every
-  multi-line string.
-- Streams for pure pipelines with method references; a `for` loop when the body has side effects.
-- `Optional` as a return type only.
-- Lombok only where used.
-- Visibility: controllers and `*RepositoryImpl` package-private; fields `private final`.
-- **Comments only for *why***, on logic the code can't explain (a lock, a security choice, a database
-  behaviour). No class or method Javadoc that restates the name. OpenAPI annotations are not
-  comments and are always written.
-- **Naming:** HTTP bodies are `<Entity><Action>{{requestSuffix}}` (default `Request`:
-  `TodoCreateRequest`, `TodoUpdateRequest`, `TodoStatusRequest`; read the golden `*Request` names
-  with the project's suffix); GET parameters are `<Entity>Filter`; responses `<Entity>Response`, list rows
-  `<Entity>SummaryResponse` when they leave out heavy fields (a `text` column with a limit over
-  1,000 characters, or a collection); otherwise the list row is the `<Entity>Response`.
-- **No tunables in code.** Every limit, size, timeout or window is a configuration key
-  (`app.limits.*`, `app.jobs.*`, ...); code names the key. Invariants of an algorithm or a format
-  stay in code with a why-comment.
+House-review's rules, as the golden files apply them: KISS and SRP (SMELL-29: queries written top to
+bottom, plain helpers, no lambda-taking helpers), no tunables in code (SMELL-17), why-only comments
+(SMELL-19), `Objects.isNull`, `Optional` only as a return type (JAVA-08), no `var` and text blocks
+(JAVA-13), streams without side effects (JAVA-14), enums with `==` (JAVA-18), minimal visibility
+(JAVA-03). **Naming** (SMELL-20): bodies `<Entity><Action>{{requestSuffix}}`, GET parameters
+`<Entity>Filter`, responses `<Entity>Response`; list rows `<Entity>SummaryResponse` only when they
+leave out heavy fields (a `text` column with a limit over 1,000 characters, or a collection).
 
 ### 4.1 Filter
 Cursor: `extends {{CursorFilter}}` (golden `TodoFilter`). Offset: `extends {{PageFilter}}` (golden
@@ -262,16 +211,16 @@ description and its 400 response name it.
 
 **Shapes** (golden `Tag` / `TimeEntry`):
 - **Range filters:** `<x>From` / `<x>To` for dates, `min<X>` / `max<X>` for numbers, both inclusive;
-  each bound carries the field's own constraints (`@Min`, `@ConfiguredMax`); the filter class
-  carries `@OrderedRange(from = …, to = …)` (an inverted range is 400 naming the lower bound).
+  each bound carries the field's own constraints (`@Min`, `@ConfiguredMax`); the filter has one
+  `@AssertTrue boolean is<X>RangeOrdered()` per range (true when either bound is absent), so an
+  inverted range is a 400 naming `<x>RangeOrdered` (golden `TimeEntryFilter`).
 - **Flags:** the list filters a flag as `status` (`DropdownStatus`, default `ALL`), the dropdown
   defaults to `ACTIVE`; a flag without rules is set by the update (`@Setter`).
 - **Pattern fields:** `@Pattern` with a readable message instead of `@MaxLength` (the pattern bounds
   the length), normalised in the mapper (case), backed by a database `CHECK`.
 - **"None" is null:** optional text and pattern fields store blank as `null`; the `@Schema` says
   "null, absent or blank for none (returned as null)".
-- **Calendar dates:** `@NotAfterToday` (UTC today + `app.limits.not-after-today.tolerance-days`),
-  never `@PastOrPresent` (JAVA-25).
+- **Calendar dates:** `@NotAfterToday`, never `@PastOrPresent` (JAVA-25).
 
 ### 4.2 Requests (records)
 `<Entity>Create{{requestSuffix}}`, `<Entity>Update{{requestSuffix}}` (with `@NotNull Long version`),
@@ -292,16 +241,12 @@ fields. Golden: `TodoResponse`, `TodoSummaryResponse`.
 `ERROR_PREFIX_NOT_FOUND`, `ERROR_PREFIX_<FIELD>_TAKEN` per unique field, `ERROR_PREFIX_IN_USE` when
 referenced; the mapper entries; a message in every `{{messagesFile}}`; the handler's
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
-`*_IN_USE`). Never check-then-insert (DATA-05). Every constraint kind maps, exclusion constraints
-included: the handler reads the name from the driver (error-contract.md ERR-02).
-**A state conflict is 409, a wrong value 400** (error-contract.md ERR-05): refused because of a
-status, a flag or existing records → 409 with a domain code; the request's own values wrong against
-fixed rules → 400.
+`*_IN_USE`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02). A state
+conflict is 409, a wrong value 400 (ERR-05).
 **Bootstrap brings no feature codes**: every code, mapping, message, constraint entry and limit key
 is added here. Constraint mappings go in the module's own `ConstraintErrorCodes` bean (the handler
 aggregates them). A child's composite owner FK `(parent_id, owner_id)` maps to the parent's
-`*_IN_USE` (it fires on the parent's delete); it can mean "in use" only because the service loads
-the parent by id **and owner** before writing a child, so a foreign parent is a 404 first.
+`*_IN_USE` (DATA-33).
 
 ### 4.5 Mapper
 Golden `TodoMapper`: `toEntity(request, resolvedParents…, ownerId)`, `update(entity, request,
@@ -342,9 +287,7 @@ writes; create `saveAndFlush`; update/actions change the managed entity after
 `entity.checkVersion(request.version())` (409 `OPTIMISTIC_LOCK_CONFLICT`), then `flush()`; delete loads (404) then flushes; ownership through
 `findByIdAndOwnerId` (another user's record is 404); parents written into are locked with
 `getOwned<Parent>ForWrite` (`MANDATORY`); list sizes from `{{Paging}}`. No remote call inside a
-transaction (DATA-01). **Never lock "the current X" by a mutable column** (DATA-32: `WHERE is_current
-FOR SHARE` misses the new current row after a switch): read the id unlocked, lock that row by id,
-re-check the condition on the locked row (409 when it no longer holds).
+transaction (DATA-01). Never lock "the current X" by a mutable column (DATA-32).
 
 ### 4.9 API interface (OpenAPI)
 Golden `TodoApi`: `@Tag`; `@Operation` with text-block descriptions; an `@ApiResponse` for every
@@ -362,11 +305,7 @@ Golden `TodoController`: package-private, `implements <Entity>Api`, class-level
 `version = "v1+"` (the current baseline; REST-07), 201/204 with `@ResponseStatus`, `{{controllerSecurity}}`, nothing but the service call. A user-level resource needs no
 `@PreAuthorize` (every authenticated principal is a user); the dropdown carries
 `{{dropdownSecurity}}` explicitly because it is often shared by screens of different roles.
-**Role checks are meta-annotations** (REST-25): an admin-only endpoint carries `@AdminOnly`
-(`common/security`, golden `MetadataController`), never `@PreAuthorize("hasRole('…')")`;
-`ConventionArchTest` fails on a role string anywhere else. A new role is a new annotation next to
-`@AdminOnly`, a `Role` constant and a changeset widening `ck_users_role` (the metadata piece's 0007
-brings `ADMIN`).
+Role checks are meta-annotations such as `@AdminOnly` (REST-25, golden `MetadataController`).
 
 ### 4.11 Dropdown (when the entity carries `{{dropdownAnnotation}}`)
 Read `references/dropdown.md`. Golden: `TodoListRepositoryImpl.findDropdownItems`,
@@ -391,16 +330,6 @@ file, then offer to fix `~/Documents/claude-skills` (reference-app and skill tex
 with `scripts/verify.sh`).
 
 ### Final checklist
-- [ ] Profile loaded; no `{{…}}` left; the golden files read.
-- [ ] Pre-flight in one table, asked once (or applied in full and reported): `text` columns, indexes per order ending in `id`, non-null keyset
-      keys, `lower(trim())` unique indexes, composite owner FK.
-- [ ] `*Request` records with `@MaxLength` keys added to `config/limits.yml`; `version` on updates.
-- [ ] List as a projection; cursor or offset per the profile; no counts on cursor lists; `ids` filter.
-- [ ] ErrorCodes, mapper entries, messages, constraint mappings.
-- [ ] Service: transactions, version checks, ownership 404, parent locking, no remote call in a
-      transaction.
-- [ ] API interface documents every status and errorCode; thin package-private controller.
-- [ ] Why-comments only; no tunables in code; no `var`.
-- [ ] Changesets in the master changelog before the first build.
-- [ ] Aggregate decided (root or member); `AggregateArchTest.AGGREGATES` and both profiles updated.
-- [ ] Tests per tests.md; build green; one guard proven to fail; house-review clean.
+- [ ] No `{{…}}` left in the generated files.
+- [ ] Build green, and one guard proven to fail (Step 7).
+- [ ] house-review clean (Step 8).

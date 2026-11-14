@@ -1,4 +1,4 @@
-# Datasource and Redis come from Testcontainers (@ServiceConnection), which overrides these.
+# Connections come from Testcontainers (@ServiceConnection), which overrides these.
 spring:
   datasource:
     username: test
@@ -15,9 +15,11 @@ app:
     personal-data-pepper: test-pepper-that-is-at-least-thirty-two-bytes
   cors:
     allowed-origins: http://localhost:3000
+  # sign-in:begin
   # The sign-in limits are production's (config/limits.yml). Each MockMvc request comes from its own
   # client address (support/DistinctClientAddresses), as each test uses its own accounts, so no test
   # trips a limit another test used; the rate-limit tests pin one address to trip a per-IP limit.
+  # sign-in:end
   admission:
     max-concurrent: 200
 springdoc:

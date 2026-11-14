@@ -9,7 +9,7 @@ import java.util.UUID;
 public record MetadataResponse(
         @Schema(
                 // example:begin
-                example = "ATTENDANCE_DEFAULTS",
+                example = "TODO_LIST_DEFAULTS",
                 // example:end
                 description = "Its key")
         String key,

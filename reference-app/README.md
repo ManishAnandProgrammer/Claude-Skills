@@ -2,8 +2,15 @@
 
 The house reference application: real, building, tested code that the skills copy and point at.
 
-- `/crud-gen bootstrap` copies its **pieces** into a project with `scripts/bootstrap-copy.sh`
-  (`core`, `sign-in`), renaming the root package `com.example.app`.
+- `/crud-gen bootstrap` copies its **pieces** into a project with `scripts/bootstrap-copy.sh`,
+  renaming the root package `com.example.app`:
+  - `core`: error contract, wrappers, paging, limits, logging, admission control, security config,
+    persistence base, config files, test base, ArchUnit, the incident runbook;
+  - `sign-in`: the `user` module (signup, login, tokens) and its Redis rate limiting (the limiter in
+    `common/ratelimit`, `config/RedisClientConfig`, the Redis settings, compose service and
+    Testcontainer); without it, core keeps only `RateLimitExceededException` (the 429);
+  - `metadata` (optional): configuration metadata and gapless counters;
+  - `example` (reference only): the `todo` module below.
 - The `todo` module is the **golden crud-gen output**: what a generated entity looks like, with its
   tests. crud-gen generates like it; house-review cites it as compliant code.
 - Skills find it at `~/.claude/skills-reference` (linked by the installers).
@@ -18,8 +25,10 @@ JDK 25 and Docker (Testcontainers):
 ```bash
 ./mvnw -B verify                    # or: sg docker -c "./mvnw -B verify"
 ```
-`../scripts/verify.sh` builds this project **and** a fresh bootstrap copy of it; the pre-push hook
-runs it, since the repository is private and has no CI.
+`../scripts/verify.sh` builds this project **and** fresh bootstrap copies of it (core with sign-in;
+with the example and metadata; metadata without the example; core alone), then starts the image.
+Run it before pushing: the pre-push hook only checks that it passed on exactly this code, since the
+repository is private and has no CI.
 
 ## Changing it
 

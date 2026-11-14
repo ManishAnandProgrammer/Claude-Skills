@@ -3,6 +3,50 @@
 Working log of the decisions taken while building the skill with the user, step by step.
 Sources: the user's notes in `~/Downloads/Send-To-MIS/`.
 
+## Sources
+
+The rule files once named their sources in their headers; the notes live outside this repository,
+so the list is kept here.
+- **rest-api.md:** `rest-api-best-practices.md`, plus the decisions in this log.
+- **code-smells.md:** `Coding_Standards.md` (23 smells), `Refactoring Book Summary.md` (22 smells),
+  `Clean Code Book Summary.md`, merged without duplicates.
+- **java.md:** `Effective Java Summary.md`, plus the house conventions stated while designing this
+  skill.
+- **persistence.md:** `Soft-Deletes-Are-A-Pitfall.md`, `AFTER_COMMIT-REQUIRES_NEW-Pool-Deadlock.md`;
+  DynamicForm `notes/transactional-deep-dive.md`; DynamicForm reports
+  `hibernate-persistence-context-and-fetching-review.md`,
+  `database-concurrency-locking-and-transaction-review.md`, `erp-practices-2026-11-09.md`. The
+  unique-text shapes (DATA-05), `updatable = false` ids (DATA-09), typed JSON content (DATA-27) and
+  lower-case package names (SMELL-20) came from HelpBook.
+- **lenses.md:** `eight-lenses.md`; DynamicForm `notes/testing-blind-spots.md`,
+  `.claude/skills/monitoring`, `playbooks/jvm-observability-playbook.md`,
+  `reports/resilience-review-2026-11-09.md`.
+- **architecture.md:** DynamicForm `playbooks/low-level-architecture-review-playbook.md` (the
+  severity principle), its ArchUnit tests (`LayerArchTest`, `ModuleLayerArchTest`,
+  `ModuleBoundaryArchTest`, `NamingConventionArchTest`, `TenantBypassArchTest`) and its CLAUDE.md
+  "Architecture Rules". The reference application's ArchUnit classes are `LayerArchTest`,
+  `ModuleBoundaryArchTest`, `AggregateArchTest` and `ConventionArchTest`.
+- **error-contract.md:** the user's DynamicForm implementation (`shared/exception/GlobalExceptionHandler`,
+  `ErrorCode`, `ErrorCodeHttpStatusMapper`, `custom/AppException`, `TransientDatabaseFailure`,
+  `config/MessageSourceConfig`, `messages/message_en.properties`).
+- **config-baseline.md:** DynamicForm `application.properties`, `application-prod.properties` and
+  `logback-spring.xml`, plus the reviews behind them (DynamicForm prod turns compression off
+  because Nginx compresses).
+- **dropdown standard (REST-13):** the user's `DropdownCandidate` contract (Espranza), merged with
+  the house decisions of 2026-11-13.
+- **Incidents behind some whys:** DATA-32 (a payment during a session switch answered a false 400
+  "no current session"), ARCH-16 (`ObjectProvider<MetadataUpdateRule>` around a real service
+  cycle) and TEST-05 (a "make current" race test red in 1 of 2 runs) come from run 5 of a field
+  test.
+
+## Rule merges (2026-11-14)
+- DATA-18 (transient database failures → 503) merged into REL-10; the classification is ERR-03.
+- CFG-09 (outbound clients) merged into REL-01, REL-04 and OPS-06.
+- New: DATA-33 (composite owner FK). Lessons that lived only in crud-gen text became rule text:
+  DATA-29 (`FOR KEY SHARE` for link rows), DATA-30 (`@OptimisticLock(excluded = false)`), JAVA-16
+  (starting values, booleans), REST-09 (request booleans), REST-25 (a new role), TEST-07 (MockMvc
+  traps).
+
 ## Step 1: shape (decided 2026-11-13)
 
 - **Name:** `house-review`. The built-in `/code-review` already exists, so this name avoids

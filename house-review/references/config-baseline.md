@@ -1,8 +1,7 @@
 # Configuration baseline (CFG-xx)
 
-Source: DynamicForm `application.properties`, `application-prod.properties` and
-`logback-spring.xml`, plus the reviews behind them. Values are the user's production values; the
-*why* is theirs. A missing key, or a different value without a reason in the profile, is a
+Values are production values, each with its *why*; the reference application's
+`application.yml` and `config/*.yml` carry them. A missing key, or a different value without a reason in the profile, is a
 finding (default Medium). The profile can override a value with its reason.
 
 Check these in whole-codebase mode, and in diff mode whenever configuration files change.
@@ -50,8 +49,10 @@ Not findings: `hibernate.jdbc.fetch_size` unset (measured: no benefit with keyse
 query plan cache size left at its default.
 
 ## CFG-03: Database roles and migrations
-- Liquibase uses `spring.liquibase.url=${spring.datasource.url}` (it migrates the database the
-  app uses).
+- Liquibase migrates the database the app uses, over its own connection: a `@LiquibaseDataSource`
+  built from the app's connection details with `lock_timeout` (`app.liquibase.lock-timeout`, about
+  5 s) and no statement timeout (DATA-19). Reference: `config/LiquibaseConnectionConfig`. Never a
+  second, hand-written URL (LIQUIBASE-URL-HARDCODED-LOCALHOST).
 - *Profile-optional (required with RLS):* the app connects as a non-owner, DML-only role; only
   Liquibase uses the owner role.
 - Server settings (RDS parameter group): `log_lock_waits=on`, `deadlock_timeout=1s`.
@@ -69,16 +70,15 @@ query plan cache size left at its default.
 | Key | Value | Why |
 |---|---|---|
 | `spring.threads.virtual.enabled` | `true` | Then `server.tomcat.threads.max` bounds **nothing** (REL-07): concurrency is bounded by admission control (PERF-03) |
-| `server.shutdown` / `spring.lifecycle.timeout-per-shutdown-phase` | `graceful` / `10s`+ | REL-13 |
-| `server.compression.*` | enabled with `min-response-size=1KB` and JSON mime types, **or** documented as done by the edge proxy | DynamicForm prod turns it off because Nginx compresses |
+| `server.shutdown` / `spring.lifecycle.timeout-per-shutdown-phase` | `graceful` / `30s` | Longer than a normal request (pool wait 3 s + statement timeout 25 s), so a drain doesn't cut requests that would have finished; the container's stop grace is longer still (REL-13) |
+| `server.compression.*` | enabled with `min-response-size=1KB` and JSON mime types, **or** documented as done by the edge proxy | Off in prod when Nginx compresses |
 | `server.tomcat.connection-timeout` | `5s` | |
 | `server.tomcat.max-connections` / `accept-count` / `keep-alive-timeout` / `max-keep-alive-requests` | set for prod (5000 / 1000 / 15s / 1000) | Don't lower `max-connections` to "cap load": it counts idle keep-alive sockets |
 | `server.tomcat.max-http-form-post-size`, `max-swallow-size`, `max-http-response-header-size`, multipart `max-file-size` / `max-request-size` | set | Bounded input |
 | Scheduler | a `TaskScheduler` bean with N named platform threads, `waitForTasksToCompleteOnShutdown`, `awaitTerminationSeconds` | `spring.task.scheduling.pool.size` is ignored under virtual threads (REL-08) |
 | `spring.task.execution.mode` | `force` (whenever a `TaskScheduler` bean exists) | A scheduler is an `Executor`, so Boot otherwise skips its `applicationTaskExecutor`, and the MDC `TaskDecorator` with it (verified 2026-11-13) |
-| `spring.lifecycle.timeout-per-shutdown-phase` | longer than the longest request (pool wait + statement timeout) | A shorter one cuts requests that would have finished |
 | `spring.task.execution.thread-name-prefix` | set | Readable thread dumps |
-| Admission control | a Resilience4j semaphore bulkhead per route group, about 2× the pool for request groups, small for reports and exports, short max-wait, then 503 `SERVER_BUSY` + `Retry-After`; never the thread-pool bulkhead (it undoes virtual threads); runs before the security chain; the actuator is never capped | PERF-03 |
+| Admission control | PERF-03 | Never the thread-pool bulkhead: it undoes virtual threads |
 
 ## CFG-05: Jackson (strict input)
 ```
@@ -94,19 +94,16 @@ Why: a misspelt field is a 400 `REQUEST_UNREADABLE`, not silently ignored (it wa
 Hibernate is the exception: tolerant, DATA-27.
 
 ## CFG-06: Actuator, health and metrics
-- `management.server.port` set (e.g. `8081`): health, probes and scraping never wait for the
-  application connector or the pool.
-- **Health and probes are unauthenticated** (the load balancer needs them). **The metrics scrape
-  is secured** (`{{metricsAuth}}`, mechanism pending the user's decision). The management port is
-  never published publicly. Production: `show-details=never`; exposure `health,metrics,prometheus`
+The keys; the rules behind them are REL-14 (health, probes, management surface) and SEC-03 (the
+scrape is secured, `{{metricsAuth}}`).
+- `management.server.port` set (e.g. `8081`).
+- Production: `management.endpoint.health.show-details=never`; exposure `health,metrics,prometheus`
   only.
-- `management.endpoint.health.probes.enabled=true`:
-  - liveness: no external dependencies;
-  - readiness: `readinessState` plus a **pool-queue indicator** that reads Hikari's
-    `threadsAwaitingConnection` from memory (OUT_OF_SERVICE when the queue is at least the pool
-    size), never Boot's `db` indicator, which borrows a connection and waits in the same queue.
-- Optional dependencies (Redis, mail, AI, Resilience4j) are never in the health contributors that
-  probes use.
+- `management.endpoint.health.probes.enabled=true`; the readiness group is `readinessState` plus a
+  **pool-queue indicator** reading Hikari's `threadsAwaitingConnection` from memory
+  (OUT_OF_SERVICE when the queue is at least the pool size; reference:
+  `config/ConnectionPoolHealthIndicator`), never Boot's `db` indicator, which borrows a connection.
+  Optional dependencies (Redis, mail, AI, Resilience4j) have their health indicators off.
 - Metrics:
   - `management.metrics.tags.application=<app>`;
   - percentiles `0.5,0.95,0.99` **and** `percentiles-histogram=true` for `http.server.requests`,
@@ -141,20 +138,6 @@ Hibernate is the exception: tolerant, DATA-27.
   past a configured slow threshold. Switched by `app.logging.request-completion.enabled` and
   `…slow-threshold`. In prod the app logger level is WARN except this filter.
 
-## CFG-10: Configuration layout and startup checks
-- `application.yml` only names the app and imports **one file per concern**:
-  `config/{db,server,security,observability,limits,jobs}.yml`, each with profile variants beside it
-  (`db-prod.yml`, `server-dev.yml`). Spring Boot applies a `<name>-<profile>.yml` variant of an
-  imported file on top of it (verified 2026-11-13).
-- Every tunable is in configuration (SMELL-17); `spring.application.name` is the one name the rest
-  derives from.
-- No default profile; **startup fails** on a missing or unknown active profile (an allow-list),
-  on missing secrets, and on inert settings (admission below twice the pool size).
-- API docs are off in the base configuration and on only in `dev` (a forgotten profile must not
-  publish the schema).
-- The prod pool is set explicitly (e.g. 30/10), never the default 10.
-- **Severity:** Medium (High when a missing profile exposes docs or development defaults).
-
 ## CFG-08: JVM flags (container)
 - `-XX:+ExitOnOutOfMemoryError`
 - `-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=<private volume>`: heap dumps are secrets
@@ -168,8 +151,18 @@ Hibernate is the exception: tolerant, DATA-27.
   reviewed): a Dockerfile, or `build-image` with the flags recorded.
 - Unique node id per instance when ids need one (TSID).
 
-## CFG-09: Outbound clients
-Every outbound client sets a connect and a request timeout explicitly, never the library default.
-SDKs set `apiCallTimeout` greater than `apiCallAttemptTimeout`. HTTP clients are built from Boot's
-injected builders, so they get observation and trace propagation (OPS-06). Retries are configured
-in the resilience library's YAML, within the deadline budget (REL-04).
+## CFG-09: merged into REL-01, REL-04 and OPS-06
+
+## CFG-10: Configuration layout and startup checks
+- `application.yml` only names the app and imports **one file per concern**:
+  `config/{db,server,security,observability,limits,jobs}.yml`, each with profile variants beside it
+  (`db-prod.yml`, `server-dev.yml`). Spring Boot applies a `<name>-<profile>.yml` variant of an
+  imported file on top of it (verified 2026-11-13).
+- Every tunable is in configuration (SMELL-17); `spring.application.name` is the one name the rest
+  derives from.
+- No default profile; **startup fails** on a missing or unknown active profile (an allow-list),
+  on missing secrets, and on inert settings (admission below twice the pool size).
+- API docs are off in the base configuration and on only in `dev` (a forgotten profile must not
+  publish the schema).
+- The prod pool is set explicitly (e.g. 30/10), never the default 10.
+- **Severity:** Medium (High when a missing profile exposes docs or development defaults).

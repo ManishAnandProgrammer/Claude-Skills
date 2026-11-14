@@ -86,7 +86,7 @@ Then add the **related files** the rules need even when unchanged:
 - the migrations touching every changed entity;
 - `.claude/review-profile.md` and the deviation markers in scope (Step 4).
 
-Lenses per mode (lenses.md):
+Lenses per mode (the lenses are in lenses.md):
 - **diff and uncommitted:** lenses 1, 2, 6 and 7, plus lens 8 when the change touches locks,
   versions, schedulers, uniqueness or shared state;
 - **path and all:** all eight.
@@ -234,8 +234,7 @@ Also check any number you report (counts of endpoints, tests, files) by recomput
   experiment. Examples: what is ignored under virtual threads, default timeouts, what
   `cancel(true)` really does. The strongest proof is a **probe test**: a throwaway test class
   extending the project's test base that sends the real request (or reads the real bean) and
-  prints the result, deleted right after. In the first field test it confirmed three claims in
-  one run each (a class-name leak, a locale crash, a missing executor).
+  prints the result, deleted right after.
 - **Static reading shows the mechanism, not the magnitude.** List each magnitude question under
   "Runtime experiments still to run", with the result that would change the severity. Don't run
   load tests unless asked.

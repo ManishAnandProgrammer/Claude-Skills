@@ -674,7 +674,7 @@ class TimeEntryIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("An inverted range is 400 VALIDATION_FAILED naming its lower bound; equal bounds are a one-value range")
+    @DisplayName("An inverted range is 400 VALIDATION_FAILED naming the range; equal bounds are a one-value range")
     void invertedRangesAre400() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user);
@@ -686,11 +686,20 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=2026-11-02&spentOnTo=2026-11-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("spentOnFrom: must not be after spentOnTo")));
+                .andExpect(jsonPath("$.failed", contains("spentOnRangeOrdered: spentOnFrom must not be after spentOnTo")));
         getAs(user.accessToken(), entries(todoId) + "?minMinutes=31&maxMinutes=30")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("minMinutes: must not be after maxMinutes")));
+                .andExpect(jsonPath("$.failed", contains("minutesRangeOrdered: minMinutes must not be above maxMinutes")));
+    }
+
+    @Test
+    @DisplayName("The API docs list the filter's fields as query parameters, not its range checks")
+    void apiDocsListOnlyTheFilterFields() throws Exception {
+        getAs(null, "/v3/api-docs")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/todos/{todoId}/time-entries'].get.parameters[*].name", containsInAnyOrder(
+                        "todoId", "after", "size", "spentOnFrom", "spentOnTo", "minMinutes", "maxMinutes", "billable", "sort")));
     }
 
     @Test

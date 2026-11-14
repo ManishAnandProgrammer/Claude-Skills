@@ -1,12 +1,6 @@
 # Architecture rules (ARCH-xx)
 
-Sources:
-- DynamicForm `playbooks/low-level-architecture-review-playbook.md`;
-- the ArchUnit tests (`LayerArchTest`, `ModuleLayerArchTest`, `ModuleBoundaryArchTest`,
-  `NamingConventionArchTest`, `TenantBypassArchTest`);
-- DynamicForm CLAUDE.md "Architecture Rules".
-
-**Severity principle (the playbook):** never downgrade a structural problem because the code
+**Severity principle:** never downgrade a structural problem because the code
 still works. Structural findings are **High** (they block merge) unless stated otherwise.
 
 **Module contracts are a profile choice** (`{{moduleContracts}}`):
@@ -47,8 +41,8 @@ The rules below say which mode they apply to.
     (`org.springframework.http..`, `..web..`: an entity returning `HttpStatus` is HTTP-aware and
     wrong for any other adapter). Spring Data's auditing annotations are fine.
 
-  Who may reach repositories comes from `{{repositoryAccess}}` (news-pulse: service + mapper for
-  `getReferenceById`).
+  Who may reach repositories comes from `{{repositoryAccess}}` (default `aggregate-service`: only
+  the aggregate's own service, ARCH-15; mappers receive resolved entities).
 - **Enforce:** ArchUnit, `LayerArchTest` in the reference (entities use no web types; services
   return no `ResponseEntity` and take no servlet request).
 - **Severity:** Medium (High for entity → service).
@@ -149,13 +143,13 @@ The rules below say which mode they apply to.
 - **Severity:** Medium; High when it has grown into a hole.
 
 ### ARCH-15: Aggregates own their repositories; Manager services own cross-aggregate transactions
-Owner's rule (2026-11-13), within a module as well as across modules.
+Within a module as well as across modules.
 - **Check:**
   - **one service per aggregate**: the aggregate root's service (`{{aggregates}}`: root, owning
     service, member entities) is the only class outside the repository package that uses the
-    repositories of the root **and of its member entities** (`FormService` → `FormRepository`,
-    `FormFieldRepository`). It enforces the members' business rules, so a member entity has **no
-    service of its own** and is reached through the root (`/forms/{formId}/fields`);
+    repositories of the root **and of its member entities** (`OrderService` → `OrderRepository`,
+    `OrderLineRepository`). It enforces the members' business rules, so a member entity has **no
+    service of its own** and is reached through the root (`/orders/{orderId}/lines`);
   - **another aggregate is reached only through its root's service**, by its entity methods
     (`getOwnedTodoListForWrite`): they carry validation, ownership, locking and, later, caching and
     its invalidation. Using another aggregate's repository bypasses all of them, and so does a
@@ -179,8 +173,8 @@ Owner's rule (2026-11-13), within a module as well as across modules.
 - **Check:**
   - `spring.main.allow-circular-references` is never enabled;
   - `@Lazy` on an injection point and `ObjectProvider<OwnBean>` are never used to get round a
-    cycle between the application's own beans (run 5: `ObjectProvider<MetadataUpdateRule>` around a
-    real service cycle, and the rule went silently unenforced when the bean was missing).
+    cycle between the application's own beans: the cycle stays, and the code behind a missing
+    `ObjectProvider` bean is silently skipped.
 
   Fix the cycle, in this order: extract the shared part into a third bean both use (A → C ← B);
   publish an event from one side (ARCH-07); merge the two when neither exists without the other.
@@ -215,7 +209,7 @@ Automatable, from the profile:
 | ARCH-15 | a `*Repository` is used only by its aggregate's service (`{{aggregates}}`) and its own repository package; an undeclared repository fails |
 | ARCH-16 | no constructor parameter or field annotated `@Lazy` (the `ObjectProvider<OwnBean>` type argument and `allow-circular-references` stay review checks) |
 | REST-25 | no `@PreAuthorize` whose value contains `hasRole(` outside `<root>.common.security..` (annotation values are in bytecode) |
-| Naming | `*Controller`, `*Repository`; `*RepositoryImpl` not public; package names lower-case; test classes end in `Test` (Surefire skips others silently) |
+| Naming (the reference checks the controller and repository names in `ConventionArchTest`) | `*Controller`, `*Repository`; `*RepositoryImpl` not public; package names lower-case; test classes end in `Test` (Surefire skips others silently) |
 | Conventions in bytecode | no `@Lob` field; no `@Transactional` private method; no `Optional` field or parameter; no `@TransactionalEventListener` + `REQUIRES_NEW` without `@Async`; no `Executors.newFixedThreadPool` / `newCachedThreadPool`; `GeneralCodingRules` (no `System.out`, no java.util.logging, no field injection, no generic `RuntimeException` thrown) |
 
 Not automatable (they live in source, not bytecode), so they stay review rules:
@@ -231,15 +225,14 @@ Not automatable (they live in source, not bytecode), so they stay review rules:
 How the skill uses it:
 1. The profile lists the existing ArchUnit classes (`{{archTests}}`) and their carve-outs, and
    the carve-outs go into the deviation register (ARCH-14).
-2. A red ArchUnit rule in the build is a finding citing the rule and its `because`.
-3. Don't hand-check what a green rule guarantees: list it under "Checked and fine (ArchUnit)".
-4. In Step 8, offer to generate
-   `src/test/java/<root>/archunit/{Layer,ModuleBoundary,Naming,Convention}ArchTest.java` from the
-   profile, with:
+2. Red and green rules in the build are handled as SKILL.md Step 2 says.
+3. In Step 8, offer to generate
+   `src/test/java/<root>/archunit/{Layer,ModuleBoundary,Aggregate,Convention}ArchTest.java` from the
+   profile (the reference application's classes of those names), with:
    - `@AnalyzeClasses(packages = "<root>", importOptions = ImportOption.DoNotIncludeTests.class)`;
    - a `.because("<why>")` on every rule;
    - a dated comment on every carve-out.
 
    Also offer it when an automatable guideline finding recurs.
-5. Use `FreezingArchRule` only to adopt ArchUnit on a large legacy codebase, and its stored
+4. Use `FreezingArchRule` only to adopt ArchUnit on a large legacy codebase, and its stored
    violations go in the deviation register.

@@ -6,6 +6,10 @@
 #      2b. the same with the example module and the metadata piece, so every golden file arrives
 #          with its changesets;
 #      2c. core + sign-in + metadata without the example: the mechanism alone, none of its samples;
+#      2d. core alone (a project signing users in elsewhere), without sign-in's Redis and Bucket4j
+#          dependencies: main and test code compile and the unit tests pass. Its integration and
+#          ArchUnit tests are left out: the integration tests sign users in through sign-in, and the
+#          ArchUnit rules fail on a project with no module yet;
 #   3. the reference's Docker image starts with the prod profile against PostgreSQL and Redis:
 #      healthy, sign-in rate limited through Redis, metrics only on the management port. Tests can't
 #      see this: Testcontainers hands them their connections (a missing Redis setting once switched
@@ -29,9 +33,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Extra arguments go to Maven.
 mvn_verify() {
     local dir="$1" log="$2"
-    if (cd "$dir" && ./mvnw -B verify > "$log" 2>&1); then
+    shift 2
+    if (cd "$dir" && ./mvnw -B verify "$@" > "$log" 2>&1); then
         grep -E "Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$" "$log" | tail -1
         return 0
     fi
@@ -75,6 +81,7 @@ JAVA
 "$REPO/scripts/bootstrap-copy.sh" --target "$project" --package com.acme.smoke --with core,sign-in > "$WORK/copy.log"
 grep -q "com.example.app" -r "$project/src" && { echo "FAILED: com.example.app left in the copied sources" >&2; exit 1; }
 [ -f "$project/docs/runbook.md" ] || { echo "FAILED: the incident runbook is missing from the core copy" >&2; exit 1; }
+grep -rqE "sign-in:(begin|end)" "$project/src" "$project/compose.yaml" "$project/.env.example" && { echo "FAILED: sign-in markers left in the copy" >&2; exit 1; }
 grep -rqE "example:(begin|end)|TODO_LIST|todo-list" "$project/src" && { echo "FAILED: example-module entries left in a copy without the example piece" >&2; exit 1; }
 grep -rqE "metadata:(begin|end)|METADATA_|configuration_metadata|MetadataKey" "$project/src" && { echo "FAILED: metadata-piece entries left in a copy without the metadata piece" >&2; exit 1; }
 { [ -d "$project/src/main/java/com/acme/smoke/metadata" ] || grep -q "ADMIN" "$project/src/main/java/com/acme/smoke/user/domain/Role.java"; } \
@@ -106,9 +113,27 @@ sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>meta</artifactId>|'
 sed -e 's/package com.acme.smoke;/package com.acme.meta;/' -e 's/SmokeApplication/MetaApplication/g' \
     "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$meta/src/main/java/com/acme/meta/MetaApplication.java"
 "$REPO/scripts/bootstrap-copy.sh" --target "$meta" --package com.acme.meta --with core,sign-in,metadata > "$WORK/copy-meta.log"
-grep -rqE "(example|metadata):(begin|end)|TODO_LIST|todo-list|ATTENDANCE|AttendanceConfig" "$meta/src" && { echo "FAILED: samples or markers left in a metadata copy without the example piece" >&2; exit 1; }
+grep -rqE "(example|metadata):(begin|end)|TODO_LIST|todo-list|TodoListSettings" "$meta/src" && { echo "FAILED: samples or markers left in a metadata copy without the example piece" >&2; exit 1; }
 [ -f "$meta/src/main/resources/db/changelog/changes/0007-users-admin-role.sql" ] || { echo "FAILED: the ADMIN role changeset is missing from the metadata copy" >&2; exit 1; }
 mvn_verify "$meta" "$WORK/meta.log"
+
+echo "[2d/3] bootstrap-copy of core alone, without the Redis dependencies (package com.acme.core)"
+core="$WORK/core"
+mkdir -p "$core/src/main/java/com/acme/core"
+cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$core/"
+# Drops sign-in's dependencies, so code of sign-in's left in core fails to compile.
+sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>core</artifactId>|' -e 's|<name>reference-app</name>|<name>core</name>|' \
+    "$REFERENCE/pom.xml" \
+    | perl -0pe 's{\s*<dependency>\s*<groupId>[^<]+</groupId>\s*<artifactId>(?:spring-boot-starter-data-redis|bucket4j_jdk17-core|bucket4j_jdk17-lettuce)</artifactId>.*?</dependency>}{}gs' \
+    > "$core/pom.xml"
+grep -qE "<artifactId>(spring-boot-starter-data-redis|bucket4j_jdk17-[a-z]+)</artifactId>" "$core/pom.xml" && { echo "FAILED: could not drop the Redis dependencies from the core pom" >&2; exit 1; }
+sed -e 's/package com.acme.smoke;/package com.acme.core;/' -e 's/SmokeApplication/CoreApplication/g' \
+    "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$core/src/main/java/com/acme/core/CoreApplication.java"
+"$REPO/scripts/bootstrap-copy.sh" --target "$core" --package com.acme.core --with core > "$WORK/copy-core.log"
+grep -rqE "sign-in:(begin|end)|RedisRateLimiter|RedisClientConfig|REDIS_|GenericContainer|image: redis" "$core/src" "$core/compose.yaml" "$core/.env.example" \
+    && { echo "FAILED: Redis rate limiting or sign-in markers left in a core copy" >&2; exit 1; }
+[ -d "$core/src/main/java/com/acme/core/user" ] && { echo "FAILED: the user module in a core copy" >&2; exit 1; }
+mvn_verify "$core" "$WORK/core.log" -Dtest='!*IntegrationTest,!*ArchTest' -Dsurefire.failIfNoSpecifiedTests=false
 
 echo "[3/3] reference-app image: prod profile against PostgreSQL and Redis"
 docker build -q -t "$RUN-image" "$REFERENCE" > /dev/null
@@ -148,4 +173,4 @@ if [ "$(working_fingerprint "$REPO")" = "$fingerprint" ]; then
 else
     echo "files changed during the run: nothing recorded, run it again before pushing" >&2
 fi
-echo "verified: reference-app, a bootstrap copy and the image are green"
+echo "verified: reference-app, the bootstrap copies and the image are green"

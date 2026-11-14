@@ -3,7 +3,7 @@
 -- Configuration metadata (one typed value per key) and counters (gapless business numbers).
 -- This is the single-tenant variant, also the one for schema-per-tenant: Liquibase runs it in every
 -- tenant schema, so no tenant column. Row-based tenancy replaces each table's unique (key) with
--- (tenant_id, key); see the metadata package-info for the full adaptation:
+-- (tenant_id, key); see house-review references/metadata.md (META-09) for the full adaptation:
 --     tenant_id uuid NOT NULL,
 --     CONSTRAINT uq_configuration_metadata_tenant_id_key UNIQUE (tenant_id, key),
 --     CONSTRAINT uq_counters_tenant_id_key UNIQUE (tenant_id, key),

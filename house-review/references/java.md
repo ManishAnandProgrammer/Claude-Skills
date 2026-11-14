@@ -1,8 +1,5 @@
 # Java rules (JAVA-xx)
 
-Sources: `Effective Java Summary.md`, plus the house conventions the user stated while
-designing this skill (DESIGN.md).
-
 ---
 
 ### JAVA-01: Construction
@@ -66,8 +63,7 @@ designing this skill (DESIGN.md).
 
 ### JAVA-09: Exceptions
 - **Check:**
-  - standard exceptions for their standard meaning (not `IllegalStateException` as a domain
-    signal another class catches);
+  - standard exceptions for their standard meaning (`IllegalStateException` only for bugs, JAVA-20);
   - exceptions fit the layer (translate low-level ones);
   - failure messages contain the values that failed;
   - never swallow (an empty catch, or a catch that only logs without a reason);
@@ -123,7 +119,13 @@ designing this skill (DESIGN.md).
   - `equals` / `hashCode`: no override (identity), or an id-based override with a constant
     `hashCode`;
   - collections exposed as unmodifiable views, changed only through `add…` / `remove…` methods
-    that keep invariants (counts, back-references).
+    that keep invariants (counts, back-references);
+  - **starting values live in the entity** (a new record's status, a boolean's default) with
+    `@Builder.Default`: the builder ignores field initialisers, and a default set in the mapper is
+    missed by every other creator;
+  - **booleans** are primitive `boolean` fields on a `NOT NULL` column with a database default (an
+    absent value is never a third state). A flag edited with the rest of the record has `@Setter`; a
+    transition with rules or side effects is an entity method.
 - **Severity:** Medium (High for `@Data` on an entity with relations).
 
 ### JAVA-17: Mappers
@@ -164,8 +166,14 @@ designing this skill (DESIGN.md).
 - **Not a finding when:** a compact constructor with one guard.
 - **Severity:** Low.
 
+### JAVA-24 (Jackson 3): The single-constructor trap
+- **Check:** a *class* DTO with exactly one non-default constructor is auto-detected as the
+  `@JsonCreator`, and breaks when the parameter types differ from the field types. DTOs are
+  records.
+- **Severity:** Medium.
+
 ### JAVA-25: Time without time zones
-Owner's rule (2026-11-13): the backend handles no time zone.
+The backend handles no time zone.
 - **Check:** moments are `Instant` (UTC; the client shows them in the user's zone); calendar dates the
   user picks are `LocalDate`, stored and returned as sent, never converted through a zone; "now" and
   "today" come from the injected `Clock` (UTC), also inside validators; a date compared with today
@@ -175,9 +183,3 @@ Owner's rule (2026-11-13): the backend handles no time zone.
   `@PastOrPresent`/`@FutureOrPresent` on a `LocalDate` without the application clock; a `LocalDate`
   derived from an `Instant` on the server; `LocalDateTime` for a moment.
 - **Severity:** Medium (High when a stored date shifts).
-
-### JAVA-24 (Jackson 3): The single-constructor trap
-- **Check:** a *class* DTO with exactly one non-default constructor is auto-detected as the
-  `@JsonCreator`, and breaks when the parameter types differ from the field types. DTOs are
-  records.
-- **Severity:** Medium.

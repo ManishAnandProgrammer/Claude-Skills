@@ -1,18 +1,17 @@
 # REST API rules (REST-xx)
 
-Source: `rest-api-best-practices.md`, plus the decisions recorded in DESIGN.md. Each rule
-gives what to **Check**, how to **Detect** it, its default **Severity**, and when it is **Not
+Each rule gives what to **Check**, how to **Detect** it, its default **Severity**, and when it is **Not
 a finding**. Profile keys are written `{{key}}`.
 
 ---
 
 ### REST-01: Resource naming
 - **Check:** paths are nouns, plural for collections, kebab-case; JSON fields camelCase; one
-  resource name per concept across the API (no `/sources` for outlets when "sources" means
-  something else).
+  resource name per concept across the API (not `/clients` in one place and `/customers` in
+  another for the same people).
 - **Detect:** list every `@*Mapping` path. Flag:
   - verbs (`/getX`, `/runs/all`, `/approve-bulk`);
-  - singular collections (`/spot-check`);
+  - singular collections (`/invoice` for the invoices);
   - camelCase or snake_case path segments;
   - two names for one resource, or one name for two resources.
 - **Severity:** Medium.
@@ -20,8 +19,8 @@ a finding**. Profile keys are written `{{key}}`.
   are conventional.
 
 ### REST-02: Hierarchy
-- **Check:** sub-resources nest under their parent (`/outlets/{id}/ai-runs`), not the other way
-  round (`/ai/runs/sources/{outletId}`). At most two levels deep.
+- **Check:** sub-resources nest under their parent (`/orders/{id}/shipments`), not the other way
+  round (`/shipments/orders/{orderId}`). At most two levels deep.
 - **Severity:** Low.
 
 ### REST-03: Actions
@@ -87,13 +86,13 @@ a finding**. Profile keys are written `{{key}}`.
   exception classes that differ only by name (copy-paste hierarchy); `getMessage()` of a
   database or framework exception copied into `detail`.
 - **Severity:** High if internals leak, otherwise Medium.
-- **Reference implementation:** `error-contract.md` (the user's DynamicForm contract). Check
+- **Reference implementation:** `error-contract.md`. Check
   every piece there: ERR-01 members, the ERR-02 mapping table, ERR-03 transient failures, ERR-04
   throwing rules.
 
 ### REST-07: Paths and versioning
-Owner's decision (2026-11-13): paths on the controller class, versions through Spring Framework 7's
-API versioning, carried in the path.
+Paths on the controller class, versions through Spring Framework 7's API versioning, carried in
+the path.
 - **Check:**
   - every `@RestController` has **one class-level `@RequestMapping`**, `{{urlPrefix}}/<resource-plural>`
     (`/api/{version}/todo-lists`): one resource per controller (SRP). Handler methods carry only
@@ -145,6 +144,7 @@ API versioning, carried in the path.
      String** (`@MaxLength("<key>")`, the number in `app.limits.text`: configurable, one source of
      truth; a literal `@Size(max = N)` is a finding where the house limits exist); ranges on
      numbers (`@ConfiguredMax` for tunable ones); `@NotEmpty` + max size on collections;
+     a boolean is a `Boolean` with `@NotNull` (an absent field must not become a silent `false`);
      constraints on `@RequestParam` / `@PathVariable`;
   2. security validators (REST-10);
   3. domain validation in the service (existence, state, ownership).
@@ -164,7 +164,7 @@ API versioning, carried in the path.
 ### REST-10: Hostile text
 - **Check:** every free-text input has `{{NotXss}}` or a documented output-escaping policy.
   `{{NoEmoji}}` only on the fields listed in `{{noEmojiFields}}` (codes, identifiers), never on
-  content: readers write Gurmukhi and emoji.
+  content: users write in every script, emoji included.
 - **Detect:** String fields in request DTOs; check validators that only accept `String`
   applied to `JsonNode`, `Map` or collections (they silently do nothing).
 - **Severity:** High.
@@ -190,32 +190,40 @@ API versioning, carried in the path.
 - **Severity:** Medium.
 
 ### REST-13: Dropdowns follow the house standard
-The standard is crud-gen `references/dropdown.md`: the user's `@DropdownCandidate` contract plus
-the house decisions. Its purpose: one shape, so the frontend has one component for every
-dropdown.
+One shape for every dropdown, so the frontend has one component for all of them. crud-gen
+generates it (`references/dropdown.md`); the reference application's `common/dropdown/` holds the
+types.
 - **Check:**
   - path `GET {{urlPrefix}}/<resource-plural>/dropdown`; a parent in the path only for a true
     child resource; no named sub-paths (`by-x-id/dropdown`);
   - response `CursorWrapper<{{DropdownItem}}>` (cursor-paged, so a large set is browsed in
-    batches or narrowed with `query`), items a record `{value, label}` with no other fields;
+    batches or narrowed with `query`), items a record `{value, label}` with no other fields,
+    `pageInfo {nextCursor, hasMore}`, no count;
   - parameters: `{{DropdownFilter}}` (`size`, `after`, `status`, `sortDirection`, `query`), or a
     subclass adding the entity's mandatory (`@NotNull`) and optional filters. No loose
     `@RequestParam`s; the generic names are never renamed;
   - the entity carries `@DropdownCandidate`, and the code honours it (`displayField`,
     `valueField`, the `activeField` default, `sortField` / `sortDirection`, `searchable`,
-    `cacheable`);
+    `cacheable`). The request adjusts the defaults like this:
+
+    | Parameter | Effect |
+    |---|---|
+    | `status` | With an `activeField`: `ACTIVE` (default) → `= TRUE`, `INACTIVE` → `= FALSE`, `ALL` → no predicate. **Without one, anything but `ACTIVE` is a 400** `REQUEST_PARAMETER_INVALID` (`parameter: status`), never silently ignored |
+    | `sortDirection` | Flips `sortField`'s direction. Each direction is its own keyset (`NAME_ASC`, `NAME_DESC`), so a cursor from one direction is refused in the other |
+    | `size`, `after` | The batch (default and maximum from `app.limits.cursor-page`) and the position; over the maximum, or a foreign or tampered cursor, is a 400 |
+    | `query` | Only when `searchable`: `TextSearch.contains` on `displayField`, `@MaxLength("search-query")`. On a non-searchable dropdown it is a 400, never ignored |
   - the **service** builds the wrapper; the controller only delegates;
   - the query is a Criteria **projection** (no entity loading), keyset-paged on `sortField` then the
-    value, with indexes on the filter and sort columns;
-  - `query` on a non-searchable dropdown is a 400, not silently ignored; so is a `status` other
-    than `ACTIVE` on an entity without an active flag;
-  - results are scoped like the resource's reads;
+    value, with indexes `(scope columns, sortField, valueField)`;
+  - results are scoped like the resource's reads: a dropdown never lists items the caller couldn't
+    fetch;
   - security per `{{dropdownSecurity}}` (normally `isAuthenticated()`);
   - `cacheable` only for static master data, with eviction on writes, and a shared cache (or a
     confirmed reason) when `{{instances}}` is `multiple`;
   - documented in the API interface and tested.
-- **Also:** a screen that needs a picker has its dropdown (e.g. editors listing editors for
-  "reassign").
+- **Also:** a screen that needs a picker has its dropdown (an assignee picker for "reassign"); a
+  resource other screens pick from (another entity references it) without `@DropdownCandidate` is
+  worth asking about.
 - **Detect:**
   - other shapes or paths for id+name lists (`/lookup`, `/options`, `{id, name}`);
   - ad-hoc params (`activeOnly`, `q`, `search`, `limit`);
@@ -347,5 +355,10 @@ dropdown.
   meta-annotation declared once in `common/security` (`@AdminOnly` carrying
   `@PreAuthorize("hasRole('ADMIN')")`), and endpoints use the annotation. A renamed or misspelt role
   then fails in one place, not silently on one endpoint.
-- **Detect:** `hasRole('` or `hasAnyRole('` outside `common/security`.
+- **A new role** needs, in one change: its annotation next to `@AdminOnly`, a constant in the `Role`
+  enum, and a changeset widening the role check constraint (`ck_users_role` in the reference,
+  widened for `ADMIN` by `0007-users-admin-role.sql`). Without the changeset the first user given
+  the role fails the insert.
+- **Detect:** `hasRole('` or `hasAnyRole('` outside `common/security`; a `Role` constant with no
+  changeset widening the constraint.
 - **Severity:** Medium.

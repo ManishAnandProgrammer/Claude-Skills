@@ -1,7 +1,6 @@
 # Code smells (SMELL-xx)
 
-Sources: `Coding_Standards.md` (23 smells), `Refactoring Book Summary.md` (22 smells),
-`Clean Code Book Summary.md`, merged without duplicates. Thresholds come from the profile
+Thresholds come from the profile
 (`{{maxMethodLines}}` default 30, `{{maxParams}}` default 4, `{{maxClassLines}}` default 300).
 Lines are counted without blank or comment lines.
 
@@ -123,7 +122,7 @@ Lines are counted without blank or comment lines.
   - unexplained literals: HTTP status numbers, `/ 60000`, `* 24 * 60 * 60`, `"localhost"`;
   - repeated header names or error messages;
   - defaults written in both an annotation and configuration;
-  - **a tunable in code** (owner's rule, 2026-11-13): page sizes, batch sizes, text lengths, retry
+  - **a tunable in code**: page sizes, batch sizes, text lengths, retry
     ranges, grace windows, cron expressions, path prefixes Boot already configures
     (`/actuator` vs `management.endpoints.web.base-path`), the application's own name. These live
     in configuration (`app.limits.*`, `app.jobs.*`, `spring.application.name`): one source of
@@ -173,7 +172,7 @@ Lines are counted without blank or comment lines.
     per codebase**, never `*Payload` beside `*Request`;
   - one name per concept across layers (a filter's `todoListId`, not `listId`, when the payloads
     and responses say `todoListId`);
-  - **package names are lower-case words** (`transportstaff`, not `transportStaff`; HelpBook).
+  - **package names are lower-case words** (`transportstaff`, not `transportStaff`).
 - **Severity:** Low (Medium when misleading).
 
 ### SMELL-21: Flag arguments
@@ -221,7 +220,7 @@ Lines are counted without blank or comment lines.
 - **Severity:** Low.
 
 ### SMELL-29: Accidental complexity (KISS, SRP)
-Owner's top priority (2026-11-14): code a Java engineer with 2–3 years of experience understands
+The house's top priority: code a Java engineer with 2–3 years of experience understands
 perfectly, without deep generics knowledge or reflection. Complexity from the domain is accepted;
 complexity added to look smart or save keystrokes is a finding.
 - **Check:**
@@ -229,16 +228,18 @@ complexity added to look smart or save keystrokes is a finding.
     code (a repository writes its Criteria query top to bottom and calls `Cursor.read`,
     `Seek.after`); a helper that takes the caller's logic as lambdas or functional interfaces and
     assembles the work itself is a finding when a plain call would do;
-  - **generics**: more than one type parameter on a house class or method, wildcard bounds the
-    reader must decode, or type tokens passed around to make a generic helper work, are findings
-    (bounds that mirror a JDK or Jakarta signature, such as `<V extends Comparable<? super V>>`
-    for `CriteriaBuilder.greaterThan`, are fine);
+  - **generics**: type parameters the caller must decode to use a method (nested wildcards,
+    self-referencing bounds of our own, a type parameter whose meaning isn't obvious from its
+    argument), or type parameters and type tokens that exist only to make a generic helper or
+    framework work, are findings. Type parameters that mirror a JDK or Jakarta signature are fine,
+    however many: `Seek.after`'s `<A extends Comparable<? super A>, B extends …>`, one per key
+    column, is exactly what `CriteriaBuilder.greaterThan` asks for;
   - **reflection** (field access, `Class.forName`, generic type resolution) in application code;
   - **a hook added for one caller** (a parameter, flag or interface method that only one use needs)
     is speculative generality: the helper is growing into a framework;
   - **DRY means knowledge**: one place for a rule, a format or a security check; similar-looking
     query code that differs in what it selects and filters is not duplication.
 - **Detect:** `Function<Root<T>, …>` or `(builder, root, query) -> …` passed into a house helper;
-  three type parameters on a record; a helper whose signature changed for one new caller; a
+  a record or class whose type parameters only a generic helper needs; a helper whose signature changed for one new caller; a
   reader who needs a debugger to see what SQL a method runs.
 - **Severity:** Medium (High when the indirection hides a security or correctness rule).

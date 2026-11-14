@@ -7,7 +7,7 @@ package com.example.app.metadata.api;
  * <p>Who writes what: a fixed key's value is replaced by an admin through
  * {@code PUT /api/v1/metadata/{key}}. A per-context value belongs to the module that owns the
  * context: its lifecycle code seeds it in the same transaction that creates the context (e.g.
- * "session created" copies the previous session's with {@link #createFrom}), its own typed endpoint
+ * "store opened" copies the defaults with {@link #createFrom}), its own typed endpoint
  * checks the context's rules and then calls {@link #update}, and its delete calls {@link #delete}.</p>
  */
 public interface Metadata {
@@ -27,7 +27,7 @@ public interface Metadata {
 
     /**
      * Replaces the value when {@code version} is the current one; 409 {@code OPTIMISTIC_LOCK_CONFLICT}
-     * otherwise. A context's own rules ("an ended session's rules can't change") are checked by its
+     * otherwise. A context's own rules ("a closed store's opening hours can't change") are checked by its
      * owner before this call.
      */
     <T> T update(MetadataKey<T> key, T value, long version);

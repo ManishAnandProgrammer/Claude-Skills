@@ -3,7 +3,7 @@ package com.example.app.metadata;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.exception.GlobalExceptionHandler;
-import com.example.app.metadata.api.AttendanceConfig;
+import com.example.app.metadata.api.TodoListSettings;
 import com.example.app.metadata.api.Metadata;
 import com.example.app.metadata.api.MetadataKey;
 import com.example.app.metadata.api.MetadataKeys;
@@ -40,19 +40,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * The metadata mechanism through the example keys: the admin API on the fixed key
- * {@code ATTENDANCE_DEFAULTS}, the typed {@link Metadata} on per-context keys
- * ({@code ATTENDANCE_CONFIG_<sessionId>}), which the admin API never reaches. Bootstrap copies this
+ * {@code TODO_LIST_DEFAULTS}, the typed {@link Metadata} on per-context keys
+ * ({@code TODO_LIST_SETTINGS_<listId>}), which the admin API never reaches. Bootstrap copies this
  * class only with the example piece.
  *
  * <p>The fixed key is one row shared by every test here: each test starts from the record's
  * defaults at version 0, and the lock keeps tests that change it from running at the same time.
- * Per-context tests use session ids of their own.</p>
+ * Per-context tests use list ids of their own.</p>
  */
 @ResourceLock(MetadataIntegrationTest.FIXED_KEY)
 class MetadataIntegrationTest extends IntegrationTest {
 
-    static final String FIXED_KEY = "ATTENDANCE_DEFAULTS";
-    private static final MetadataKey<AttendanceConfig> DEFAULTS = MetadataKeys.ATTENDANCE_DEFAULTS;
+    static final String FIXED_KEY = "TODO_LIST_DEFAULTS";
+    private static final MetadataKey<TodoListSettings> DEFAULTS = MetadataKeys.TODO_LIST_DEFAULTS;
     private static final String METADATA = "/api/v1/metadata/";
     private static final String DEFAULTS_PATH = METADATA + FIXED_KEY;
     private static final int RACERS = 6;
@@ -66,7 +66,7 @@ class MetadataIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    private static UUID newSessionId() {
+    private static UUID newListId() {
         return UUID.randomUUID();
     }
 
@@ -102,14 +102,14 @@ class MetadataIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("create stores the record as a JSON object; get reads it back equal")
     void createStoresTheValueAndGetReadsIt() {
-        MetadataKey<AttendanceConfig> key = MetadataKeys.attendance(newSessionId());
-        AttendanceConfig config = new AttendanceConfig(15, false, LocalTime.of(7, 45));
+        MetadataKey<TodoListSettings> key = MetadataKeys.todoListSettings(newListId());
+        TodoListSettings settings = new TodoListSettings(15, true, LocalTime.of(7, 45));
 
-        metadata.create(key, config);
+        metadata.create(key, settings);
 
-        assertThat(metadata.get(key)).isEqualTo(config);
+        assertThat(metadata.get(key)).isEqualTo(settings);
         String stored = jdbc.queryForObject("select value::text from configuration_metadata where key = ?", String.class, key.name());
-        assertThat(stored).contains("\"graceMinutes\": 15", "\"allowLateMark\": false", "\"dayStartsAt\": \"07:45:00\"");
+        assertThat(stored).contains("\"reminderMinutesBefore\": 15", "\"archiveDoneTodos\": true", "\"dailyDigestAt\": \"07:45:00\"");
         assertThat(storedVersion(key)).isZero();
     }
 
@@ -121,9 +121,9 @@ class MetadataIntegrationTest extends IntegrationTest {
         getAs(admin.accessToken(), DEFAULTS_PATH)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.key").value(FIXED_KEY))
-                .andExpect(jsonPath("$.response.value.graceMinutes").value(10))
-                .andExpect(jsonPath("$.response.value.allowLateMark").value(true))
-                .andExpect(jsonPath("$.response.value.dayStartsAt").value("08:00:00"))
+                .andExpect(jsonPath("$.response.value.reminderMinutesBefore").value(30))
+                .andExpect(jsonPath("$.response.value.archiveDoneTodos").value(false))
+                .andExpect(jsonPath("$.response.value.dailyDigestAt").value("09:00:00"))
                 .andExpect(jsonPath("$.response.version").value(0))
                 .andExpect(jsonPath("$.response.createdAt").isNotEmpty())
                 .andExpect(jsonPath("$.response.updatedAt").isNotEmpty())
@@ -135,31 +135,31 @@ class MetadataIntegrationTest extends IntegrationTest {
     void updateReplacesTheValueAndBumpsTheVersion() throws Exception {
         TestUser admin = newAdmin();
         String value = """
-                {"graceMinutes": 20, "allowLateMark": false, "dayStartsAt": "08:30"}""";
+                {"reminderMinutesBefore": 20, "archiveDoneTodos": true, "dailyDigestAt": "08:30"}""";
 
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload(value, 0))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response.value.graceMinutes").value(20))
-                .andExpect(jsonPath("$.response.value.dayStartsAt").value("08:30:00"))
+                .andExpect(jsonPath("$.response.value.reminderMinutesBefore").value(20))
+                .andExpect(jsonPath("$.response.value.dailyDigestAt").value("08:30:00"))
                 .andExpect(jsonPath("$.response.version").value(1))
                 .andExpect(jsonPath("$.response.updatedBy").value(admin.id().toString()));
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload(value, 1))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.version").value(1));
 
-        assertThat(metadata.get(DEFAULTS)).isEqualTo(new AttendanceConfig(20, false, LocalTime.of(8, 30)));
+        assertThat(metadata.get(DEFAULTS)).isEqualTo(new TodoListSettings(20, true, LocalTime.of(8, 30)));
     }
 
     @Test
     @DisplayName("The typed update replaces the value; a stale version is refused")
     void typedUpdateChecksTheVersion() {
-        MetadataKey<AttendanceConfig> key = MetadataKeys.attendance(newSessionId());
-        metadata.create(key, AttendanceConfig.defaults());
-        AttendanceConfig changed = new AttendanceConfig(30, null, null);
+        MetadataKey<TodoListSettings> key = MetadataKeys.todoListSettings(newListId());
+        metadata.create(key, TodoListSettings.defaults());
+        TodoListSettings changed = new TodoListSettings(60, null, null);
 
         assertThat(metadata.update(key, changed, 0)).isEqualTo(changed);
 
-        assertThatThrownBy(() -> metadata.update(key, AttendanceConfig.defaults(), 0))
+        assertThatThrownBy(() -> metadata.update(key, TodoListSettings.defaults(), 0))
                 .isInstanceOf(ObjectOptimisticLockingFailureException.class);
         assertThat(metadata.get(key)).isEqualTo(changed);
     }
@@ -169,15 +169,15 @@ class MetadataIntegrationTest extends IntegrationTest {
     void updateWithAStaleVersionIs409() throws Exception {
         TestUser admin = newAdmin();
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
-                {"graceMinutes": 5}""", 0)).andExpect(status().isOk());
+                {"reminderMinutesBefore": 5}""", 0)).andExpect(status().isOk());
 
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
-                {"graceMinutes": 50}""", 0))
+                {"reminderMinutesBefore": 50}""", 0))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("OPTIMISTIC_LOCK_CONFLICT"));
 
         getAs(admin.accessToken(), DEFAULTS_PATH)
-                .andExpect(jsonPath("$.response.value.graceMinutes").value(5))
+                .andExpect(jsonPath("$.response.value.reminderMinutesBefore").value(5))
                 .andExpect(jsonPath("$.response.version").value(1));
     }
 
@@ -187,7 +187,7 @@ class MetadataIntegrationTest extends IntegrationTest {
         TestUser admin = newAdmin();
 
         List<Answer> answers = race(() -> putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
-                {"graceMinutes": 45}""", 0)));
+                {"reminderMinutesBefore": 45}""", 0)));
 
         assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).containsOnly(200, 409);
         assertRefusalsAre(answers, 409, "OPTIMISTIC_LOCK_CONFLICT");
@@ -198,22 +198,22 @@ class MetadataIntegrationTest extends IntegrationTest {
     @DisplayName("A name that isn't a fixed key is 404 METADATA_KEY_UNKNOWN on GET and PUT, also a per-context key whose value exists")
     void unknownKeyIs404() throws Exception {
         TestUser admin = newAdmin();
-        UUID sessionId = newSessionId();
-        MetadataKey<AttendanceConfig> perContext = MetadataKeys.attendance(sessionId);
-        metadata.create(perContext, AttendanceConfig.defaults());
+        UUID listId = newListId();
+        MetadataKey<TodoListSettings> perContext = MetadataKeys.todoListSettings(listId);
+        metadata.create(perContext, TodoListSettings.defaults());
         getAs(admin.accessToken(), DEFAULTS_PATH).andExpect(status().isOk());
 
-        for (String name : List.of(perContext.name(), "NO_SUCH_CONFIG", "ATTENDANCE_CONFIG_" + sessionId.toString().toUpperCase(),
-                "ATTENDANCE_CONFIG_not-a-uuid", "ATTENDANCE_CONFIG_", "attendance_defaults", FIXED_KEY + "_")) {
+        for (String name : List.of(perContext.name(), "NO_SUCH_CONFIG", "TODO_LIST_SETTINGS_" + listId.toString().toUpperCase(),
+                "TODO_LIST_SETTINGS_not-a-uuid", "TODO_LIST_SETTINGS_", "todo_list_defaults", FIXED_KEY + "_")) {
             getAs(admin.accessToken(), METADATA + name)
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.errorCode").value("METADATA_KEY_UNKNOWN"));
             putAs(admin.accessToken(), METADATA + name, updatePayload("""
-                    {"graceMinutes": 99}""", 0))
+                    {"reminderMinutesBefore": 99}""", 0))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.errorCode").value("METADATA_KEY_UNKNOWN"));
         }
-        assertThat(metadata.get(perContext)).isEqualTo(AttendanceConfig.defaults());
+        assertThat(metadata.get(perContext)).isEqualTo(TodoListSettings.defaults());
     }
 
     @Test
@@ -230,7 +230,7 @@ class MetadataIntegrationTest extends IntegrationTest {
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("{}", 0))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("METADATA_NOT_FOUND"));
-        assertThatThrownBy(() -> metadata.get(MetadataKeys.attendance(newSessionId())))
+        assertThatThrownBy(() -> metadata.get(MetadataKeys.todoListSettings(newListId())))
                 .isInstanceOfSatisfying(AppException.class,
                         refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.METADATA_NOT_FOUND));
     }
@@ -241,21 +241,21 @@ class MetadataIntegrationTest extends IntegrationTest {
         TestUser admin = newAdmin();
 
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
-                {"graceMinutes": -1}""", 0))
+                {"reminderMinutesBefore": -1}""", 0))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("value.graceMinutes: must be greater than or equal to 0")));
+                .andExpect(jsonPath("$.failed", contains("value.reminderMinutesBefore: must be greater than or equal to 0")));
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
-                {"graceMinutes": 121}""", 0))
+                {"reminderMinutesBefore": 1441}""", 0))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.failed", contains("value.graceMinutes: must be at most 120")));
+                .andExpect(jsonPath("$.failed", contains("value.reminderMinutesBefore: must be at most 1440")));
         assertThat(storedVersion(DEFAULTS)).isZero();
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
-                {"graceMinutes": 120}""", 0))
+                {"reminderMinutesBefore": 1440}""", 0))
                 .andExpect(status().isOk());
-        assertThatThrownBy(() -> metadata.create(MetadataKeys.attendance(newSessionId()), new AttendanceConfig(-5, null, null)))
+        assertThatThrownBy(() -> metadata.create(MetadataKeys.todoListSettings(newListId()), new TodoListSettings(-5, null, null)))
                 .isInstanceOfSatisfying(AppException.class,
-                        refused -> assertThat(refused.getFailedValidations()).containsExactly("value.graceMinutes: must be greater than or equal to 0"));
+                        refused -> assertThat(refused.getFailedValidations()).containsExactly("value.reminderMinutesBefore: must be greater than or equal to 0"));
     }
 
     @Test
@@ -263,23 +263,23 @@ class MetadataIntegrationTest extends IntegrationTest {
     void unreadableValueIs400() throws Exception {
         TestUser admin = newAdmin();
 
-        putAs(admin.accessToken(), DEFAULTS_PATH, "{\"value\": {\"graceMinutes\": 5")
+        putAs(admin.accessToken(), DEFAULTS_PATH, "{\"value\": {\"reminderMinutesBefore\": 5")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"));
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
-                {"graceMinutes": "ten"}""", 0))
+                {"reminderMinutesBefore": "ten"}""", 0))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
-                .andExpect(jsonPath("$.failed", contains("value.graceMinutes: invalid value")));
+                .andExpect(jsonPath("$.failed", contains("value.reminderMinutesBefore: invalid value")));
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
-                {"dayStartsAt": "8 o'clock"}""", 0))
+                {"dailyDigestAt": "8 o'clock"}""", 0))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.failed", contains("value.dayStartsAt: invalid value")));
+                .andExpect(jsonPath("$.failed", contains("value.dailyDigestAt: invalid value")));
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
-                {"graceMinutes": 5, "graceMinuets": 6}""", 0))
+                {"reminderMinutesBefore": 5, "reminderMinutesBefroe": 6}""", 0))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
-                .andExpect(jsonPath("$.failed", contains("value.graceMinuets: unknown field")));
+                .andExpect(jsonPath("$.failed", contains("value.reminderMinutesBefroe: unknown field")));
         for (String notAnObject : List.of("5", "null", "[]", "\"text\"")) {
             putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload(notAnObject, 0))
                     .andExpect(status().isBadRequest())
@@ -293,83 +293,83 @@ class MetadataIntegrationTest extends IntegrationTest {
         putAs(admin.accessToken(), DEFAULTS_PATH, "{\"value\": {}}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.failed", contains("version: must not be null")));
-        assertThat(metadata.get(DEFAULTS)).isEqualTo(AttendanceConfig.defaults());
+        assertThat(metadata.get(DEFAULTS)).isEqualTo(TodoListSettings.defaults());
     }
 
     @Test
     @DisplayName("A field missing from the stored JSON, or from a PUT, takes the record's default")
     void missingFieldGetsItsDefault() throws Exception {
         TestUser admin = newAdmin();
-        MetadataKey<AttendanceConfig> stored = MetadataKeys.attendance(newSessionId());
+        MetadataKey<TodoListSettings> stored = MetadataKeys.todoListSettings(newListId());
         storeRaw(stored, """
-                {"graceMinutes": 5}""");
+                {"reminderMinutesBefore": 5}""");
         storeFixedKeyRaw("""
-                {"graceMinutes": 5}""");
+                {"reminderMinutesBefore": 5}""");
 
-        assertThat(metadata.get(stored)).isEqualTo(new AttendanceConfig(5, true, LocalTime.of(8, 0)));
+        assertThat(metadata.get(stored)).isEqualTo(new TodoListSettings(5, false, LocalTime.of(9, 0)));
         getAs(admin.accessToken(), DEFAULTS_PATH)
-                .andExpect(jsonPath("$.response.value.graceMinutes").value(5))
-                .andExpect(jsonPath("$.response.value.allowLateMark").value(true))
-                .andExpect(jsonPath("$.response.value.dayStartsAt").value("08:00:00"));
+                .andExpect(jsonPath("$.response.value.reminderMinutesBefore").value(5))
+                .andExpect(jsonPath("$.response.value.archiveDoneTodos").value(false))
+                .andExpect(jsonPath("$.response.value.dailyDigestAt").value("09:00:00"));
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
-                {"allowLateMark": false}""", 0))
+                {"archiveDoneTodos": true}""", 0))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response.value.graceMinutes").value(10))
-                .andExpect(jsonPath("$.response.value.allowLateMark").value(false));
+                .andExpect(jsonPath("$.response.value.reminderMinutesBefore").value(30))
+                .andExpect(jsonPath("$.response.value.archiveDoneTodos").value(true));
     }
 
     @Test
     @DisplayName("A stored field the record doesn't know (removed, or from a newer instance) is ignored, not an unreadable row")
     void unknownStoredFieldIsTolerated() throws Exception {
         TestUser admin = newAdmin();
-        MetadataKey<AttendanceConfig> key = MetadataKeys.attendance(newSessionId());
+        MetadataKey<TodoListSettings> key = MetadataKeys.todoListSettings(newListId());
         String newer = """
-                {"graceMinutes": 7, "markHalfDayAfterMinutes": 90, "nested": {"a": [1, 2]}}""";
+                {"reminderMinutesBefore": 7, "snoozeMinutes": 90, "nested": {"a": [1, 2]}}""";
         storeRaw(key, newer);
         storeFixedKeyRaw(newer);
 
-        assertThat(metadata.get(key)).isEqualTo(new AttendanceConfig(7, null, null));
+        assertThat(metadata.get(key)).isEqualTo(new TodoListSettings(7, null, null));
         getAs(admin.accessToken(), DEFAULTS_PATH)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response.value.graceMinutes").value(7))
-                .andExpect(jsonPath("$.response.value.markHalfDayAfterMinutes").doesNotExist());
+                .andExpect(jsonPath("$.response.value.reminderMinutesBefore").value(7))
+                .andExpect(jsonPath("$.response.value.snoozeMinutes").doesNotExist());
     }
 
     @Test
-    @DisplayName("Two sessions' configurations are independent rows: changing one leaves the other")
+    @DisplayName("Two lists' settings are independent rows: changing one leaves the other")
     void perContextKeysAreIndependent() {
-        MetadataKey<AttendanceConfig> first = MetadataKeys.attendance(newSessionId());
-        MetadataKey<AttendanceConfig> second = MetadataKeys.attendance(newSessionId());
-        metadata.create(first, new AttendanceConfig(5, null, null));
-        metadata.create(second, new AttendanceConfig(25, null, null));
+        MetadataKey<TodoListSettings> first = MetadataKeys.todoListSettings(newListId());
+        MetadataKey<TodoListSettings> second = MetadataKeys.todoListSettings(newListId());
+        metadata.create(first, new TodoListSettings(5, null, null));
+        metadata.create(second, new TodoListSettings(25, null, null));
 
-        metadata.update(first, new AttendanceConfig(6, null, null), 0);
+        metadata.update(first, new TodoListSettings(6, null, null), 0);
 
-        assertThat(metadata.get(first).graceMinutes()).isEqualTo(6);
-        assertThat(metadata.get(second).graceMinutes()).isEqualTo(25);
+        assertThat(metadata.get(first).reminderMinutesBefore()).isEqualTo(6);
+        assertThat(metadata.get(second).reminderMinutesBefore()).isEqualTo(25);
         assertThat(storedVersion(second)).isZero();
     }
 
     /**
-     * What a session module's "session created" code does: the first session starts from the fixed
-     * defaults, every later one from the session before it. The copy is a row of its own.
+     * What the todo module's "list created" code would do: the first list starts from the fixed
+     * defaults, a list made from another one from that list's settings. The copy is a row of its own.
      */
     @Test
-    @DisplayName("Seeding a new session copies the previous session's configuration (the first one copies the defaults); the copy is independent")
-    void createFromCopiesThePreviousSession() {
-        AttendanceConfig defaults = metadata.get(MetadataKeys.ATTENDANCE_DEFAULTS);
-        MetadataKey<AttendanceConfig> firstSession = MetadataKeys.attendance(newSessionId());
-        MetadataKey<AttendanceConfig> secondSession = MetadataKeys.attendance(newSessionId());
+    @DisplayName("Seeding a new list copies another list's settings (the first one copies the defaults); the copy is independent")
+    void createFromCopiesAnotherList() {
+        TodoListSettings defaults = metadata.get(MetadataKeys.TODO_LIST_DEFAULTS);
+        MetadataKey<TodoListSettings> firstList = MetadataKeys.todoListSettings(newListId());
+        MetadataKey<TodoListSettings> secondList = MetadataKeys.todoListSettings(newListId());
 
-        assertThat(metadata.createFrom(MetadataKeys.ATTENDANCE_DEFAULTS, firstSession)).isEqualTo(defaults);
-        AttendanceConfig adjusted = new AttendanceConfig(12, false, LocalTime.of(9, 0));
-        metadata.update(firstSession, adjusted, 0);
-        assertThat(metadata.createFrom(firstSession, secondSession)).isEqualTo(adjusted);
+        assertThat(metadata.createFrom(MetadataKeys.TODO_LIST_DEFAULTS, firstList)).isEqualTo(defaults);
+        TodoListSettings adjusted = new TodoListSettings(12, true, LocalTime.of(18, 0));
+        metadata.update(firstList, adjusted, 0);
+        assertThat(metadata.createFrom(firstList, secondList)).isEqualTo(adjusted);
 
-        metadata.update(secondSession, new AttendanceConfig(3, null, null), 0);
-        assertThat(metadata.get(firstSession)).isEqualTo(adjusted);
-        assertThat(metadata.get(secondSession).graceMinutes()).isEqualTo(3);
-        assertThatThrownBy(() -> metadata.createFrom(MetadataKeys.attendance(newSessionId()), MetadataKeys.attendance(newSessionId())))
+        metadata.update(secondList, new TodoListSettings(3, null, null), 0);
+        assertThat(metadata.get(firstList)).isEqualTo(adjusted);
+        assertThat(metadata.get(secondList).reminderMinutesBefore()).isEqualTo(3);
+        assertThatThrownBy(() -> metadata.createFrom(MetadataKeys.todoListSettings(newListId()), MetadataKeys.todoListSettings(newListId())))
                 .isInstanceOfSatisfying(AppException.class,
                         refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.METADATA_NOT_FOUND));
     }
@@ -379,7 +379,7 @@ class MetadataIntegrationTest extends IntegrationTest {
     void onlyAdminsReachTheApi() throws Exception {
         TestUser user = newUser();
         String payload = updatePayload("""
-                {"graceMinutes": 99}""", 0);
+                {"reminderMinutesBefore": 99}""", 0);
 
         getAs(null, DEFAULTS_PATH)
                 .andExpect(status().isUnauthorized())
@@ -396,13 +396,13 @@ class MetadataIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), METADATA + "NO_SUCH_CONFIG")
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
-        assertThat(metadata.get(DEFAULTS)).isEqualTo(AttendanceConfig.defaults());
+        assertThat(metadata.get(DEFAULTS)).isEqualTo(TodoListSettings.defaults());
     }
 
     @Test
     @DisplayName("Concurrent creates of one key store one row; each other is refused 409 METADATA_KEY_TAKEN without internals")
     void concurrentCreatesOfOneKeyStoreOne() throws Exception {
-        MetadataKey<AttendanceConfig> key = MetadataKeys.attendance(newSessionId());
+        MetadataKey<TodoListSettings> key = MetadataKeys.todoListSettings(newListId());
         CountDownLatch start = new CountDownLatch(1);
         List<Future<String>> pending = new ArrayList<>();
 
@@ -427,9 +427,9 @@ class MetadataIntegrationTest extends IntegrationTest {
     }
 
     /** One racer's create, its refusal answered by the real error handler, as it is for a request that seeds. */
-    private String createAnswer(MetadataKey<AttendanceConfig> key) throws Exception {
+    private String createAnswer(MetadataKey<TodoListSettings> key) throws Exception {
         try {
-            metadata.create(key, AttendanceConfig.defaults());
+            metadata.create(key, TodoListSettings.defaults());
             return "created";
         } catch (DataIntegrityViolationException refused) {
             ResponseEntity<ProblemDetail> answer = exceptionHandler.handleDataIntegrity(refused,
@@ -443,33 +443,33 @@ class MetadataIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("A key is UPPER_SNAKE_CASE (with an optional canonical UUID) with a record value; byName resolves fixed keys only")
     void keysAreCheckedWhenDeclared() {
-        assertThatThrownBy(() -> new MetadataKey<>("lower_case", AttendanceConfig.class)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new MetadataKey<>("lower_case", TodoListSettings.class)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new MetadataKey<>("NOT_A_RECORD", String.class)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> MetadataKeys.attendance(null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> MetadataKeys.todoListSettings(null)).isInstanceOf(NullPointerException.class);
         assertThat(MetadataKeys.byName(FIXED_KEY)).contains(DEFAULTS);
-        assertThat(MetadataKeys.byName(MetadataKeys.attendance(newSessionId()).name())).isEmpty();
+        assertThat(MetadataKeys.byName(MetadataKeys.todoListSettings(newListId()).name())).isEmpty();
         assertThat(MetadataKeys.byName(UUID.randomUUID().toString())).isEmpty();
     }
 
     @Test
     @DisplayName("delete removes the value in the caller's transaction: a rollback keeps it, a commit frees the key; nothing to delete is no error")
     void deleteRemovesTheValueInTheCallersTransaction() {
-        MetadataKey<AttendanceConfig> key = MetadataKeys.attendance(newSessionId());
-        metadata.create(key, new AttendanceConfig(9, null, null));
+        MetadataKey<TodoListSettings> key = MetadataKeys.todoListSettings(newListId());
+        metadata.create(key, new TodoListSettings(9, null, null));
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
 
         transaction.executeWithoutResult(status -> {
             metadata.delete(key);
             status.setRollbackOnly();
         });
-        assertThat(metadata.get(key).graceMinutes()).isEqualTo(9);
+        assertThat(metadata.get(key).reminderMinutesBefore()).isEqualTo(9);
 
         transaction.executeWithoutResult(status -> metadata.delete(key));
         assertThatThrownBy(() -> metadata.get(key))
                 .isInstanceOfSatisfying(AppException.class,
                         refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.METADATA_NOT_FOUND));
         metadata.delete(key);
-        metadata.create(key, AttendanceConfig.defaults());
-        assertThat(metadata.get(key)).isEqualTo(AttendanceConfig.defaults());
+        metadata.create(key, TodoListSettings.defaults());
+        assertThat(metadata.get(key)).isEqualTo(TodoListSettings.defaults());
     }
 }

@@ -38,9 +38,9 @@ app:
     todo:
       # Tags on one todo (distinct ids, on create and on PUT /todos/{id}/tags).
       max-tags: 10
-    attendance:
-      # Minutes after the day starts that still count as on time (AttendanceConfig, configuration metadata).
-      max-grace-minutes: 120
+    todo-list-settings:
+      # How long before a todo is due its reminder can go out, in minutes (TodoListSettings, configuration metadata).
+      max-reminder-minutes: 1440
     # Latest dates the API accepts, by field (@LatestDate("…") on request records).
     latest-date:
       # Must stay before 9999-12-31, the due_sort value that puts undated todos last (0003).
@@ -68,6 +68,7 @@ app:
     database-contention: { min: 1s, max: 3s }
     query-timeout: { min: 3s, max: 8s }
     database-unavailable: { min: 4s, max: 8s }
+  # sign-in:begin
   rate-limit:
     enabled: true
     backend-timeout: 200ms
@@ -81,6 +82,7 @@ app:
       signup-per-ip: { requests: 5, window: 10m }
       refresh-per-ip: { requests: 30, window: 1m }
       logout-per-ip: { requests: 30, window: 1m }
+  # sign-in:end
 
 # The admission bulkheads (AdmissionControlFilter). Other bulkheads live beside the code they guard;
 # Spring Boot merges the instances from every file.

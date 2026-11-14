@@ -1,39 +1,17 @@
-# Dropdown endpoint (Step 4.11): the house dropdown standard
+# Dropdown endpoint (Step 4.11)
 
-One shape for every dropdown in the API, so the frontend writes **one** dropdown component and
-one fetch helper for all of them. house-review checks it as REST-13.
-
-Source: the user's `DropdownCandidate` contract (Espranza), merged with the house decisions of
-2026-11-13: `DropdownItem` is a record; the service builds the wrapper; every dropdown accepts one
-generic parameter object; **dropdowns are cursor-paged**, so a large set (thousands of cities) is
-browsed in batches or narrowed with `query`.
+One shape for every dropdown in the API, so the frontend writes one dropdown component and one
+fetch helper. **The rules are house-review REST-13** (path, parameters, response, how each
+parameter adjusts the annotation's defaults); this file says what to generate.
 
 Applies when the entity carries `{{dropdownAnnotation}}` (`@DropdownCandidate`). The shared types
 come with bootstrap's `core` piece. **Golden code:**
 `~/.claude/skills-reference/src/main/java/com/example/app/common/dropdown/` (the types, with the
-annotation's full LLM contract) and, for one entity, `todo/repository/impl/TodoListRepositoryImpl`
+annotation's full contract) and, for one entity, `todo/repository/impl/TodoListRepositoryImpl`
 (`findDropdownItems`), `todo/service/TodoListService` (`dropdown`),
-`todo/controller/TodoListController` (`dropdown`).
-
-## The shape
-- `GET {{urlPrefix}}/<resource-plural>/dropdown`; a parent in the path only for a true child
-  resource; never named sub-paths (`by-x-id/dropdown`) or loose `@RequestParam`s.
-- Parameters: `DropdownFilter extends CursorFilter`: `size` (default and maximum from
-  `app.limits.cursor-page`), `after` (the previous batch's `pageInfo.nextCursor`), `status`,
-  `sortDirection`, `query` (`@MaxLength("search-query")`). An entity with mandatory or optional
-  filters subclasses it (`<Entity>DropdownFilter`), one field per dot-path entry, `@NotNull` for
-  mandatory ones.
-- Response: `CursorWrapper<DropdownItem>`, items exactly `{value, label}`, `pageInfo {nextCursor,
-  hasMore}`; no count.
-
-## How the request adjusts the annotation's defaults
-
-| Parameter | Effect |
-|---|---|
-| `status` | With an `activeField`: `ACTIVE` (default) → `= TRUE`, `INACTIVE` → `= FALSE`, `ALL` → no predicate. **Without one, anything but `ACTIVE` is a 400** `REQUEST_PARAMETER_INVALID` (`parameter: status`), never silently ignored |
-| `sortDirection` | Flips `sortField`'s direction. Each direction is its own keyset (`NAME_ASC`, `NAME_DESC`), so a cursor from one direction is refused in the other |
-| `size`, `after` | The batch and the position; over the maximum or a foreign or tampered cursor is a 400 |
-| `query` | Only when `searchable`: `TextSearch.contains` on `displayField`. On a non-searchable dropdown it is a 400, never ignored |
+`todo/controller/TodoListController` (`dropdown`). An entity with mandatory or optional filters
+subclasses `{{DropdownFilter}}` as `<Entity>DropdownFilter`, one field per dot-path entry,
+`@NotNull` for mandatory ones.
 
 ## What to generate per entity (naming fixed: `findDropdownItems`, `dropdown`, `dropdown`)
 1. **Repository** (Criteria, never `@Query`): a **projection**

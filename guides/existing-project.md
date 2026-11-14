@@ -142,23 +142,6 @@ once:
 
 ---
 
-## Worked example: news-pulse
-
-news-pulse went through this path:
-1. **First audit** (round 1): build, migrations, auditing, layering, security basics.
-2. **Second, rule-based audit** (round 2, `docs/pre-work-tasks-v2.md`). It found, in triage
-   order:
-   - a 2FA bypass and an unsafe default profile (security);
-   - remote calls inside transactions (connections);
-   - races and short columns (data);
-   - missing negative tests (safety net);
-   - the REST contract work (API).
-
-`PaginationWrapper` was adopted as a planned breaking change with its frontend changelog entry.
-That is the triage-7 step done the intended way.
-
----
-
 ## Troubleshooting
 
 | Symptom | Fix |

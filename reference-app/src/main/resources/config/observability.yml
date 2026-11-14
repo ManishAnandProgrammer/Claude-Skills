@@ -17,9 +17,11 @@ management:
         readiness:
           include: readinessState,connectionPool
   health:
+    # sign-in:begin
     # Redis is optional (rate limits fail open): its outage must not take instances out.
     redis:
       enabled: false
+    # sign-in:end
     db:
       enabled: false
   metrics:

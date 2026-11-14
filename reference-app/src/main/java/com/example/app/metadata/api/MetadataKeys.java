@@ -14,8 +14,8 @@ import java.util.UUID;
  *   <li>A <b>fixed</b> key is a constant: one value for the whole application (or tenant). The admin
  *       API ({@code /metadata/{key}}) reaches fixed keys only, through {@link #byName}.</li>
  *   <li>A <b>per-context</b> key is a factory method, its name a prefix plus the context's id in its
- *       canonical form ({@code FEE_RULES_<sessionId>}). Only the module that owns the context
- *       writes it, through its own typed endpoint ({@code PUT /school-sessions/{id}/fee-rules}),
+ *       canonical form ({@code OPENING_HOURS_<storeId>}). Only the module that owns the context
+ *       writes it, through its own typed endpoint ({@code PUT /stores/{id}/opening-hours}),
  *       which checks the context's rules first; so {@link #byName} never resolves one.</li>
  * </ul>
  *
@@ -25,14 +25,14 @@ import java.util.UUID;
 public interface MetadataKeys {
 
     // example:begin
-    /** The attendance rules a school starts from: the first session copies them. */
-    MetadataKey<AttendanceConfig> ATTENDANCE_DEFAULTS = new MetadataKey<>("ATTENDANCE_DEFAULTS", AttendanceConfig.class);
+    /** The settings a new todo list starts from. */
+    MetadataKey<TodoListSettings> TODO_LIST_DEFAULTS = new MetadataKey<>("TODO_LIST_DEFAULTS", TodoListSettings.class);
 
-    String ATTENDANCE_PREFIX = "ATTENDANCE_CONFIG_";
+    String TODO_LIST_SETTINGS_PREFIX = "TODO_LIST_SETTINGS_";
 
-    /** One school session's attendance rules, created when the session starts. */
-    static MetadataKey<AttendanceConfig> attendance(UUID sessionId) {
-        return new MetadataKey<>(ATTENDANCE_PREFIX + Objects.requireNonNull(sessionId, "sessionId"), AttendanceConfig.class);
+    /** One todo list's settings, created with the list. */
+    static MetadataKey<TodoListSettings> todoListSettings(UUID listId) {
+        return new MetadataKey<>(TODO_LIST_SETTINGS_PREFIX + Objects.requireNonNull(listId, "listId"), TodoListSettings.class);
     }
     // example:end
 
@@ -41,7 +41,7 @@ public interface MetadataKeys {
         List<MetadataKey<?>> fixedKeys = List.of(
                 // Per-context keys are never listed: the context's owner writes them through its own endpoint.
                 // example:begin
-                ATTENDANCE_DEFAULTS
+                TODO_LIST_DEFAULTS
                 // example:end
         );
         for (MetadataKey<?> key : fixedKeys) {

@@ -1,20 +1,14 @@
 package com.example.app.common.exception;
 
-import com.example.app.common.web.RetryAfterProperties;
 import jakarta.persistence.PersistenceException;
 import org.hibernate.QueryTimeoutException;
 import org.hibernate.exception.LockTimeoutException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import java.sql.SQLException;
 import java.sql.SQLTransientConnectionException;
-import java.time.Duration;
-import java.util.HashSet;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,23 +53,5 @@ class TransientDatabaseFailureTest {
         LockTimeoutException lockTimeout = new LockTimeoutException("lock timeout", new SQLException("lock", "55P03"), "update todos");
 
         assertThat(TransientDatabaseFailure.of(new RuntimeException(lockTimeout))).contains(TransientDatabaseFailure.CONTENTION);
-    }
-
-    @ParameterizedTest
-    @EnumSource(TransientDatabaseFailure.class)
-    @DisplayName("Each kind answers within its configured Retry-After range, and the value is really jittered")
-    void retryAfterIsJitteredWithinTheConfiguredRange(TransientDatabaseFailure failure) {
-        RetryAfterProperties ranges = new RetryAfterProperties(range(1, 3), range(1, 3), range(3, 8), range(4, 8));
-        RetryAfterProperties.Range range = ranges.rangeFor(failure.errorCode()).orElseThrow();
-        Set<Long> seen = new HashSet<>();
-        for (int attempt = 0; attempt < 200; attempt++) {
-            seen.add(Long.parseLong(range.pickSeconds()));
-        }
-        assertThat(seen).hasSizeGreaterThan(1)
-                .allSatisfy(seconds -> assertThat(seconds).isBetween(range.min().toSeconds(), range.max().toSeconds()));
-    }
-
-    private static RetryAfterProperties.Range range(long minSeconds, long maxSeconds) {
-        return new RetryAfterProperties.Range(Duration.ofSeconds(minSeconds), Duration.ofSeconds(maxSeconds));
     }
 }
