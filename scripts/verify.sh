@@ -14,6 +14,10 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/fingerprint.sh
+. "$REPO/scripts/lib/fingerprint.sh"
+# Taken before the run: it names what is being tested, even if files change meanwhile.
+fingerprint="$(working_fingerprint "$REPO")"
 REFERENCE="$REPO/reference-app"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/claude-skills-verify.XXXXXX")"
 RUN="claude-skills-verify-$$"
@@ -137,4 +141,10 @@ in_app 'curl -sf localhost:8081/actuator/prometheus' | grep -q '^rate_limit' \
     || { echo "FAILED: no rate-limit metrics on the management port" >&2; exit 1; }
 echo "container: healthy, rate limited through Redis ($codes), metrics on the management port only"
 
+if [ "$(working_fingerprint "$REPO")" = "$fingerprint" ]; then
+    echo "$fingerprint" > "$(verified_record "$REPO")"
+    echo "recorded: a push of exactly this code passes the pre-push check without running this again"
+else
+    echo "files changed during the run: nothing recorded, run it again before pushing" >&2
+fi
 echo "verified: reference-app, a bootstrap copy and the image are green"

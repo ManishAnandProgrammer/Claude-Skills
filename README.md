@@ -30,11 +30,13 @@ Two skills that share one set of house engineering rules:
 
 ## Verifying a change (before every push)
 The repository is private, so there is no CI: `scripts/verify.sh` builds and tests
-`reference-app/`, then copies its `core` and `sign-in` pieces into a fresh project under another
-package and builds that too. `install.sh` enables a pre-push hook (`.githooks/pre-push`) that runs
-it whenever the pushed commits touch `reference-app/`, `scripts/` or a skill. It needs Docker
-(`sg docker -c scripts/verify.sh` if your shell isn't in the `docker` group). Skip once with
-`git push --no-verify`.
+`reference-app/`, copies its pieces into fresh projects under other packages and builds those, and
+starts the production image against PostgreSQL and Redis. It needs Docker
+(`sg docker -c scripts/verify.sh` if your shell isn't in the `docker` group) and takes over ten
+minutes. On success it records a fingerprint of the code it tested (`reference-app/`, `scripts/`,
+`.githooks/`). `install.sh` enables a pre-push hook (`.githooks/pre-push`) that refuses a push whose
+code differs from that record; skill text and guides alone never need a new run. So: change, run
+`verify.sh`, commit, push. Skip once with `git push --no-verify`.
 
 ## Install (once per machine)
 ```bash
