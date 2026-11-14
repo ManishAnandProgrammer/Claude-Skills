@@ -17,9 +17,9 @@ import java.lang.annotation.Target;
  * <p>When an entity carries this annotation, generate, in its module's layers:</p>
  * <ol>
  *   <li><strong>Repository</strong>: {@code CursorBatch<DropdownItem> findDropdownItems(<Filter> filter, <scope>, int size)}
- *       in the {@code Custom<Entity>Repository}, implemented with the <strong>Criteria API</strong> through
- *       {@code KeysetPages.fetch} and a {@code ProjectionQuery} (never {@code @Query}: the generic filter
- *       makes every predicate conditional);</li>
+ *       in the {@code Custom<Entity>Repository}, implemented with the <strong>Criteria API</strong>, written
+ *       top to bottom with {@code Cursor}, {@code Seek} and {@code CursorBatch.of} (never {@code @Query}: the
+ *       generic filter makes every predicate conditional);</li>
  *   <li><strong>Service</strong>: {@code CursorWrapper<DropdownItem> dropdown(<Filter> filter)}: refuses the
  *       parameters that don't apply (below), resolves the batch size with the injected {@code Paging}'s
  *       {@code cursorSize(filter)}, and wraps the repository's batch
@@ -57,9 +57,10 @@ import java.lang.annotation.Target;
  *   <li>A projection: {@code builder.construct(DropdownItem.class, value, label)}, never entities;</li>
  *   <li>{@link #activeField()}: {@code status=ACTIVE} (the default) → {@code = TRUE}, {@code INACTIVE} →
  *       {@code = FALSE}, {@code ALL} → no predicate;</li>
- *   <li>a keyset on {@code (<sortField>, <valueField>)}: two {@code Keyset} constants (ascending and
- *       descending, each with its own name, so a cursor taken in one direction is refused in the other)
- *       over the same {@code KeyColumn} list, the unique {@code valueField} last. {@code sortField} defaults to
+ *   <li>a keyset on {@code (<sortField>, <valueField>)}: {@code Seek.after} and {@code Seek.order} over the
+ *       same two columns, the unique {@code valueField} last, and a sort name per direction
+ *       ({@code NAME_ASC}, {@code NAME_DESC}) given to {@code Cursor.read} and {@code Cursor.write}, so a
+ *       cursor taken in one direction is refused in the other. {@code sortField} defaults to
  *       {@code displayField}; the request's {@code sortDirection} overrides the annotation's;</li>
  *   <li>{@link #searchable()}: {@code TextSearch.contains(builder, <displayField>, query)}, a case-insensitive
  *       "contains" that needs no escaping. Never {@code LIKE};</li>
