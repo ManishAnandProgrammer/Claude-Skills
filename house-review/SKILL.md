@@ -13,13 +13,13 @@ The rules are fixed and identical across projects. They live in `references/`:
 
 | File | Rule IDs | Covers |
 |---|---|---|
-| `references/rest-api.md` | REST-xx | Endpoints, status codes, errors, validation, OpenAPI and doc drift |
+| `references/rest-api.md` | REST-xx | Endpoints, status codes, errors, validation, authorization, OpenAPI and doc drift |
 | `references/code-smells.md` | SMELL-xx | Code smells, Clean Code, Refactoring |
 | `references/java.md` | JAVA-xx | Effective Java and the house Java conventions |
 | `references/persistence.md` | DATA-xx | Transactions, connections, deletes, history, ids, locking, indexes |
-| `references/lenses.md` | SEC/PERF/REL/OPS/CONC/TEST-xx | The eight lenses, resilience and required tests |
+| `references/lenses.md` | SEC/PERF/REL/OPS/CONC/TEST-xx | The eight lenses, resilience, the runbook and required tests |
 | `references/architecture.md` | ARCH-xx | Module map, boundaries, layers, events, ArchUnit enforcement |
-| `references/error-contract.md` | ERR-xx | The house error contract (ErrorCode, mapper, ProblemDetail, 503 + Retry-After) |
+| `references/error-contract.md` | ERR-xx | The house error contract (ErrorCode, mapper, ProblemDetail, 409 vs 400, 503 + Retry-After) |
 | `references/config-baseline.md` | CFG-xx | Hikari/JPA/PostgreSQL, server and threads, Jackson, actuator, logging, JVM |
 | `references/metadata.md` | META-xx | Configuration metadata and counters; only for projects with the `metadata` piece |
 
@@ -123,7 +123,7 @@ yourself, file by file.
 groups and start one reviewer per group with the **Agent** tool, all in one message so they
 run in parallel. Each reviewer must get:
 - the list of files;
-- the paths of the five reference files and of the profile, with the instruction to read them
+- the paths of every reference file and of the profile, with the instruction to read them
   first;
 - the instruction to be read-only;
 - the exact finding format below;
@@ -243,8 +243,19 @@ Also check any number you report (counts of endpoints, tests, files) by recomput
   Classify each tracked finding as fixed, open, stale or rejected, with the deciding line, so
   stale claims aren't reported again.
 - **Push back on book prescriptions this system doesn't need**, listed under "Questionable
-  recommendations, and why not". Examples: a breaker in front of the only database, a message
-  broker, platform threads.
+  recommendations, and why not". The house has already rejected these, with the reason:
+  - a breaker in front of the only database (Hikari's wait + 503 already fails fast), a message
+    broker, platform threads;
+  - **raising the pool as a fix**: instances × pool must stay below `max_connections`, and a bigger
+    pool only moves the queue into the database (OPS-10);
+  - **`@Async`, WebFlux or R2DBC** instead of virtual threads + bulkheads (PERF-03);
+  - **`show-sql` in prod** (CFG-02: datasource-proxy in dev only);
+  - **migrations on a read replica** (a replica is read-only; DATA-19 bounds migration locks
+    instead);
+  - **`@DataJpaTest` slices** instead of ArchUnit (layers) + integration tests on the real database
+    (behaviour);
+  - **epoch `bigint` instead of `timestamptz`**: PostgreSQL already stores `timestamptz` as an
+    8-byte integer, so the index is as fast and the type stays readable.
 
 ---
 

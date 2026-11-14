@@ -2,11 +2,13 @@ package com.example.app.metadata.api;
 
 /**
  * Configuration metadata for other modules: one typed value per declared key, read often and
- * changed rarely (by an admin, through {@code PUT /api/v1/metadata/{key}}).
+ * changed rarely.
  *
- * <p>Seeding is the caller's lifecycle code: whatever creates a context creates its configuration
- * in the same transaction, e.g. "session created" copies the previous session's with
- * {@link #createFrom}.</p>
+ * <p>Who writes what: a fixed key's value is replaced by an admin through
+ * {@code PUT /api/v1/metadata/{key}}. A per-context value belongs to the module that owns the
+ * context: its lifecycle code seeds it in the same transaction that creates the context (e.g.
+ * "session created" copies the previous session's with {@link #createFrom}), its own typed endpoint
+ * checks the context's rules and then calls {@link #update}, and its delete calls {@link #delete}.</p>
  */
 public interface Metadata {
 
@@ -23,6 +25,16 @@ public interface Metadata {
      */
     <T> T createFrom(MetadataKey<T> source, MetadataKey<T> target);
 
-    /** Replaces the value when {@code version} is the current one; 409 {@code OPTIMISTIC_LOCK_CONFLICT} otherwise. */
+    /**
+     * Replaces the value when {@code version} is the current one; 409 {@code OPTIMISTIC_LOCK_CONFLICT}
+     * otherwise. A context's own rules ("an ended session's rules can't change") are checked by its
+     * owner before this call.
+     */
     <T> T update(MetadataKey<T> key, T value, long version);
+
+    /**
+     * Removes the value, in the caller's transaction, so a context's delete takes its configuration
+     * with it. None stored: nothing happens.
+     */
+    void delete(MetadataKey<?> key);
 }

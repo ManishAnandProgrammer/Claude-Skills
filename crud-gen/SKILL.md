@@ -26,7 +26,7 @@ tell the user to run the skills installer.
 |---|---|
 | `<ref>/todo/domain/Todo.java`, `TodoList.java` | Entity: `@Getter @SuperBuilder`, protected constructor, `@Setter` only on free fields, state methods, a generated sort column |
 | `<ref>/todo/dto/request/TodoCreateRequest.java`, `TodoUpdateRequest.java`, `TodoStatusRequest.java` | Request records with `@MaxLength("<key>")`, `version` on updates |
-| `<ref>/todo/dto/request/TodoFilter.java`, `TodoListFilter.java` | Cursor filter, offset filter, sort enum |
+| `<ref>/todo/dto/request/TodoFilter.java`, `TodoListFilter.java` | Cursor filter, offset filter, sort enum, the `ids` filter |
 | `<ref>/todo/dto/response/TodoResponse.java`, `TodoSummaryResponse.java` | Detail and list-row records |
 | `<ref>/todo/mapper/TodoMapper.java` | Hand-written mapper |
 | `<ref>/todo/repository/**` | Repository, custom interface, Criteria **projection** impl with keyset or offset paging |
@@ -64,9 +64,10 @@ steps are the same; these rules come first:
    than a field that old clients would send absent. When a breaking change is unavoidable, stop
    and ask; record it where the project lists breaking changes.
 4. **Every existing test must pass unchanged.** A test that has to change is a breaking change in
-   disguise (rule 3). New behaviour gets a **new test class** named for the feature
-   (`TodoTagsIntegrationTest`), reusing the existing class's fixture helpers via the test base or a
-   shared support class, not copies.
+   disguise (rule 3). Adding a row to `AggregateArchTest.AGGREGATES` (or a member to a row) is not
+   changing a test: that list is data, edited by design (Step 4.8). New behaviour gets a **new test
+   class** named for the feature (`TodoTagsIntegrationTest`), reusing the existing class's fixture
+   helpers via the test base or a shared support class, not copies.
 5. **Guard proof** (Step 7): prove a guard of the *new* behaviour fails without its fix.
 
 ## Step 0: Load the project profile
@@ -131,9 +132,10 @@ Check before generating:
 Golden examples: `~/.claude/skills-reference/src/main/resources/db/changelog/changes/000{2,3,4,5}-*.sql`.
 Changesets use `--changeset {{changesetAuthor}}:NNNN-…` (the golden files say `dev`: a placeholder).
 
-For each failure: report it, offer the fix with **AskUserQuestion** (the entity change and a **new**
-changeset; never edit an applied one), apply it on approval. If declined, generate anyway and list
-it as an open item.
+List **every** failure, of every entity in the run, in **one table** (check, what is wrong, the fix:
+the entity change and a **new** changeset; never edit an applied one), then ask **once** with
+**AskUserQuestion**: apply all, or pick. When nobody can be asked (a non-interactive run), apply all
+and say so in the report. A declined fix: generate anyway and list it as an open item.
 
 **Add every new changeset to `db.changelog-master.yaml` right away**, for all the entities you will
 generate, before the first build: Hibernate validates every entity's table at startup, so a missing
@@ -188,12 +190,34 @@ child table fails the build of the parent too.
     the count only on a full page. Golden: `TodoListFilter`, `TodoListRepositoryImpl.findByFilter`.
 
 - **A feature that needs configuration, not an entity** (rules an admin chooses per tenant or per
-  context, read often, changed rarely): with the `metadata` piece, don't generate an entity. Add a
-  record to `metadata.api` (defaults in the compact constructor, bean validation, `@ConfiguredMax`
-  limits), a key constant or a per-context factory (`UUID` context id) to `MetadataKeys` with its
-  `byName` branch, and seed it in the feature's lifecycle code (`create` / `createFrom`). Tests
-  follow `MetadataIntegrationTest`. A gapless number uses `Counters`. Rules: house-review
-  `metadata.md`.
+  context, read often, changed rarely): with the `metadata` piece, don't generate an entity. Rules:
+  house-review `metadata.md`.
+  1. **The value:** a record in `metadata.api` (defaults in the compact constructor, bean
+     validation, `@ConfiguredMax` limits).
+  2. **The key**, in `MetadataKeys`: a **fixed** key (one value for the application) is a constant,
+     added to `byName`'s fixed list and seeded by a changeset; the admin API
+     (`GET/PUT /metadata/{key}`) reaches it. A **per-context** key is a factory
+     (`feeRules(UUID sessionId)`) and never goes in `byName`. When the project has no fixed key,
+     leave the fixed list empty with its comment: the admin API then answers
+     `METADATA_KEY_UNKNOWN` for every name, and the first fixed key needs no other code.
+  3. **Per-context configuration is an endpoint of the resource that owns the context**, in that
+     module's API, controller and service: `GET/PUT /school-sessions/{id}/fee-rules` with the typed
+     record as the body (plus `version`), so the contract reaches the API docs. The service loads the
+     context (404), checks the context's own rules (an ended session's rules are 409), then calls
+     `Metadata.update(key, value, version)`. No hook or rule interface in the metadata piece.
+  4. **Lifecycle:** the context's create seeds its configuration in the same transaction
+     (`Metadata.create`, or `createFrom` to copy the previous context's); its delete removes it in
+     the same transaction (`Metadata.delete`, `Counters.delete`).
+  5. **Gapless numbers** use `Counters`: a per-context counter's name is
+     `Counters.perContext(prefix, contextId)`, its prefix declared by the module that numbers (by the
+     context's owner when the dependency direction forbids that); a fixed counter is seeded by a
+     changeset. A record numbered by a counter is never deleted.
+  6. **Tests** follow `~/.claude/skills-reference/src/test/java/com/example/app/metadata/MetadataIntegrationTest.java`
+     and `CounterIntegrationTest.java` (read them from the reference: a project without the example
+     piece doesn't have the first). The owning endpoint gets its own tests (tests.md).
+
+**Shapes without golden code yet** (money, exactly one current, no overlapping ranges, month
+values, a parent in another module): follow the house-review rules and ask; don't invent a shape.
 
 ---
 
@@ -229,6 +253,13 @@ a default; `requireXPredicate()` per optional field (the repository builds predi
 these). A filter with `query` implements `QueryFilter`, so the shared text-search helper takes the
 filter.
 
+**Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
+`List<@NotNull ID> ids` with `@ConfiguredMaxSize("cursor-page.max-size")` (offset:
+`"offset-page.max-size"`), `requireIdsPredicate()` (non-null and non-empty), an `in` predicate in the
+list query (offset: in the page **and** the count query; not in the dropdown), and
+`@Schema(description = "Find by ids …: unknown or another user's ids are simply absent")`. The list's
+description and its 400 response name it.
+
 **Shapes** (golden `Tag` / `TimeEntry`):
 - **Range filters:** `<x>From` / `<x>To` for dates, `min<X>` / `max<X>` for numbers, both inclusive;
   each bound carries the field's own constraints (`@Min`, `@ConfiguredMax`); the filter class
@@ -261,7 +292,11 @@ fields. Golden: `TodoResponse`, `TodoSummaryResponse`.
 `ERROR_PREFIX_NOT_FOUND`, `ERROR_PREFIX_<FIELD>_TAKEN` per unique field, `ERROR_PREFIX_IN_USE` when
 referenced; the mapper entries; a message in every `{{messagesFile}}`; the handler's
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
-`*_IN_USE`). Never check-then-insert (DATA-05).
+`*_IN_USE`). Never check-then-insert (DATA-05). Every constraint kind maps, exclusion constraints
+included: the handler reads the name from the driver (error-contract.md ERR-02).
+**A state conflict is 409, a wrong value 400** (error-contract.md ERR-05): refused because of a
+status, a flag or existing records → 409 with a domain code; the request's own values wrong against
+fixed rules → 400.
 **Bootstrap brings no feature codes**: every code, mapping, message, constraint entry and limit key
 is added here. Constraint mappings go in the module's own `ConstraintErrorCodes` bean (the handler
 aggregates them). A child's composite owner FK `(parent_id, owner_id)` maps to the parent's
@@ -307,7 +342,9 @@ writes; create `saveAndFlush`; update/actions change the managed entity after
 `entity.checkVersion(request.version())` (409 `OPTIMISTIC_LOCK_CONFLICT`), then `flush()`; delete loads (404) then flushes; ownership through
 `findByIdAndOwnerId` (another user's record is 404); parents written into are locked with
 `getOwned<Parent>ForWrite` (`MANDATORY`); list sizes from `{{Paging}}`. No remote call inside a
-transaction (DATA-01).
+transaction (DATA-01). **Never lock "the current X" by a mutable column** (DATA-32: `WHERE is_current
+FOR SHARE` misses the new current row after a switch): read the id unlocked, lock that row by id,
+re-check the condition on the locked row (409 when it no longer holds).
 
 ### 4.9 API interface (OpenAPI)
 Golden `TodoApi`: `@Tag`; `@Operation` with text-block descriptions; an `@ApiResponse` for every
@@ -325,6 +362,11 @@ Golden `TodoController`: package-private, `implements <Entity>Api`, class-level
 `version = "v1+"` (the current baseline; REST-07), 201/204 with `@ResponseStatus`, `{{controllerSecurity}}`, nothing but the service call. A user-level resource needs no
 `@PreAuthorize` (every authenticated principal is a user); the dropdown carries
 `{{dropdownSecurity}}` explicitly because it is often shared by screens of different roles.
+**Role checks are meta-annotations** (REST-25): an admin-only endpoint carries `@AdminOnly`
+(`common/security`, golden `MetadataController`), never `@PreAuthorize("hasRole('…')")`;
+`ConventionArchTest` fails on a role string anywhere else. A new role is a new annotation next to
+`@AdminOnly`, a `Role` constant and a changeset widening `ck_users_role` (the metadata piece's 0007
+brings `ADMIN`).
 
 ### 4.11 Dropdown (when the entity carries `{{dropdownAnnotation}}`)
 Read `references/dropdown.md`. Golden: `TodoListRepositoryImpl.findDropdownItems`,
@@ -350,10 +392,10 @@ with `scripts/verify.sh`).
 
 ### Final checklist
 - [ ] Profile loaded; no `{{…}}` left; the golden files read.
-- [ ] Pre-flight fixed or listed: `text` columns, indexes per order ending in `id`, non-null keyset
+- [ ] Pre-flight in one table, asked once (or applied in full and reported): `text` columns, indexes per order ending in `id`, non-null keyset
       keys, `lower(trim())` unique indexes, composite owner FK.
 - [ ] `*Request` records with `@MaxLength` keys added to `config/limits.yml`; `version` on updates.
-- [ ] List as a projection; cursor or offset per the profile; no counts on cursor lists.
+- [ ] List as a projection; cursor or offset per the profile; no counts on cursor lists; `ids` filter.
 - [ ] ErrorCodes, mapper entries, messages, constraint mappings.
 - [ ] Service: transactions, version checks, ownership 404, parent locking, no remote call in a
       transaction.

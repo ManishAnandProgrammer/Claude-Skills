@@ -12,10 +12,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ProblemDetail;
 
 @Tag(name = "Configuration metadata", description = """
-        Per-feature configuration, one value per key, for admins (role ADMIN). Only keys declared in the \
-        application exist: fixed ones, and per-context ones whose name is a prefix plus the context's \
-        id (SOME_CONFIG_7). Values are created by the application when their context is created; \
-        this API reads and replaces them.""")
+        Application-wide configuration, one value per fixed key, for admins (role ADMIN). Only the fixed \
+        keys declared in the application exist here. Configuration that belongs to one record (a \
+        session's fee rules) is read and replaced through that record's own endpoint \
+        (PUT /<resources>/{id}/<configuration>), which checks the record's rules. Values are created by \
+        the application; this API reads and replaces them.""")
 public interface MetadataApi {
 
     @Operation(summary = "A configuration", description = "The value with every default filled in, and the version to send back.")
@@ -25,12 +26,18 @@ public interface MetadataApi {
     @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an admin)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = """
-            METADATA_KEY_UNKNOWN (no such key is declared); METADATA_NOT_FOUND (declared, but not set up \
-            for this context)""",
+            METADATA_KEY_UNKNOWN (no fixed key of that name; a per-record configuration is not reached \
+            here); METADATA_NOT_FOUND (declared, but not set up yet)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    ObjectWrapper<MetadataResponse> get(@Parameter(description = "The key", example = "SOME_CONFIG_7") String key);
+    ObjectWrapper<MetadataResponse> get(
+            @Parameter(
+                    // example:begin
+                    example = "ATTENDANCE_DEFAULTS",
+                    // example:end
+                    description = "A fixed key")
+            String key);
 
     @Operation(summary = "Replace a configuration", description = """
             Send the whole value and the version you last read; if it changed since, the update is \
@@ -51,6 +58,12 @@ public interface MetadataApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    ObjectWrapper<MetadataResponse> update(@Parameter(description = "The key", example = "SOME_CONFIG_7") String key,
-                                           MetadataUpdateRequest request);
+    ObjectWrapper<MetadataResponse> update(
+            @Parameter(
+                    // example:begin
+                    example = "ATTENDANCE_DEFAULTS",
+                    // example:end
+                    description = "A fixed key")
+            String key,
+            MetadataUpdateRequest request);
 }

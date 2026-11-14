@@ -39,3 +39,9 @@ or login (about 60 s): the load balancer times out around then anyway, and a sho
 is safer for deployments (owner's decision). Mount `/diagnostics` (heap dumps, `hs_err`, GC logs, one
 directory per start, the newest `DIAGNOSTICS_KEEP` kept, 5 by default) on a private volume: heap dumps
 hold tokens and personal data.
+
+## Incidents
+
+`docs/runbook.md`: what to read first (health, pool and bulkhead metrics), the triage SQL (long
+queries, idle transactions, blockers, xid age, dead rows), thread dumps under virtual threads, and
+the rollback and drain steps. Bootstrap's core piece copies it.

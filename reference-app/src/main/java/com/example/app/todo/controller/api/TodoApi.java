@@ -31,15 +31,17 @@ public interface TodoApi {
     @Operation(summary = "Your todos, in batches", description = """
             Cursor-paged: the first call returns a batch and pageInfo.nextCursor; send it as after to \
             get the next batch, until hasMore is false. size sets the batch (default and maximum from \
-            configuration). Filters: todoListId, tagId (todos carrying that tag), status, priority, \
-            dueOnOrBefore (yyyy-MM-dd) and query (a case-insensitive part of the title). Ordered by sort: \
+            configuration). Filters: ids (find by ids: unknown or another user's ids are simply absent), \
+            todoListId, tagId (todos carrying that tag), status, priority, dueOnOrBefore (yyyy-MM-dd) and \
+            query (a case-insensitive part of the title). Ordered by sort: \
             DUE_DATE (the default; no due date last) or NEWEST; a cursor only continues the order it came \
             from. Rows carry the tags (id and name) and leave out the notes; GET /todos/{id} has them.""")
     @ApiResponse(responseCode = "200", description = "One batch, with pageInfo {nextCursor, hasMore}")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (size, query or after out of range); REQUEST_PARAMETER_INVALID (an unknown \
-            status, priority or sort, a malformed date, todoListId or tagId, a non-numeric size, or an \
-            after that is tampered or from another sort; see failed or parameter)""",
+            VALIDATION_FAILED (size, query, after or the number of ids out of range); \
+            REQUEST_PARAMETER_INVALID (an unknown status, priority or sort, a malformed date, id, \
+            todoListId or tagId, a non-numeric size, or an after that is tampered or from another sort; \
+            see failed or parameter)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

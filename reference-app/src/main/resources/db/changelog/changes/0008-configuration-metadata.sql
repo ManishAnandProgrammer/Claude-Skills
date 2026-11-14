@@ -40,7 +40,8 @@ CREATE TABLE counters (
     version    bigint      NOT NULL,
     CONSTRAINT pk_counters PRIMARY KEY (id),
     CONSTRAINT uq_counters_key UNIQUE (key),
-    CONSTRAINT ck_counters_key CHECK (key ~ '^[A-Z][A-Z0-9_]*$'),
+    -- UPPER_SNAKE_CASE, optionally ending in a canonical context id: the names Counters.perContext writes.
+    CONSTRAINT ck_counters_key CHECK (key ~ '^[A-Z][A-Z0-9_]*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$'),
     CONSTRAINT ck_counters_last_value CHECK (last_value >= 0)
 );
 --rollback DROP TABLE counters;

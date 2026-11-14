@@ -118,10 +118,18 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - `statement_timeout` is **strictly smaller** than `socketTimeout`, so the server cancels first
     and the connection survives. Incident PA-16: with both at 30 s they raced and 29 of 35
     requests answered 500;
-  - Liquibase isn't limited;
+  - **migrations get their own `lock_timeout` (about 5 s) and no `statement_timeout`.** Liquibase
+    opens its own connection, so the app pool's `options` don't reach it. An `ALTER TABLE` waiting
+    for a lock blocks every later query on that table behind it, and a rolling deploy migrates while
+    old instances still serve traffic: without a lock timeout one waiting migration stops the table.
+    A long statement that already holds its lock (an index build, a backfill) must not be cut off,
+    so no statement timeout. Set it for the migration connection (Liquibase's own URL `options`, or
+    `SET lock_timeout` at the top of each changeset that alters a busy table); a migration that hits
+    it fails and is re-run;
   - hot paths use a short default, and exports raise it locally (`SET LOCAL statement_timeout`);
   - a test holds the order.
-- **Severity:** High if they are missing; Medium for the order alone.
+- **Severity:** High if they are missing (the migration lock timeout included); Medium for the
+  order alone.
 
 ### DATA-20: readOnly and explicit attributes take the connection at begin
 - **Check:**
@@ -273,6 +281,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 
   A nullable one is partial: `WHERE col IS NOT NULL`.
 - **Detect:** an expression index next to a repository lookup on the bare column (`findByEmail`).
+- The constraint's name comes from the driver, for every kind (error-contract.md ERR-02).
 - **Severity:** High on a lookup in a request path (login, signup).
 - **Severity:** High.
 
@@ -344,7 +353,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - **list pages and dropdowns are projections** (`construct(Row.class, …)` of only the columns they
     show), never entities: measured 22 ms against 7 ms per page (2026-11-13);
   - **growing lists are keyset-paged** (`after` cursor); OFFSET reads every skipped row (20,020 rows
-    for row 20,000, against 20 with keyset).
+    for row 20,000, against 20 with keyset);
+  - **outliers:** every list or loop over one owner's rows (a user's todos, a tenant's orders) that
+    can grow without bound is keyset-paged, or the owner has a configured maximum
+    (`app.limits.*`, enforced on create, DATA-29). Ask "what if one owner has 10 million rows?":
+    a loop that loads them all, an export with no page, an in-memory sort or a cap check that counts
+    them all is a finding.
 - **Severity:** High for unbounded loads; Medium for N+1.
 
 ### DATA-12: Columns fit the data
@@ -371,3 +385,16 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Check:** human-readable codes under a unique constraint come from a database sequence, never
   from short random strings.
 - **Severity:** High.
+
+### DATA-32: Never lock "the current X" by a mutable column
+- **Check:** a locked read of a row chosen by a column that other transactions change
+  (`SELECT … WHERE is_current FOR SHARE`, `WHERE status = 'OPEN' FOR UPDATE`) is a finding. Under
+  READ COMMITTED it waits on the old row, re-checks only that row after the switch commits, finds it
+  no longer matches, and returns nothing: it never sees the new current row (run 5: a payment during
+  a session switch answered a false 400 "no current session"). Instead:
+  1. read the id without a lock;
+  2. lock that row by id;
+  3. re-check the condition on the locked row, and answer 409 if it no longer holds (ERR-05).
+- **Detect:** a `@Lock` / `FOR SHARE` / `FOR UPDATE` query whose `WHERE` names a flag, a status or a
+  date range rather than the id.
+- **Severity:** Medium (High when the wrong answer is a write, not a refusal).

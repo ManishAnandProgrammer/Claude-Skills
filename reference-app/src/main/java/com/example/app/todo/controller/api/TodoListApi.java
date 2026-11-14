@@ -24,12 +24,13 @@ public interface TodoListApi {
 
     @Operation(summary = "A page of your todo lists", description = """
             Paged with page and size (the default and the maximums come from configuration; beyond them \
-            is a 400), ordered by sort (NAME, the default, or NEWEST), filtered by query (a \
-            case-insensitive part of the name).""")
+            is a 400), ordered by sort (NAME, the default, or NEWEST), filtered by ids (find by ids: unknown \
+            or another user's ids are simply absent) and query (a case-insensitive part of the name).""")
     @ApiResponse(responseCode = "200", description = "One page, with pageInfo")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (page, size or query out of range); REQUEST_PARAMETER_INVALID (an unknown \
-            sort, a non-numeric page or size; see failed)""",
+            VALIDATION_FAILED (page, size, query or the number of ids out of range); \
+            REQUEST_PARAMETER_INVALID (an unknown sort, a malformed id, a non-numeric page or size; see \
+            failed)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

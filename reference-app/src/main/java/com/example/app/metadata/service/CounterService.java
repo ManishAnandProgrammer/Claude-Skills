@@ -37,4 +37,11 @@ public class CounterService implements Counters {
         return repository.increment(name, clock.instant(), currentUser.findId().orElse(null))
                 .orElseThrow(() -> new IllegalStateException("No counter %s: create it when its context is created".formatted(name)));
     }
+
+    @Override
+    @Transactional
+    public void delete(String name) {
+        repository.deleteByKey(name);
+        repository.flush();
+    }
 }

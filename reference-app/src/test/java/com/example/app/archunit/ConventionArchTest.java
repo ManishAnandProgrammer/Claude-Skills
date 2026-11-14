@@ -2,6 +2,7 @@ package com.example.app.archunit;
 
 import com.example.app.common.scheduling.MultiInstanceSafe;
 import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaAnnotation;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
@@ -21,6 +22,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.data.repository.Repository;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -47,6 +49,7 @@ import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_
 class ConventionArchTest {
 
     private static final String API = "/api";
+    private static final String SECURITY = "..common.security..";
     private static final String VERSIONED_API = API + "/{version}/";
 
     @ArchTest
@@ -113,6 +116,16 @@ class ConventionArchTest {
             .because("the controller's class-level mapping holds the resource path; a method repeating /api would map outside it (REST-07)");
 
     @ArchTest
+    static final ArchRule roleChecksAreAnnotations = noMethods().that().areDeclaredInClassesThat().resideOutsideOfPackage(SECURITY)
+            .should().beAnnotatedWith(aRoleCheckWrittenAsAString())
+            .because("a role is checked by a meta-annotation of common.security (@AdminOnly): a misspelt role in a string fails only at run time (REST-25)");
+
+    @ArchTest
+    static final ArchRule classRoleChecksAreAnnotations = noClasses().that().resideOutsideOfPackage(SECURITY)
+            .should().beAnnotatedWith(aRoleCheckWrittenAsAString())
+            .because("a role is checked by a meta-annotation of common.security (@AdminOnly): a misspelt role in a string fails only at run time (REST-25)");
+
+    @ArchTest
     static final ArchRule repositoriesAreNamedAndPlacedAsRepositories = classes().that().areAssignableTo(Repository.class)
             .should().haveSimpleNameEndingWith("Repository")
             .andShould().resideInAPackage("..repository")
@@ -150,6 +163,20 @@ class ConventionArchTest {
                 boolean satisfied = Objects.nonNull(mapping) && mapping.path().length == 1 && mapping.path()[0].startsWith(prefix);
                 events.add(new SimpleConditionEvent(controller, satisfied,
                         controller.getName() + " has no single class-level path under " + prefix));
+            }
+        };
+    }
+
+    /** {@code @PreAuthorize("hasRole('ADMIN')")} and the like, written directly on a class or method. */
+    private static DescribedPredicate<JavaAnnotation<?>> aRoleCheckWrittenAsAString() {
+        return new DescribedPredicate<>("@PreAuthorize naming a role") {
+            @Override
+            public boolean test(JavaAnnotation<?> annotation) {
+                if (!annotation.getRawType().isEquivalentTo(PreAuthorize.class)) {
+                    return false;
+                }
+                String expression = String.valueOf(annotation.get("value").orElse(""));
+                return expression.contains("hasRole(") || expression.contains("hasAnyRole(");
             }
         };
     }

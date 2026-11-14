@@ -22,7 +22,7 @@ Check these in whole-codebase mode, and in diff mode whenever configuration file
 | `…hikari.leak-detection-threshold` | `30000` | Logs any connection held longer than a transaction should be |
 | `…hikari.transaction-isolation` | `TRANSACTION_READ_COMMITTED` | Set once on the pool, never per method (DATA-20/21) |
 | `…hikari.auto-commit` | `false` | **Together with** `hibernate.connection.provider_disables_autocommit=true`: the connection is borrowed at the first SQL statement, not at transaction begin. One without the other is a finding |
-| `…data-source-properties.options` | `-c statement_timeout=25s -c lock_timeout=3s -c idle_in_transaction_session_timeout=30s` | Server-side limits on the **app pool only** (Liquibase builds its own connection). DATA-19 |
+| `…data-source-properties.options` | `-c statement_timeout=25s -c lock_timeout=3s -c idle_in_transaction_session_timeout=30s` | Server-side limits on the **app pool only**. Liquibase builds its own connection and sets its own `lock_timeout` (about 5 s, no `statement_timeout`). DATA-19 |
 | `…data-source-properties.socketTimeout` | `30` | Must be **greater** than `statement_timeout`, so the server cancels first and the connection survives (PA-16) |
 | `…data-source-properties.reWriteBatchedInserts` | `true` | One round trip per insert batch |
 | `…data-source-properties.tcpKeepAlive` | `true` | Finds connections a NAT or load balancer dropped |
@@ -55,6 +55,15 @@ query plan cache size left at its default.
 - *Profile-optional (required with RLS):* the app connects as a non-owner, DML-only role; only
   Liquibase uses the owner role.
 - Server settings (RDS parameter group): `log_lock_waits=on`, `deadlock_timeout=1s`.
+- **Maintenance** (*profile-optional where the database is managed and the provider covers it,
+  e.g. RDS; say what the provider does*):
+  - autovacuum stays on (the default; never off for a table "to save load"), with
+    `log_autovacuum_min_duration` set (e.g. `10s`), so slow vacuums show in the log;
+  - an alert on `age(datfrozenxid)` above about 1 billion (wraparound stops writes at about 2
+    billion, and recovery is a manual `VACUUM FREEZE`);
+  - dead tuples on the hot tables watched (`pg_stat_user_tables.n_dead_tup`); a long `idle in
+    transaction` session (which blocks vacuum) is already cut by
+    `idle_in_transaction_session_timeout` (CFG-01).
 
 ## CFG-04: Server, threads and overload
 | Key | Value | Why |

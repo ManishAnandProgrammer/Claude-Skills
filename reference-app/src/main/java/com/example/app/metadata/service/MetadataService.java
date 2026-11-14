@@ -23,7 +23,7 @@ import java.util.Set;
 
 /**
  * Configuration metadata: the typed methods of {@link Metadata} for other modules, and the admin
- * API's by-name methods, which reach only keys declared in {@link MetadataKeys}.
+ * API's by-name methods, which reach only the fixed keys of {@link MetadataKeys}.
  *
  * <p>Every read is one primary-key-like lookup ({@code uq_configuration_metadata_key}), so there is
  * no cache.</p>
@@ -73,7 +73,14 @@ public class MetadataService implements Metadata {
         return value;
     }
 
-    /** 404 {@code METADATA_KEY_UNKNOWN} for a name {@link MetadataKeys} doesn't declare. */
+    @Override
+    @Transactional
+    public void delete(MetadataKey<?> key) {
+        repository.deleteByKey(key.name());
+        repository.flush();
+    }
+
+    /** 404 {@code METADATA_KEY_UNKNOWN} for a name that isn't a fixed key of {@link MetadataKeys}. */
     public ObjectWrapper<MetadataResponse> findByName(String name) {
         MetadataKey<?> key = declaredKey(name);
         ConfigurationMetadata metadata = getMetadata(key);

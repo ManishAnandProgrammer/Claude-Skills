@@ -56,11 +56,11 @@ a finding**. Profile keys are written `{{key}}`.
   - **201**: created;
   - **202**: accepted asynchronous work, with a status URL in the body;
   - **204**: any success with no body, not only DELETE;
-  - 400: validation or business rule;
+  - 400: the request's own values are wrong (validation, a value outside an allowed range);
   - 401: missing or invalid token;
   - 403: role missing;
   - **404**: not found, *or not yours* (REST-16);
-  - 409: conflict or duplicate;
+  - 409: a valid request that conflicts with current state, or a duplicate (ERR-05);
   - **429 + `Retry-After`**: rate limited;
   - 500: unexpected;
   - **503 (+ `Retry-After` when transient)**: a downstream service is down, or no database
@@ -148,8 +148,15 @@ API versioning, carried in the path.
      constraints on `@RequestParam` / `@PathVariable`;
   2. security validators (REST-10);
   3. domain validation in the service (existence, state, ownership).
+
+  `@Valid` and `@PreAuthorize` sit on the controller while REST is the only entry point. When a
+  second one arrives (GraphQL, a CLI, a job calling the same use case), they move to the service
+  (`@Validated` class + `@Valid` parameters, `@PreAuthorize` on service methods), so every entry
+  point is covered once and none is forgotten.
 - **Detect:** request DTO fields without constraints; a body parameter missing `@Valid`; a
-  service re-checking by hand what a constraint could declare (duplicated bounds).
+  service re-checking by hand what a constraint could declare (duplicated bounds); a second entry
+  point calling a service whose checks live only on the REST controller (High: unvalidated or
+  unauthorized input).
 - **Severity:** **High for a String with no length limit, unless the author justifies it** (ask;
   a justified exception is an accepted deviation); High for other unbounded input; otherwise
   Medium.
@@ -307,4 +314,38 @@ dropdown.
 - **Check:** unknown properties, coerced scalars, floats as ints and case-insensitive enums are
   refused (CFG-05), so a misspelt field is a 400 `REQUEST_UNREADABLE` and is never silently
   ignored.
+- **Why strict, not "tolerant reader":** tolerance is for data we read back, which we didn't just
+  receive from the caller: stored JSON (DATA-27, META-04) and other services' responses are read
+  leniently. A request is never read leniently: the caller is right there to be told about the
+  typo.
+- **Severity:** Medium.
+
+### REST-23: Lists can be fetched by ids
+- **Check:** every list endpoint accepts `ids` (`GET /todos?ids=a,b,c`), so a client that holds
+  several ids makes one call instead of looping over the network. The number of ids is capped at
+  the page size (over it is a 400, REST-08); unknown ids and ids the caller can't see are simply
+  absent from the result (no 404, no hint that they exist, REST-16); the caller's scoping applies
+  as for any other filter.
+- **Detect:** a list endpoint with no `ids` filter; a client or a frontend document calling
+  `GET /x/{id}` in a loop.
+- **Severity:** Low (Medium when a documented screen loops over `GET /x/{id}`).
+
+### REST-24: One call per screen when a screen needs many
+- **Check:** when one screen needs many calls to render (mobile home, a dashboard), a read-only
+  bootstrap endpoint (`GET /home`) returns them in one response. It is a read-only counterpart of
+  ARCH-15's Manager: it composes the owning services' read methods (their `api` views in
+  `api-facades` mode, ARCH-06), so their validation, scoping and caching still apply; it never reads
+  repositories itself. Each part keeps its own size cap.
+- **Detect:** a screen documented (frontend contract, API changelog, a client) as needing more
+  than about five calls on open.
+- **Not a finding when:** the calls are lazy (below the fold, on a tab switch). Not generated:
+  added when a screen asks for it.
+- **Severity:** Medium.
+
+### REST-25: Role names are declared once
+- **Check:** role names are never string literals at use sites. Each role check is a
+  meta-annotation declared once in `common/security` (`@AdminOnly` carrying
+  `@PreAuthorize("hasRole('ADMIN')")`), and endpoints use the annotation. A renamed or misspelt role
+  then fails in one place, not silently on one endpoint.
+- **Detect:** `hasRole('` or `hasAnyRole('` outside `common/security`.
 - **Severity:** Medium.

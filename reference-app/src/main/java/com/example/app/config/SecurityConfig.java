@@ -47,8 +47,8 @@ import java.util.List;
  *       lookup per request. The {@code sub} claim is the user id, {@code roles} the roles.</li>
  *   <li>Public: the sign-in endpoints, health, the prometheus scrape (management port only), and
  *       the API docs (disabled in prod). Everything else needs a token. Role checks, when a role
- *       beyond {@code USER} exists, live in {@code @PreAuthorize} on the controllers (method
- *       security is on).</li>
+ *       beyond {@code USER} exists, live on the controllers as meta-annotations of
+ *       {@code common.security} ({@code @AdminOnly}; method security is on).</li>
  *   <li>{@code DispatcherType.ERROR} is permitted, so an exception that escapes to the container's
  *       error page isn't re-answered as a 401.</li>
  *   <li>Security errors are Problem Details with an {@code errorCode}, like every other error.</li>

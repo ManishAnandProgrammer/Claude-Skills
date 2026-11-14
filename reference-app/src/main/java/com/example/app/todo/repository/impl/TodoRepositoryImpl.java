@@ -59,6 +59,9 @@ class TodoRepositoryImpl implements CustomTodoRepository {
 
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(builder.equal(root.get(Todo_.ownerId), ownerId));
+        if (filter.requireIdsPredicate()) {
+            predicates.add(root.get(Todo_.id).in(filter.getIds()));
+        }
         if (filter.requireTodoListIdPredicate()) {
             predicates.add(builder.equal(root.get(Todo_.todoList).get(TodoList_.id), filter.getTodoListId()));
         }

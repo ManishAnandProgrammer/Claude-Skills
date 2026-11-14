@@ -68,6 +68,15 @@ the generic text.
 A downstream **4xx** answered to *our* request (for example S3's 403 for our credentials) is our
 fault, so it answers 500, not 503.
 
+**Constraint names come from the driver.** The domain code for a constraint violation is looked up
+by the constraint's name, read from the driver in one place
+(`PSQLException.getServerErrorMessage().getConstraint()`, reference:
+`common/exception/ConstraintViolationCodes`). Hibernate names the constraint only for SQLSTATE
+23505, 23514, 23503 and 23502; an exclusion constraint (23P01) gets no name from it. A custom
+Hibernate dialect or anything on `org.hibernate.internal` to recover the name is a finding (Medium:
+internal API, switched on globally for one constraint), and so is parsing the message text (it is
+localised).
+
 ## ERR-03: Transient database failures
 A small enum classifies the exception by walking the **cause chain**, because a timeout can
 arrive wrapped as a bare `PersistenceException`:
@@ -94,6 +103,18 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
   - a message in every `message_*.properties`;
   - an OpenAPI `@ApiResponse` on every endpoint that can return it (REST-20);
   - a negative test asserting the **errorCode**, not just the status (TEST-08).
+
+## ERR-05: 409 for a conflict with state, 400 for wrong values
+- **Check:** a request that is valid in itself but conflicts with the current state of its target
+  or of a related resource is **409** with a domain code (`SCHOOL_SESSION_ENDED`,
+  `RECEIPT_ALREADY_CANCELLED`, `STUDENT_NOT_ACTIVE`). A request whose own values are wrong is
+  **400** (`FEE_MONTH_OUTSIDE_SESSION`: the month is outside the session's range, whatever the
+  state). The test: is it refused because of a status, a flag or existing records, things that
+  change over time? Then 409. Is it wrong against fixed rules or fixed attributes of the target (its
+  date range, a format, a bound)? Then 400.
+- **Detect:** a `…_NOT_ACTIVE`, `…_ALREADY_…`, `…_ENDED`, `…_IN_USE` code mapped to 400; a range or
+  format check mapped to 409.
+- **Severity:** Medium (the client can't tell "fix your input" from "reload and retry").
 
 ## Detect
 - An `ErrorCode` constant missing from the mapper or the messages file. Grep both against the

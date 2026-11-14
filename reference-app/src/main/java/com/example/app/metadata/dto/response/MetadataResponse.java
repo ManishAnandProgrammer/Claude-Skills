@@ -7,7 +7,12 @@ import java.util.UUID;
 
 @Schema(description = "A configuration")
 public record MetadataResponse(
-        @Schema(description = "Its key", example = "SOME_CONFIG_7") String key,
+        @Schema(
+                // example:begin
+                example = "ATTENDANCE_DEFAULTS",
+                // example:end
+                description = "Its key")
+        String key,
         @Schema(description = "The value, shaped as the key's record, defaults filled in", type = "object")
         Object value,
         @Schema(description = "When it was created") Instant createdAt,

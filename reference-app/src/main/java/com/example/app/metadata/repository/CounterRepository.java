@@ -25,4 +25,6 @@ public interface CounterRepository extends JpaRepository<Counter, UUID> {
             WHERE key = :key
             RETURNING last_value""")
     Optional<Long> increment(String key, Instant updatedAt, UUID updatedBy);
+
+    void deleteByKey(String key);
 }

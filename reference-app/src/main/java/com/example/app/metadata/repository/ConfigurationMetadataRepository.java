@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface ConfigurationMetadataRepository extends JpaRepository<ConfigurationMetadata, UUID> {
 
     Optional<ConfigurationMetadata> findByKey(String key);
+
+    void deleteByKey(String key);
 }

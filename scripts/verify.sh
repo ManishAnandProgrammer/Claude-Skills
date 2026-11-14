@@ -74,6 +74,7 @@ public class SmokeApplication {
 JAVA
 "$REPO/scripts/bootstrap-copy.sh" --target "$project" --package com.acme.smoke --with core,sign-in > "$WORK/copy.log"
 grep -q "com.example.app" -r "$project/src" && { echo "FAILED: com.example.app left in the copied sources" >&2; exit 1; }
+[ -f "$project/docs/runbook.md" ] || { echo "FAILED: the incident runbook is missing from the core copy" >&2; exit 1; }
 grep -rqE "example:(begin|end)|TODO_LIST|todo-list" "$project/src" && { echo "FAILED: example-module entries left in a copy without the example piece" >&2; exit 1; }
 grep -rqE "metadata:(begin|end)|METADATA_|configuration_metadata|MetadataKey" "$project/src" && { echo "FAILED: metadata-piece entries left in a copy without the metadata piece" >&2; exit 1; }
 { [ -d "$project/src/main/java/com/acme/smoke/metadata" ] || grep -q "ADMIN" "$project/src/main/java/com/acme/smoke/user/domain/Role.java"; } \

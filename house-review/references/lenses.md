@@ -320,6 +320,24 @@ is code-smells.md, java.md and architecture.md.
 - **Check:** the flags in CFG-08. Executors and thread factories name their threads.
 - **Severity:** Low / Medium.
 
+### OPS-10: An incident runbook ships with the code
+- **Check:** the project has `docs/runbook.md` (reference: the reference application's), and it is
+  correct:
+  - triage SQL that works: blockers from `pg_blocking_pids(pid)` over `pg_stat_activity`, not a
+    hand-written self-join of `pg_locks` (it misses lock kinds and reports wrong pairs); long and
+    `idle in transaction` sessions; `max_connections` against what is used;
+  - which metrics to read first: pool pending, acquire and usage (CFG-06), bulkhead rejections
+    (PERF-03), 503 counters by cause;
+  - thread dumps under virtual threads: `jcmd <pid> Thread.dump_to_file -format=json <file>`
+    (`jstack` doesn't show virtual threads);
+  - rollback and drain steps: how to take an instance out, roll back a release, and what a failed
+    migration needs.
+
+  "Raise the pool" or "restart" is never the first step: it hides the cause and moves the queue
+  into the database (instances × pool must stay below `max_connections`).
+- **Severity:** Medium (missing, or a triage step that gives wrong answers); Low for a gap in an
+  otherwise correct runbook.
+
 ---
 
 ## Lens 8: Concurrency (CONC)
@@ -353,10 +371,12 @@ resilience or failure-injection test is Medium).
 ### TEST-01: Positive and negative cases, on more axes than the endpoint
 - **Check:** every new or changed behaviour covers:
   - the happy path **and** its refusals (400 / 404 / 409 / state);
-  - the edges: empty, max size, boundaries;
+  - the edges: empty, max size, boundaries, each bounded field **on create and on update** (both
+    sides of the bound, on both paths);
   - the list sizes 0, 1 and more than one page;
   - every member of a closed set (TEST-15);
-  - the illegal transition and the overrun (TEST-12).
+  - the illegal transition and the overrun (TEST-12);
+  - an immutable resource (no PUT, PATCH or DELETE) answers 405 to each, tested.
 
   "An endpoint-shaped coverage map reports full coverage over the only region it can describe."
 
@@ -383,6 +403,14 @@ resilience or failure-injection test is Medium).
 - **Check:** new transitions, dedupe, caps and uniqueness get N identical requests through a
   `CyclicBarrier` / `CountDownLatch` against Testcontainers PostgreSQL, then assert the
   **database invariant** (row count), not just the status codes.
+- **Racers on different rows that share one global row** (two "make current" calls on two different
+  sessions) may both succeed one after the other, correctly. Assert the invariant (exactly one
+  current row, one of the winners; every refusal carries the expected code), never "exactly one
+  200": that test is flaky (run 5: red in 1 of 2 runs).
+- **A write that checks another row's state under `FOR SHARE`** (pay only while the student is
+  active) gets a race test against a change of that state (a leave), gated so the change really
+  waits on the lock (hold the lock in the test's own transaction, or a latch). Removing the lock
+  must turn the test red (TEST-09).
 
 ### TEST-06: Query count
 - **Check:** new paged lists assert a constant statement count, with a fixture **larger than one
@@ -400,6 +428,13 @@ resilience or failure-injection test is Medium).
   - shared fixtures;
   - text blocks for JSON;
   - no `var`.
+- **Shared test database:**
+  - a test that changes a global singleton (the one current session, a fixed setting) carries
+    `@ResourceLock` on it, so parallel runs can't interleave;
+  - a fixture that inherits data from neighbouring rows (a new session copies the last session's
+    rules) resets it to known values, so no test depends on the one that ran before.
+- **Dates:** a date-dependent test computes "today" once, or uses a settable clock; it never calls
+  `LocalDate.now()` twice across UTC midnight, and never hard-codes a year that the data will pass.
 
 ### TEST-08: A status code is not a reason (`STATUS-IS-NOT-A-REASON`)
 - **Check:** every negative test asserts *why* it was refused (the `errorCode`, or the field in

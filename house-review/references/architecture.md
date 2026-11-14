@@ -38,12 +38,19 @@ The rules below say which mode they apply to.
 
 ### ARCH-03: Layer direction
 - **Check:** controller → service → repository → entity. Nothing calls upward:
-  - services are reusable outside HTTP;
+  - services are reusable outside HTTP: they never return `ResponseEntity` and never take
+    `HttpServletRequest` / `HttpServletResponse` (outbound HTTP-client types such as `RestClient`
+    are fine). Validation and role checks move into them when a second entry point arrives
+    (REST-09);
   - repositories never call services;
-  - entities depend on no service, repository or controller.
+  - entities depend on no service, repository or controller, and on no web or HTTP type
+    (`org.springframework.http..`, `..web..`: an entity returning `HttpStatus` is HTTP-aware and
+    wrong for any other adapter). Spring Data's auditing annotations are fine.
 
   Who may reach repositories comes from `{{repositoryAccess}}` (news-pulse: service + mapper for
   `getReferenceById`).
+- **Enforce:** ArchUnit, `LayerArchTest` in the reference (entities use no web types; services
+  return no `ResponseEntity` and take no servlet request).
 - **Severity:** Medium (High for entity → service).
 
 ### ARCH-04: Module internals stay internal
@@ -64,6 +71,14 @@ The rules below say which mode they apply to.
 - **Check:** request and response DTOs and mappers never cross a module boundary. Internal
   exchange uses module-owned records, query views, or ids plus a lookup contract. Response
   assembly happens in the module's own controller.
+- **Why (the owner's four reasons):** a mapper that calls another module's mapper, or builds
+  another aggregate's response:
+  1. cascades change: a change to that response ripples into every response that embeds it;
+  2. bloats responses: every field added there silently grows this response too;
+  3. bypasses the owning service's cache;
+  4. bypasses the owning service's security (scoping, ownership).
+
+  Ask the owner's service for what you need instead (ARCH-15).
 - **Severity:** High (boundary contamination).
 
 ### ARCH-07: Events are contracts; core workflows are not choreographed
@@ -143,7 +158,8 @@ Owner's rule (2026-11-13), within a module as well as across modules.
     service of its own** and is reached through the root (`/forms/{formId}/fields`);
   - **another aggregate is reached only through its root's service**, by its entity methods
     (`getOwnedTodoListForWrite`): they carry validation, ownership, locking and, later, caching and
-    its invalidation. Using another aggregate's repository bypasses all of them;
+    its invalidation. Using another aggregate's repository bypasses all of them, and so does a
+    mapper building another aggregate's response (the four reasons in ARCH-06);
   - **a Manager (application) service** (`<UseCase>Manager`, in `service`) exists only when one
     request writes **several aggregates**: it owns that transaction boundary and calls the aggregate
     services, which join it; it uses no repository. A use case that writes one aggregate needs no
@@ -159,6 +175,22 @@ Owner's rule (2026-11-13), within a module as well as across modules.
   repository fails the rule, so every new aggregate is declared.
 - **Severity:** High when a business rule, lock or ownership check is bypassed; otherwise Medium.
 
+### ARCH-16: Bean cycles are fixed, never hidden
+- **Check:**
+  - `spring.main.allow-circular-references` is never enabled;
+  - `@Lazy` on an injection point and `ObjectProvider<OwnBean>` are never used to get round a
+    cycle between the application's own beans (run 5: `ObjectProvider<MetadataUpdateRule>` around a
+    real service cycle, and the rule went silently unenforced when the bean was missing).
+
+  Fix the cycle, in this order: extract the shared part into a third bean both use (A → C ← B);
+  publish an event from one side (ARCH-07); merge the two when neither exists without the other.
+- **Detect:** `allow-circular-references`; `@Lazy` on a constructor parameter or field;
+  `ObjectProvider<` of an application bean.
+- **Not a finding when:** `ObjectProvider` for an optional adapter of an external boundary
+  (ARCH-10's exception), or `@Lazy` on a bean that is expensive to create and has no cycle (say so
+  in a comment).
+- **Severity:** High.
+
 ---
 
 ## Enforcing with ArchUnit (house recommendation)
@@ -173,7 +205,7 @@ Automatable, from the profile:
 | Rule | ArchUnit |
 |---|---|
 | ARCH-02 | `slices().matching("<root>.(*)..").should().beFreeOfCycles()` |
-| ARCH-03 | `layeredArchitecture().consideringAllDependencies()` from `{{layerPackages}}` |
+| ARCH-03 | `layeredArchitecture().consideringAllDependencies()` from `{{layerPackages}}`; entities depend on no `org.springframework.http..` / `..web..`; services use no `ResponseEntity` or `HttpServletRequest` (reference: `LayerArchTest`) |
 | ARCH-04 / ARCH-06 | one generic `ArchCondition` comparing the module segment of origin and target for `..repository..`, `..domain..`, `..dto.request..`, `..dto.response..`, `..mapper..` (no hand-listed modules) |
 | ARCH-05 | `..<module>.api..` depends only on the allowed packages, excluding `..controller.api..` |
 | ARCH-07 | event classes depend on no entity, repository or service |
@@ -181,6 +213,8 @@ Automatable, from the profile:
 | ARCH-11 | `@RestController` classes not public; no `@Transactional` methods in `..controller..`; no dependency on `..repository..` / `..domain..` |
 | ARCH-12 | methods calling bypass API X carry annotation A; every `@Scheduled` method declares its posture |
 | ARCH-15 | a `*Repository` is used only by its aggregate's service (`{{aggregates}}`) and its own repository package; an undeclared repository fails |
+| ARCH-16 | no constructor parameter or field annotated `@Lazy` (the `ObjectProvider<OwnBean>` type argument and `allow-circular-references` stay review checks) |
+| REST-25 | no `@PreAuthorize` whose value contains `hasRole(` outside `<root>.common.security..` (annotation values are in bytecode) |
 | Naming | `*Controller`, `*Repository`; `*RepositoryImpl` not public; package names lower-case; test classes end in `Test` (Surefire skips others silently) |
 | Conventions in bytecode | no `@Lob` field; no `@Transactional` private method; no `Optional` field or parameter; no `@TransactionalEventListener` + `REQUIRES_NEW` without `@Async`; no `Executors.newFixedThreadPool` / `newCachedThreadPool`; `GeneralCodingRules` (no `System.out`, no java.util.logging, no field injection, no generic `RuntimeException` thrown) |
 

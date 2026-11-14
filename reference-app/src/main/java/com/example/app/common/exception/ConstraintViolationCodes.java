@@ -1,6 +1,8 @@
 package com.example.app.common.exception;
 
 import org.hibernate.exception.ConstraintViolationException;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.ServerErrorMessage;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
@@ -41,11 +43,32 @@ class ConstraintViolationCodes {
     }
 
     private Optional<ErrorCode> codeFor(ConstraintViolationException violation) {
-        Optional<ErrorCode> domainCode = Optional.ofNullable(violation.getConstraintName()).map(byConstraintName::get);
+        Optional<ErrorCode> domainCode = constraintName(violation).map(byConstraintName::get);
         if (domainCode.isPresent() || !UNIQUE_VIOLATION.equals(violation.getSQLState())) {
             return domainCode;
         }
         return Optional.of(ErrorCode.DUPLICATE_RECORD);
+    }
+
+    /**
+     * Hibernate names only unique, check, foreign-key and not-null violations (23505, 23514, 23503,
+     * 23502). The driver's copy of the server's error names every kind, an exclusion constraint's
+     * 23P01 too, and doesn't depend on the server's message language.
+     */
+    private static Optional<String> constraintName(ConstraintViolationException violation) {
+        if (Objects.nonNull(violation.getConstraintName())) {
+            return Optional.of(violation.getConstraintName());
+        }
+        return serverError(violation).map(ServerErrorMessage::getConstraint);
+    }
+
+    private static Optional<ServerErrorMessage> serverError(Throwable failure) {
+        for (Throwable cause = failure; Objects.nonNull(cause); cause = cause.getCause()) {
+            if (cause instanceof PSQLException driverFailure) {
+                return Optional.ofNullable(driverFailure.getServerErrorMessage());
+            }
+        }
+        return Optional.empty();
     }
 
     private static Optional<ConstraintViolationException> constraintViolation(Throwable failure) {

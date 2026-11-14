@@ -657,6 +657,44 @@ class TodoIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.length()").value(0));
     }
 
+    @Test
+    @DisplayName("ids returns only those todos, in the list's order; unknown and another user's ids are simply absent")
+    void filterByIdsReturnsOnlyMatching() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user, "Ids");
+        String later = createTodo(user, listId, "Later", "LOW", "2026-12-02");
+        String sooner = createTodo(user, listId, "Sooner", "LOW", "2026-12-01");
+        createTodo(user, listId, "Not asked", "LOW", null);
+        TestUser other = newUser();
+        String theirs = createTodo(other, createList(other, "Theirs"), "Theirs", "LOW", null);
+        getAs(user.accessToken(), TODOS).andExpect(jsonPath("$.response[*].title", hasItem("Not asked")));
+
+        getAs(user.accessToken(), TODOS + "?ids=" + String.join(",", later, sooner, theirs, UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].title", contains("Sooner", "Later")))
+                .andExpect(jsonPath("$.pageInfo.hasMore").value(false));
+        getAs(other.accessToken(), TODOS + "?ids=" + theirs)
+                .andExpect(jsonPath("$.response[*].title", contains("Theirs")));
+    }
+
+    @Test
+    @DisplayName("ids takes up to the maximum batch size; one more is 400 VALIDATION_FAILED, a malformed id 400 REQUEST_PARAMETER_INVALID")
+    void idsAreBounded() throws Exception {
+        TestUser user = newUser();
+
+        getAs(user.accessToken(), TODOS + "?ids=" + randomIds(100))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.length()").value(0));
+        getAs(user.accessToken(), TODOS + "?ids=" + randomIds(101))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("ids: must have at most 100 items")));
+        getAs(user.accessToken(), TODOS + "?ids=" + UUID.randomUUID() + ",nope")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                .andExpect(jsonPath("$.failed", contains("ids: invalid value")));
+    }
+
     @ParameterizedTest
     @EnumSource(TodoPriority.class)
     @DisplayName("priority returns only todos of that priority, for every priority")
@@ -820,6 +858,20 @@ class TodoIntegrationTest extends IntegrationTest {
         assertThat(forPage).isEqualTo(forOne).isEqualTo(2);
     }
 
+    @Test
+    @DisplayName("A batch found by ids is the same two statements, for 1 id and for many")
+    void filterByIdsRunsAConstantNumberOfQueries() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user, "Counted");
+        String first = createTodo(user, listId, "First", "LOW", null);
+        String second = createTodo(user, listId, "Second", "LOW", null);
+
+        long forOne = statementsFor(user, TODOS + "?ids=" + first);
+        long forMany = statementsFor(user, TODOS + "?ids=" + String.join(",", first, second, randomIds(50)));
+
+        assertThat(forMany).isEqualTo(forOne).isEqualTo(2);
+    }
+
     /**
      * Statements run by one list request. A cursor list never counts; the rows carry their tags, read
      * for the whole batch in a second statement (two steps instead of a collection fetch), so two.
@@ -864,5 +916,15 @@ class TodoIntegrationTest extends IntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v1/todos'].get.responses['400'].content['application/problem+json']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].put.responses['409'].content['application/problem+json']").exists());
+    }
+
+    @Test
+    @DisplayName("The API docs give the ids filter its meaning and the configured maximum as maxItems")
+    void apiDocsDescribeTheIdsFilter() throws Exception {
+        getAs(null, "/v3/api-docs")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/todos'].get.parameters[?(@.name == 'ids')].schema.maxItems", contains(100)))
+                .andExpect(jsonPath("$.paths['/api/v1/todos'].get.parameters[?(@.name == 'ids')].description",
+                        contains(containsString("unknown or another user's ids are simply absent"))));
     }
 }

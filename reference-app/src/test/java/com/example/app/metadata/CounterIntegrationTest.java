@@ -40,7 +40,7 @@ class CounterIntegrationTest extends IntegrationTest {
     private PlatformTransactionManager transactionManager;
 
     private static String newCounterName() {
-        return "TEST_COUNTER_" + UUID.randomUUID().toString().replace("-", "_").toUpperCase();
+        return Counters.perContext("TEST_COUNTER", UUID.randomUUID());
     }
 
     /** One caller's business transaction that takes a number and commits. */
@@ -147,6 +147,47 @@ class CounterIntegrationTest extends IntegrationTest {
                 .hasMessageContaining(name);
         counters.create(name, 0);
         assertThatThrownBy(() -> counters.create(name, 0)).isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(nextCommitted(name)).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("A per-context name is the prefix, an underscore and the canonical id; the database refuses any other spelling")
+    void perContextNamesHaveOneSpelling() {
+        UUID sessionId = UUID.randomUUID();
+        String name = Counters.perContext("RECEIPT_NUMBER", sessionId);
+        assertThat(name).isEqualTo("RECEIPT_NUMBER_" + sessionId);
+        counters.create(name, 0);
+        assertThat(nextCommitted(name)).isEqualTo(1L);
+
+        for (String other : List.of("RECEIPT_NUMBER_" + sessionId.toString().toUpperCase(), "receipt_number", "RECEIPT-NUMBER")) {
+            assertThatThrownBy(() -> sql("""
+                    insert into counters (id, key, last_value, created_at, updated_at, version)
+                    values (uuidv7(), ?, 0, now(), now(), 0)
+                    """, other))
+                    .isInstanceOf(DataIntegrityViolationException.class)
+                    .hasMessageContaining("ck_counters_key");
+        }
+        assertThatThrownBy(() -> Counters.perContext("RECEIPT_NUMBER", null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    @DisplayName("delete removes the counter in the caller's transaction: a rollback keeps it, a commit frees the name; nothing to delete is no error")
+    void deleteRemovesTheCounterInTheCallersTransaction() {
+        String name = newCounterName();
+        counters.create(name, 0);
+        assertThat(nextCommitted(name)).isEqualTo(1L);
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+
+        transaction.executeWithoutResult(status -> {
+            counters.delete(name);
+            status.setRollbackOnly();
+        });
+        assertThat(nextCommitted(name)).isEqualTo(2L);
+
+        transaction.executeWithoutResult(status -> counters.delete(name));
+        assertThatThrownBy(() -> nextCommitted(name)).isInstanceOf(IllegalStateException.class);
+        counters.delete(name);
+        counters.create(name, 0);
         assertThat(nextCommitted(name)).isEqualTo(1L);
     }
 }

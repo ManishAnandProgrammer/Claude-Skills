@@ -62,7 +62,7 @@ class ModuleBoundaryArchTest {
             .should().dependOnClassesThat().resideOutsideOfPackages("com.example.app.common..", "java..", "javax..",
                     "jakarta..", "org.springframework..", "org.slf4j..", "lombok..", "io.swagger..", "io.micrometer..",
                     "io.github.resilience4j..", "io.github.bucket4j..", "io.lettuce..", "org.hibernate..",
-                    "tools.jackson..", "com.fasterxml.jackson..", "org.springdoc..")
+                    "tools.jackson..", "com.fasterxml.jackson..", "org.springdoc..", "org.postgresql..")
             .because("common holds universal infrastructure only and must not know any feature (ARCH-08)");
 
     private static ArchCondition<JavaClass> onlyReachOtherModulesThroughTheirApi() {

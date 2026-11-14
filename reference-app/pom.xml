@@ -113,7 +113,8 @@
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
-			<scope>runtime</scope>
+			<!-- Compile scope: ConstraintViolationCodes reads constraint names from the driver's server
+			     message, and the Liquibase connection is the driver's own data source. -->
 		</dependency>
 		<dependency>
 			<groupId>org.projectlombok</groupId>

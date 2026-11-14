@@ -32,6 +32,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -109,6 +111,11 @@ public abstract class IntegrationTest {
         return "urn:%s:error:%s".formatted(applicationName, errorCode);
     }
 
+    /** {@code count} random UUIDs, comma-separated: an {@code ids} filter of that size. */
+    protected static String randomIds(int count) {
+        return Stream.generate(UUID::randomUUID).limit(count).map(UUID::toString).collect(Collectors.joining(","));
+    }
+
     protected static String uniqueEmail(String prefix) {
         return prefix + "-" + UUID.randomUUID() + "@example.com";
     }
@@ -121,6 +128,17 @@ public abstract class IntegrationTest {
         return new TestUser(UUID.fromString(userId), email,
                 read(login, "$.response.accessToken"), read(login, "$.response.refreshToken"));
     }
+
+    // metadata:begin
+    /** A signed-up user promoted to ADMIN (no endpoint grants it), signed in again so the token carries the role. */
+    protected TestUser newAdmin() throws Exception {
+        TestUser user = newUser();
+        assertThat(sql("update users set role = 'ADMIN' where id = ?", user.id())).isEqualTo(1);
+        ResultActions login = login(user.email(), PASSWORD).andExpect(status().isOk());
+        return new TestUser(user.id(), user.email(),
+                read(login, "$.response.accessToken"), read(login, "$.response.refreshToken"));
+    }
+    // metadata:end
 
     protected ResultActions signup(String email, String password) throws Exception {
         return postAs(null, "/api/v1/auth/signup", """

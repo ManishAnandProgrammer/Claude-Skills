@@ -4,6 +4,7 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
+import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -29,6 +30,18 @@ class LayerArchTest {
     static final ArchRule servicesDontKnowControllers = noClasses().that().resideInAPackage("..service..")
             .should().dependOnClassesThat().resideInAPackage("..controller..")
             .because("services are reusable outside HTTP (ARCH-03)");
+
+    @ArchTest
+    static final ArchRule entitiesKnowNoHttp = noClasses().that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat().resideInAnyPackage("org.springframework.http..", "org.springframework.web..")
+            .because("an entity holds state and its rules; statuses and web types belong to the controller and the error contract (ARCH-03)");
+
+    /** Outbound HTTP clients ({@code org.springframework.http.client..}) stay allowed: a service may call another service. */
+    @ArchTest
+    static final ArchRule servicesAnswerNoHttp = noClasses().that().resideInAPackage("..service..")
+            .should().dependOnClassesThat().areAssignableTo(ResponseEntity.class)
+            .orShould().dependOnClassesThat().resideInAPackage("jakarta.servlet..")
+            .because("services are reusable outside HTTP: the controller shapes the response and reads the request (ARCH-03)");
 
     @ArchTest
     static final ArchRule controllersArePackagePrivateAdapters = classes().that().areAnnotatedWith(RestController.class)

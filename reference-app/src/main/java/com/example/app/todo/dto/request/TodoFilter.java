@@ -1,5 +1,6 @@
 package com.example.app.todo.dto.request;
 
+import com.example.app.common.limits.ConfiguredMaxSize;
 import com.example.app.common.limits.MaxLength;
 import com.example.app.common.pagination.CursorFilter;
 import com.example.app.todo.domain.TodoPriority;
@@ -12,6 +13,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -19,6 +21,12 @@ import java.util.UUID;
 @Getter
 @Setter
 public class TodoFilter extends CursorFilter {
+
+    @ConfiguredMaxSize("cursor-page.max-size")
+    @Schema(description = """
+            Find by ids (comma-separated, at most the maximum batch size): unknown or another user's ids \
+            are simply absent. Absent or empty: no id filter.""")
+    private List<@NotNull UUID> ids;
 
     @Schema(description = "Only the todos of this list")
     private UUID todoListId;
@@ -43,6 +51,10 @@ public class TodoFilter extends CursorFilter {
     @NotNull
     @Schema(description = "Order of the list; a cursor only continues the order it came from", defaultValue = "DUE_DATE")
     private TodoSort sort = TodoSort.DUE_DATE;
+
+    public boolean requireIdsPredicate() {
+        return Objects.nonNull(ids) && !ids.isEmpty();
+    }
 
     public boolean requireTodoListIdPredicate() {
         return Objects.nonNull(todoListId);

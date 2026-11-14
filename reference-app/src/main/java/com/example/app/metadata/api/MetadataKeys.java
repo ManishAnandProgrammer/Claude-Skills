@@ -1,19 +1,22 @@
 package com.example.app.metadata.api;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
+// example:begin
+import java.util.Objects;
 import java.util.UUID;
+// example:end
 
 /**
- * Every configuration the application keeps. A key not declared here can't be read or written,
- * through the admin API or in code.
+ * Every configuration the application keeps. A key not declared here can't be read or written.
  *
  * <ul>
- *   <li>A <b>fixed</b> key is a constant: one value for the whole application (or tenant).</li>
- *   <li>A <b>per-context</b> key is a factory method, its name a prefix plus the context's id
- *       ({@code SOME_CONFIG_7}). The admin API resolves it back in {@link #byName}: one
- *       {@code if} per prefix.</li>
+ *   <li>A <b>fixed</b> key is a constant: one value for the whole application (or tenant). The admin
+ *       API ({@code /metadata/{key}}) reaches fixed keys only, through {@link #byName}.</li>
+ *   <li>A <b>per-context</b> key is a factory method, its name a prefix plus the context's id in its
+ *       canonical form ({@code FEE_RULES_<sessionId>}). Only the module that owns the context
+ *       writes it, through its own typed endpoint ({@code PUT /school-sessions/{id}/fee-rules}),
+ *       which checks the context's rules first; so {@link #byName} never resolves one.</li>
  * </ul>
  *
  * <p>An interface only because a module's {@code api} package holds contract types (ARCH-05);
@@ -33,9 +36,10 @@ public interface MetadataKeys {
     }
     // example:end
 
-    /** The declared key of that name, if any. */
+    /** The fixed key of that name, if any. */
     static Optional<MetadataKey<?>> byName(String name) {
         List<MetadataKey<?>> fixedKeys = List.of(
+                // Per-context keys are never listed: the context's owner writes them through its own endpoint.
                 // example:begin
                 ATTENDANCE_DEFAULTS
                 // example:end
@@ -45,27 +49,6 @@ public interface MetadataKeys {
                 return Optional.of(key);
             }
         }
-        // example:begin
-        Optional<UUID> sessionId = contextId(name, ATTENDANCE_PREFIX);
-        if (sessionId.isPresent()) {
-            return Optional.of(attendance(sessionId.get()));
-        }
-        // example:end
         return Optional.empty();
-    }
-
-    /**
-     * The id after {@code prefix} when it is a UUID written as the factory writes it (canonical, lower
-     * case), so an upper-case spelling can never name a second row for the same context.
-     */
-    private static Optional<UUID> contextId(String name, String prefix) {
-        if (!name.startsWith(prefix)) {
-            return Optional.empty();
-        }
-        String id = name.substring(prefix.length());
-        if (!id.matches(MetadataKey.CANONICAL_UUID)) {
-            return Optional.empty();
-        }
-        return Optional.of(UUID.fromString(id));
     }
 }

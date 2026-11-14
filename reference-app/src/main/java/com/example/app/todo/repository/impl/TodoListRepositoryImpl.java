@@ -50,13 +50,13 @@ class TodoListRepositoryImpl implements CustomTodoListRepository {
                 root.get(TodoList_.id), root.get(TodoList_.name), root.get(TodoList_.ownerId),
                 root.get(TodoList_.createdAt), root.get(TodoList_.updatedAt),
                 root.get(TodoList_.createdBy), root.get(TodoList_.updatedBy), root.get(TodoList_.version)));
-        query.where(ownedAndMatching(builder, root, ownerId, filter).toArray(new Predicate[0]));
+        query.where(pageMatching(builder, root, ownerId, filter).toArray(new Predicate[0]));
         query.orderBy(QueryUtils.toOrders(pageable.getSort(), root, builder));
 
         CriteriaQuery<Long> countQuery = builder.createQuery(Long.class);
         Root<TodoList> countRoot = countQuery.from(TodoList.class);
         countQuery.select(builder.count(countRoot));
-        countQuery.where(ownedAndMatching(builder, countRoot, ownerId, filter).toArray(new Predicate[0]));
+        countQuery.where(pageMatching(builder, countRoot, ownerId, filter).toArray(new Predicate[0]));
 
         return OffsetPages.page(entityManager.createQuery(query), entityManager.createQuery(countQuery), pageable);
     }
@@ -83,6 +83,16 @@ class TodoListRepositoryImpl implements CustomTodoListRepository {
 
         List<DropdownItem> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();
         return CursorBatch.of(rows, size, item -> Cursor.write(sort, item.label(), item.value()));
+    }
+
+    /** The page's rows and its count: the shared predicates plus the page's own filters. */
+    private static List<Predicate> pageMatching(CriteriaBuilder builder, Root<TodoList> root, UUID ownerId,
+                                                TodoListFilter filter) {
+        List<Predicate> predicates = ownedAndMatching(builder, root, ownerId, filter);
+        if (filter.requireIdsPredicate()) {
+            predicates.add(root.get(TodoList_.id).in(filter.getIds()));
+        }
+        return predicates;
     }
 
     /** Shared by the page and the dropdown, so both list exactly what the caller may read. */

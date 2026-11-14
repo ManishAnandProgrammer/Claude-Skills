@@ -39,7 +39,7 @@ Fill values from the codebase, not from memory.
 | `Limits` / `MaxLength` / `ConfiguredMax` | `com.example.common.limits.*` | Configurable limits: `@MaxLength("<entity>.<field>")` on request Strings, numbers in `app.limits.*` (`config/limits.yml`) |
 | `TextSearch` | `com.example.common.pagination.TextSearch` | Case-insensitive contains (`position()`), no LIKE escaping |
 | `metamodel` | `true` | `true` if a JPA metamodel annotation processor (`hibernate-jpamodelgen`) is configured |
-| `controllerSecurity` | `none` | Annotation existing controllers carry, e.g. `@PreAuthorize("hasRole('ADMIN')")`, or `none` |
+| `controllerSecurity` | `none` | Role annotation per module, e.g. `@AdminOnly` (`common/security`) for an admin-only module, or `none`; never a `hasRole` string (REST-25) |
 
 ## Error contract (house-review error-contract.md; created by `/crud-gen bootstrap`)
 

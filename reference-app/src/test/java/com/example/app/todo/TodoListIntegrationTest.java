@@ -427,6 +427,43 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("ids returns only those lists, in the page's order; unknown and another user's ids are simply absent")
+    void filterByIdsReturnsOnlyMatching() throws Exception {
+        TestUser user = newUser();
+        String charlie = createList(user, "Charlie");
+        String alpha = createList(user, "Alpha");
+        createList(user, "Bravo");
+        TestUser other = newUser();
+        String theirs = createList(other, "Theirs");
+        getAs(user.accessToken(), LISTS).andExpect(jsonPath("$.response[*].name", hasItem("Bravo")));
+
+        getAs(user.accessToken(), LISTS + "?ids=" + String.join(",", charlie, alpha, theirs, UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].name", contains("Alpha", "Charlie")))
+                .andExpect(jsonPath("$.pageInfo.totalElements").value(2));
+        getAs(other.accessToken(), LISTS + "?ids=" + theirs)
+                .andExpect(jsonPath("$.response[*].name", contains("Theirs")));
+    }
+
+    @Test
+    @DisplayName("ids takes up to the maximum page size; one more is 400 VALIDATION_FAILED, a malformed id 400 REQUEST_PARAMETER_INVALID")
+    void idsAreBounded() throws Exception {
+        TestUser user = newUser();
+
+        getAs(user.accessToken(), LISTS + "?ids=" + randomIds(100))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.length()").value(0));
+        getAs(user.accessToken(), LISTS + "?ids=" + randomIds(101))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("ids: must have at most 100 items")));
+        getAs(user.accessToken(), LISTS + "?ids=nope," + UUID.randomUUID())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                .andExpect(jsonPath("$.failed", contains("ids: invalid value")));
+    }
+
+    @Test
     @DisplayName("A query of 100 characters is accepted; 101 is 400 with the configured limit")
     void queryLengthFollowsTheConfiguredLimit() throws Exception {
         TestUser user = newUser();
@@ -496,6 +533,19 @@ class TodoListIntegrationTest extends IntegrationTest {
         assertThat(forOne).isEqualTo(1);
         assertThat(forFullPage).isEqualTo(2);
         assertThat(forFullPageOfMore).isEqualTo(forFullPage);
+    }
+
+    @Test
+    @DisplayName("A partial page found by ids is one statement, for 1 id and for many")
+    void filterByIdsRunsAConstantNumberOfQueries() throws Exception {
+        TestUser user = newUser();
+        String first = createList(user, "Counted 1");
+        String second = createList(user, "Counted 2");
+
+        long forOne = statementsFor(user, LISTS + "?ids=" + first);
+        long forMany = statementsFor(user, LISTS + "?ids=" + String.join(",", first, second, randomIds(50)));
+
+        assertThat(forMany).isEqualTo(forOne).isEqualTo(1);
     }
 
     /** Statements run by one request: for a page, plus the count only when the page is full. */

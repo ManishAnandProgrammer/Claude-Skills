@@ -8,12 +8,12 @@
 # Usage: bootstrap-copy.sh --target <project dir> --package <root package> [--with <pieces>] [--dry-run]
 #   pieces (comma-separated, default core,sign-in):
 #     core     error contract, wrappers, paging, limits, logging, admission, security config,
-#              persistence base, config files, test base, ArchUnit
+#              persistence base, config files, test base, ArchUnit, the incident runbook (docs/)
 #     sign-in  user module (signup, login, tokens) + Redis rate limiting
 #     example  the golden crud-gen module (todo lists and todos), for reference only
-#     metadata configuration metadata (one typed record per key, admin GET/PUT) and gapless counters;
-#              with sign-in, also the ADMIN role
-# Shared files (ErrorCode, messages, limits, Role, ArchUnit) mark an optional piece's entries with
+#     metadata configuration metadata (a typed record per key, admin GET/PUT of fixed keys), gapless
+#              counters; with sign-in, also the ADMIN role and the test base's newAdmin()
+# Shared files (ErrorCode, messages, limits, Role, test base, ArchUnit) mark a piece's entries with
 # "<piece>:begin" / "<piece>:end" comment lines (example, metadata): without that piece those blocks
 # are left out. The metadata piece's sample keys and their tests are example content: they arrive
 # only with both pieces.
@@ -68,6 +68,7 @@ compose.yaml
 .env.example
 Dockerfile
 .dockerignore
+docs/runbook.md
 LIST
             ;;
         sign-in) cat <<LIST
@@ -119,7 +120,7 @@ LIST
 
 dependencies_for() {
     case "$1" in
-        core) echo "spring-boot-starter-{webmvc,json,validation,security,oauth2-resource-server,data-jpa,liquibase,actuator}, postgresql, lombok, hibernate-processor (annotation processor), springdoc-openapi-starter-webmvc-ui, resilience4j-spring-boot4, logstash-logback-encoder, micrometer-tracing-bridge-brave, micrometer-registry-prometheus; test: spring-boot-starter-{webmvc,security,data-jpa}-test, spring-boot-testcontainers, testcontainers-{junit-jupiter,postgresql}, archunit-junit5" ;;
+        core) echo "spring-boot-starter-{webmvc,json,validation,security,oauth2-resource-server,data-jpa,liquibase,actuator}, postgresql (compile scope: constraint names and the Liquibase connection use the driver's classes), lombok, hibernate-processor (annotation processor), springdoc-openapi-starter-webmvc-ui, resilience4j-spring-boot4, logstash-logback-encoder, micrometer-tracing-bridge-brave, micrometer-registry-prometheus; test: spring-boot-starter-{webmvc,security,data-jpa}-test, spring-boot-testcontainers, testcontainers-{junit-jupiter,postgresql}, archunit-junit5" ;;
         sign-in) echo "spring-boot-starter-data-redis, bucket4j_jdk17-core, bucket4j_jdk17-lettuce" ;;
         example) echo "(none beyond core)" ;;
         metadata) echo "(none beyond core)" ;;
