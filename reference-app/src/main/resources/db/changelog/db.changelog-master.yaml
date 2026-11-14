@@ -17,3 +17,9 @@ databaseChangeLog:
   - include:
       file: changes/0006-todo-tags.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/0007-users-admin-role.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0008-configuration-metadata.sql
+      relativeToChangelogFile: true

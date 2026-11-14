@@ -3,7 +3,9 @@
 #   1. reference-app builds and every test passes (Testcontainers: Docker must be reachable);
 #   2. bootstrap-copy.sh copies core + sign-in into a fresh project under another package and
 #      another application name, and that project builds and passes its tests too;
-#      2b. the same with the example module, so every golden file arrives with its changesets;
+#      2b. the same with the example module and the metadata piece, so every golden file arrives
+#          with its changesets;
+#      2c. core + sign-in + metadata without the example: the mechanism alone, none of its samples;
 #   3. the reference's Docker image starts with the prod profile against PostgreSQL and Redis:
 #      healthy, sign-in rate limited through Redis, metrics only on the management port. Tests can't
 #      see this: Testcontainers hands them their connections (a missing Redis setting once switched
@@ -69,6 +71,9 @@ JAVA
 "$REPO/scripts/bootstrap-copy.sh" --target "$project" --package com.acme.smoke --with core,sign-in > "$WORK/copy.log"
 grep -q "com.example.app" -r "$project/src" && { echo "FAILED: com.example.app left in the copied sources" >&2; exit 1; }
 grep -rqE "example:(begin|end)|TODO_LIST|todo-list" "$project/src" && { echo "FAILED: example-module entries left in a copy without the example piece" >&2; exit 1; }
+grep -rqE "metadata:(begin|end)|METADATA_|configuration_metadata|MetadataKey" "$project/src" && { echo "FAILED: metadata-piece entries left in a copy without the metadata piece" >&2; exit 1; }
+{ [ -d "$project/src/main/java/com/acme/smoke/metadata" ] || grep -q "ADMIN" "$project/src/main/java/com/acme/smoke/user/domain/Role.java"; } \
+    && { echo "FAILED: the metadata module or its ADMIN role in a copy without the metadata piece" >&2; exit 1; }
 # Bootstrap renames the application; tests must not depend on the reference's name.
 sed -i 's/\${APP_NAME:reference}/${APP_NAME:smoke}/' "$project/src/main/resources/application.yml"
 grep -q 'APP_NAME:smoke' "$project/src/main/resources/application.yml" || { echo "FAILED: could not rename the smoke application" >&2; exit 1; }
@@ -82,9 +87,23 @@ sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>example</artifactId
     "$REFERENCE/pom.xml" > "$example/pom.xml"
 sed -e 's/package com.acme.smoke;/package com.acme.example;/' -e 's/SmokeApplication/ExampleApplication/g' \
     "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$example/src/main/java/com/acme/example/ExampleApplication.java"
-"$REPO/scripts/bootstrap-copy.sh" --target "$example" --package com.acme.example --with core,sign-in,example > "$WORK/copy-example.log"
-grep -rq "example:\(begin\|end\)" "$example/src" && { echo "FAILED: example markers left in the copy" >&2; exit 1; }
+"$REPO/scripts/bootstrap-copy.sh" --target "$example" --package com.acme.example --with core,sign-in,example,metadata > "$WORK/copy-example.log"
+grep -rqE "(example|metadata):(begin|end)" "$example/src" && { echo "FAILED: piece markers left in the copy" >&2; exit 1; }
+[ -f "$example/src/test/java/com/acme/example/metadata/MetadataIntegrationTest.java" ] || { echo "FAILED: the metadata samples' tests are missing from the copy with both pieces" >&2; exit 1; }
 mvn_verify "$example" "$WORK/example.log"
+
+echo "[2c/3] bootstrap-copy with the metadata piece, without the example (package com.acme.meta)"
+meta="$WORK/meta"
+mkdir -p "$meta/src/main/java/com/acme/meta"
+cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$meta/"
+sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>meta</artifactId>|' -e 's|<name>reference-app</name>|<name>meta</name>|' \
+    "$REFERENCE/pom.xml" > "$meta/pom.xml"
+sed -e 's/package com.acme.smoke;/package com.acme.meta;/' -e 's/SmokeApplication/MetaApplication/g' \
+    "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$meta/src/main/java/com/acme/meta/MetaApplication.java"
+"$REPO/scripts/bootstrap-copy.sh" --target "$meta" --package com.acme.meta --with core,sign-in,metadata > "$WORK/copy-meta.log"
+grep -rqE "(example|metadata):(begin|end)|TODO_LIST|todo-list|ATTENDANCE|AttendanceConfig" "$meta/src" && { echo "FAILED: samples or markers left in a metadata copy without the example piece" >&2; exit 1; }
+[ -f "$meta/src/main/resources/db/changelog/changes/0007-users-admin-role.sql" ] || { echo "FAILED: the ADMIN role changeset is missing from the metadata copy" >&2; exit 1; }
+mvn_verify "$meta" "$WORK/meta.log"
 
 echo "[3/3] reference-app image: prod profile against PostgreSQL and Redis"
 docker build -q -t "$RUN-image" "$REFERENCE" > /dev/null

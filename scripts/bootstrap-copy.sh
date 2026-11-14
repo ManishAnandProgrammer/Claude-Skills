@@ -11,8 +11,12 @@
 #              persistence base, config files, test base, ArchUnit
 #     sign-in  user module (signup, login, tokens) + Redis rate limiting
 #     example  the golden crud-gen module (todo lists and todos), for reference only
-# Shared files (ErrorCode, messages, limits) mark the example module's entries with
-# "example:begin" / "example:end" comment lines: without the example piece those blocks are left out.
+#     metadata configuration metadata (one typed record per key, admin GET/PUT) and gapless counters;
+#              with sign-in, also the ADMIN role
+# Shared files (ErrorCode, messages, limits, Role, ArchUnit) mark an optional piece's entries with
+# "<piece>:begin" / "<piece>:end" comment lines (example, metadata): without that piece those blocks
+# are left out. The metadata piece's sample keys and their tests are example content: they arrive
+# only with both pieces.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,7 +32,7 @@ while [ $# -gt 0 ]; do
         --package) package="${2:-}"; shift 2 ;;
         --with) pieces="${2:-}"; shift 2 ;;
         --dry-run) dry_run=true; shift ;;
-        -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown option: $1 (see --help)" ;;
     esac
 done
@@ -41,6 +45,8 @@ target="$(cd "$target" 2>/dev/null && pwd)" || die "target $target doesn't exist
 
 reference_path="${REFERENCE_PACKAGE//.//}"
 package_path="${package//.//}"
+
+chosen_piece() { [[ ",$pieces," == *",$1,"* ]]; }
 
 # Files per piece, relative to reference-app/. Directories are copied recursively.
 files_for() {
@@ -79,8 +85,35 @@ src/main/resources/db/changelog/changes/0005-time-entries.sql
 src/main/resources/db/changelog/changes/0006-todo-tags.sql
 src/test/java/$reference_path/todo
 LIST
+            # The metadata piece's sample configuration and the tests that exercise the mechanism through it.
+            if chosen_piece metadata; then cat <<LIST
+src/main/java/$reference_path/metadata/api/AttendanceConfig.java
+src/test/java/$reference_path/metadata/MetadataIntegrationTest.java
+LIST
+            fi
             ;;
-        *) die "unknown piece: $1 (core, sign-in, example)" ;;
+        metadata) cat <<LIST
+src/main/java/$reference_path/metadata/package-info.java
+src/main/java/$reference_path/metadata/MetadataConstraintErrorCodes.java
+src/main/java/$reference_path/metadata/api/Counters.java
+src/main/java/$reference_path/metadata/api/Metadata.java
+src/main/java/$reference_path/metadata/api/MetadataKey.java
+src/main/java/$reference_path/metadata/api/MetadataKeys.java
+src/main/java/$reference_path/metadata/controller
+src/main/java/$reference_path/metadata/domain
+src/main/java/$reference_path/metadata/dto
+src/main/java/$reference_path/metadata/mapper
+src/main/java/$reference_path/metadata/repository
+src/main/java/$reference_path/metadata/service
+src/main/resources/db/changelog/changes/0008-configuration-metadata.sql
+src/test/java/$reference_path/metadata/CounterIntegrationTest.java
+LIST
+            # The admin API's role, in the users table that sign-in creates.
+            if chosen_piece sign-in; then
+                echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
+            fi
+            ;;
+        *) die "unknown piece: $1 (core, sign-in, example, metadata)" ;;
     esac
 }
 
@@ -89,6 +122,7 @@ dependencies_for() {
         core) echo "spring-boot-starter-{webmvc,json,validation,security,oauth2-resource-server,data-jpa,liquibase,actuator}, postgresql, lombok, hibernate-processor (annotation processor), springdoc-openapi-starter-webmvc-ui, resilience4j-spring-boot4, logstash-logback-encoder, micrometer-tracing-bridge-brave, micrometer-registry-prometheus; test: spring-boot-starter-{webmvc,security,data-jpa}-test, spring-boot-testcontainers, testcontainers-{junit-jupiter,postgresql}, archunit-junit5" ;;
         sign-in) echo "spring-boot-starter-data-redis, bucket4j_jdk17-core, bucket4j_jdk17-lettuce" ;;
         example) echo "(none beyond core)" ;;
+        metadata) echo "(none beyond core)" ;;
     esac
 }
 
@@ -101,16 +135,17 @@ dest_for() {
     esac
 }
 
-with_example=false
-[[ ",$pieces," == *",example,"* ]] && with_example=true
-
-# Without the example piece, its blocks in shared files are dropped; with it, only the marker lines.
-example_filter() {
-    if $with_example; then
-        sed '/example:\(begin\|end\)/d'
+# Without an optional piece, its blocks in shared files are dropped; with it, only the marker lines.
+piece_filter_script=""
+for optional in example metadata; do
+    if chosen_piece "$optional"; then
+        piece_filter_script+="/$optional:\\(begin\\|end\\)/d;"
     else
-        sed '/example:begin/,/example:end/d'
+        piece_filter_script+="/$optional:begin/,/$optional:end/d;"
     fi
+done
+piece_filter() {
+    sed "$piece_filter_script"
 }
 
 copied=() skipped=()
@@ -126,7 +161,7 @@ copy_file() {
     mkdir -p "$(dirname "$target/$dest")"
     case "$relative" in
         *.java|*.yml|*.yaml|*.xml|*.properties)
-            sed "s/${REFERENCE_PACKAGE//./\\.}/$package/g" "$REFERENCE/$relative" | example_filter > "$target/$dest" ;;
+            sed "s/${REFERENCE_PACKAGE//./\\.}/$package/g" "$REFERENCE/$relative" | piece_filter > "$target/$dest" ;;
         *) cp "$REFERENCE/$relative" "$target/$dest" ;;
     esac
 }
@@ -134,6 +169,9 @@ copy_file() {
 IFS=',' read -r -a chosen <<< "$pieces"
 if [[ ",$pieces," == *",core,"* && ",$pieces," != *",sign-in,"* ]]; then
     echo "warning: core's integration tests sign users in through the sign-in piece; without it, adapt them" >&2
+fi
+if chosen_piece metadata && ! chosen_piece sign-in; then
+    echo "warning: the metadata admin API needs role ADMIN in the token's roles claim: map it from your identity provider" >&2
 fi
 for piece in "${chosen[@]}"; do
     while IFS= read -r entry; do

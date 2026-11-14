@@ -38,6 +38,9 @@ app:
     todo:
       # Tags on one todo (distinct ids, on create and on PUT /todos/{id}/tags).
       max-tags: 10
+    attendance:
+      # Minutes after the day starts that still count as on time (AttendanceConfig, configuration metadata).
+      max-grace-minutes: 120
     # Latest dates the API accepts, by field (@LatestDate("…") on request records).
     latest-date:
       # Must stay before 9999-12-31, the due_sort value that puts undated todos last (0003).

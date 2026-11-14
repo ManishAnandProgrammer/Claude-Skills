@@ -52,6 +52,15 @@ public enum ErrorCode {
     USER_PASSWORD_BREACHED,
     AUTH_INVALID_CREDENTIALS,
     AUTH_INVALID_REFRESH_TOKEN,
+    // metadata:begin
+
+    // ── Configuration metadata ───────────────────────────────────────────
+    /** No key of that name is declared in {@code MetadataKeys}. */
+    METADATA_KEY_UNKNOWN,
+    /** The key is declared, but its value was never created (its seeding didn't run). */
+    METADATA_NOT_FOUND,
+    METADATA_KEY_TAKEN,
+    // metadata:end
     // example:begin (the golden todo module; bootstrap-copy.sh leaves it out of real projects)
 
     // ── TodoList ─────────────────────────────────────────────────────────
