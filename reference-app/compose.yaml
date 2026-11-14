@@ -1,4 +1,6 @@
 # Local dependencies: docker compose up -d
+# Host ports come from .env (the *_PORT values the app connects to), so two projects on one machine
+# differ only in their .env.
 services:
   postgres:
     image: postgres:18
@@ -19,7 +21,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       # tenancy:end
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
       # tenancy:begin
@@ -30,7 +32,7 @@ services:
   redis:
     image: redis:8
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
   # sign-in:end
   # media:begin
   # Uploaded files: an S3-compatible store, the image the tests use. Its posix backend keeps each
@@ -44,8 +46,13 @@ services:
       ROOT_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY in .env (see .env.example)}
       VGW_REGION: ${MEDIA_REGION}
       MEDIA_BUCKET: ${MEDIA_BUCKET:?set MEDIA_BUCKET in .env (see .env.example)}
+      # Browsers PUT files straight to the presigned URL from the UI's origin, so the store answers
+      # CORS for it: versitygw's default for buckets without a CORS configuration of their own. One
+      # origin: with several in CORS_ALLOWED_ORIGINS, put the one the UI uploads from here. A real
+      # bucket gets its CORS rule from the owner (docs/runbook.md).
+      VGW_CORS_ALLOW_ORIGIN: ${CORS_ALLOWED_ORIGINS}
     ports:
-      - "127.0.0.1:7070:7070"
+      - "127.0.0.1:${MEDIA_PORT:-7070}:7070"
     volumes:
       - media-data:/data
     healthcheck:

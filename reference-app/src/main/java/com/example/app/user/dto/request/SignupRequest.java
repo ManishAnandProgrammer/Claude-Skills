@@ -25,7 +25,7 @@ public record SignupRequest(
                 example = "Correct-Horse-9")
         @NotBlank
         // Security floors, not tunables: at least 8 characters, and bcrypt reads only the first 72 bytes.
-        @Size(min = 8)
+        @Size(min = 8, message = "must be at least 8 characters")
         @MaxUtf8Bytes(72)
         @Pattern(regexp = "^(?=.*\\p{Lu})(?=.*\\p{Ll})(?=.*\\d)(?=.*[^\\p{L}\\d]).*$",
                 message = "must contain an upper-case letter, a lower-case letter, a digit and another character")

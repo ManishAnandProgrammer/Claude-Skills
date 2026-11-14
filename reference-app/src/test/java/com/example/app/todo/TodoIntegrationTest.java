@@ -18,7 +18,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -325,6 +327,29 @@ class TodoIntegrationTest extends IntegrationTest {
         assertRefusalsAre(creates, 404, "TODO_LIST_GONE");
         Integer todos = jdbc.queryForObject("select count(*) from todos where todo_list_id = ?::uuid", Integer.class, listId);
         assertThat(todos).isZero();
+    }
+
+    @Test
+    @DisplayName("Todos moved to a list while it is deleted: the delete is 204, every move 404 TODO_LIST_GONE, and each todo stays in its list")
+    void movesRacingTheListDeleteKeepEveryTodoInItsList() throws Exception {
+        TestUser user = newUser();
+        String homeList = createList(user, "Home");
+        String doomedList = createList(user, "Doomed");
+        Queue<String> todos = new ConcurrentLinkedQueue<>();
+        for (int todo = 0; todo < HELD_CREATES; todo++) {
+            todos.add(createTodo(user, homeList, "Mover " + todo, "LOW", null));
+        }
+
+        // The update side of the same foreign key: each move is held at its UPDATE while the new list goes.
+        List<Answer> moves = createsHeldAtTheirInsert("todos",
+                () -> putAs(user.accessToken(), TODOS + "/" + todos.remove(), updatePayload(doomedList, "Moved", 0)),
+                () -> deleteAs(user.accessToken(), LISTS + "/" + doomedList).andExpect(status().isNoContent()));
+
+        assertThat(moves).extracting(Answer::status).containsOnly(404);
+        assertRefusalsAre(moves, 404, "TODO_LIST_GONE");
+        Integer stayed = jdbc.queryForObject("select count(*) from todos where todo_list_id = ?::uuid and version = 0",
+                Integer.class, homeList);
+        assertThat(stayed).isEqualTo(HELD_CREATES);
     }
 
     @Test

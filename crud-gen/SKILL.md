@@ -101,13 +101,31 @@ controller and row in `AggregateArchTest.AGGREGATES`), or a **member** of anothe
 the entity isn't listed, ask: "is `<Entity>` changed only together with `<Parent>` and meaningless
 without it (member), or does it have its own lifecycle (root)?". Record the answer in both profiles.
 
+**Owned or shared** (SEC-01): does each row belong to one user (an owner column: golden `Todo`), or
+is the table **shared** (a catalogue, reference data, staff records: nobody owns a row)? For a shared
+root, ask **who may write** (create, update, actions, delete, its upload purposes) and **who may
+read**, and record both in the profiles' conventions. While signup is public (the `sign-in` piece),
+every internet account is a USER: refuse `controllerSecurity: none` for a shared root's writes; they
+carry a role (`@AdminOnly`, or the project's own role annotation, REST-25). A field that names a
+person (a name, an email, a phone) on a shared root asks the same for reads: list, get, filters and
+dropdown carry the role unless the owner decides that every account may search those people (record
+it). Golden role checks: `UploadPolicyController` (open read, `@AdminOnly` write) and
+`MetadataController` (admin-only), with their 403 tests (`UploadPolicyIntegrationTest`,
+`MetadataIntegrationTest.onlyAdminsReachTheApi`). A shared root has no `ownerId`: `findById`, no
+owner parameter, unscoped lists (tests.md *Shared tables*).
+
 **Module** (if `{{modules}}` is set): every generated class goes under `{{appPackage}}` with
 `{module}` substituted; cross-module access follows `{{moduleContracts}}` (architecture.md
 ARCH-04/05/06): a parent in another module is referenced by id (a UUID column with a database
 foreign key), never by an entity relation, in `api-facades` mode, and is validated through that
 module's facade (golden `todo.api.Todos` + `TodoView`, used by `PlanService`: a view lookup, not
 locked, and a batch lookup for a list page; the foreign key refuses a child written after the
-parent's delete, DATA-29). A
+parent's delete, DATA-29). When the child's write **checks a mutable column of the parent** (lend
+only an AVAILABLE book), the facade adds a locked view, `get<Parent>ViewForUpdate(id)` with
+`@Transactional(propagation = MANDATORY)` over the parent's `findForUpdateById` (DATA-29, test row
+23b; no golden code yet). Writes of one parent then queue on that lock: an exclusion constraint's
+race answers 409 only, and the parent's delete waits for them (row 23's locked-parent outcome), so
+the golden plan texts about a 503 and `<PARENT>_GONE` don't apply there: don't copy them. A
 module without a facade (the sign-in piece's `user`) gets one in the same change: an interface in
 `<module>.api` that its service implements, with its view record. **The view never goes on the
 wire:** the consuming module maps it into a response record of its own (golden `PlanTodoResponse`,
@@ -124,7 +142,7 @@ Check before generating:
 | Id time-ordered per `{{idStrategy}}`, app-assigned, `updatable = false` (from `{{AuditBase}}`) | DATA-09 |
 | Extends `{{AuditBase}}` (audit columns + `@Version`) | DATA-06 |
 | Lombok `@Getter @SuperBuilder`, protected constructor, `@Setter` only on free fields; state changes are entity methods; relations `LAZY`, collections read-only | JAVA-16, SMELL-16 |
-| String columns `text`, plain `@Column`, no length constants | DATA-12 |
+| String columns `text`, plain `@Column`: no `columnDefinition`, no `length`, no length constants (the changeset types the column, `ddl-auto: validate` checks it; golden `Tag.color`) | DATA-12 |
 | Starting values (a status, a boolean) in the entity with `@Builder.Default`; booleans primitive, `NOT NULL`, database default | JAVA-16 |
 | Impossible-state guards throw `IllegalStateException` | JAVA-20 |
 | No soft-delete flag; statuses are enums with a check constraint | DATA-07 |
@@ -307,7 +325,10 @@ referenced; the mapper entries; a message in every `{{messagesFile}}`; the handl
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
 `*_IN_USE` for the parent's delete, and `ERROR_PREFIX_GONE`, a 404 without placeholders, for a
 child's insert or update after it: `byForeignKeyOnWrite`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02). A state
-conflict is 409, a wrong value 400 (ERR-05).
+conflict is 409, a wrong value 400 (ERR-05). A child's foreign key adds the parent's `*_IN_USE` to
+**the parent's** delete docs (`@ApiResponse(409)`) and its docs test in the same change; never
+document a code before the constraint that raises it exists (no `*_IN_USE` on a delete nothing
+references yet).
 **Bootstrap brings no feature codes**: every code, mapping, message, constraint entry and limit key
 is added here. Constraint mappings go in the module's own `ConstraintErrorCodes` bean (the handler
 aggregates them): the module **whose changeset declares the constraint** maps it, even to another
@@ -396,12 +417,16 @@ removes its cascadable member rows set-based can't (golden `TodoApi`; the race t
 aggregate's delete may remove meanwhile documents the 409 for that case (golden `replaceTags`). An `@Schema` states exactly what the validation does ("unique ignoring case" for a
 format-validated field, whose surrounding spaces are a 400).
 List descriptions explain the paging (cursor: `after` / `pageInfo.nextCursor`; offset: `page` /
-`size`, limits from configuration). Filters are `@ParameterObject`.
+`size`, limits from configuration). Filters are `@ParameterObject`. A description is never exactly
+one error code: springdoc resolves annotation texts as message keys, so `description = "BOOK_NOT_FOUND"`
+publishes the code's message, placeholder included; write the code with its case, as the golden files
+do (`"TODO_NOT_FOUND (missing, or another user's)"`).
 
 ### 4.10 Controller
 Golden `TodoController`: package-private, `implements <Entity>Api`, class-level
 `@RequestMapping("{{urlPrefix}}/<resource-plural>")`, methods with relative paths and
-`version = "v1+"` (the current baseline; REST-07), 201/204 with `@ResponseStatus`, `{{controllerSecurity}}`, nothing but the service call. A user-level resource needs no
+`version = "v1+"` (the current baseline; REST-07), 201/204 with `@ResponseStatus`, `{{controllerSecurity}}`, nothing but the service call. A
+shared root's writes (and its personal-data reads) carry the role Step 1 decided. A user-level resource needs no
 `@PreAuthorize` (every authenticated principal is a user); the dropdown carries
 `{{dropdownSecurity}}` explicitly because it is often shared by screens of different roles.
 Role checks are meta-annotations such as `@AdminOnly` (REST-25, golden `MetadataController`).
@@ -443,5 +468,10 @@ checklist's review item stays open until that reviewer's report is clean.
 
 ### Final checklist
 - [ ] No `{{…}}` left in the generated files.
+- [ ] The aggregate's row in `AggregateArchTest.AGGREGATES` **and** in both profiles' `aggregates`.
+- [ ] A shared root: writes carry a role, personal-data reads decided, both in the profiles (Step 1).
+- [ ] A convention changed during the run (`controllerSecurity`, what a role means): the class
+      javadoc of the services generated earlier, `Role`'s javadoc and the profiles say the new rule
+      (grep them).
 - [ ] Build green, and one guard proven to fail (Step 7).
 - [ ] house-review clean (Step 8).

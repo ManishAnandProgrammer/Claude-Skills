@@ -84,8 +84,10 @@ by default (offset only for bounded admin tables), `text` columns, an index per 
    - Liquibase Migration;
    - PostgreSQL Driver;
    - Lombok;
-   - Testcontainers;
    - Docker Compose Support (optional).
+
+   Not Testcontainers: the bootstrap brings its own setup (PostgreSQL 18, Redis, the media store),
+   and Initializr's `TestcontainersConfiguration` would be kept in its place.
 2. Unzip into your workspace, `git init`, and make the first commit (the untouched Initializr
    project).
 3. Check the machine: JDK 25 (`java -version`), Docker running (`docker ps`; Testcontainers

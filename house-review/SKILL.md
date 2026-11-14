@@ -102,7 +102,10 @@ Architecture:
 
 ## Step 2: Build and test
 
-Run the profile's `buildCommand` and `testCommand` (normally one `verify` run).
+Run the profile's `buildCommand` and `testCommand` (normally one `verify` run). **Delegated
+reviewer:** when the caller hands over the results of a build of exactly the reviewed code (one
+`target/` and one Testcontainers set per working tree: a second build collides with work running
+there), use them instead and say so in the report's header, with the commit they came from.
 - A compile error stops the review: report it and ask whether to continue on the sources only.
 - Record compiler warnings in the scoped files as SMELL-18 / JAVA findings.
 - Record test failures as findings, with the test name and the assertion that failed. Don't

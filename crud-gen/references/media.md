@@ -18,7 +18,8 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
 1. **Purpose.** A new `UploadPurpose` constant (`<ENTITY>_<X>`, e.g. `TODO_ATTACHMENT`) with the
    role that may upload for it (MEDIA-03, MEDIA-04): **the role of whoever writes the owning
    record**, since only the uploader can claim the upload (an admin edits employees, so
-   `EMPLOYEE_PHOTO("ADMIN")`; ask when the record's subject should change the file too). A
+   `EMPLOYEE_PHOTO("ADMIN")`; ask when the record's subject should change the file too). For a
+   shared root that is the writing role Step 1 decided, never `USER` while signup is public. A
    changeset (next free number) seeds its `upload_policies` row: min/max size, min/max files,
    content types from `AllowedContentTypes` only (MEDIA-09). Ask the user for the limits; never SVG,
    HTML or XML. With the **project's first purpose**, the media piece's own endpoint tests

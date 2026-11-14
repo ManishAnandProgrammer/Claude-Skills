@@ -87,6 +87,9 @@ project doesn't have.
 The project's deliberate choices where they differ from, or refine, the reference rules. Each
 needs a reason. Code that follows them is fine; code that breaks them is a deviation (SKILL.md
 Step 7). Reports list these under "Notes the profile overrides".
+Bootstrap and crud-gen record here: the signup policy and its accepted risk (immediate accounts
+reveal whether an email is registered), and per shared resource (no owner column) who writes it
+and who reads it, personal fields included (SEC-01).
 -->
 
 | Convention | Overrides / refines | Why |

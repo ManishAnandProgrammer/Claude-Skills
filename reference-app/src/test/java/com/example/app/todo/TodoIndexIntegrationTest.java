@@ -34,6 +34,9 @@ class TodoIndexIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    /** The id of a later batch's cursor; any value gives the plan its shape. */
+    private static final UUID SEEK_POSITION = UUID.fromString("01900000-0000-7000-8000-000000000000");
+
     private UUID ownerId;
     private UUID listId;
     private UUID tagId;
@@ -88,6 +91,15 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                 Arguments.of("todos, NEWEST", "todos where owner_id = :owner order by id desc",
                         List.of("owner_id"),
                         "idx_todos_owner_id_id"),
+                // A later batch adds the cursor's seek (Seek.after, TodoRepositoryImpl.seekAfter): the same
+                // index must still give the order.
+                Arguments.of("todos, DUE_DATE, a later batch",
+                        "todos where owner_id = :owner and (due_sort > :due or (due_sort = :due and id > :after)) order by due_sort, id",
+                        List.of("owner_id"),
+                        "idx_todos_owner_id_due_sort_id"),
+                Arguments.of("todos, NEWEST, a later batch", "todos where owner_id = :owner and id < :after order by id desc",
+                        List.of("owner_id"),
+                        "idx_todos_owner_id_id"),
                 Arguments.of("todos of a list, DUE_DATE",
                         "todos where owner_id = :owner and todo_list_id = :list order by due_sort, id",
                         List.of("owner_id", "todo_list_id"),
@@ -127,7 +139,8 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                 .addValue("owner", ownerId)
                 .addValue("list", listId)
                 .addValue("status", "OPEN")
-                .addValue("due", LocalDate.of(2026, 12, 31));
+                .addValue("due", LocalDate.of(2026, 12, 31))
+                .addValue("after", SEEK_POSITION);
 
         List<String> planLines = new TransactionTemplate(transactionManager).execute(status -> {
             jdbc.execute("set local enable_seqscan = off");

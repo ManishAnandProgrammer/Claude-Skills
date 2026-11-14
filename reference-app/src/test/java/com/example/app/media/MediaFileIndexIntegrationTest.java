@@ -20,8 +20,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Each job's lease statement (MediaFileRepository, copied here verbatim) reads its own partial index in
- * order: that index named in the plan and no sort step. Scans that read whole tables are switched off,
- * because on the few rows of a test database they would win on cost and hide a missing index.
+ * order: that index named in the plan and no sort on the expiry column. A sort of the ids alone is fine:
+ * the planner may de-duplicate the {@code IN}'s ids with one once other tests have left media rows. Scans
+ * that read whole tables are switched off, because on the few rows of a test database they would win on
+ * cost and hide a missing index.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MediaFileIndexIntegrationTest extends IntegrationTest {
@@ -80,6 +82,6 @@ class MediaFileIndexIntegrationTest extends IntegrationTest {
         });
         String plan = String.join("\n", planLines);
 
-        assertThat(plan).as(plan).contains("using " + index + " on").doesNotContain("Sort");
+        assertThat(plan).as(plan).contains("using " + index + " on").doesNotContainPattern("Sort Key: [^\\n]*expires_at");
     }
 }

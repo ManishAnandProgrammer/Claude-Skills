@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.util.CollectionUtils;
 
 import java.util.List;
 import java.util.Objects;
@@ -18,7 +19,7 @@ public class PlanFilter extends CursorFilter {
 
     @ConfiguredMaxSize("cursor-page.max-size")
     @Schema(description = """
-            Find by ids (comma-separated, at most the maximum batch size): unknown or another user's ids \\
+            Find by ids (comma-separated, at most the maximum batch size): unknown or another user's ids \
             are simply absent. Absent or empty: no id filter.""")
     private List<@NotNull UUID> ids;
 
@@ -30,7 +31,7 @@ public class PlanFilter extends CursorFilter {
     private PlanSort sort = PlanSort.STARTS_ON;
 
     public boolean requireIdsPredicate() {
-        return Objects.nonNull(ids) && !ids.isEmpty();
+        return !CollectionUtils.isEmpty(ids);
     }
 
     public boolean requireTodoIdPredicate() {

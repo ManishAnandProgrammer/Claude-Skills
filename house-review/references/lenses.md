@@ -13,7 +13,17 @@ is code-smells.md, java.md and architecture.md.
 ### SEC-01: Who must NOT be able to call this?
 - **Check:** for every endpoint, name who must be refused (role, ownership, account state) and
   verify the code refuses them.
-- **Severity:** Critical when a refusal is missing.
+- **Shared resources** (a table nobody owns: a catalogue, reference data, staff records; no owner
+  column, no owner predicate in its service): with public signup (the `sign-in` piece) every internet
+  account is a USER, so each write (POST, PUT, PATCH, DELETE, upload purposes for its files) needs a
+  role (`@AdminOnly` or the project's own, REST-25). Rows naming people (a borrower's name, an email,
+  a phone) need the same decision for reads: list, get, filters and dropdown. The decision is in the
+  profiles' conventions; the tests prove a USER's 403 with a valid body.
+- **Detect:** a controller whose service has no owner scope and whose write methods carry no role
+  annotation while signup is public; a shared resource with personal fields readable by every USER
+  without a recorded decision.
+- **Severity:** Critical when a refusal is missing (a shared table any account can write is
+  Critical); High for personal data readable by every account (SEC-04).
 
 ### SEC-02: Authentication flows
 - **Check:**
@@ -438,7 +448,7 @@ resilience or failure-injection test is Medium).
   records) may both succeed one after the other, correctly. Assert the invariant (exactly one
   default row, one of the winners; every refusal carries the expected code), never "exactly one
   200": that test is flaky.
-- **A write guarded by another row's state** (checked under `FOR SHARE`) gets a race test against a
+- **A write guarded by another row's state** (checked under that row's `FOR UPDATE`, DATA-29) gets a race test against a
   change of that state, gated so the change really waits on the lock (hold the lock in the test's
   own transaction, or a latch). Removing the lock must turn the test red (TEST-09).
 

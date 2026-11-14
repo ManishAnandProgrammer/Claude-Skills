@@ -49,7 +49,9 @@ repository is private and has no CI.
 sign-in; with media, an S3-compatible store that creates the bucket), then run the app with the
 `.env` values exported (`set -a; . ./.env; set +a; ./mvnw spring-boot:run`). With media, the
 presigned flow works against the local store as against S3: `POST /api/v1/upload-urls`, then `PUT`
-the bytes to the returned URL with its headers. `docker compose down -v` removes the data.
+the bytes to the returned URL with its headers. `docker compose down -v` removes the data. An app
+started with `java -jar target/*.jar` breaks (`NoClassDefFoundError`, 500s) when a build repackages
+that jar under it: run a copy of the jar while you keep building.
 
 ## Changing it
 

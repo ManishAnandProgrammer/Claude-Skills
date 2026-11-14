@@ -12,6 +12,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.util.CollectionUtils;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -60,7 +61,7 @@ public class TimeEntryFilter extends CursorFilter {
     private TimeEntrySort sort = TimeEntrySort.SPENT_ON;
 
     public boolean requireIdsPredicate() {
-        return Objects.nonNull(ids) && !ids.isEmpty();
+        return !CollectionUtils.isEmpty(ids);
     }
 
     /** An inverted range is a mistake the client should hear about, not an empty list. */

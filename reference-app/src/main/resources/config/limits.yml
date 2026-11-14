@@ -43,19 +43,26 @@ app:
       max-files: 50
       max-content-types: 20
     # media:end
+    # Numbers the API accepts, by entity (@ConfiguredMax("<entity>.max-<field>") on request records),
+    # and sizes of collections (@ConfiguredMaxSize("<entity>.max-<field>")). A new entity's section:
+    #   <entity>:
+    #     max-<field>: 100
     # example:begin
-    # Numbers the API accepts, by entity (@ConfiguredMax("<entity>.max-<field>") on request records).
     time-entry:
       # Time logged in one entry, in minutes.
       max-minutes: 1440
-    # Sizes of collections the API accepts, by entity (@ConfiguredMaxSize("<entity>.max-<field>")).
     todo:
       # Tags on one todo (distinct ids, on create and on PUT /todos/{id}/tags).
       max-tags: 10
     todo-list-settings:
       # How long before a todo is due its reminder can go out, in minutes (TodoListSettings, configuration metadata).
       max-reminder-minutes: 1440
-    # Latest dates the API accepts, by field (@LatestDate("…") on request records and filters).
+    # example:end
+    # Latest dates the API accepts, by field (@LatestDate("…") on request records and filters). The
+    # first one starts the section:
+    #   latest-date:
+    #     <entity>.<field>: "2999-12-31"
+    # example:begin
     latest-date:
       # Must stay before 9999-12-31, the due_sort value that puts undated todos last (0003).
       todo.due-date: "2999-12-31"
@@ -63,8 +70,13 @@ app:
       time-entry.spent-on: "2999-12-31"
       # Planned days lie ahead or behind, so no other bound fits; this one keeps dates sane.
       plan.dates: "2999-12-31"
+    # example:end
     # Earliest dates the API accepts, by field (@EarliestDate("…")): a LocalDate reaches years
-    # PostgreSQL's date can't hold, so every date that meets a column or a query has a floor.
+    # PostgreSQL's date can't hold, so every date that meets a column or a query has a floor. The
+    # first one starts the section:
+    #   earliest-date:
+    #     <entity>.<field>: "1900-01-01"
+    # example:begin
     earliest-date:
       todo.due-date: "1900-01-01"
       time-entry.spent-on: "1900-01-01"

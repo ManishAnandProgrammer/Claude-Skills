@@ -8,10 +8,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /** A user has few lists (a bounded table), so this list is offset-paged with page numbers. */
@@ -34,7 +34,7 @@ public class TodoListFilter extends PageFilter implements QueryFilter {
     private TodoListSort sort = TodoListSort.NAME;
 
     public boolean requireIdsPredicate() {
-        return Objects.nonNull(ids) && !ids.isEmpty();
+        return !CollectionUtils.isEmpty(ids);
     }
 
     @Override

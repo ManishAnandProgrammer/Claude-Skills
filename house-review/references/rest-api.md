@@ -158,6 +158,9 @@ the path.
      an upload-key or file-id list takes `upload-policy.max-files`, the most files any policy may
      allow);
      a boolean is a `Boolean` with `@NotNull` (an absent field must not become a silent `false`);
+     a bound without a house annotation (a security floor such as `@Size(min = 8)`) carries its own
+     `message` ("must be at least 8 characters"): the default prints the other bound, "size must be
+     between 8 and 2147483647";
      constraints on `@RequestParam` / `@PathVariable`;
      **A `@Pattern` bounds the length only when every part of it is bounded:** closed character
      classes, every quantifier `{m,n}` (or `?`), and nothing unbounded anywhere, at the ends least of
@@ -287,7 +290,8 @@ types.
       on each request. A cache hit must not borrow a database connection, and a store failure
       answers 503, not 401 (DATA-17);
     - `short-lived(<n>)`: the access token TTL is ≤ n minutes and the refresh token is revoked
-      on logout;
+      on logout; a token stays valid for TTL + the validator's clock skew (Spring's
+      `JwtTimestampValidator` default: 60 s), so a stated bound includes the skew;
   - each cached security fact (revocation, account status, role) states its staleness bound, per
     instance, in the configuration and the API docs: a disabled account keeps access for that long;
   - a refresh token reused after rotation revokes its whole family (reuse detection): only a stolen

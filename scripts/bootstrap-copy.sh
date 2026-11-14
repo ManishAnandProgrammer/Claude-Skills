@@ -498,6 +498,19 @@ else
     fi
 fi
 
+# Initializr's .gitignore misses the local secrets: .env (what .env.example asks for) and the JVM's
+# diagnostics, which hold tokens and personal data (SEC-04). Appended, never overwritten.
+if chosen_piece core; then
+    ignored=""
+    for pattern in .env '*.hprof' '*.jfr' 'hs_err_pid*.log'; do
+        grep -qxF "$pattern" "$target/.gitignore" 2>/dev/null || ignored+="$pattern"$'\n'
+    done
+    if [ -n "$ignored" ]; then
+        copied+=(".gitignore (appended: $(echo -n "$ignored" | tr '\n' ' '))")
+        $dry_run || printf '\n### Local secrets (bootstrap) ###\n%s' "$ignored" >> "$target/.gitignore"
+    fi
+fi
+
 if $dry_run; then
     echo "DRY RUN: nothing was written. Would copy ${#copied[@]} file(s) into $target (package $package)"
 else
@@ -507,11 +520,18 @@ if [ ${#skipped[@]} -gt 0 ]; then
     echo "skipped ${#skipped[@]} existing file(s), left as they are:"
     printf '  %s\n' "${skipped[@]}"
 fi
+# Initializr writes its own (postgres:latest, nothing else) when Testcontainers is ticked; kept, it
+# leaves every integration test without Redis and the media store.
+if [[ " ${skipped[*]} " == *" src/test/java/$package_path/TestcontainersConfiguration.java "* ]]; then
+    echo "warning: src/test/java/$package_path/TestcontainersConfiguration.java existed and was kept: if it is" >&2
+    echo "         Initializr's, delete it and run again (the reference's starts PostgreSQL 18, Redis and the media store)" >&2
+fi
 echo "dependencies these pieces need (add after the owner approves them):"
 for piece in "${chosen[@]}"; do
     echo "  $piece: $(dependencies_for "$piece")"
 done
 echo "then: add @ConfigurationPropertiesScan to the application class; set spring.application.name, and DB_NAME"
 echo "      in .env.example to the same name; delete Initializr's application.properties (application.yml"
-echo "      replaces it) and its <App>ApplicationTests (a bare @SpringBootTest with no database: the copied"
-echo "      test base replaces it); new changesets continue after the highest copied number."
+echo "      replaces it), its <App>ApplicationTests (a bare @SpringBootTest with no database: the copied"
+echo "      test base replaces it) and, before copying, its TestcontainersConfiguration; new changesets"
+echo "      continue after the highest copied number."

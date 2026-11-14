@@ -16,12 +16,12 @@ public record TodoAttachmentResponse(
         @Schema(description = "Its size in bytes", example = "48213")
         long sizeBytes,
         @Schema(description = """
-                IN_REVIEW (usable; the check that it arrived runs after its upload URL expired), UPLOADED \\
+                IN_REVIEW (usable; the check that it arrived runs after its upload URL expired), UPLOADED \
                 (confirmed) or MISSING (never arrived: remove it and attach a new upload)""",
                 allowableValues = {"IN_REVIEW", "UPLOADED", "MISSING"}, example = "UPLOADED")
         String status,
         @Schema(description = """
-                A short-lived URL that downloads it (as an attachment, with its name); null while MISSING. \\
+                A short-lived URL that downloads it (as an attachment, with its name); null while MISSING. \
                 Read it again from the todo rather than storing it.""")
         String url) {
 }

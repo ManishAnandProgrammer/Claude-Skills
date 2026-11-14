@@ -32,5 +32,8 @@ build/
 ### VS Code ###
 .vscode/
 
-### Local settings ###
+### Local secrets ###
 .env
+*.hprof
+*.jfr
+hs_err_pid*.log

@@ -3,6 +3,8 @@ app:
   jwt:
     secret: ${JWT_SECRET}
     issuer: ${JWT_ISSUER:${spring.application.name}}
+    # At most 15m (StartupChecks). A token is accepted up to 60 s past its expiry (the clock skew of
+    # Spring's default JWT validators), so revocation takes at most TTL + 1 minute.
     access-token-ttl: ${JWT_ACCESS_TTL:15m}
     refresh-token-ttl: ${JWT_REFRESH_TTL:30d}
     # A refresh token presented again this soon after its rotation is a client duplicate (two tabs,

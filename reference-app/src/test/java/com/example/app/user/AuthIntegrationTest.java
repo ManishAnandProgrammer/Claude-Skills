@@ -185,6 +185,15 @@ class AuthIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("Signup refuses a 7-character password with a message naming the minimum, not a Java bound")
+    void signupWithAShortPasswordNamesTheMinimum() throws Exception {
+        signup(uniqueEmail("short"), "Sh0rt!x")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed[0]").value("password: must be at least 8 characters"));
+    }
+
+    @Test
     @DisplayName("Signup refuses a password over 72 bytes, even when it is under 72 characters")
     void signupWithAPasswordOver72BytesIs400() throws Exception {
         String password = "Aa1!" + "ਪ".repeat(23);

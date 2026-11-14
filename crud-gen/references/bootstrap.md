@@ -26,10 +26,14 @@ With **AskUserQuestion** (several per call):
    or none. **Roles:** which beyond USER (and ADMIN with metadata or media), and does a higher one
    include a lower one (is a MANAGER also a USER)? The pieces give an account exactly one role; an
    inclusion is a `RoleHierarchy` bean read by method security and `CurrentUser.hasRole` (house-review
-   REST-25), and the copied "another role is 403" tests change with it.
-3. **Signup policy** (with sign-in): email-verified signup (answers 202 and never reveals an
-   existing account; needs an email-sending choice) or immediate accounts (simpler; signup reveals
-   whether an email is registered: record the accepted risk).
+   REST-25), and the copied "another role is 403" tests change with it. With public signup, any
+   internet account is a USER: a table nobody owns (a catalogue, reference data) needs a role for its
+   writes, asked per entity by crud-gen (SKILL.md Step 1, *Owned or shared*).
+3. **Signup policy** (with sign-in): the `sign-in` piece implements **immediate accounts** only
+   (201 with the account; signup reveals whether an email is registered). Say so; email-verified
+   signup (202 that never reveals an existing account, with an email-sending choice) is planned, not
+   built: hand work if the project needs it now. Record the accepted enumeration risk in the review
+   profile's *Conventions*.
 4. **Breached-password check** (the `sign-in` piece's `BreachedPasswordCheck`: Have I Been Pwned
    range API, timeouts, a bulkhead, failures counted; on or off with
    `app.security.breached-passwords.enabled`; fail-open. Fail-closed needs a code change: say so), `tokenRevocation`, the client-IP log mode, `metricsAuth` (how
@@ -44,9 +48,10 @@ With **AskUserQuestion** (several per call):
    all instances, limits in configuration, 429 + `Retry-After`; fails open, logged and counted, while
    Redis is unreachable). Other abuse-prone endpoints (REST-14): ask which, and reuse that limiter.
 8. **User files:** does the project store files people upload (attachments, documents, photos)?
-   Then the `media` piece (needs `sign-in`). Which purposes (one `UploadPurpose` each, with the role
-   that may upload and its limits), AWS S3 or another S3-compatible store, and whether any upload
-   comes from a public form without sign-in (not in the piece: house-review MEDIA-14).
+   Then the `media` piece (needs `sign-in`). AWS S3 or another S3-compatible store, and whether any
+   upload comes from a public form without sign-in (not in the piece: house-review MEDIA-14). The
+   purposes (one `UploadPurpose` each, with the role that may upload and its limits) come with their
+   entity in crud-gen Step 5, once its owner and writers are known: note them here, add none yet.
 
 9. **Tenancy:** does one deployment serve several organisations whose data must never meet?
    - `none`: single tenant (the default).
@@ -110,7 +115,12 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
 - The application class gets `@ConfigurationPropertiesScan`; delete Initializr's
   `application.properties` (the copied `application.yml` replaces it) and its
   `<App>ApplicationTests` (a bare `@SpringBootTest` without the test base's Testcontainers: it starts
-  a second context with no database and fails the build).
+  a second context with no database and fails the build). **Before the copy**, delete Initializr's
+  `TestcontainersConfiguration.java` if it generated one (PostgreSQL only: the script would keep it
+  and every test would lack Redis and the media store; the script warns); its
+  `Test<App>Application` may stay.
+- `.gitignore`: the script appends `.env` and the JVM's dump files (`*.hprof`, `*.jfr`,
+  `hs_err_pid*.log`: tokens and personal data, SEC-04) when missing; check it before the first commit.
 - `spring.application.name`: everything else derives from it (error URNs, pool name, JDBC
   `ApplicationName`, JWT issuer, the database name, logs, metrics tag). `.env.example`'s `DB_NAME`
   (which `compose.yaml` creates) and its commented `JWT_ISSUER` say `reference`: set them to the
@@ -129,17 +139,23 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
 - `docs/runbook.md`: the deployment's own commands (how an instance is stopped, how a release is
   rolled back) where it says `docker`; `<app>` stays a placeholder for `spring.application.name`.
 - With `metadata` but without `example`, `MetadataKeys.byName`'s list of fixed keys is empty (its
-  comment stays): the project's first fixed key goes there; per-context keys never do.
+  comment stays): the project's first fixed key goes there; per-context keys never do. Until then
+  `GET/PUT /metadata/{key}` only answer `METADATA_KEY_UNKNOWN`: ask whether the project has a first
+  fixed key (add it now) or only per-context keys and counters; with neither, drop the piece.
 - With `media`: set `app.media.bucket` and `app.media.region` (`app.media.endpoint` stays empty for
   AWS, the server's URL for another S3-compatible store); check `app.media.read-url-expiry`
   against the lifetime of the deployment's credentials (MEDIA-11). Credentials come from the SDK's
-  default provider chain, never from configuration. Without `example`, `UploadPurpose` starts with
-  the project's own purposes (step 0) and each gets its `upload_policies` seed row in a changeset.
-  The bucket itself is a runbook step for the owner (MEDIA-13: Block Public Access, owner-enforced
-  ownership, encryption, CORS for PUT with `Content-Type` and `Content-Disposition`, a
-  least-privilege IAM role, a budget alarm); add it to `docs/runbook.md`.
+  default provider chain, never from configuration. Without `example`, `UploadPurpose` stays empty:
+  each purpose and its `upload_policies` seed row come with the entity that owns the files (crud-gen
+  Step 5, `references/media.md`), and the media endpoint tests stay skipped until then. Locally,
+  `compose.yaml`'s store answers CORS for `CORS_ALLOWED_ORIGINS` (`VGW_CORS_ALLOW_ORIGIN`, one
+  origin), so a browser on that origin can PUT to the presigned URL. The bucket itself is a runbook
+  step for the owner (MEDIA-13: Block Public Access, owner-enforced ownership, encryption, CORS for
+  PUT with `Content-Type` and `Content-Disposition`, a least-privilege IAM role, a budget alarm); add
+  it to `docs/runbook.md`.
 - `.env.example`: every required variable (`DB_USER`, `DB_PASSWORD`, `JWT_SECRET`,
-  `PERSONAL_DATA_PEPPER`, ...).
+  `PERSONAL_DATA_PEPPER`, ...). Its `*_PORT` values are also the host ports `compose.yaml` publishes:
+  another project on the machine means other ports there, not an edited `compose.yaml`.
 - With `tenancy-schema`, `docs/tenancy-runbook.md` is the owner's to run before the first start: the
   roles `<app>_owner` (owns the tables, runs Liquibase: `DB_OWNER_USER` / `DB_OWNER_PASSWORD`) and
   `<app>_app` (the pool: `DB_USER`), the `platform` schema, both roles' default `search_path`; then

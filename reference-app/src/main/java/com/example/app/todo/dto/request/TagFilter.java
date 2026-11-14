@@ -9,10 +9,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -43,7 +43,7 @@ public class TagFilter extends PageFilter implements QueryFilter {
     private TagSort sort = TagSort.NAME;
 
     public boolean requireIdsPredicate() {
-        return Objects.nonNull(ids) && !ids.isEmpty();
+        return !CollectionUtils.isEmpty(ids);
     }
 
     public boolean requireStatusPredicate() {

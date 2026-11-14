@@ -12,6 +12,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
@@ -56,7 +57,7 @@ public class TodoFilter extends CursorFilter {
     private TodoSort sort = TodoSort.DUE_DATE;
 
     public boolean requireIdsPredicate() {
-        return Objects.nonNull(ids) && !ids.isEmpty();
+        return !CollectionUtils.isEmpty(ids);
     }
 
     public boolean requireTodoListIdPredicate() {
