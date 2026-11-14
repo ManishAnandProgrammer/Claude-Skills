@@ -13,8 +13,13 @@ The house reference application: real, building, tested code that the skills cop
   - `media` (optional): uploads straight from the browser to S3 with presigned PUTs (the `media`
     module: upload policies, upload URLs, the `Uploads` claim/release API, the verification and
     cleanup jobs); with the example, the todo's attachments;
+  - `tenancy-schema` (optional, needs `sign-in`): one PostgreSQL schema per tenant, and
+    `tenant-registration` with it. Not in this application: it runs without tenancy, and the tenancy
+    files are the skills repo's `overlays/` (layers over this tree, `crud-gen/references/bootstrap.md`).
+    Small differences sit here as commented-out `tenancy` marker blocks;
   - `example` (reference only): the `todo` and `planning` modules below.
-  - `metadata` and `media` have admin endpoints: with `sign-in`, either brings the `ADMIN` role.
+  - `metadata`, `media` and `tenancy-schema` have admin endpoints: with `sign-in`, each brings the
+    `ADMIN` role.
 - The `todo` module is the **golden crud-gen output**: what a generated entity looks like, with its
   tests. The `planning` module adds the shapes `todo` can't host: a parent in another module
   (`todo.api.Todos`) and no overlapping ranges (an exclusion constraint). crud-gen generates like it; house-review cites it as compliant code.
@@ -32,7 +37,8 @@ JDK 25 and Docker (Testcontainers):
 ```
 `../scripts/verify.sh` builds this project **and** fresh bootstrap copies of it (core with sign-in;
 with the example and metadata; metadata without the example; media without the example; the example
-with media; core alone), then starts the image. The media tests run an S3-compatible store
+with media; schema per tenant alone; every piece with schema per tenant; core alone), then starts the
+image. The media tests run an S3-compatible store
 (`versity/versitygw`) in Testcontainers.
 Run it before pushing: the pre-push hook only checks that it passed on exactly this code, since the
 repository is private and has no CI.

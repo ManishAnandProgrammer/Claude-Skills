@@ -18,6 +18,10 @@ spring:
       # media:begin
       - classpath:config/media.yml
       # media:end
+      # tenancy:begin
+      # # After db.yml: its Liquibase and Hibernate settings replace db.yml's.
+      # - classpath:config/tenancy.yml
+      # tenancy:end
 
 app:
   # The profiles this application may run with; startup fails on any other, or none.

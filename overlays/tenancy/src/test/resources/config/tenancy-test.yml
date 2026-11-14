@@ -1,0 +1,17 @@
+# The tenancy piece in tests: real roles (db/tenancy-roles.sql, TestcontainersConfiguration), and jobs
+# that run only when a test calls them.
+app:
+  liquibase:
+    username: test_owner
+    password: test-owner
+  # tenancy-schema:begin
+  tenancy:
+    schema:
+      app-role: test_app
+      tenant-changelog: classpath:db/changelog/tenant-test.yaml
+      migrations:
+        run-at-startup: false
+  jobs:
+    tenant-provisioning:
+      cron: "-"
+  # tenancy-schema:end

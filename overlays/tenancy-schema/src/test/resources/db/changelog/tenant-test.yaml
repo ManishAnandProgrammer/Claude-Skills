@@ -1,0 +1,8 @@
+# The tenant changelog in tests: every real tenant changeset, then a probe table that the tenancy
+# tests read and write in each tenant schema (a project without the example module may have no tenant
+# table of its own yet). config/tenancy-test.yml points the migrations here.
+databaseChangeLog:
+  - include:
+      file: db/changelog/tenant.yaml
+  - include:
+      file: db/changelog/test-changes/tenancy-probe.sql

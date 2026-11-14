@@ -9,7 +9,13 @@ unique name, dropdown). Generate `{{testRoot}}/<app path>/EntityNameIntegrationT
 - uses the base's client and helpers (`newUser()`, `signIn(account)`, `newAdmin()` and
   `newUserWithRole(role)` with the metadata or media piece, `getAs`/`postAs`/…, `read`, `sql`,
   `statistics()`, `randomIds(n)`, `race(...)`, `awaitLockWaiters` with `lockWaitDeadline()`,
-  `awaitLatch`, `within(future)`; with media `uploadPolicyOf`, `setUploadPolicy`, `restoreUploadPolicy`);
+  `awaitLatch`, `within(future)`, `newExecutor()` for a test's own threads (never `Executors.*`
+  directly: with tenancy its threads run in the test tenant); with media `uploadPolicyOf`,
+  `setUploadPolicy`, `restoreUploadPolicy`; with tenancy `newTenant()`, `newUserIn(tenant)`,
+  `platformToken()`, `testTenant()`);
+- with tenancy the tests read as without it: they run inside one test tenant of the run (services and
+  jobs called directly included), and `jdbc`/`sql` see its tables. A class about tenancy itself, or
+  testing a platform-wide job, is `@WithoutTestTenant`: no scope, each request's token names its tenant;
 - fixtures several classes share (an account linked to a record, a manager, a role beyond ADMIN) go
   in a project base extending `{{testBase}}`; a new role brings its `new<Role>()` there (REST-25). A
   fixture kept beyond one test caches the account and calls `signIn` on use, never a cached access
@@ -52,6 +58,7 @@ and this table disagree, the table wins (and the golden class is a bug to report
 | 13b | Racers on **different rows that share one global row** (two "make default" calls on two different records) | they may both succeed one after the other, correctly: assert the **invariant** (exactly one default row, one of the 200s; every refusal its code), never "exactly one 200" (flaky) | TEST-05 |
 | 14 | `everyEndpointNeedsAToken` (and the wrong role per endpoint when roles exist) | 401 `AUTHENTICATION_REQUIRED` / 403 `ACCESS_DENIED` | TEST-02 |
 | 15 | `anotherUsersRecordIs404` (owned) | B gets 404 **with the code** on GET, PUT, actions, DELETE of A's record; A's record unchanged | TEST-02, 16 |
+| 15b | Tenancy (`{{tenancy}}` not `none`), in its own class `EntityNameTenantIsolationIntegrationTest` | a member of another tenant (`newUserIn(newTenant())`) gets 404 **with the code** on GET, PUT, actions, DELETE; the record unchanged; that tenant's list doesn't show it, nor the reverse | TEN-13 |
 | 16 | Cursor list: `cursorBatchesWalkTheWholeListInOrder` | walk every batch with `after`: every row once, in order; batches split **inside a group of equal sort keys** (the id tie-breaker) and, when a key is nullable through a generated column, across that boundary (undated rows last); the last batch `hasMore` false, no `nextCursor` | TEST-11, 12 |
 | 16b | Offset list: `listIsOffsetPaged`, `listPastTheLastPageIsEmptyButNavigable` | `pageInfo` fields; the overrun page; size over the configured maximum is 400 | TEST-11, 12 |
 | 17 | `cursorFromAnotherSortIsRefused`; a tampered cursor | 400 `REQUEST_PARAMETER_INVALID`, `parameter: after` | REST-08 |

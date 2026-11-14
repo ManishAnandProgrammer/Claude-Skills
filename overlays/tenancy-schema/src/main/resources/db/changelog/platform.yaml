@@ -1,0 +1,15 @@
+# Schema per tenant: the platform's changelog, run into the platform schema by Spring's Liquibase at
+# startup (config/tenancy.yml). Every other changeset is a tenant's: tenant.yaml.
+databaseChangeLog:
+  - include:
+      file: changes/0001-users-and-refresh-tokens.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0007-users-admin-role.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0012-tenancy.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0013-tenant-schemas.sql
+      relativeToChangelogFile: true

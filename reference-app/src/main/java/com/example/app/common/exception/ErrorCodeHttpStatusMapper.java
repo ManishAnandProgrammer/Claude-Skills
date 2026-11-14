@@ -48,6 +48,15 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.USER_PASSWORD_BREACHED, HttpStatus.BAD_REQUEST);
         MAPPING.put(ErrorCode.AUTH_INVALID_CREDENTIALS, HttpStatus.UNAUTHORIZED);
         MAPPING.put(ErrorCode.AUTH_INVALID_REFRESH_TOKEN, HttpStatus.UNAUTHORIZED);
+        // tenancy:begin
+        // MAPPING.put(ErrorCode.TENANT_NOT_ACTIVE, HttpStatus.FORBIDDEN);
+        // MAPPING.put(ErrorCode.TENANT_MEMBERSHIP_REQUIRED, HttpStatus.FORBIDDEN);
+        // MAPPING.put(ErrorCode.MEMBERSHIP_NOT_FOUND, HttpStatus.NOT_FOUND);
+        // MAPPING.put(ErrorCode.TENANT_NOT_FOUND, HttpStatus.NOT_FOUND);
+        // MAPPING.put(ErrorCode.TENANT_OWNER_NOT_FOUND, HttpStatus.NOT_FOUND);
+        // MAPPING.put(ErrorCode.TENANT_STATUS_CHANGE_INVALID, HttpStatus.CONFLICT);
+        // MAPPING.put(ErrorCode.SUPPORT_ACCESS_DENIED, HttpStatus.FORBIDDEN);
+        // tenancy:end
         // metadata:begin
         MAPPING.put(ErrorCode.METADATA_KEY_UNKNOWN, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.METADATA_NOT_FOUND, HttpStatus.NOT_FOUND);

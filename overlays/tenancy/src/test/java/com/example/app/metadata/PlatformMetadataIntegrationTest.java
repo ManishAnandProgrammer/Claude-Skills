@@ -1,0 +1,68 @@
+package com.example.app.metadata;
+
+import com.example.app.support.IntegrationTest;
+import com.example.app.support.WithoutTestTenant;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/** A direct cross-tenant edit: staff change one tenant's configuration, audited, and only that tenant's. */
+@WithoutTestTenant
+class PlatformMetadataIntegrationTest extends IntegrationTest {
+
+    private static final String VALUE = """
+            {"reminderMinutesBefore": 45, "archiveDoneTodos": false, "dailyDigestAt": "07:15"}""";
+
+    private void storeDefaults() {
+        sql("delete from configuration_metadata where key = ?", MetadataIntegrationTest.FIXED_KEY);
+        sql("""
+                insert into configuration_metadata (id, key, value, created_at, updated_at, version)
+                values (uuidv7(), ?, '{}'::jsonb, now(), now(), 0)
+                """, MetadataIntegrationTest.FIXED_KEY);
+    }
+
+    @Test
+    @DisplayName("Staff replace a tenant's key as its admin would; the tenant reads it, the change is audited")
+    void staffEditATenantsConfiguration() throws Exception {
+        TestUser admin = newAdmin();
+        storeDefaults();
+        UUID tenantId = testTenant().id();
+
+        putAs(platformToken(), "/api/v1/platform/tenants/" + tenantId + "/metadata/" + MetadataIntegrationTest.FIXED_KEY, """
+                {"value": %s, "version": 0}
+                """.formatted(VALUE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.value.reminderMinutesBefore").value(45))
+                .andExpect(jsonPath("$.response.version").value(1));
+
+        getAs(admin.accessToken(), "/api/v1/metadata/" + MetadataIntegrationTest.FIXED_KEY)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.value.reminderMinutesBefore").value(45));
+        Integer audited = jdbc.queryForObject("""
+                select count(*) from platform_audit where tenant_id = ? and action = 'METADATA_UPDATE' and detail = ?
+                """, Integer.class, tenantId, MetadataIntegrationTest.FIXED_KEY);
+        assertThat(audited).isOne();
+    }
+
+    @Test
+    @DisplayName("A tenant token can't reach the platform's edit: 401; an unknown tenant is 403 TENANT_NOT_ACTIVE")
+    void onlyStaffEditAndOnlyKnownTenants() throws Exception {
+        TestUser admin = newAdmin();
+        String path = "/api/v1/platform/tenants/%s/metadata/" + MetadataIntegrationTest.FIXED_KEY;
+        String body = """
+                {"value": %s, "version": 0}
+                """.formatted(VALUE);
+
+        putAs(admin.accessToken(), path.formatted(testTenant().id()), body)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+        putAs(platformToken(), path.formatted(UUID.randomUUID()), body)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("TENANT_NOT_ACTIVE"));
+    }
+}

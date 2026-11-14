@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Stream;
 
@@ -156,7 +155,7 @@ class AuthIntegrationTest extends IntegrationTest {
         int attempts = 6;
         CountDownLatch start = new CountDownLatch(1);
         List<Future<Integer>> statuses = new ArrayList<>();
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        try (ExecutorService executor = newExecutor()) {
             for (int attempt = 0; attempt < attempts; attempt++) {
                 Callable<Integer> signupOnce = () -> {
                     awaitLatch(start);
@@ -431,7 +430,7 @@ class AuthIntegrationTest extends IntegrationTest {
         TestUser user = newUser();
         CountDownLatch start = new CountDownLatch(1);
         List<Future<Integer>> statuses = new ArrayList<>();
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        try (ExecutorService executor = newExecutor()) {
             for (int attempt = 0; attempt < 5; attempt++) {
                 Callable<Integer> refreshOnce = () -> {
                     awaitLatch(start);
@@ -457,7 +456,7 @@ class AuthIntegrationTest extends IntegrationTest {
             CountDownLatch start = new CountDownLatch(1);
             Answer logout;
             Answer refreshed;
-            try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            try (ExecutorService executor = newExecutor()) {
                 Future<Answer> logoutOnce = executor.submit(() -> {
                     awaitLatch(start);
                     return answerOf(postAs(null, "/api/v1/auth/logout", """
@@ -578,6 +577,10 @@ class AuthIntegrationTest extends IntegrationTest {
                 .expiresAt(expiresAt)
                 .subject(user.id().toString())
                 .claim("roles", List.of("USER"))
+                // tenancy:begin
+                // .audience(List.of("tenant"))
+                // .claim("tenant_id", testTenant().id().toString())
+                // tenancy:end
                 .build();
         return jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }

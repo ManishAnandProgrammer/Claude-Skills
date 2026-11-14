@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Schema per tenant: the platform's entities name their schema here, so they resolve under any tenant's
+  search_path, while their classes stay the same in every tenancy mode. Only the table is overridden;
+  the annotations map everything else. A new platform entity gets a line here (TEN-21); a tenant entity
+  never does (it lives in whichever schema the hook set).
+-->
+<entity-mappings xmlns="https://jakarta.ee/xml/ns/persistence/orm"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence/orm https://jakarta.ee/xml/ns/persistence/orm/orm_3_2.xsd"
+                 version="3.2">
+    <entity class="com.example.app.user.domain.User">
+        <table schema="platform" name="users"/>
+    </entity>
+    <entity class="com.example.app.user.domain.RefreshToken">
+        <table schema="platform" name="refresh_tokens"/>
+    </entity>
+    <entity class="com.example.app.user.domain.TenantMembership">
+        <table schema="platform" name="tenant_memberships"/>
+    </entity>
+    <entity class="com.example.app.user.domain.PlatformUser">
+        <table schema="platform" name="platform_users"/>
+    </entity>
+    <entity class="com.example.app.tenant.domain.Tenant">
+        <table schema="platform" name="tenants"/>
+    </entity>
+    <entity class="com.example.app.tenant.domain.TenantStatusChange">
+        <table schema="platform" name="tenant_status_changes"/>
+    </entity>
+    <entity class="com.example.app.tenant.domain.PlatformAuditEntry">
+        <table schema="platform" name="platform_audit"/>
+    </entity>
+    <entity class="com.example.app.tenant.domain.TenantMigration">
+        <table schema="platform" name="tenant_migrations"/>
+    </entity>
+</entity-mappings>

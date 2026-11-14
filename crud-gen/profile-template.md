@@ -89,6 +89,12 @@ Fill values from the codebase, not from memory.
 |---|---|---|
 | `mediaApi` | `none` | Package of the media piece's facade (`Uploads`, `UploadPurpose`, `MediaFileView`), e.g. `com.example.media.api`; `none` without the `media` piece (references/media.md) |
 
+## Tenancy
+
+| Key | Value | Notes |
+|---|---|---|
+| `tenancy` | `none` | `none`, `row` or `schema`, as bootstrap chose (house-review `references/tenancy.md`). `schema`: generated tables go into the tenant changelog (`db/changelog/tenant.yaml`), carry no `tenant_id`, and no `@Table` or native query names a schema; each entity also gets its cross-tenant test class. `row`: not built yet (stop and say so) |
+
 ## Deviations
 
 <!--
@@ -111,6 +117,8 @@ These override the skill's defaults. Leave empty to follow the pattern exactly.
 - `CollectionUtils` = Spring's → `isNotEmpty(x)` becomes `!CollectionUtils.isEmpty(x)`.
 - `Limits` missing → run `/crud-gen bootstrap` (never fall back to literal `@Size(max = N)`).
 - `modules` `none` → no `{module}` segment; Step 1's module paragraph is skipped.
+- `tenancy` `none` → single-tenant code, one Liquibase master; no cross-tenant tests (owner isolation
+  still has its row 15 tests).
 - `mediaApi` `none` → Step 5 skipped (offer bootstrap's `media` piece when the records carry files). Dropdown types missing → run `/crud-gen bootstrap` (never invent
   a per-entity dropdown shape).
 - No response wrapper in the project → ask the user (create minimal wrappers vs. return DTOs).

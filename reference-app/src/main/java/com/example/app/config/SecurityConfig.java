@@ -128,7 +128,11 @@ class SecurityConfig {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(secretKey(properties))
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
+        // tenancy:begin
+        // decoder.setJwtValidator(PlatformSecurityConfig.tenantTokensOnly(JwtValidators.createDefaultWithIssuer(properties.issuer())));
+        // tenancy:else
         decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(properties.issuer()));
+        // tenancy:end
         return decoder;
     }
 
@@ -155,7 +159,7 @@ class SecurityConfig {
         return source;
     }
 
-    private static SecretKey secretKey(JwtProperties properties) {
+    static SecretKey secretKey(JwtProperties properties) {
         return new SecretKeySpec(properties.secret().getBytes(StandardCharsets.UTF_8), HMAC_SHA_256);
     }
 }

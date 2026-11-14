@@ -84,7 +84,11 @@ class UploadUrlIntegrationTest extends IntegrationTest {
         ResultActions issued = issue(user, PURPOSE, List.of(file("receipt.pdf", "application/pdf", 48_213), file("photo.png", "image/png", 10)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.response", hasSize(2)))
+                // tenancy:begin
+                // .andExpect(jsonPath("$.response[0].uploadKey", startsWith(testTenant().id() + "/" + PURPOSE + "/")))
+                // tenancy:else
                 .andExpect(jsonPath("$.response[0].uploadKey", startsWith(PURPOSE + "/")))
+                // tenancy:end
                 .andExpect(jsonPath("$.response[0].headers['Content-Type']").value("application/pdf"))
                 .andExpect(jsonPath("$.response[0].headers['Content-Disposition']", startsWith("attachment;")))
                 .andExpect(jsonPath("$.response[0].headers['Content-Disposition']", containsString("receipt.pdf")))

@@ -521,6 +521,24 @@ hold 10, 20 and 30 rows. The code lives with the E1–E3 code.
 Hibernate validates only that one schema. The other tenant schemas are covered by
 `tenant_migrations` (every schema reached the expected changeset), not by Hibernate.
 
+## Built (2026-11-14): schema mode as overlays
+
+- **Layout:** the reference application runs without tenancy. Tenancy arrives only through
+  `bootstrap-copy.sh`: `overlays/tenancy/` (shared by every mode: `TenantContext`, `TenantScope`, the
+  platform plane, memberships, impersonation, the audit trail, `SupportAccessPolicy`, the lifecycle
+  with `approve`) and `overlays/tenancy-schema/` (the hook, migrations, provisioning, `orm.xml`, the
+  two masters). Overlay files that share a reference file's path replace it, pinned by
+  `overlays/replaced.sha256`. `verify.sh` 2g and 2h prove the copies, every test included.
+- **Registration (O5):** staff create tenants (approved at once); with the `tenant-registration`
+  piece, `POST /auth/tenant-registrations` creates a PENDING tenant for a new or an existing account
+  (its own password), with a uniform 202. `approve` is the one way in; provisioning activates.
+- **My tenants:** `GET /users/me/tenants`.
+- **Local runs:** `compose.yaml` creates the roles and the platform schema on a new database.
+
+**Phase 2:** invitations; email verification (no mail sending in the pieces); deleting stale PENDING
+registrations; parallel tenant migrations; impersonating a suspended tenant; break-glass; row mode
+(`overlays/tenancy-row/`, house-review `tenancy.md` lists what it brings).
+
 ## Later (rules and notes, not in the first setup)
 
 - **Support impersonation and break-glass access** (decision 11).

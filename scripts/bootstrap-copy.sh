@@ -18,17 +18,42 @@
 #     media    uploads straight to S3 with presigned PUTs: upload policies (admin PUT), upload URLs,
 #              the claim/release API for owning records, the verification and cleanup jobs; with the
 #              example, the todo's attachments
-#   metadata and media have admin endpoints: with sign-in, either brings the ADMIN role and the test
-#   base's newAdmin() (the "admin" markers).
+#     tenancy-schema
+#              multi-tenancy, one PostgreSQL schema per tenant (needs sign-in): the tenant in the
+#              verified token, the transaction-local search_path hook, the tenant register and platform
+#              staff under /platform/** with their own tokens, impersonation and audited direct edits,
+#              memberships, provisioning and the deploy-time tenant migrations, two changelogs
+#              (platform.yaml, tenant.yaml)
+#     tenant-registration
+#              with a tenancy piece: the public POST /tenant-registrations (a PENDING tenant that staff
+#              approve); without it, only staff create tenants
+#   metadata, media and tenancy-schema have admin endpoints: with sign-in, each brings the ADMIN role
+#   and the test base's newAdmin() (the "admin" markers).
+#
+# Where files come from: reference-app/ is a plain application, without tenancy. A tenancy mode adds
+# layers over it, each mirroring the reference's tree: overlays/tenancy (what every mode shares) and
+# overlays/tenancy-schema (schema per tenant only; a row mode would be overlays/tenancy-row). A layer's
+# file that the reference (or an earlier layer) also has replaces it in the copy, and only when that
+# file is copied; overlays/replaced.sha256 pins the version each replacement was written against
+# (scripts/overlay-replacements.sh, run by verify.sh). Every other layer file is new and arrives with
+# its mode.
+#
 # Shared files (ErrorCode, messages, limits, db.yml, compose.yaml, .env.example, Role, test base,
 # ArchUnit) mark a piece's entries with "<piece>:begin" / "<piece>:end" comment lines (sign-in,
-# example, metadata, media, admin): without that piece those blocks are left out; blocks may nest
-# (a media block inside an example block arrives only with both). A file a piece names on its own
-# belongs to that piece, even inside a directory another piece copies (sign-in's rate limiter in
-# core's common/ and config/, media's todo attachments in the example's todo/). Sample content of an
-# optional piece arrives only with the example too: the metadata piece's sample keys, the media
-# piece's purpose TODO_ATTACHMENT, and their tests (the media piece's own endpoint tests run against
-# whichever purpose comes first, and are skipped until the project declares one).
+# example, metadata, media, admin, tenancy, tenancy-schema, tenant-registration): without that piece
+# those blocks are left out; blocks may nest (a media block inside an example block arrives only with
+# both). A block may hold "<piece>:else": its lines after that marker are commented out in the
+# reference and replace the block's first part without the piece (uncommented: "// ", "# ", "-- " or
+# "<!-- -->" dropped); with the piece they are left out. For code that differs with the piece, not only
+# grows. The reference runs without tenancy, so in reference files a tenancy block is the other way
+# round: its lines are commented out (the reference compiles and reads without them) and arrive
+# uncommented with the piece; its ":else" part is the reference's own code, left out with the piece.
+# In layer files every marker keeps the plain meaning. A file a piece names on its own belongs to that
+# piece, even inside a directory another piece copies (sign-in's rate limiter in core's common/ and
+# config/, media's todo attachments in the example's todo/). Sample content of an optional piece
+# arrives only with the example too: the metadata piece's sample keys, the media piece's purpose
+# TODO_ATTACHMENT, and their tests (the media piece's own endpoint tests run against whichever purpose
+# comes first, and are skipped until the project declares one).
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -61,9 +86,25 @@ package_path="${package//.//}"
 chosen_piece() { [[ ",$pieces," == *",$1,"* ]]; }
 
 # The ADMIN role (Role.ADMIN, its changeset, newAdmin()) comes with the first piece that has admin endpoints.
-admin_chosen() { chosen_piece metadata || chosen_piece media; }
+admin_chosen() { chosen_piece metadata || chosen_piece media || chosen_piece tenancy-schema; }
 
-# Files per piece, relative to reference-app/. Directories are copied recursively.
+# The tenancy part every mode shares (overlays/tenancy, the "tenancy" markers): today one mode, schema
+# per tenant; a row mode adds itself here.
+tenancy_chosen() { chosen_piece tenancy-schema; }
+
+# The layers a copy is made of, in order: a later layer's file replaces an earlier one's.
+layers="reference-app"
+if tenancy_chosen; then
+    layers+=" overlays/tenancy"
+fi
+if chosen_piece tenancy-schema; then
+    layers+=" overlays/tenancy-schema"
+fi
+SHARED="overlays/tenancy"
+SCHEMA="overlays/tenancy-schema"
+
+# Files per piece, relative to reference-app/, or to the repository when they start with overlays/.
+# Directories are copied recursively.
 files_for() {
     case "$1" in
         core) cat <<LIST
@@ -169,7 +210,40 @@ LIST
                 echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
             fi
             ;;
-        *) die "unknown piece: $1 (core, sign-in, example, metadata, media)" ;;
+        tenancy-schema)
+            # The part every tenancy mode shares, then schema per tenant's own.
+            echo "$SHARED/src"
+            echo "$SCHEMA/src"
+            echo "$SCHEMA/docs"
+            echo "$SCHEMA/docker"
+            # The cross-tenant tests of the example's entities (crud-gen generates one per entity).
+            if chosen_piece example; then
+                echo "$SHARED/src/test/java/$reference_path/todo/TodoTenantIsolationIntegrationTest.java"
+            fi
+            # Staff editing a tenant's configuration directly: the golden cross-tenant edit.
+            if chosen_piece metadata; then cat <<LIST
+$SHARED/src/main/java/$reference_path/metadata/service/PlatformMetadataService.java
+$SHARED/src/main/java/$reference_path/metadata/controller/PlatformMetadataController.java
+$SHARED/src/main/java/$reference_path/metadata/controller/api/PlatformMetadataApi.java
+LIST
+                if chosen_piece example; then
+                    echo "$SHARED/src/test/java/$reference_path/metadata/PlatformMetadataIntegrationTest.java"
+                fi
+            fi
+            # The tenant owner's ADMIN role, unless another piece already brings it.
+            if ! chosen_piece metadata && ! chosen_piece media; then
+                echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
+            fi
+            ;;
+        tenant-registration) cat <<LIST
+$SHARED/src/main/java/$reference_path/user/controller/TenantRegistrationController.java
+$SHARED/src/main/java/$reference_path/user/controller/api/TenantRegistrationApi.java
+$SHARED/src/main/java/$reference_path/user/dto/request/TenantRegistrationRequest.java
+$SHARED/src/main/java/$reference_path/user/service/TenantRegistrationService.java
+$SHARED/src/test/java/$reference_path/tenant/TenantRegistrationIntegrationTest.java
+LIST
+            ;;
+        *) die "unknown piece: $1 (core, sign-in, example, metadata, media, tenancy-schema, tenant-registration)" ;;
     esac
 }
 
@@ -181,6 +255,8 @@ dependencies_for() {
         example) echo "(none beyond core)" ;;
         metadata) echo "(none beyond core)" ;;
         media) echo "s3 (software.amazon.awssdk), its version from software.amazon.awssdk:bom imported in dependencyManagement; test: the image versity/versitygw (a Testcontainers GenericContainer, no extra dependency)" ;;
+        tenancy-schema) echo "(none beyond core: Hibernate's multi-tenancy and Liquibase, already there)" ;;
+        tenant-registration) echo "(none beyond sign-in)" ;;
     esac
 }
 
@@ -193,22 +269,68 @@ dest_for() {
     esac
 }
 
-# Without an optional piece, its blocks in shared files are dropped; with it, only the marker lines.
-piece_filter_script=""
-for optional in sign-in example metadata media admin; do
-    if { [ "$optional" = admin ] && admin_chosen; } || chosen_piece "$optional"; then
-        piece_filter_script+="/$optional:\\(begin\\|end\\)/d;"
-    else
-        piece_filter_script+="/$optional:begin/,/$optional:end/d;"
+# Without an optional piece, its blocks in shared files are dropped (an ":else" part kept, uncommented);
+# with it, only the marker lines (and an ":else" part) go. In reference files a tenancy block is
+# commented out instead: kept uncommented with the piece, dropped without it.
+kept_markers=","
+for optional in sign-in example metadata media admin tenancy tenancy-schema tenant-registration; do
+    if { [ "$optional" = admin ] && admin_chosen; } || { [ "$optional" = tenancy ] && tenancy_chosen; } || chosen_piece "$optional"; then
+        kept_markers+="$optional,"
     fi
 done
+# $1: "reference" for a reference-app file, "layer" for an overlay's.
 piece_filter() {
-    sed "$piece_filter_script"
+    KEPT="$kept_markers" SOURCE="$1" perl -ne '
+        BEGIN { @open = (); }
+        if (/\b(sign-in|example|metadata|media|admin|tenancy-schema|tenancy|tenant-registration):(begin|else|end)\b/) {
+            my ($piece, $marker) = ($1, $2);
+            my $kept = index($ENV{KEPT}, ",$piece,") >= 0;
+            my $commented = $ENV{SOURCE} eq "reference" && $piece =~ /^tenan/;
+            if ($marker eq "begin") { push @open, $kept ? ($commented ? "uncomment" : "keep") : "drop"; }
+            elsif ($marker eq "else") { $open[-1] = $kept ? "drop" : ($commented ? "keep" : "uncomment"); }
+            else { pop @open; }
+            next;
+        }
+        next if grep { $_ eq "drop" } @open;
+        if (grep { $_ eq "uncomment" } @open) {
+            s{^(\s*)<!-- ?(.*?) ?-->[ \t]*$}{$1$2} or s{^(\s*)(?://|#|--) ?}{$1};
+        }
+        print;
+    '
+}
+
+# A file's path in the project (and in the reference): its source path without the layer.
+project_path() {
+    case "$1" in
+        reference-app/*) echo "${1#reference-app/}" ;;
+        overlays/*) local rest="${1#overlays/*/}"; echo "$rest" ;;
+    esac
+}
+# The chosen layer that has the last say on a project path.
+source_for() {
+    local relative="$1" layer found=""
+    for layer in $layers; do
+        if [ -f "$REPO/$layer/$relative" ]; then
+            found="$layer/$relative"
+        fi
+    done
+    echo "$found"
+}
+# True when an earlier layer than the file's own has the same project path: the file replaces that one.
+replaces_earlier() {
+    local source="$1" relative layer
+    relative="$(project_path "$source")"
+    for layer in $layers; do
+        [[ "$source" == "$layer/"* ]] && return 1
+        [ -f "$REPO/$layer/$relative" ] && return 0
+    done
+    return 1
 }
 
 copied=() skipped=()
 copy_file() {
-    local relative="$1" dest
+    local relative dest source mode
+    relative="$(project_path "$1")"
     dest="$(dest_for "$relative")"
     if [ -e "$target/$dest" ]; then
         skipped+=("$dest")
@@ -216,12 +338,20 @@ copy_file() {
     fi
     copied+=("$dest")
     $dry_run && return
+    source="$(source_for "$relative")"
+    mode=layer
+    if [[ "$source" == reference-app/* ]]; then
+        mode=reference
+    fi
     mkdir -p "$(dirname "$target/$dest")"
     case "$relative" in
-        *.java|*.yml|*.yaml|*.xml|*.properties|.env.example)
-            sed "s/${REFERENCE_PACKAGE//./\\.}/$package/g" "$REFERENCE/$relative" | piece_filter > "$target/$dest" ;;
-        *) cp "$REFERENCE/$relative" "$target/$dest" ;;
+        *.java|*.yml|*.yaml|*.xml|*.properties|*.sql|*.md|*.sh|.env.example)
+            sed "s/${REFERENCE_PACKAGE//./\\.}/$package/g" "$REPO/$source" | piece_filter "$mode" > "$target/$dest" ;;
+        *) cp "$REPO/$source" "$target/$dest" ;;
     esac
+    if [ -x "$REPO/$source" ]; then
+        chmod +x "$target/$dest"
+    fi
 }
 
 IFS=',' read -r -a chosen <<< "$pieces"
@@ -234,40 +364,85 @@ fi
 if chosen_piece media; then
     echo "note: the media piece needs MEDIA_BUCKET and MEDIA_REGION, and S3 credentials from the AWS SDK's default chain (an IAM role in production)" >&2
 fi
+if tenancy_chosen && ! chosen_piece sign-in; then
+    die "tenancy-schema needs sign-in: memberships, the tenant claim and the platform's login live in the user module"
+fi
+if chosen_piece tenant-registration && ! tenancy_chosen; then
+    die "tenant-registration needs a tenancy piece (tenancy-schema)"
+fi
+if tenancy_chosen; then
+    echo "note: tenancy needs the database roles and the platform schema before the first start (docs/tenancy-runbook.md; compose.yaml creates them locally), and DB_OWNER_USER / DB_OWNER_PASSWORD" >&2
+fi
 # Every file any piece can name, whatever was chosen: a directory copy never takes another piece's file.
-named_files="$(pieces=core,sign-in,example,metadata,media; for piece in core sign-in example metadata media; do files_for "$piece"; done)"
+all_pieces="core sign-in example metadata media tenancy-schema tenant-registration"
+with_reference_prefix() { sed -e '/^overlays\//!s|^|reference-app/|'; }
+named_files="$(pieces="${all_pieces// /,}"; for piece in $all_pieces; do files_for "$piece"; done | with_reference_prefix)"
+# Core files a tenancy mode replaces: its connection hook borrows lazily, so the lazy proxy goes.
+replaced_by_tenancy="reference-app/src/main/java/$reference_path/config/LazyConnectionConfig.java
+reference-app/src/test/java/$reference_path/config/LazyConnectionIntegrationTest.java"
+replaced() { tenancy_chosen && grep -qxF "$1" <<< "$replaced_by_tenancy"; }
 named_alone() { grep -qxF "$1" <<< "$named_files"; }
 for piece in "${chosen[@]}"; do
     while IFS= read -r entry; do
-        [ -e "$REFERENCE/$entry" ] || die "the reference has no $entry (piece $piece)"
-        if [ -d "$REFERENCE/$entry" ]; then
+        [ -e "$REPO/$entry" ] || die "the repository has no $entry (piece $piece)"
+        if [ -d "$REPO/$entry" ]; then
             while IFS= read -r file; do
-                # Copied with the piece that names it, if that piece is chosen.
-                named_alone "${file#$REFERENCE/}" || copy_file "${file#$REFERENCE/}"
-            done < <(find "$REFERENCE/$entry" -type f | sort)
+                file="${file#$REPO/}"
+                # Copied with the piece that names it, if that piece is chosen; a replacement only with
+                # the file it replaces.
+                named_alone "$file" || replaced "$file" || replaces_earlier "$file" || copy_file "$file"
+            done < <(find "$REPO/$entry" -type f | sort)
         else
             copy_file "$entry"
         fi
-    done < <(files_for "$piece")
+    done < <(files_for "$piece" | with_reference_prefix)
 done
 
 # The Liquibase master lists the changesets that were copied, in order; an existing one is kept.
-master="src/main/resources/db/changelog/db.changelog-master.yaml"
-if [ -e "$target/$master" ]; then
-    skipped+=("$master (add the new changesets to it yourself)")
-else
-    copied+=("$master")
-    if ! $dry_run; then
-        # The changes directory exists even when no piece brings a changeset (core alone).
-        mkdir -p "$target/src/main/resources/db/changelog/changes"
-        {
+# Schema per tenant has two masters, copied with the piece (platform.yaml, tenant.yaml): they are
+# rewritten here to list exactly the copied changesets, the platform's in the first, every other in
+# the second.
+platform_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql"
+write_master() {
+    local file="$1" header="$2" want="$3" includes="" changeset name
+    while IFS= read -r changeset; do
+        name="$(basename "$changeset")"
+        if { [ "$want" = platform ] && [[ " $platform_changesets " == *" $name "* ]]; } \
+            || { [ "$want" = tenant ] && [[ " $platform_changesets " != *" $name "* ]]; } || [ "$want" = all ]; then
+            includes+="  - include:"$'\n'"      file: changes/$name"$'\n'"      relativeToChangelogFile: true"$'\n'
+        fi
+    done < <(find "$target/src/main/resources/db/changelog/changes" -name '*.sql' | sort)
+    {
+        if [ -n "$header" ]; then
+            printf '%s\n' "$header"
+        fi
+        if [ -n "$includes" ]; then
             echo "databaseChangeLog:"
-            find "$target/src/main/resources/db/changelog/changes" -name '*.sql' | sort | while IFS= read -r changeset; do
-                echo "  - include:"
-                echo "      file: changes/$(basename "$changeset")"
-                echo "      relativeToChangelogFile: true"
-            done
-        } > "$target/$master"
+            printf '%s' "$includes"
+        else
+            # No changeset yet (a tenant changelog before the first tenant table): an empty list, not null.
+            echo "databaseChangeLog: []"
+        fi
+    } > "$target/$file"
+}
+# The changes directory exists even when no piece brings a changeset (core alone).
+$dry_run || mkdir -p "$target/src/main/resources/db/changelog/changes"
+if tenancy_chosen; then
+    for master in platform tenant; do
+        if ! $dry_run && [[ " ${copied[*]} " == *" src/main/resources/db/changelog/$master.yaml "* ]]; then
+            header="$(grep '^#' "$REPO/$SCHEMA/src/main/resources/db/changelog/$master.yaml")"
+            write_master "src/main/resources/db/changelog/$master.yaml" "$header" "$master"
+        fi
+    done
+else
+    master="src/main/resources/db/changelog/db.changelog-master.yaml"
+    if [ -e "$target/$master" ]; then
+        skipped+=("$master (add the new changesets to it yourself)")
+    else
+        copied+=("$master")
+        if ! $dry_run; then
+            write_master "$master" "" all
+        fi
     fi
 fi
 

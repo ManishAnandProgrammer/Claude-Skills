@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -433,7 +432,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         CountDownLatch locked = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         Future<Answer> replace;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        try (ExecutorService executor = newExecutor()) {
             Future<?> holder = executor.submit(() -> transaction.executeWithoutResult(status -> {
                 jdbc.queryForList("select id from todos where id = ?::uuid for no key update", todoId);
                 locked.countDown();

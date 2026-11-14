@@ -31,7 +31,7 @@ nothing: it is the code the skills copy.
 | `hotPaths` | `none` | |
 | `archTests` | `ModuleBoundaryArchTest`, `LayerArchTest`, `ConventionArchTest`, `AggregateArchTest` | No carve-outs |
 | `publishedContracts` | `none` | |
-| `multiTenant` | `false` | |
+| `tenancy` | `none` | The reference runs without tenancy; the tenancy pieces are the skills repo's overlays/, proven in bootstrap copies (verify.sh 2g, 2h) |
 
 ## API
 

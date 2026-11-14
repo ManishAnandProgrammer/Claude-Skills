@@ -1,0 +1,26 @@
+package com.example.app.user.mapper;
+
+import com.example.app.tenant.api.TenantView;
+import com.example.app.user.domain.TenantMembership;
+import com.example.app.user.dto.response.MembershipResponse;
+import org.springframework.stereotype.Component;
+
+import java.util.UUID;
+
+@Component
+public class MembershipMapper {
+
+    public MembershipResponse toResponse(TenantMembership membership, TenantView tenant, UUID currentTenantId) {
+        return new MembershipResponse(
+                membership.getTenantId(),
+                tenant.name(),
+                tenant.status().name(),
+                membership.getRole(),
+                membership.getTenantId().equals(currentTenantId),
+                membership.getLastUsedAt(),
+                membership.getCreatedAt(),
+                membership.getUpdatedAt(),
+                membership.getCreatedBy(),
+                membership.getUpdatedBy());
+    }
+}

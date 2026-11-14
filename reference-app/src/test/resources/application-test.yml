@@ -1,5 +1,9 @@
 # Connections come from Testcontainers (@ServiceConnection), which overrides these.
 spring:
+  # tenancy:begin
+  # config:
+  #   import: classpath:config/tenancy-test.yml
+  # tenancy:end
   datasource:
     username: test
     password: test

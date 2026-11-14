@@ -20,7 +20,6 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -188,7 +187,7 @@ class MediaJobsIntegrationTest extends IntegrationTest {
         CountDownLatch leased = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        try (ExecutorService executor = newExecutor()) {
             Future<List<MediaFileKey>> first = executor.submit(() -> transaction.execute(status -> {
                 List<MediaFileKey> batch = mediaFiles.leaseForVerification(2, LEASE);
                 leased.countDown();

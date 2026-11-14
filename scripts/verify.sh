@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Verifies the skills repository before a push (it is private: there is no CI):
-#   1. reference-app builds and every test passes (Testcontainers: Docker must be reachable);
+#   0. the overlays' replacement files were written against the reference's current files
+#      (scripts/overlay-replacements.sh --check);
+#   1. reference-app builds and every test passes (Testcontainers: Docker must be reachable). It is a
+#      plain application: tenancy exists only in overlays/, so it is proven by 2g and 2h;
 #   2. bootstrap-copy.sh copies core + sign-in into a fresh project under another package and
 #      another application name, and that project builds and passes its tests too;
 #      2b. the same with the example module and the metadata piece, so every golden file arrives
@@ -12,6 +15,12 @@
 #      2f. core + sign-in + example + media: the todo attachments arrive with both pieces (the
 #          attachment, upload and policy tests run against TODO_ATTACHMENT; the rest is 2b's and 1's),
 #          and the dependency lists the script prints cover the reference pom;
+#      2g. core + sign-in + tenancy-schema: schema per tenant alone, staff-only registration (no tenant
+#          table but the tests' probe), with real database roles; every test runs;
+#      2h. every piece: core + sign-in + example + metadata + media + tenancy-schema +
+#          tenant-registration. The todo, plan, metadata and media tables in the tenant changelog, the
+#          media keys per tenant, the cross-tenant tests, self-registration; every test runs, the
+#          reference's own tests inside the test tenant;
 #      2d. core alone (a project signing users in elsewhere), without sign-in's Redis and Bucket4j
 #          dependencies: main and test code compile and the unit tests pass. Its integration and
 #          ArchUnit tests are left out: the integration tests sign users in through sign-in, and the
@@ -59,6 +68,11 @@ docker info > /dev/null 2>&1 || {
     exit 1
 }
 
+echo "[0/3] overlays: replacements pinned to the reference's files"
+"$REPO/scripts/overlay-replacements.sh" --check
+grep -rqlE "TenantContext|TenantScope|tenant_memberships" "$REFERENCE/src/main/java" \
+    && { echo "FAILED: tenancy code in the reference outside a commented tenancy block (it belongs in overlays/)" >&2; exit 1; }
+
 echo "[1/3] reference-app: build and tests"
 mvn_verify "$REFERENCE" "$WORK/reference.log"
 
@@ -94,6 +108,11 @@ grep -rqE "example:(begin|end)|TODO_LIST|todo-list" "$project/src" && { echo "FA
 grep -rqE "metadata:(begin|end)|METADATA_|configuration_metadata|MetadataKey" "$project/src" && { echo "FAILED: metadata-piece entries left in a copy without the metadata piece" >&2; exit 1; }
 grep -rqE "media:(begin|end)|admin:(begin|end)|MEDIA_(BUCKET|STORAGE)|UPLOAD_|media_files|upload_policies|UploadPurpose|awssdk|newAdmin" "$project/src" "$project/.env.example" \
     && { echo "FAILED: media-piece or admin entries left in a copy without the media piece" >&2; exit 1; }
+# No tenancy without its piece, and every ":else" part arrived uncommented (the build proves it compiles).
+grep -rqE "tenancy(-schema)?:(begin|else|end)|TenantContext|TenantScope|tenant_memberships|DB_OWNER_USER|search_path" "$project/src" "$project/.env.example" \
+    && { echo "FAILED: tenancy entries left in a copy without a tenancy piece" >&2; exit 1; }
+[ -f "$project/src/main/java/com/acme/smoke/config/LazyConnectionConfig.java" ] && [ -f "$project/src/main/resources/db/changelog/db.changelog-master.yaml" ] \
+    || { echo "FAILED: the lazy connection proxy or the single Liquibase master is missing from a copy without tenancy" >&2; exit 1; }
 { [ -d "$project/src/main/java/com/acme/smoke/metadata" ] || grep -q "ADMIN" "$project/src/main/java/com/acme/smoke/user/domain/Role.java"; } \
     && { echo "FAILED: the metadata module or its ADMIN role in a copy without the metadata piece" >&2; exit 1; }
 # Bootstrap renames the application; tests must not depend on the reference's name.
@@ -170,6 +189,44 @@ done
 mvn_verify "$files" "$WORK/files.log" \
     -Dtest='TodoAttachmentsIntegrationTest,Upload*IntegrationTest,PresignedUploadIntegrationTest,UploadPurposeTest,*ArchTest,ErrorCodeContractTest,LimitsIntegrationTest' \
     -Dsurefire.failIfNoSpecifiedTests=false
+
+echo "[2g/3] bootstrap-copy with schema per tenant, without the example (package com.acme.tenancy)"
+tenancy="$WORK/tenancy"
+mkdir -p "$tenancy/src/main/java/com/acme/tenancy"
+cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$tenancy/"
+sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>tenancy</artifactId>|' -e 's|<name>reference-app</name>|<name>tenancy</name>|' \
+    "$REFERENCE/pom.xml" > "$tenancy/pom.xml"
+sed -e 's/package com.acme.smoke;/package com.acme.tenancy;/' -e 's/SmokeApplication/TenancyApplication/g' \
+    "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$tenancy/src/main/java/com/acme/tenancy/TenancyApplication.java"
+"$REPO/scripts/bootstrap-copy.sh" --target "$tenancy" --package com.acme.tenancy --with core,sign-in,tenancy-schema > "$WORK/copy-tenancy.log" 2>&1
+grep -rqE "(example|metadata|media|admin|tenancy|tenancy-schema|tenant-registration):(begin|else|end)|TODO_LIST|todo_lists|METADATA_|media_files|UploadPurpose" "$tenancy/src" \
+    && { echo "FAILED: markers or other pieces' entries left in the tenancy copy" >&2; exit 1; }
+[ -f "$tenancy/src/main/java/com/acme/tenancy/config/LazyConnectionConfig.java" ] && { echo "FAILED: the lazy proxy in a tenancy copy (the hook borrows lazily)" >&2; exit 1; }
+[ -f "$tenancy/src/main/resources/db/changelog/db.changelog-master.yaml" ] && { echo "FAILED: a single master in a schema-per-tenant copy" >&2; exit 1; }
+[ -f "$tenancy/src/main/java/com/acme/tenancy/user/controller/TenantRegistrationController.java" ] \
+    && { echo "FAILED: the public registration endpoint in a copy without tenant-registration" >&2; exit 1; }
+grep -q "0012-tenancy.sql" "$tenancy/src/main/resources/db/changelog/platform.yaml" && grep -q "databaseChangeLog: \[\]" "$tenancy/src/main/resources/db/changelog/tenant.yaml" \
+    || { echo "FAILED: the tenancy copy's masters don't list its changesets as platform and tenant ones" >&2; exit 1; }
+mvn_verify "$tenancy" "$WORK/tenancy.log"
+
+echo "[2h/3] bootstrap-copy with every piece, schema per tenant and self-registration included (package com.acme.tenants)"
+tenants="$WORK/tenants"
+mkdir -p "$tenants/src/main/java/com/acme/tenants"
+cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$tenants/"
+sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>tenants</artifactId>|' -e 's|<name>reference-app</name>|<name>tenants</name>|' \
+    "$REFERENCE/pom.xml" > "$tenants/pom.xml"
+sed -e 's/package com.acme.smoke;/package com.acme.tenants;/' -e 's/SmokeApplication/TenantsApplication/g' \
+    "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$tenants/src/main/java/com/acme/tenants/TenantsApplication.java"
+"$REPO/scripts/bootstrap-copy.sh" --target "$tenants" --package com.acme.tenants \
+    --with core,sign-in,example,metadata,media,tenancy-schema,tenant-registration > "$WORK/copy-tenants.log" 2>&1
+grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenant-registration):(begin|else|end)" "$tenants/src" "$tenants/compose.yaml" "$tenants/.env.example" \
+    && { echo "FAILED: markers left in the copy with every piece" >&2; exit 1; }
+grep -q "0002-todo-lists.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" && grep -q "0009-media-files.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" \
+    && ! grep -q "0002-todo-lists.sql" "$tenants/src/main/resources/db/changelog/platform.yaml" \
+    || { echo "FAILED: the todo and media tables are not in the tenant changelog alone" >&2; exit 1; }
+grep -q "docker-entrypoint-initdb.d" "$tenants/compose.yaml" && [ -x "$tenants/docker/postgres-init/10-tenancy-roles.sh" ] \
+    || { echo "FAILED: compose.yaml doesn't create the tenancy roles in the copy" >&2; exit 1; }
+mvn_verify "$tenants" "$WORK/tenants.log"
 
 echo "[2d/3] bootstrap-copy of core alone, without the Redis dependencies (package com.acme.core)"
 core="$WORK/core"

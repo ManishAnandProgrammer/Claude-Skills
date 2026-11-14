@@ -64,6 +64,10 @@
                 <includeMdcKeyName>endpoint</includeMdcKeyName>
                 <includeMdcKeyName>clientIp</includeMdcKeyName>
                 <includeMdcKeyName>userId</includeMdcKeyName>
+                <!-- tenancy:begin -->
+                <!-- <includeMdcKeyName>tenantId</includeMdcKeyName> -->
+                <!-- <includeMdcKeyName>actorId</includeMdcKeyName> -->
+                <!-- tenancy:end -->
                 <customFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</customFields>
             </encoder>
         </appender>

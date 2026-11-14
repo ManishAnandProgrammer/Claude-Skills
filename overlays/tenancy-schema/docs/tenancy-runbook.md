@@ -1,0 +1,66 @@
+# Tenancy runbook: schema per tenant
+
+The incident runbook (`runbook.md`) covers the application as a whole; this is what schema per tenant
+adds. `<app>` is `spring.application.name`, `<db>` is `DB_NAME`.
+
+## 1. Database roles (before the first start, and before a restore)
+
+Roles are cluster-level, so Liquibase never creates them, and a restore needs them first. As a
+superuser, once per database:
+
+```sql
+CREATE ROLE <app>_owner LOGIN PASSWORD '...';   -- DB_OWNER_USER: owns every table, runs Liquibase
+CREATE ROLE <app>_app LOGIN PASSWORD '...';     -- DB_USER: the pool's role; reads and writes, owns nothing
+GRANT CREATE ON DATABASE <db> TO <app>_owner;   -- tenant schemas are created by provisioning
+CREATE SCHEMA platform AUTHORIZATION <app>_owner;
+-- Connections start in the platform schema: a tenant's tables exist only inside its transactions.
+ALTER ROLE <app>_app IN DATABASE <db> SET search_path = platform;
+-- Liquibase prepends the schema it migrates, so tenant changesets still find the platform's tables.
+ALTER ROLE <app>_owner IN DATABASE <db> SET search_path = platform;
+```
+
+Locally, `docker compose up -d` does exactly this on a new database
+(`docker/postgres-init/10-tenancy-roles.sh`, with `DB_USER`, `DB_PASSWORD`, `DB_OWNER_USER` and
+`DB_OWNER_PASSWORD` from `.env`). It runs only when the data directory is new: on an existing local
+volume, `docker compose down -v` first (that deletes the local data).
+
+Changeset `0013` grants the app role its rights (and default privileges for every later table).
+
+## 2. Platform staff
+
+Staff are rows, not an endpoint: insert one with a bcrypt hash of its password (strength 12) into
+`platform.platform_users` (`role` `STAFF`). They sign in at `POST /api/v1/platform/auth/login`.
+
+## 3. Tenants
+
+- **Staff create a tenant** (`POST /api/v1/platform/tenants`) for an owner who already has an account:
+  it is PENDING until provisioning has created its schema, then ACTIVE.
+- **Self-registration** (when the project has the `tenant-registration` piece): a registered tenant is
+  PENDING and waits for staff: `POST /api/v1/platform/tenants/{id}/approval` approves it (provisioning
+  follows), `PATCH .../{id}` with status `REJECTED` rejects it. The owner's login answers 403
+  `TENANT_NOT_ACTIVE` with `tenantStatus: PENDING` meanwhile.
+- **A tenant rejected after approval** but before provisioning ran gets no schema: its
+  `tenant_migrations` row becomes `CANCELLED`.
+
+## 4. Restore order
+
+1. The roles above (a dump doesn't carry them).
+2. `pg_restore` the dump (the `platform` schema, `tenant_template`, every `t_<id>` schema).
+3. Start one instance: Spring migrates the platform, the template migration runs, then
+   `TenantMigrations` brings every tenant schema up to date.
+
+One tenant alone: `pg_dump -n t_<tenant id without dashes>` and restore that schema; its platform rows
+(`tenants`, `tenant_memberships`, `tenant_migrations`) come from the platform schema.
+
+## 5. Tenant migrations at deploy
+
+- The instance that takes the advisory lock first (`hashtext('tenant-schema-migrations')`) migrates
+  every tenant schema once it is ready; the others skip. The log says
+  `Tenant migrations: ran=true, migrated=N, failed=[...]`.
+- A failed schema: `SELECT tenant_id, schema_name, error FROM platform.tenant_migrations WHERE status = 'FAILED';`.
+  Fix the schema (or the changeset, with a new one), then restart one instance: the run applies only
+  what is missing. The other tenants were migrated meanwhile; only that tenant's new features wait.
+- A schema stuck in Liquibase's lock (an instance was killed mid-run):
+  `UPDATE t_<id>.databasechangeloglock SET locked = false, lockgranted = NULL, lockedby = NULL WHERE id = 1;`.
+- A tenant stuck `PENDING` after approval: `SELECT * FROM platform.tenant_migrations WHERE status = 'PROVISIONING';`
+  shows the provisioning error; the job retries every run (`app.jobs.tenant-provisioning.cron`).

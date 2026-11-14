@@ -35,7 +35,7 @@ project doesn't have.
 | `hotPaths` | `none` | Endpoints that answer PERF-01's four questions on every change |
 | `archTests` | `none` | Existing ArchUnit classes; their carve-outs go in the deviation register |
 | `publishedContracts` | `none` | Non-OpenAPI contracts and consumers: webhook docs, frontend changelog, k6 scripts |
-| `multiTenant` | `false` | Enables the profile-optional tenant rules |
+| `tenancy` | `none` | `none`, `row` or `schema` (the bootstrap piece `tenancy-schema`). Anything but `none` loads `references/tenancy.md` (TEN-xx) and the profile-optional tenant rules; `[schema]` / `[row]` rules apply to their mode only |
 
 ## API
 

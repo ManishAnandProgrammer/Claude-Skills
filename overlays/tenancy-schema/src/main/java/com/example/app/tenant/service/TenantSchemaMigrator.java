@@ -1,0 +1,120 @@
+package com.example.app.tenant.service;
+
+import com.example.app.common.tenancy.TenantSchemas;
+import liquibase.exception.LiquibaseException;
+import liquibase.integration.spring.SpringLiquibase;
+import org.springframework.boot.liquibase.autoconfigure.LiquibaseDataSource;
+import org.springframework.core.NestedExceptionUtils;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.UUID;
+
+/**
+ * Creates and migrates tenant schemas as the owner role, over Liquibase's own connection (the
+ * application's role can't create tables). Schema names are derived from tenant ids
+ * ({@link TenantSchemas}), never from input, so building the DDL from them is safe.
+ *
+ * <p>Two migrators on a brand-new schema fail while creating Liquibase's own tables, and on an
+ * existing one the second waits on Liquibase's lock, polling every 10 s. So every run over tenant
+ * schemas holds one PostgreSQL advisory lock ({@link #runLocked}): one migrator in the whole cluster.</p>
+ */
+@Component
+class TenantSchemaMigrator {
+
+    private static final String MIGRATIONS_LOCK = "tenant-schema-migrations";
+    private static final String LAST_CHANGESET = """
+            select id from %s.databasechangelog order by orderexecuted desc limit 1""";
+
+    private final DataSource owner;
+    private final JdbcTemplate ownerJdbc;
+    private final ResourceLoader resourceLoader;
+    private final TenantSchemaProperties properties;
+
+    TenantSchemaMigrator(@LiquibaseDataSource DataSource owner, ResourceLoader resourceLoader, TenantSchemaProperties properties) {
+        this.owner = owner;
+        this.ownerJdbc = new JdbcTemplate(owner);
+        this.resourceLoader = resourceLoader;
+        this.properties = properties;
+    }
+
+    /** Runs {@code work} holding the migrations lock; false, without running it, when another migrator holds it. */
+    boolean runLocked(Runnable work) {
+        Boolean ran = ownerJdbc.execute((ConnectionCallback<Boolean>) connection -> {
+            if (!advisoryLock(connection, "select pg_try_advisory_lock(hashtext(?))")) {
+                return false;
+            }
+            try {
+                work.run();
+            } finally {
+                advisoryLock(connection, "select pg_advisory_unlock(hashtext(?))");
+            }
+            return true;
+        });
+        return Boolean.TRUE.equals(ran);
+    }
+
+    /** Idempotent: provisioning resumes after a failure at any step. */
+    void createSchema(UUID tenantId) {
+        create(TenantSchemas.of(tenantId));
+    }
+
+    /** Applies the tenant changelog's missing changesets; the newest applied changeset's id. */
+    String migrate(UUID tenantId) {
+        return update(TenantSchemas.of(tenantId));
+    }
+
+    /** The template Hibernate validates against, created on the first start. */
+    void migrateTemplate() {
+        create(TenantSchemas.TEMPLATE);
+        update(TenantSchemas.TEMPLATE);
+    }
+
+    private void create(String schema) {
+        ownerJdbc.execute("create schema if not exists " + schema);
+        ownerJdbc.execute("grant usage on schema %s to %s".formatted(schema, quoted(properties.appRole())));
+    }
+
+    private String update(String schema) {
+        SpringLiquibase liquibase = new SpringLiquibase();
+        liquibase.setDataSource(owner);
+        liquibase.setChangeLog(properties.tenantChangelog());
+        liquibase.setDefaultSchema(schema);
+        liquibase.setLiquibaseSchema(schema);
+        liquibase.setResourceLoader(resourceLoader);
+        try {
+            liquibase.afterPropertiesSet();
+        } catch (LiquibaseException failure) {
+            throw new IllegalStateException("Migrating schema %s failed".formatted(schema), failure);
+        }
+        // The owner's default privileges grant the application role every new table, Liquibase's own included.
+        ownerJdbc.execute("revoke all on %1$s.databasechangelog, %1$s.databasechangeloglock from %2$s"
+                .formatted(schema, quoted(properties.appRole())));
+        return ownerJdbc.queryForList(LAST_CHANGESET.formatted(schema), String.class).stream().findFirst().orElse("");
+    }
+
+    /** For {@code tenant_migrations.error}: the failure and its root cause, which names the changeset's problem. */
+    static String describe(RuntimeException failure) {
+        return "%s: %s".formatted(failure.getMessage(), NestedExceptionUtils.getMostSpecificCause(failure).getMessage());
+    }
+
+    private String quoted(String role) {
+        return ownerJdbc.queryForObject("select quote_ident(?)", String.class, role);
+    }
+
+    private static boolean advisoryLock(Connection connection, String sql) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, MIGRATIONS_LOCK);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getBoolean(1);
+            }
+        }
+    }
+}

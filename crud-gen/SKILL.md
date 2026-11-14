@@ -147,6 +147,15 @@ and say so in the report. A declined fix: generate anyway and list it as an open
 generate, before the first build: Hibernate validates every entity's table at startup, so a missing
 child table fails the build of the parent too.
 
+**With `{{tenancy}}` = `schema`** (house-review `tenancy.md`): the master is the **tenant** changelog,
+`db/changelog/tenant.yaml` (every tenant schema and the template get the table; Hibernate validates
+against the template, TEN-24); never `platform.yaml`, which holds the platform's own tables. The table
+has **no `tenant_id`** (the schema is the tenant), the entity's `@Table` names no schema, and a
+native query names none either (TEN-21): the connection hook picks the schema. A reference to a user
+stays a plain foreign key to `users` (a platform table, found through the owner's `search_path`).
+Ownership checks are unchanged: they separate users inside one tenant. `{{tenancy}}` = `row` is not
+built yet: stop and say so.
+
 ---
 
 ## Step 3: Decide the variant and the list kind
@@ -393,7 +402,11 @@ Golden: the todo attachments (`TodoAttachment`, `TodoService`). Without the piec
 `/crud-gen bootstrap` (never hand-write an upload flow).
 
 ## Step 6: Integration tests (always)
-Read `references/tests.md` and follow the golden test classes.
+Read `references/tests.md` and follow the golden test classes. With `{{tenancy}}` not `none`, also
+generate `EntityNameTenantIsolationIntegrationTest` (golden: the skills repo's
+`overlays/tenancy/src/test/java/com/example/app/todo/TodoTenantIsolationIntegrationTest.java`):
+another tenant's member (`newUserIn(newTenant())`) gets 404 with the code on GET, PUT, actions and
+DELETE of the record, which stays unchanged, and that tenant's lists never show it (TEN-13).
 
 ## Step 7: Build and test
 Run `{{buildCommand}}`. Fix every compile error or test failure in the generated code; never report

@@ -1,0 +1,55 @@
+# Tenancy (the tenancy piece): Hibernate's connection handling for the tenant hook, the database
+# roles, and, schema per tenant, the two changelogs and the tenant migrations (docs/runbook.md).
+spring:
+  jpa:
+    properties:
+      hibernate:
+        connection:
+          # The tenant hook (config/TenancyConfig) runs when a transaction's first statement needs a
+          # connection. In Spring's default mode a read-only transaction borrows at begin, so the hook
+          # would run in every transaction and Spring's read-only flag would be lost; the hook sets that
+          # flag itself. The cost: per-transaction isolation levels (@Transactional(isolation = ...)) are
+          # refused; none is used.
+          handling_mode: DELAYED_ACQUISITION_AND_RELEASE_AFTER_TRANSACTION
+  # tenancy-schema:begin
+  liquibase:
+    # The platform's changelog at startup, into the platform schema. The tenant changelog runs into each
+    # tenant schema: provisioning and TenantMigrations, never Spring.
+    change-log: classpath:db/changelog/platform.yaml
+    default-schema: platform
+    liquibase-schema: platform
+    parameters:
+      appRole: ${app.tenancy.schema.app-role}
+  # tenancy-schema:end
+
+app:
+  limits:
+    text:
+      # The tenancy piece's maximum lengths, beside config/limits.yml's.
+      tenant.name: 100
+      tenant.support-reason: 500
+  liquibase:
+    # Migrations run as the owner role; the pool's role (DB_USER) owns nothing and can't change the
+    # schema (docs/runbook.md, "Database roles").
+    username: ${DB_OWNER_USER}
+    password: ${DB_OWNER_PASSWORD}
+  tenancy:
+    impersonation:
+      # Staff acting as a tenant's member ask again after this; there is no refresh token.
+      token-ttl: 15m
+    # tenancy-schema:begin
+    schema:
+      # The pool's role: granted usage on every tenant schema as it is created.
+      app-role: ${DB_USER}
+      tenant-changelog: classpath:db/changelog/tenant.yaml
+      migrations:
+        # Once ready, an instance migrates every tenant schema in the background if it takes the lock first.
+        run-at-startup: true
+    # tenancy-schema:end
+  # tenancy-schema:begin
+  jobs:
+    # Creates the schema of each tenant staff created, runs its first migration, then activates it.
+    tenant-provisioning:
+      cron: "*/10 * * * * *"
+      batch-size: 20
+  # tenancy-schema:end

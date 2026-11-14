@@ -51,6 +51,22 @@ public enum ErrorCode {
     USER_PASSWORD_BREACHED,
     AUTH_INVALID_CREDENTIALS,
     AUTH_INVALID_REFRESH_TOKEN,
+    // tenancy:begin
+    //
+    // // ── Tenancy ──────────────────────────────────────────────────────────
+    // /** Tokens are issued only for an ACTIVE tenant; the response names the status ({@code tenantStatus}). */
+    // TENANT_NOT_ACTIVE,
+    // /** The account belongs to no tenant yet: there is nothing to sign in to. */
+    // TENANT_MEMBERSHIP_REQUIRED,
+    // /** Switch-tenant to a tenant the caller isn't a member of (or that doesn't exist). */
+    // MEMBERSHIP_NOT_FOUND,
+    // TENANT_NOT_FOUND,
+    // /** A tenant's owner must already have an account (invitations come later). */
+    // TENANT_OWNER_NOT_FOUND,
+    // TENANT_STATUS_CHANGE_INVALID,
+    // /** The application's support-access policy refused an impersonation. */
+    // SUPPORT_ACCESS_DENIED,
+    // tenancy:end
     // metadata:begin
 
     // ── Configuration metadata ───────────────────────────────────────────

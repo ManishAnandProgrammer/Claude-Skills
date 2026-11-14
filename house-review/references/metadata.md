@@ -80,17 +80,20 @@ only when the project has that piece.
 - **Severity:** High.
 
 ### META-09: Tenancy
+- **Rules:** the tenancy rules themselves are `tenancy.md` (TEN-xx); this rule is what they mean for
+  the metadata tables. The reference runs schema per tenant: `0008` is in `db/changelog/tenant.yaml`.
 - **Check:** schema-per-tenant: the table in every tenant schema, unique `key`. Row-based: a
   `tenant_id` column, unique `(tenant_id, key)`, Hibernate `@TenantId` on both entities, and the
   counter's native `UPDATE` filtered by tenant (native SQL is not filtered by `@TenantId`).
 - **Severity:** Critical when a row-based query can read or write another tenant's row.
 - **Adapting the piece** (the reference is single-tenant; bootstrap picks the model, the code is
   otherwise the same):
-  - *Schema-per-tenant:* the metadata package and changeset `0008` stay as they are. Each tenant
-    schema gets both tables (Liquibase runs per schema when a tenant registers, and for every schema
-    at deployment); the unique `key` is per schema. The tenant comes from the request (a JWT claim or
-    the host name), and Hibernate's `MultiTenantConnectionProvider` sets `search_path` to its schema,
-    so the native counter update needs no change either.
+  - *Schema-per-tenant* (the `tenancy-schema` piece): the metadata package and changeset `0008` stay
+    as they are; `0008` is listed in the tenant changelog. Each tenant schema gets both tables
+    (provisioning runs the tenant changelog into a new schema, `TenantMigrations` into every schema
+    at deployment); the unique `key` is per schema. The tenant comes from the token's claim (TEN-01),
+    and the connection hook sets `search_path` to its schema (TEN-04), so the native counter update
+    needs no change either.
   - *Row-based:* changeset `0008` gets `tenant_id uuid NOT NULL` in both tables, and
     `UNIQUE (tenant_id, key)` replaces `UNIQUE (key)` (keep the constraint names
     `MetadataConstraintErrorCodes` maps). Both entities get

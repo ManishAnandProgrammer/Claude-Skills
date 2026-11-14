@@ -350,6 +350,11 @@ public abstract class IntegrationTest {
         return new Answer(response.getStatus(), response.getContentAsString());
     }
 
+    /** A thread per task, for a test's own concurrent work (a request or a transaction held meanwhile). */
+    protected ExecutorService newExecutor() {
+        return Executors.newVirtualThreadPerTaskExecutor();
+    }
+
     /** Fires {@code request} from {@link #RACERS} threads released together; returns every answer. */
     protected static List<Answer> race(Callable<ResultActions> request) throws Exception {
         CountDownLatch start = new CountDownLatch(1);

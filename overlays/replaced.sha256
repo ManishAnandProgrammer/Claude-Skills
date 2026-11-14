@@ -1,0 +1,16 @@
+6d626d234a3309745e56d5c4cd792b70fd9cafa64fd006c524ab031d5f3e95e2  reference-app/src/main/java/com/example/app/common/logging/LogContext.java
+fd882eddeb373cc284a39309eefa431e144279b7e296d01bc36b1c5df8a11e68  reference-app/src/main/java/com/example/app/common/logging/UserLogContextFilter.java
+a85b8eadc5c06dfca2bcb6204d44b0c79679895b67c946d8d0ed26dcce792f14  reference-app/src/main/java/com/example/app/common/security/CurrentUser.java
+8e20c269b33b0361372b4af49f4f1d79985ccd70ceea0eedae41eeedbdb266dd  reference-app/src/main/java/com/example/app/config/LiquibaseConnectionConfig.java
+99c681fd5a53fd94206fa1794237fac7f77d49e15851b1623f9120029486dcb1  reference-app/src/main/java/com/example/app/config/SchedulingConfig.java
+a60a3b85f4bedaf6f216a50f0056cea6db23a51b4907cc7963742df9ad81597b  reference-app/src/main/java/com/example/app/media/mapper/MediaFileMapper.java
+df56c1ae3f0a43839532337ae11c1fd9234ab6b5f8d8cf24e672b6afec2950fb  reference-app/src/main/java/com/example/app/media/service/MediaCleanupJob.java
+268be131eb8c006149313217e8a4455de2c216b032b44060b322d71493491f32  reference-app/src/main/java/com/example/app/media/service/MediaVerificationJob.java
+d67aa34d0e9573a38f6dd1ce9ed2898c140bdd69a45af6bb41724fdd485a7a31  reference-app/src/main/java/com/example/app/user/controller/api/AuthApi.java
+b9f2fdf2584c4032e84fa0cc845d4fade2a81a6f03a7a74821b166271735ac1d  reference-app/src/main/java/com/example/app/user/controller/AuthController.java
+5b29eea3687be9e419905ae9ce03b6bf5ec40e6ebd3f5907a19dce002f6335e4  reference-app/src/main/java/com/example/app/user/domain/RefreshToken.java
+cfec5a4626ca8cd86a5989aad6074358a0041e050c66eba364f2020f3c16e419  reference-app/src/main/java/com/example/app/user/service/AuthService.java
+bb158495b2d7855fb7219e69e7e64f7b3c81a513bfdfc66d3f96649b8ea224f6  reference-app/src/main/java/com/example/app/user/service/TokenService.java
+f74f229de1303e4ee861c04348191410b70179e06dc5dc1c967c9ecae828ffaa  reference-app/src/test/java/com/example/app/support/IntegrationTest.java
+3e28cb2231095c2b14e17bca8bc48964b71e97857261db0dc93f429277091555  reference-app/src/test/java/com/example/app/TestcontainersConfiguration.java
+d9d11a9f1604519851f2bd9dbaabb8db6ab02f32ee032fd6c20f48cca10f776c  reference-app/src/test/java/com/example/app/user/service/RefreshTokenPurgeJobIntegrationTest.java
