@@ -92,11 +92,11 @@ live there, not in the skills.
 
 ## Where things are
 - `reference-app/`: the house reference application, plain (no tenancy); `/crud-gen bootstrap` copies
-  its pieces. `overlays/tenancy/` and `overlays/tenancy-schema/`: the tenancy mode, as layers that
-  mirror the reference's tree, new files and replacements of reference files
-  (`overlays/replaced.sha256` pins what each replacement was written against;
-  `scripts/overlay-replacements.sh`). A row-based mode would be `overlays/tenancy-row/` over the same
-  shared layer. `crud-gen/references/bootstrap.md` explains the layout.
+  its pieces. `overlays/tenancy/` (shared), `overlays/tenancy-schema/` and `overlays/tenancy-row/`: the
+  two tenancy modes, as layers that mirror the reference's tree, new files and replacements of
+  reference files (`overlays/replaced.sha256` pins what each replacement was written against;
+  `scripts/overlay-replacements.sh`); row mode's table changes are `tenancy-row` blocks in the
+  reference's changesets and entities. `crud-gen/references/bootstrap.md` explains the layout.
 - `house-review/SKILL.md`: the review process.
 - `house-review/references/`: the rules: rest-api, code-smells, java, persistence, lenses,
   architecture, error-contract, config-baseline, metadata, media, tenancy.

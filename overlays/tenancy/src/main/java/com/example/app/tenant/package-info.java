@@ -21,6 +21,11 @@
  *       {@code TenantMigrations} brings every schema to the tenant changelog at deploy, one instance at
  *       a time, recording each in {@code tenant_migrations}.</li>
  *   <!-- tenancy-schema:end -->
+ *   <!-- tenancy-row:begin -->
+ *   <li><b>Row mode</b> (piece {@code tenancy-row}): every tenant shares the tables, so
+ *       {@code TenantProvisioning} only activates an approved tenant, right after the approval commits,
+ *       seeding its defaults under its scope.</li>
+ *   <!-- tenancy-row:end -->
  * </ul>
  *
  * No plans or payment state: a billing module owns those and decides when to call {@code suspend}.

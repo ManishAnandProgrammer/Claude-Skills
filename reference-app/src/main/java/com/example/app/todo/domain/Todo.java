@@ -1,6 +1,10 @@
 package com.example.app.todo.domain;
 
+// tenancy-row:begin
+// import com.example.app.common.persistence.TenantOwnedEntity;
+// tenancy-row:else
 import com.example.app.common.persistence.AuditableEntity;
+// tenancy-row:end
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -41,7 +45,11 @@ import java.util.stream.Collectors;
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+// tenancy-row:begin
+// public class Todo extends TenantOwnedEntity {
+// tenancy-row:else
 public class Todo extends AuditableEntity {
+// tenancy-row:end
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "todo_list_id", nullable = false)

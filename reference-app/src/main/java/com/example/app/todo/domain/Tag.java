@@ -1,7 +1,11 @@
 package com.example.app.todo.domain;
 
 import com.example.app.common.dropdown.DropdownCandidate;
+// tenancy-row:begin
+// import com.example.app.common.persistence.TenantOwnedEntity;
+// tenancy-row:else
 import com.example.app.common.persistence.AuditableEntity;
+// tenancy-row:end
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -20,7 +24,11 @@ import java.util.UUID;
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+// tenancy-row:begin
+// public class Tag extends TenantOwnedEntity {
+// tenancy-row:else
 public class Tag extends AuditableEntity {
+// tenancy-row:end
 
     @Setter
     @Column(nullable = false)

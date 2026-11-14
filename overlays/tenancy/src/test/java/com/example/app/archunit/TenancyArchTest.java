@@ -17,12 +17,16 @@ import org.hibernate.engine.jdbc.connections.spi.MultiTenantConnectionProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+// tenancy-schema:begin
 import org.springframework.data.jpa.repository.Query;
+// tenancy-schema:end
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+// tenancy-schema:begin
 import java.lang.reflect.Method;
+// tenancy-schema:end
 import java.lang.reflect.Parameter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,7 +35,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+// tenancy-schema:begin
 import java.util.regex.Pattern;
+// tenancy-schema:end
 import java.util.stream.Stream;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
@@ -97,6 +103,7 @@ class TenancyArchTest {
             .should().dependOnClassesThat(areTenantPlaneServices())
             .because("staff reach a tenant's data only through a Platform* service that audits and scopes the call (TEN-07)");
 
+    // tenancy-schema:begin
     @Test
     @DisplayName("Native queries never name a schema: the hook's search_path decides it (TEN-21)")
     void nativeQueriesNameNoSchema() throws Exception {
@@ -139,6 +146,28 @@ class TenancyArchTest {
         return Pattern.compile("\\b(platform|tenant_template|t_[0-9a-f]{32})\\.[a-z_]").matcher(sql).find();
     }
 
+    // tenancy-schema:end
+    // tenancy-row:begin
+    @Test
+    @DisplayName("Only the hook names app.tenant_id, the tenant every row-level security policy reads (TEN-04, TEN-31)")
+    void onlyTheHookSetsTheTenant() throws Exception {
+        List<String> offenders = new ArrayList<>();
+        for (Path source : mainSources()) {
+            if (source.getFileName().toString().equals("TransactionLocalTenantProvider.java")) {
+                continue;
+            }
+            for (String line : Files.readAllLines(source)) {
+                String code = line.strip();
+                boolean comment = code.startsWith("*") || code.startsWith("/*") || code.startsWith("//");
+                if (!comment && code.contains("app.tenant_id")) {
+                    offenders.add(source.getFileName() + ": " + code);
+                }
+            }
+        }
+        assertThat(offenders).isEmpty();
+    }
+
+    // tenancy-row:end
     private static List<Path> mainSources() throws IOException {
         try (Stream<Path> files = Files.walk(MAIN_SOURCES)) {
             return files.filter(path -> path.toString().endsWith(".java"))

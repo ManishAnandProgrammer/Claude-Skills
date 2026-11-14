@@ -1,5 +1,13 @@
 # The tenancy piece in tests: real roles (db/tenancy-roles.sql, TestcontainersConfiguration), and jobs
 # that run only when a test calls them.
+# tenancy-row:begin
+spring:
+  liquibase:
+    # The application's changelog and the row-mode tests' probe tables.
+    change-log: classpath:db/changelog/test-master.yaml
+    parameters:
+      appRole: test_app
+# tenancy-row:end
 app:
   liquibase:
     username: test_owner

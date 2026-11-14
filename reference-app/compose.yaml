@@ -23,7 +23,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
       # tenancy:begin
-      # # Runs once, when the data directory is new: the roles and the platform schema.
+      # # Runs once, when the data directory is new: the roles (schema per tenant: and the platform schema).
       # - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
       # tenancy:end
   # sign-in:begin

@@ -1,5 +1,5 @@
 # Tenancy (the tenancy piece): Hibernate's connection handling for the tenant hook, the database
-# roles, and, schema per tenant, the two changelogs and the tenant migrations (docs/runbook.md).
+# roles, and, schema per tenant, the two changelogs and the tenant migrations (docs/tenancy-runbook.md).
 spring:
   jpa:
     properties:
@@ -21,6 +21,12 @@ spring:
     parameters:
       appRole: ${app.tenancy.schema.app-role}
   # tenancy-schema:end
+  # tenancy-row:begin
+  liquibase:
+    parameters:
+      # The pool's role, granted DML on every table (changeset 0013); the owner keeps the rest.
+      appRole: ${DB_USER}
+  # tenancy-row:end
 
 app:
   limits:

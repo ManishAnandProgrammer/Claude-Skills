@@ -536,8 +536,45 @@ Hibernate validates only that one schema. The other tenant schemas are covered b
 - **Local runs:** `compose.yaml` creates the roles and the platform schema on a new database.
 
 **Phase 2:** invitations; email verification (no mail sending in the pieces); deleting stale PENDING
-registrations; parallel tenant migrations; impersonating a suspended tenant; break-glass; row mode
-(`overlays/tenancy-row/`, house-review `tenancy.md` lists what it brings).
+registrations; parallel tenant migrations; impersonating a suspended tenant; break-glass.
+
+## Built (2026-11-15): row mode as overlays
+
+- **Layout:** `overlays/tenancy-row/` over the same shared `overlays/tenancy/`; a copy has one mode
+  (`bootstrap-copy.sh` refuses both). The tenant tables' own changes (`tenant_id`, keys, composite
+  foreign keys, policies, the entities' base class `TenantOwnedEntity`) are `tenancy-row` blocks in the
+  reference's changesets `0002`–`0011` and entities, commented out there. One master, the platform's
+  changesets first. `verify.sh` 2i (row alone) and 2j (every piece) run every test.
+- **The guard:** `RowSecurityCatalogIntegrationTest` reads the catalogue: every table is a tenant table
+  (forced RLS, exactly one `tenant_isolation` policy for every command, `tenant_id NOT NULL REFERENCES
+  tenants`, keys to other tenant tables carrying `tenant_id`, its entity a `TenantOwnedEntity`) or a
+  platform table named with its reason; the app role is no superuser, has no `BYPASSRLS`, owns nothing.
+  It is proven to catch a table without a policy and one enabled but not forced.
+- **Decided while building, each measured:**
+  - `tenant_id` has `DEFAULT nullif(current_setting('app.tenant_id', true), '')::uuid`: native and
+    fixture inserts get the transaction's tenant without naming it; without a tenant the policy refuses
+    the row (its check fires before NOT NULL).
+  - **Key order:** `tenant_id` is an equality column after the owner (`(owner_id, tenant_id, name, id)`,
+    DATA-10's order), and last in a composite key's target (`(id, owner_id, tenant_id)`). With the
+    tenant first, the owner's foreign key needed an index of its own, and both it and a `(tenant_id, id)`
+    target took the list plans (with a sort) in the reference's index tests.
+  - With Hibernate's `tenant_id = ?`, the policy's predicate becomes a one-time filter; alone (native
+    SQL), it is an index condition. Native queries take no tenant parameter.
+  - The plans' overlap check (`&&`, not leakproof) can't use the exclusion constraint's GiST index under
+    the policy: the reference's `PlanIndexIntegrationTest` has a row variant (TEN-36).
+  - **Memberships stay a platform table** (decision 8 said a tenant table): login and "my tenants" read a
+    user's memberships across tenants before one is chosen.
+  - **Provisioning** is the activation, right after the approval commits, in a new transaction inside
+    `TenantScope.runAs` (inside the approving one the tenant is fixed as `NO_TENANT`, and before its
+    commit the tenant row isn't visible). A failure leaves it PENDING; approving again retries.
+  - **Upload policies are per tenant** in both modes. A changeset can't seed them in row mode, so the
+    owning module seeds a new tenant's on `TenantProvisioned` (`TodoAttachmentPolicySeed` through
+    `Uploads.definePolicy`).
+
+**Row-mode gaps:** the jobs' native statements rely on the policy, not an explicit predicate (proven
+correct; plans per tenant measured on the test data only); tenant export and deletion; the `BYPASSRLS`
+system pool (decision 10); per-tenant reads of `tenant_memberships` are the services' predicates, not
+RLS.
 
 ## Later (rules and notes, not in the first setup)
 

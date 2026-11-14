@@ -1,6 +1,10 @@
 package com.example.app.todo.domain;
 
+// tenancy-row:begin
+// import com.example.app.common.persistence.TenantOwnedEntity;
+// tenancy-row:else
 import com.example.app.common.persistence.AuditableEntity;
+// tenancy-row:end
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -25,7 +29,11 @@ import java.util.UUID;
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+// tenancy-row:begin
+// public class TimeEntry extends TenantOwnedEntity {
+// tenancy-row:else
 public class TimeEntry extends AuditableEntity {
+// tenancy-row:end
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "todo_id", nullable = false, updatable = false)

@@ -97,10 +97,20 @@ class PlanIndexIntegrationTest extends IntegrationTest {
         return Stream.of(
                 Arguments.of("a todo's delete (the foreign key's check)", "select 1 from plans where todo_id = :todo and owner_id = :owner",
                         "idx_plans_todo_id_owner_id_(starts_on_)?id"),
+                // tenancy-row:begin
+                // // Row mode: && isn't leakproof, so it can't run before the tenant policy and the constraint's GiST
+                // // index can't take it (house-review TEN-36): the owner's plans in the tenant are read through a btree
+                // // index and filtered. The constraint itself still decides (key checks don't pass the policy).
+                // Arguments.of("an overlap check (a filter: && isn't leakproof)", """
+                //         select 1 from plans
+                //         where owner_id = :owner and daterange(starts_on, ends_on, '[]') && daterange(:day, :day, '[]')""",
+                //         "idx_plans_(todo_id_)?owner_id_\\w+"));
+                // tenancy-row:else
                 Arguments.of("an overlap check (the exclusion constraint)", """
                         select 1 from plans
                         where owner_id = :owner and daterange(starts_on, ends_on, '[]') && daterange(:day, :day, '[]')""",
                         "ex_plans_owner_id_dates"));
+                // tenancy-row:end
     }
 
     @ParameterizedTest(name = "{0}")

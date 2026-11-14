@@ -24,15 +24,20 @@
 #              staff under /platform/** with their own tokens, impersonation and audited direct edits,
 #              memberships, provisioning and the deploy-time tenant migrations, two changelogs
 #              (platform.yaml, tenant.yaml)
+#     tenancy-row
+#              multi-tenancy, one schema with a tenant_id and row-level security on every tenant table
+#              (needs sign-in; not with tenancy-schema): the same platform and token parts, the
+#              transaction-local app.tenant_id hook, Hibernate's @TenantId through TenantOwnedEntity,
+#              the RLS policies in the changesets, provisioning as an activation after the approval
 #     tenant-registration
 #              with a tenancy piece: the public POST /tenant-registrations (a PENDING tenant that staff
 #              approve); without it, only staff create tenants
-#   metadata, media and tenancy-schema have admin endpoints: with sign-in, each brings the ADMIN role
+#   metadata, media and the tenancy pieces have admin endpoints: with sign-in, each brings the ADMIN role
 #   and the test base's newAdmin() (the "admin" markers).
 #
 # Where files come from: reference-app/ is a plain application, without tenancy. A tenancy mode adds
 # layers over it, each mirroring the reference's tree: overlays/tenancy (what every mode shares) and
-# overlays/tenancy-schema (schema per tenant only; a row mode would be overlays/tenancy-row). A layer's
+# overlays/tenancy-schema (schema per tenant only) or overlays/tenancy-row (row mode only). A layer's
 # file that the reference (or an earlier layer) also has replaces it in the copy, and only when that
 # file is copied; overlays/replaced.sha256 pins the version each replacement was written against
 # (scripts/overlay-replacements.sh, run by verify.sh). Every other layer file is new and arrives with
@@ -40,7 +45,7 @@
 #
 # Shared files (ErrorCode, messages, limits, db.yml, compose.yaml, .env.example, Role, test base,
 # ArchUnit) mark a piece's entries with "<piece>:begin" / "<piece>:end" comment lines (sign-in,
-# example, metadata, media, admin, tenancy, tenancy-schema, tenant-registration): without that piece
+# example, metadata, media, admin, tenancy, tenancy-schema, tenancy-row, tenant-registration): without that piece
 # those blocks are left out; blocks may nest (a media block inside an example block arrives only with
 # both). A block may hold "<piece>:else": its lines after that marker are commented out in the
 # reference and replace the block's first part without the piece (uncommented: "// ", "# ", "-- " or
@@ -86,11 +91,10 @@ package_path="${package//.//}"
 chosen_piece() { [[ ",$pieces," == *",$1,"* ]]; }
 
 # The ADMIN role (Role.ADMIN, its changeset, newAdmin()) comes with the first piece that has admin endpoints.
-admin_chosen() { chosen_piece metadata || chosen_piece media || chosen_piece tenancy-schema; }
+admin_chosen() { chosen_piece metadata || chosen_piece media || tenancy_chosen; }
 
-# The tenancy part every mode shares (overlays/tenancy, the "tenancy" markers): today one mode, schema
-# per tenant; a row mode adds itself here.
-tenancy_chosen() { chosen_piece tenancy-schema; }
+# The tenancy part every mode shares (overlays/tenancy, the "tenancy" markers): schema per tenant or row mode.
+tenancy_chosen() { chosen_piece tenancy-schema || chosen_piece tenancy-row; }
 
 # The layers a copy is made of, in order: a later layer's file replaces an earlier one's.
 layers="reference-app"
@@ -100,8 +104,35 @@ fi
 if chosen_piece tenancy-schema; then
     layers+=" overlays/tenancy-schema"
 fi
+if chosen_piece tenancy-row; then
+    layers+=" overlays/tenancy-row"
+fi
 SHARED="overlays/tenancy"
 SCHEMA="overlays/tenancy-schema"
+ROW="overlays/tenancy-row"
+
+# What every tenancy mode copies from overlays/tenancy, beside the mode's own layer.
+shared_tenancy_files() {
+    echo "$SHARED/src"
+    # The cross-tenant tests of the example's entities (crud-gen generates one per entity).
+    if chosen_piece example; then
+        echo "$SHARED/src/test/java/$reference_path/todo/TodoTenantIsolationIntegrationTest.java"
+    fi
+    # Staff editing a tenant's configuration directly: the golden cross-tenant edit.
+    if chosen_piece metadata; then cat <<LIST
+$SHARED/src/main/java/$reference_path/metadata/service/PlatformMetadataService.java
+$SHARED/src/main/java/$reference_path/metadata/controller/PlatformMetadataController.java
+$SHARED/src/main/java/$reference_path/metadata/controller/api/PlatformMetadataApi.java
+LIST
+        if chosen_piece example; then
+            echo "$SHARED/src/test/java/$reference_path/metadata/PlatformMetadataIntegrationTest.java"
+        fi
+    fi
+    # The tenant owner's ADMIN role, unless another piece already brings it.
+    if ! chosen_piece metadata && ! chosen_piece media; then
+        echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
+    fi
+}
 
 # Files per piece, relative to reference-app/, or to the repository when they start with overlays/.
 # Directories are copied recursively.
@@ -212,27 +243,23 @@ LIST
             ;;
         tenancy-schema)
             # The part every tenancy mode shares, then schema per tenant's own.
-            echo "$SHARED/src"
+            shared_tenancy_files
             echo "$SCHEMA/src"
             echo "$SCHEMA/docs"
             echo "$SCHEMA/docker"
-            # The cross-tenant tests of the example's entities (crud-gen generates one per entity).
-            if chosen_piece example; then
-                echo "$SHARED/src/test/java/$reference_path/todo/TodoTenantIsolationIntegrationTest.java"
-            fi
-            # Staff editing a tenant's configuration directly: the golden cross-tenant edit.
-            if chosen_piece metadata; then cat <<LIST
-$SHARED/src/main/java/$reference_path/metadata/service/PlatformMetadataService.java
-$SHARED/src/main/java/$reference_path/metadata/controller/PlatformMetadataController.java
-$SHARED/src/main/java/$reference_path/metadata/controller/api/PlatformMetadataApi.java
-LIST
+            ;;
+        tenancy-row)
+            # The part every tenancy mode shares, then row mode's own.
+            shared_tenancy_files
+            echo "$ROW/src"
+            echo "$ROW/docs"
+            echo "$ROW/docker"
+            # Upload policies' starting limits per tenant, and the module listener that seeds them.
+            if chosen_piece media; then
+                echo "$ROW/src/main/java/$reference_path/media/api/UploadLimits.java"
                 if chosen_piece example; then
-                    echo "$SHARED/src/test/java/$reference_path/metadata/PlatformMetadataIntegrationTest.java"
+                    echo "$ROW/src/main/java/$reference_path/todo/service/TodoAttachmentPolicySeed.java"
                 fi
-            fi
-            # The tenant owner's ADMIN role, unless another piece already brings it.
-            if ! chosen_piece metadata && ! chosen_piece media; then
-                echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
             fi
             ;;
         tenant-registration) cat <<LIST
@@ -243,7 +270,7 @@ $SHARED/src/main/java/$reference_path/user/service/TenantRegistrationService.jav
 $SHARED/src/test/java/$reference_path/tenant/TenantRegistrationIntegrationTest.java
 LIST
             ;;
-        *) die "unknown piece: $1 (core, sign-in, example, metadata, media, tenancy-schema, tenant-registration)" ;;
+        *) die "unknown piece: $1 (core, sign-in, example, metadata, media, tenancy-schema, tenancy-row, tenant-registration)" ;;
     esac
 }
 
@@ -256,6 +283,7 @@ dependencies_for() {
         metadata) echo "(none beyond core)" ;;
         media) echo "s3 (software.amazon.awssdk), its version from software.amazon.awssdk:bom imported in dependencyManagement; test: the image versity/versitygw (a Testcontainers GenericContainer, no extra dependency)" ;;
         tenancy-schema) echo "(none beyond core: Hibernate's multi-tenancy and Liquibase, already there)" ;;
+        tenancy-row) echo "(none beyond core: Hibernate's multi-tenancy and @TenantId, already there)" ;;
         tenant-registration) echo "(none beyond sign-in)" ;;
     esac
 }
@@ -273,7 +301,7 @@ dest_for() {
 # with it, only the marker lines (and an ":else" part) go. In reference files a tenancy block is
 # commented out instead: kept uncommented with the piece, dropped without it.
 kept_markers=","
-for optional in sign-in example metadata media admin tenancy tenancy-schema tenant-registration; do
+for optional in sign-in example metadata media admin tenancy tenancy-schema tenancy-row tenant-registration; do
     if { [ "$optional" = admin ] && admin_chosen; } || { [ "$optional" = tenancy ] && tenancy_chosen; } || chosen_piece "$optional"; then
         kept_markers+="$optional,"
     fi
@@ -282,7 +310,7 @@ done
 piece_filter() {
     KEPT="$kept_markers" SOURCE="$1" perl -ne '
         BEGIN { @open = (); }
-        if (/\b(sign-in|example|metadata|media|admin|tenancy-schema|tenancy|tenant-registration):(begin|else|end)\b/) {
+        if (/\b(sign-in|example|metadata|media|admin|tenancy-schema|tenancy-row|tenancy|tenant-registration):(begin|else|end)\b/) {
             my ($piece, $marker) = ($1, $2);
             my $kept = index($ENV{KEPT}, ",$piece,") >= 0;
             my $commented = $ENV{SOURCE} eq "reference" && $piece =~ /^tenan/;
@@ -364,17 +392,23 @@ fi
 if chosen_piece media; then
     echo "note: the media piece needs MEDIA_BUCKET and MEDIA_REGION, and S3 credentials from the AWS SDK's default chain (an IAM role in production)" >&2
 fi
+if chosen_piece tenancy-schema && chosen_piece tenancy-row; then
+    die "tenancy-schema and tenancy-row are two answers to one question: choose one"
+fi
 if tenancy_chosen && ! chosen_piece sign-in; then
-    die "tenancy-schema needs sign-in: memberships, the tenant claim and the platform's login live in the user module"
+    die "a tenancy piece needs sign-in: memberships, the tenant claim and the platform's login live in the user module"
 fi
 if chosen_piece tenant-registration && ! tenancy_chosen; then
-    die "tenant-registration needs a tenancy piece (tenancy-schema)"
+    die "tenant-registration needs a tenancy piece (tenancy-schema or tenancy-row)"
 fi
-if tenancy_chosen; then
+if chosen_piece tenancy-schema; then
     echo "note: tenancy needs the database roles and the platform schema before the first start (docs/tenancy-runbook.md; compose.yaml creates them locally), and DB_OWNER_USER / DB_OWNER_PASSWORD" >&2
 fi
+if chosen_piece tenancy-row; then
+    echo "note: tenancy needs the database roles before the first start (docs/tenancy-runbook.md; compose.yaml creates them locally), and DB_OWNER_USER / DB_OWNER_PASSWORD" >&2
+fi
 # Every file any piece can name, whatever was chosen: a directory copy never takes another piece's file.
-all_pieces="core sign-in example metadata media tenancy-schema tenant-registration"
+all_pieces="core sign-in example metadata media tenancy-schema tenancy-row tenant-registration"
 with_reference_prefix() { sed -e '/^overlays\//!s|^|reference-app/|'; }
 named_files="$(pieces="${all_pieces// /,}"; for piece in $all_pieces; do files_for "$piece"; done | with_reference_prefix)"
 # Core files a tenancy mode replaces: its connection hook borrows lazily, so the lazy proxy goes.
@@ -401,17 +435,33 @@ done
 # The Liquibase master lists the changesets that were copied, in order; an existing one is kept.
 # Schema per tenant has two masters, copied with the piece (platform.yaml, tenant.yaml): they are
 # rewritten here to list exactly the copied changesets, the platform's in the first, every other in
-# the second.
-platform_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql"
-write_master() {
-    local file="$1" header="$2" want="$3" includes="" changeset name
+# the second. Row mode has one master with the platform's changesets first: every tenant table
+# references tenants, and the app role's default privileges (0013) then cover each tenant table.
+platform_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql"
+# $1: platform, tenant or all; the copied changesets of that kind, in order.
+changesets_of() {
+    local want="$1" changeset name
     while IFS= read -r changeset; do
         name="$(basename "$changeset")"
         if { [ "$want" = platform ] && [[ " $platform_changesets " == *" $name "* ]]; } \
             || { [ "$want" = tenant ] && [[ " $platform_changesets " != *" $name "* ]]; } || [ "$want" = all ]; then
-            includes+="  - include:"$'\n'"      file: changes/$name"$'\n'"      relativeToChangelogFile: true"$'\n'
+            echo "$name"
         fi
     done < <(find "$target/src/main/resources/db/changelog/changes" -name '*.sql' | sort)
+}
+# $3: platform, tenant, all, or platform-first (row mode: the platform's, then every other).
+write_master() {
+    local file="$1" header="$2" want="$3" includes="" names name
+    if [ "$want" = platform-first ]; then
+        names="$(changesets_of platform; changesets_of tenant)"
+    else
+        names="$(changesets_of "$want")"
+    fi
+    while IFS= read -r name; do
+        if [ -n "$name" ]; then
+            includes+="  - include:"$'\n'"      file: changes/$name"$'\n'"      relativeToChangelogFile: true"$'\n'
+        fi
+    done <<< "$names"
     {
         if [ -n "$header" ]; then
             printf '%s\n' "$header"
@@ -427,7 +477,7 @@ write_master() {
 }
 # The changes directory exists even when no piece brings a changeset (core alone).
 $dry_run || mkdir -p "$target/src/main/resources/db/changelog/changes"
-if tenancy_chosen; then
+if chosen_piece tenancy-schema; then
     for master in platform tenant; do
         if ! $dry_run && [[ " ${copied[*]} " == *" src/main/resources/db/changelog/$master.yaml "* ]]; then
             header="$(grep '^#' "$REPO/$SCHEMA/src/main/resources/db/changelog/$master.yaml")"
@@ -440,7 +490,9 @@ else
         skipped+=("$master (add the new changesets to it yourself)")
     else
         copied+=("$master")
-        if ! $dry_run; then
+        if ! $dry_run && chosen_piece tenancy-row; then
+            write_master "$master" "" platform-first
+        elif ! $dry_run; then
             write_master "$master" "" all
         fi
     fi

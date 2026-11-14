@@ -21,6 +21,13 @@
 #          tenant-registration. The todo, plan, metadata and media tables in the tenant changelog, the
 #          media keys per tenant, the cross-tenant tests, self-registration; every test runs, the
 #          reference's own tests inside the test tenant;
+#      2i. core + sign-in + tenancy-row: row mode alone, staff-only registration (no tenant table but
+#          the tests' probe), with real database roles (the app role NOBYPASSRLS): the hook, the
+#          policies' guard, the isolation tests; every test runs;
+#      2j. every piece with row mode: core + sign-in + example + metadata + media + tenancy-row +
+#          tenant-registration. Every reference table a tenant table under its forced policy (the
+#          catalogue guard), composite keys, seeds on TenantProvisioned, the cross-tenant tests; every
+#          test runs, the reference's own tests inside the test tenant;
 #      2d. core alone (a project signing users in elsewhere), without sign-in's Redis and Bucket4j
 #          dependencies: main and test code compile and the unit tests pass. Its integration and
 #          ArchUnit tests are left out: the integration tests sign users in through sign-in, and the
@@ -109,7 +116,7 @@ grep -rqE "metadata:(begin|end)|METADATA_|configuration_metadata|MetadataKey" "$
 grep -rqE "media:(begin|end)|admin:(begin|end)|MEDIA_(BUCKET|STORAGE)|UPLOAD_|media_files|upload_policies|UploadPurpose|awssdk|newAdmin" "$project/src" "$project/.env.example" \
     && { echo "FAILED: media-piece or admin entries left in a copy without the media piece" >&2; exit 1; }
 # No tenancy without its piece, and every ":else" part arrived uncommented (the build proves it compiles).
-grep -rqE "tenancy(-schema)?:(begin|else|end)|TenantContext|TenantScope|tenant_memberships|DB_OWNER_USER|search_path" "$project/src" "$project/.env.example" \
+grep -rqE "tenancy(-schema|-row)?:(begin|else|end)|TenantContext|TenantScope|TenantOwnedEntity|tenant_memberships|app\.tenant_id|ROW LEVEL SECURITY|DB_OWNER_USER|search_path" "$project/src" "$project/.env.example" \
     && { echo "FAILED: tenancy entries left in a copy without a tenancy piece" >&2; exit 1; }
 [ -f "$project/src/main/java/com/acme/smoke/config/LazyConnectionConfig.java" ] && [ -f "$project/src/main/resources/db/changelog/db.changelog-master.yaml" ] \
     || { echo "FAILED: the lazy connection proxy or the single Liquibase master is missing from a copy without tenancy" >&2; exit 1; }
@@ -129,7 +136,7 @@ sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>example</artifactId
 sed -e 's/package com.acme.smoke;/package com.acme.example;/' -e 's/SmokeApplication/ExampleApplication/g' \
     "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$example/src/main/java/com/acme/example/ExampleApplication.java"
 "$REPO/scripts/bootstrap-copy.sh" --target "$example" --package com.acme.example --with core,sign-in,example,metadata > "$WORK/copy-example.log"
-grep -rqE "(example|metadata|admin|media):(begin|end)" "$example/src" && { echo "FAILED: piece markers left in the copy" >&2; exit 1; }
+grep -rqE "(example|metadata|admin|media|tenancy-row):(begin|else|end)|TenantOwnedEntity|app\.tenant_id|ROW LEVEL SECURITY|definePolicy" "$example/src" && { echo "FAILED: piece markers or row-mode tenancy left in the copy" >&2; exit 1; }
 grep -rqE "Attachment|UploadPurpose|MEDIA_(BUCKET|STORAGE)|UPLOAD_|media_files|awssdk" "$example/src" && { echo "FAILED: media entries left in an example copy without the media piece" >&2; exit 1; }
 [ -f "$example/src/test/java/com/acme/example/metadata/MetadataIntegrationTest.java" ] || { echo "FAILED: the metadata samples' tests are missing from the copy with both pieces" >&2; exit 1; }
 mvn_verify "$example" "$WORK/example.log"
@@ -199,7 +206,7 @@ sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>tenancy</artifactId
 sed -e 's/package com.acme.smoke;/package com.acme.tenancy;/' -e 's/SmokeApplication/TenancyApplication/g' \
     "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$tenancy/src/main/java/com/acme/tenancy/TenancyApplication.java"
 "$REPO/scripts/bootstrap-copy.sh" --target "$tenancy" --package com.acme.tenancy --with core,sign-in,tenancy-schema > "$WORK/copy-tenancy.log" 2>&1
-grep -rqE "(example|metadata|media|admin|tenancy|tenancy-schema|tenant-registration):(begin|else|end)|TODO_LIST|todo_lists|METADATA_|media_files|UploadPurpose" "$tenancy/src" \
+grep -rqE "(example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration):(begin|else|end)|TODO_LIST|todo_lists|METADATA_|media_files|UploadPurpose|TenantOwnedEntity|app\.tenant_id" "$tenancy/src" \
     && { echo "FAILED: markers or other pieces' entries left in the tenancy copy" >&2; exit 1; }
 [ -f "$tenancy/src/main/java/com/acme/tenancy/config/LazyConnectionConfig.java" ] && { echo "FAILED: the lazy proxy in a tenancy copy (the hook borrows lazily)" >&2; exit 1; }
 [ -f "$tenancy/src/main/resources/db/changelog/db.changelog-master.yaml" ] && { echo "FAILED: a single master in a schema-per-tenant copy" >&2; exit 1; }
@@ -219,14 +226,61 @@ sed -e 's/package com.acme.smoke;/package com.acme.tenants;/' -e 's/SmokeApplica
     "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$tenants/src/main/java/com/acme/tenants/TenantsApplication.java"
 "$REPO/scripts/bootstrap-copy.sh" --target "$tenants" --package com.acme.tenants \
     --with core,sign-in,example,metadata,media,tenancy-schema,tenant-registration > "$WORK/copy-tenants.log" 2>&1
-grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenant-registration):(begin|else|end)" "$tenants/src" "$tenants/compose.yaml" "$tenants/.env.example" \
+grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration):(begin|else|end)" "$tenants/src" "$tenants/compose.yaml" "$tenants/.env.example" \
     && { echo "FAILED: markers left in the copy with every piece" >&2; exit 1; }
+grep -rqE "TenantOwnedEntity|app\.tenant_id|ROW LEVEL SECURITY" "$tenants/src" && { echo "FAILED: row mode in a schema-per-tenant copy" >&2; exit 1; }
 grep -q "0002-todo-lists.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" && grep -q "0009-media-files.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" \
     && ! grep -q "0002-todo-lists.sql" "$tenants/src/main/resources/db/changelog/platform.yaml" \
     || { echo "FAILED: the todo and media tables are not in the tenant changelog alone" >&2; exit 1; }
 grep -q "docker-entrypoint-initdb.d" "$tenants/compose.yaml" && [ -x "$tenants/docker/postgres-init/10-tenancy-roles.sh" ] \
     || { echo "FAILED: compose.yaml doesn't create the tenancy roles in the copy" >&2; exit 1; }
 mvn_verify "$tenants" "$WORK/tenants.log"
+
+echo "[2i/3] bootstrap-copy with row mode, without the example (package com.acme.rows)"
+rows="$WORK/rows"
+mkdir -p "$rows/src/main/java/com/acme/rows"
+cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$rows/"
+sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>rows</artifactId>|' -e 's|<name>reference-app</name>|<name>rows</name>|' \
+    "$REFERENCE/pom.xml" > "$rows/pom.xml"
+sed -e 's/package com.acme.smoke;/package com.acme.rows;/' -e 's/SmokeApplication/RowsApplication/g' \
+    "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$rows/src/main/java/com/acme/rows/RowsApplication.java"
+"$REPO/scripts/bootstrap-copy.sh" --target "$rows" --package com.acme.rows --with core,sign-in,tenancy-row > "$WORK/copy-rows.log" 2>&1
+grep -rqE "(example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration):(begin|else|end)|TODO_LIST|todo_lists|METADATA_|media_files|UploadPurpose|UploadLimits" "$rows/src" \
+    && { echo "FAILED: markers or other pieces' entries left in the row-mode copy" >&2; exit 1; }
+grep -rqE "TenantSchemas|search_path|tenant_template|TenantMigration" "$rows/src" && { echo "FAILED: schema-per-tenant code in a row-mode copy" >&2; exit 1; }
+[ -f "$rows/src/main/java/com/acme/rows/config/LazyConnectionConfig.java" ] && { echo "FAILED: the lazy proxy in a row-mode copy (the hook borrows lazily)" >&2; exit 1; }
+[ -f "$rows/src/main/resources/db/changelog/platform.yaml" ] && { echo "FAILED: two masters in a row-mode copy" >&2; exit 1; }
+[ -f "$rows/src/main/java/com/acme/rows/user/controller/TenantRegistrationController.java" ] \
+    && { echo "FAILED: the public registration endpoint in a copy without tenant-registration" >&2; exit 1; }
+grep -q "0012-tenancy.sql" "$rows/src/main/resources/db/changelog/db.changelog-master.yaml" \
+    && grep -q "0013-row-security.sql" "$rows/src/main/resources/db/changelog/db.changelog-master.yaml" \
+    || { echo "FAILED: the row-mode master doesn't list the tenancy changesets" >&2; exit 1; }
+mvn_verify "$rows" "$WORK/rows.log"
+
+echo "[2j/3] bootstrap-copy with every piece, row mode and self-registration included (package com.acme.rowtenants)"
+rowtenants="$WORK/rowtenants"
+mkdir -p "$rowtenants/src/main/java/com/acme/rowtenants"
+cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$rowtenants/"
+sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>rowtenants</artifactId>|' -e 's|<name>reference-app</name>|<name>rowtenants</name>|' \
+    "$REFERENCE/pom.xml" > "$rowtenants/pom.xml"
+sed -e 's/package com.acme.smoke;/package com.acme.rowtenants;/' -e 's/SmokeApplication/RowtenantsApplication/g' \
+    "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$rowtenants/src/main/java/com/acme/rowtenants/RowtenantsApplication.java"
+"$REPO/scripts/bootstrap-copy.sh" --target "$rowtenants" --package com.acme.rowtenants \
+    --with core,sign-in,example,metadata,media,tenancy-row,tenant-registration > "$WORK/copy-rowtenants.log" 2>&1
+grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration):(begin|else|end)" "$rowtenants/src" "$rowtenants/compose.yaml" "$rowtenants/.env.example" \
+    && { echo "FAILED: markers left in the row-mode copy with every piece" >&2; exit 1; }
+rowmaster="$rowtenants/src/main/resources/db/changelog/db.changelog-master.yaml"
+# The platform's changesets first: every tenant table references tenants.
+[ "$(grep -n "0012-tenancy.sql" "$rowmaster" | cut -d: -f1)" -lt "$(grep -n "0002-todo-lists.sql" "$rowmaster" | cut -d: -f1)" ] \
+    || { echo "FAILED: the row-mode master lists a tenant table before the tenants table" >&2; exit 1; }
+[ "$(cat "$rowtenants"/src/main/resources/db/changelog/changes/*.sql | grep -c "ENABLE ROW LEVEL SECURITY")" -ge 11 ] \
+    || { echo "FAILED: the reference's tenant tables lost their policies in the row-mode copy" >&2; exit 1; }
+[ -f "$rowtenants/src/main/java/com/acme/rowtenants/todo/service/TodoAttachmentPolicySeed.java" ] \
+    || { echo "FAILED: the todo attachments' seed listener is missing from the row-mode copy" >&2; exit 1; }
+grep -q "docker-entrypoint-initdb.d" "$rowtenants/compose.yaml" && [ -x "$rowtenants/docker/postgres-init/10-tenancy-roles.sh" ] \
+    && ! grep -q "search_path" "$rowtenants/docker/postgres-init/10-tenancy-roles.sh" \
+    || { echo "FAILED: compose.yaml doesn't create the row-mode roles in the copy" >&2; exit 1; }
+mvn_verify "$rowtenants" "$WORK/rowtenants.log"
 
 echo "[2d/3] bootstrap-copy of core alone, without the Redis dependencies (package com.acme.core)"
 core="$WORK/core"

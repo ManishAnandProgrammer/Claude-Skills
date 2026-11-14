@@ -5,6 +5,9 @@ import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.media.api.FileCountRange;
+// tenancy-row:begin
+// import com.example.app.media.api.UploadLimits;
+// tenancy-row:end
 import com.example.app.media.api.MediaFileStatus;
 import com.example.app.media.api.MediaFileView;
 import com.example.app.media.api.UploadPurpose;
@@ -124,6 +127,14 @@ public class MediaFileService implements Uploads {
         Set<UUID> ids = Set.copyOf(mediaFileIds);
         return ids.isEmpty() || repository.countByIdInAndStatus(ids, MediaFileStatus.UPLOADED) == ids.size();
     }
+    // tenancy-row:begin
+
+    // @Override
+    // @Transactional
+    // public void definePolicy(UploadPurpose purpose, UploadLimits limits) {
+    //     policyService.define(purpose, limits);
+    // }
+    // tenancy-row:end
 
     /** The verification job's batch: leased in one short transaction, so no other instance takes it. */
     @Transactional

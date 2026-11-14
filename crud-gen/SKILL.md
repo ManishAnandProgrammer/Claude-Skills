@@ -153,8 +153,26 @@ against the template, TEN-24); never `platform.yaml`, which holds the platform's
 has **no `tenant_id`** (the schema is the tenant), the entity's `@Table` names no schema, and a
 native query names none either (TEN-21): the connection hook picks the schema. A reference to a user
 stays a plain foreign key to `users` (a platform table, found through the owner's `search_path`).
-Ownership checks are unchanged: they separate users inside one tenant. `{{tenancy}}` = `row` is not
-built yet: stop and say so.
+Ownership checks are unchanged: they separate users inside one tenant.
+
+**With `{{tenancy}}` = `row`** (house-review `tenancy.md`, TEN-30…36; golden: the `tenancy-row` blocks of
+the reference's `0002`–`0006` changesets and its todo entities, which bootstrap uncommented in the
+project's copies), add these pre-flight rows for every tenant table (a platform table is one the user
+names as such; it joins `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES` with its reason):
+
+| Check | Rule |
+|---|---|
+| The entity extends `TenantOwnedEntity` (`@TenantId`), never `{{AuditBase}}` directly; no `tenantId` in its builder calls, requests, filters, repositories or services | TEN-32, TEN-01 |
+| `tenant_id uuid NOT NULL DEFAULT nullif(current_setting('app.tenant_id', true), '')::uuid` and `fk_<table>_tenant_id → tenants (id)` | TEN-30 |
+| `ENABLE` + `FORCE ROW LEVEL SECURITY` and the one `tenant_isolation` policy (`USING` and `WITH CHECK`, the same predicate) **in the changeset that creates the table** | TEN-30 |
+| Every unique constraint and list index has `tenant_id` among its equality columns, after the owner (`(owner_id, tenant_id, sort…, id)`), leading when the tenant alone scopes the list; names as in single-tenant | TEN-33, DATA-10 |
+| A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last (a new changeset when the parent's is applied); a reference to `users` stays plain | TEN-33, DATA-33 |
+| No seed rows in the changeset: a tenant's starting rows come from a `TenantProvisioned` listener in the module (golden `TodoAttachmentPolicySeed`) | TEN-34 |
+| A native query adds no tenant parameter (the policy filters it, and its predicate is an index condition); a search on `jsonb @>`, `LIKE`/`ILIKE` or range `&&` is flagged as a filter over the tenant's rows | TEN-32, TEN-36 |
+| Statuses `text` with a check constraint, never a PostgreSQL enum (its `=` isn't leakproof) | DATA-07, TEN-36 |
+
+The master (`db.changelog-master.yaml`) lists the platform's changesets first; the new changeset goes
+at its end.
 
 ---
 
@@ -406,7 +424,9 @@ Read `references/tests.md` and follow the golden test classes. With `{{tenancy}}
 generate `EntityNameTenantIsolationIntegrationTest` (golden: the skills repo's
 `overlays/tenancy/src/test/java/com/example/app/todo/TodoTenantIsolationIntegrationTest.java`):
 another tenant's member (`newUserIn(newTenant())`) gets 404 with the code on GET, PUT, actions and
-DELETE of the record, which stays unchanged, and that tenant's lists never show it (TEN-13).
+DELETE of the record, which stays unchanged, and that tenant's lists never show it (TEN-13). With
+`{{tenancy}}` = `row`, also tests.md row 15c (a native query of the entity, and the catalogue guard run
+with the new table).
 
 ## Step 7: Build and test
 Run `{{buildCommand}}`. Fix every compile error or test failure in the generated code; never report

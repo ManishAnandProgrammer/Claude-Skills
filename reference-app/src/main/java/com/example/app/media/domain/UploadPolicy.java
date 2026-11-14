@@ -1,6 +1,10 @@
 package com.example.app.media.domain;
 
+// tenancy-row:begin
+// import com.example.app.common.persistence.TenantOwnedEntity;
+// tenancy-row:else
 import com.example.app.common.persistence.AuditableEntity;
+// tenancy-row:end
 import com.example.app.media.api.UploadPurpose;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -23,7 +27,11 @@ import java.util.List;
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+// tenancy-row:begin
+// public class UploadPolicy extends TenantOwnedEntity {
+// tenancy-row:else
 public class UploadPolicy extends AuditableEntity {
+// tenancy-row:end
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, updatable = false)

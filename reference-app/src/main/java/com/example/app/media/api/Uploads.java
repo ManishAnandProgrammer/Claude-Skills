@@ -32,4 +32,13 @@ public interface Uploads {
 
     /** Whether every one of the files is UPLOADED: for a step that needs complete files (an approval). */
     boolean allUploaded(Collection<UUID> mediaFileIds);
+    // tenancy-row:begin
+
+    // /**
+    //  * A purpose's starting limits in the current tenant, once: a second call for the purpose changes
+    //  * nothing. Row mode only, from the owning module's {@code TenantProvisioned} listener (a changeset
+    //  * can't seed a tenant's rows there).
+    //  */
+    // void definePolicy(UploadPurpose purpose, UploadLimits limits);
+    // tenancy-row:end
 }

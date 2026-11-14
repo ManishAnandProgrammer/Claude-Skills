@@ -2,8 +2,10 @@ package com.example.app.tenant;
 
 import com.example.app.support.IntegrationTest;
 import com.example.app.support.WithoutTestTenant;
+import com.example.app.tenant.api.Tenants;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.UUID;
@@ -19,6 +21,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PlatformTenantIntegrationTest extends IntegrationTest {
 
     private static final String TENANTS = "/api/v1/platform/tenants";
+
+    @Autowired
+    private Tenants tenants;
 
     private static String createPayload(String name, String ownerEmail) {
         return """
@@ -108,8 +113,8 @@ class PlatformTenantIntegrationTest extends IntegrationTest {
         String staff = platformToken();
         String ownerEmail = uniqueEmail("owner");
         rawSignup(ownerEmail, PASSWORD).andExpect(status().isCreated());
-        UUID tenantId = UUID.fromString(read(postAs(staff, TENANTS, createPayload("Pending Ltd", ownerEmail))
-                .andExpect(status().isCreated()), "$.response.id"));
+        // Registered, so not yet approved: a staff-created tenant may already be provisioned (row mode does it at once).
+        UUID tenantId = tenants.register("Pending Ltd", ownerEmail);
 
         changeStatus(staff, tenantId, "ACTIVE", 0)
                 .andExpect(status().isConflict())

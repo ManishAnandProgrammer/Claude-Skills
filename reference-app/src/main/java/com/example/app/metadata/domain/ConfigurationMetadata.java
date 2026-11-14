@@ -1,6 +1,10 @@
 package com.example.app.metadata.domain;
 
+// tenancy-row:begin
+// import com.example.app.common.persistence.TenantOwnedEntity;
+// tenancy-row:else
 import com.example.app.common.persistence.AuditableEntity;
+// tenancy-row:end
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -18,7 +22,11 @@ import org.hibernate.type.SqlTypes;
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+// tenancy-row:begin
+// public class ConfigurationMetadata extends TenantOwnedEntity {
+// tenancy-row:else
 public class ConfigurationMetadata extends AuditableEntity {
+// tenancy-row:end
 
     @Column(nullable = false, updatable = false)
     private String key;

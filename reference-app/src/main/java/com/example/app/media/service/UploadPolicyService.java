@@ -5,6 +5,9 @@ import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
+// tenancy-row:begin
+// import com.example.app.media.api.UploadLimits;
+// tenancy-row:end
 import com.example.app.media.api.UploadPurpose;
 import com.example.app.media.domain.UploadPolicy;
 import com.example.app.media.dto.request.UploadFileRequest;
@@ -56,6 +59,19 @@ public class UploadPolicyService {
     public UploadPolicy getPolicy(UploadPurpose purpose) {
         return repository.findByPurpose(purpose).orElseThrow(AppException.supply(ErrorCode.UPLOAD_POLICY_NOT_FOUND, purpose));
     }
+    // tenancy-row:begin
+
+    // /** The purpose's first policy in the current tenant; a purpose that has one keeps it. */
+    // @Transactional
+    // public void define(UploadPurpose purpose, UploadLimits limits) {
+    //     if (repository.findByPurpose(purpose).isEmpty()) {
+    //         List<String> contentTypes = limits.contentTypes().stream().sorted().toList();
+    //         repository.save(UploadPolicy.builder().purpose(purpose).minSizeBytes(limits.minSizeBytes())
+    //                 .maxSizeBytes(limits.maxSizeBytes()).minFiles(limits.minFiles()).maxFiles(limits.maxFiles())
+    //                 .contentTypes(contentTypes).build());
+    //     }
+    // }
+    // tenancy-row:end
 
     /**
      * 400 unless the file fits the policy. The type must also be in the code's allow-list, so a type

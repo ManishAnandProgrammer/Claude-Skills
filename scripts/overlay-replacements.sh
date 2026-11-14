@@ -10,16 +10,19 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PINS="overlays/replaced.sha256"
-LAYERS="reference-app overlays/tenancy overlays/tenancy-schema"
+# The shared layers, in order, then the tenancy modes: each mode lies over the shared layers only (a
+# copy has one mode), so a mode's file never replaces another mode's file of the same path.
+SHARED_LAYERS="reference-app overlays/tenancy"
+MODE_LAYERS="overlays/tenancy-schema overlays/tenancy-row"
 
 # Every replaced file, the nearest earlier layer's, one per line, relative to the repository.
 replaced_files() {
     local layer earlier relative candidate found
-    for layer in ${LAYERS#reference-app }; do
+    for layer in ${SHARED_LAYERS#reference-app } $MODE_LAYERS; do
         while IFS= read -r file; do
             relative="${file#$REPO/$layer/}"
             found=""
-            for earlier in $LAYERS; do
+            for earlier in $SHARED_LAYERS; do
                 [ "$earlier" = "$layer" ] && break
                 candidate="$earlier/$relative"
                 if [ -f "$REPO/$candidate" ]; then

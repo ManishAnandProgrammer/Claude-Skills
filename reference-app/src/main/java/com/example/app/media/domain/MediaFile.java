@@ -1,6 +1,10 @@
 package com.example.app.media.domain;
 
+// tenancy-row:begin
+// import com.example.app.common.persistence.TenantOwnedEntity;
+// tenancy-row:else
 import com.example.app.common.persistence.AuditableEntity;
+// tenancy-row:end
 import com.example.app.media.api.MediaFileStatus;
 import com.example.app.media.api.UploadPurpose;
 import jakarta.persistence.Column;
@@ -27,7 +31,11 @@ import java.util.UUID;
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+// tenancy-row:begin
+// public class MediaFile extends TenantOwnedEntity {
+// tenancy-row:else
 public class MediaFile extends AuditableEntity {
+// tenancy-row:end
 
     /** {@code PURPOSE/uuid}: the object's key in the bucket, and the upload key clients send back. */
     @Column(nullable = false, updatable = false)

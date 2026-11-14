@@ -81,11 +81,10 @@ only when the project has that piece.
 
 ### META-09: Tenancy
 - **Rules:** the tenancy rules themselves are `tenancy.md` (TEN-xx); this rule is what they mean for
-  the metadata tables. The reference runs schema per tenant: `0008` is in `db/changelog/tenant.yaml`.
-- **Check:** schema-per-tenant: the table in every tenant schema, unique `key`. Row-based: a
-  `tenant_id` column, unique `(tenant_id, key)`, Hibernate `@TenantId` on both entities, and the
-  counter's native `UPDATE` filtered by tenant (native SQL is not filtered by `@TenantId`).
-- **Severity:** Critical when a row-based query can read or write another tenant's row.
+  the metadata tables. Schema per tenant lists `0008` in `db/changelog/tenant.yaml`; row mode keeps one master.
+- **Check:** schema-per-tenant: the table in every tenant schema, unique `key`. Row mode: both
+  tables are tenant tables (TEN-30), unique `(tenant_id, key)`, both entities `TenantOwnedEntity`.
+- **Severity:** Critical when a row-mode query can read or write another tenant's row.
 - **Adapting the piece** (the reference is single-tenant; bootstrap picks the model, the code is
   otherwise the same):
   - *Schema-per-tenant* (the `tenancy-schema` piece): the metadata package and changeset `0008` stay
@@ -94,13 +93,11 @@ only when the project has that piece.
     at deployment); the unique `key` is per schema. The tenant comes from the token's claim (TEN-01),
     and the connection hook sets `search_path` to its schema (TEN-04), so the native counter update
     needs no change either.
-  - *Row-based:* changeset `0008` gets `tenant_id uuid NOT NULL` in both tables, and
-    `UNIQUE (tenant_id, key)` replaces `UNIQUE (key)` (keep the constraint names
-    `MetadataConstraintErrorCodes` maps). Both entities get
-    `@org.hibernate.annotations.TenantId @Column(name = "tenant_id") private UUID tenantId;`:
-    Hibernate fills it on insert and filters every entity query by it. The tenant id comes from one
-    `CurrentTenantIdentifierResolver` bean reading the access token's tenant claim. Native SQL is not
-    filtered: `CounterRepository.increment` adds `AND tenant_id = :tenantId`.
+  - *Row mode* (the `tenancy-row` piece): `0008`'s `tenancy-row` blocks add `tenant_id` (with its
+    default), `UNIQUE (tenant_id, key)` under the same constraint names (`MetadataConstraintErrorCodes`
+    keeps working) and the forced policy; the entities' blocks extend `TenantOwnedEntity`. The native
+    `CounterRepository.increment` needs no tenant parameter: the policy filters it to the
+    transaction's tenant, and its predicate is an index condition on `(tenant_id, key)` (TEN-32).
   - In both models, lifecycle code without a request (a scheduled job, tenant registration) opens
     its session for an explicit tenant.
 

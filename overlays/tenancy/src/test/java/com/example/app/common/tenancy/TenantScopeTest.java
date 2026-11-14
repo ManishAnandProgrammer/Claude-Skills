@@ -50,6 +50,7 @@ class TenantScopeTest {
         assertThat(TenantContext.current()).isEqualTo(TenantContext.NO_TENANT);
     }
 
+    // tenancy-schema:begin
     @Test
     @DisplayName("A schema name is t_ and the id's hex digits: derived, never taken from input")
     void schemaNamesAreDerived() {
@@ -57,4 +58,5 @@ class TenantScopeTest {
 
         assertThat(TenantSchemas.of(tenant)).isEqualTo("t_0190a9c26c437cc19f2a1d1e5a6b7c8d").matches("t_[0-9a-f]{32}");
     }
+    // tenancy-schema:end
 }
