@@ -8,8 +8,6 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -17,11 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,11 +31,6 @@ class TimeEntryIntegrationTest extends IntegrationTest {
 
     private static final String TODOS = "/api/v1/todos";
     private static final String LISTS = "/api/v1/todo-lists";
-    /** Below the pool size (10) with the delete, the gate and the polling connection. */
-    private static final int CREATORS = 4;
-
-    @Autowired
-    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private Clock clock;
@@ -282,59 +270,21 @@ class TimeEntryIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Entries racing their todo's delete: the creates that read the todo first all land, and the delete is 409 TODO_IN_USE")
+    @DisplayName("Entries created while their todo is deleted: the delete is 204, every create 404 TODO_GONE, and no entry is left without its todo")
     void childWritesRacingAParentDeleteKeepTheInvariant() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user);
-        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        CountDownLatch gateClosed = new CountDownLatch(1);
-        CountDownLatch openGate = new CountDownLatch(1);
-        CountDownLatch start = new CountDownLatch(1);
-        List<Future<Answer>> creates = new ArrayList<>();
-        Future<Answer> delete;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // Holds every entry insert until the delete has run, so the delete lands between each
-            // create's read of the todo and its insert: the interleaving the FOR KEY SHARE lock is for.
-            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
-                jdbc.execute("lock table time_entries in share mode");
-                gateClosed.countDown();
-                awaitQuietly(openGate);
-            }));
-            awaitLatch(gateClosed);
-            try {
-                for (int creator = 0; creator < CREATORS; creator++) {
-                    Callable<Answer> create = () -> {
-                        awaitLatch(start);
-                        return answerOf(postAs(user.accessToken(), entries(todoId), createPayload(5, "2026-11-01", false)));
-                    };
-                    creates.add(executor.submit(create));
-                }
-                start.countDown();
-                // One deadline for both waits: the first waiters' lock_timeout runs through the second.
-                long deadline = lockWaitDeadline();
-                awaitLockWaiters(CREATORS, null, deadline);
-                delete = executor.submit(() -> answerOf(deleteAs(user.accessToken(), TODOS + "/" + todoId)));
-                awaitLockWaiters(CREATORS + 1, delete, deadline);
-            } finally {
-                openGate.countDown();
-            }
-            within(gate);
-        }
-        List<Answer> createAnswers = new ArrayList<>();
-        for (Future<Answer> create : creates) {
-            createAnswers.add(within(create));
-        }
-        Answer deleteAnswer = within(delete);
 
-        // Every create held its FOR KEY SHARE lock on the todo before the delete came, so the delete waited
-        // for their inserts and then found them: without the lock it would delete the todo under them.
-        assertThat(createAnswers).extracting(Answer::status).containsOnly(201);
-        assertThat(deleteAnswer.status()).isEqualTo(409);
-        assertRefusalsAre(List.of(deleteAnswer), 409, "TODO_IN_USE");
-        Integer todos = jdbc.queryForObject("select count(*) from todos where id = ?::uuid", Integer.class, todoId);
+        // Nothing locks the todo for a create, so the delete goes through; the foreign key refuses each
+        // insert that comes after it.
+        List<Answer> creates = createsHeldAtTheirInsert("time_entries",
+                () -> postAs(user.accessToken(), entries(todoId), createPayload(5, "2026-11-01", false)),
+                () -> deleteAs(user.accessToken(), TODOS + "/" + todoId).andExpect(status().isNoContent()));
+
+        assertThat(creates).extracting(Answer::status).containsOnly(404);
+        assertRefusalsAre(creates, 404, "TODO_GONE");
         Integer entries = jdbc.queryForObject("select count(*) from time_entries where todo_id = ?::uuid", Integer.class, todoId);
-        assertThat(todos).isOne();
-        assertThat(entries).isEqualTo(CREATORS);
+        assertThat(entries).isZero();
     }
     @Test
     @DisplayName("Create without minutes, spentOn or billable is 400 naming each field")
@@ -874,41 +824,6 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.failed", hasItem("spentOnTo: must be on or before 2999-12-31")));
-    }
-
-    @Test
-    @DisplayName("Editing a todo isn't held up by a time entry being created on it")
-    void todoEditIsNotBlockedByATimeEntryCreateInFlight() throws Exception {
-        TestUser user = newUser();
-        String todoId = createTodo(user);
-        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        CountDownLatch gateClosed = new CountDownLatch(1);
-        CountDownLatch openGate = new CountDownLatch(1);
-        Future<Answer> create;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // Holds the create after it has locked the todo and before it writes its row.
-            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
-                jdbc.execute("lock table time_entries in share mode");
-                gateClosed.countDown();
-                awaitQuietly(openGate);
-            }));
-            awaitLatch(gateClosed);
-            try {
-                create = executor.submit(() -> answerOf(postAs(user.accessToken(), entries(todoId), createPayload(5, "2026-11-01", false))));
-                awaitLockWaiters(1, create);
-
-                patchAs(user.accessToken(), TODOS + "/" + todoId + "/status", """
-                        {"status": "DONE", "version": 0}
-                        """)
-                        .andExpect(status().isOk());
-            } finally {
-                openGate.countDown();
-            }
-            within(gate);
-        }
-        Answer created = within(create);
-
-        assertThat(created.status()).as(created.body()).isEqualTo(201);
     }
 
     /** Statements run by one list request: a cursor list never counts. */

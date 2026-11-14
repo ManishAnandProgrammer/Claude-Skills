@@ -41,16 +41,17 @@ public class PlanService {
     private final Paging paging;
 
     /**
-     * The owner's plan writes queue first ({@code lockPlansOfOwner}), then the todo, the todo module's,
-     * is validated and locked through its facade, so the plan can't race the todo's delete. A plan
-     * sharing a day with another of the owner's is refused at the flush by {@code ex_plans_owner_id_dates},
-     * also when two creates race: 409 {@code PLAN_OVERLAPS}.
+     * The todo, the todo module's, is validated through its facade, and not locked: a plan written while
+     * its todo is deleted is refused by its foreign key, 404 {@code TODO_GONE}. A plan sharing a day with
+     * another of the owner's is refused at the flush by {@code ex_plans_owner_id_dates}: 409
+     * {@code PLAN_OVERLAPS}. Nothing serialises the owner's creates: two overlapping ones at the same
+     * instant can deadlock in that constraint, and the victim answers 503 {@code DATABASE_CONTENTION}.
+     * That is rare, the data stays right (one plan), and the retry it asks for answers 409.
      */
     @Transactional
     public ObjectWrapper<PlanResponse> create(PlanCreateRequest request) {
         UUID ownerId = currentUser.id();
-        repository.lockPlansOfOwner(ownerId);
-        TodoView todo = todos.getOwnedTodoViewForWrite(request.todoId(), ownerId);
+        TodoView todo = todos.getOwnedTodoView(request.todoId(), ownerId);
         Plan saved = repository.saveAndFlush(mapper.toEntity(request, ownerId));
         return ObjectWrapper.withObject(mapper.toResponse(saved, todo));
     }

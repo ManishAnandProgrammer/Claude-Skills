@@ -68,6 +68,28 @@ From the review of run 6 (a leave desk) and its gap list G1–G30:
   (overlapping concurrent inserts deadlocked); member rows a cascade removes are deleted set-based;
   upload policies are restored after each test; every test wait has a deadline.
 
+## Lock audit (2026-11-14)
+
+The owner adopted a principle for locks (DATA-29): a lock names the rule it protects that no
+constraint, foreign key or `@Version` already holds. A lock that only turns a rare race's 503 or 409
+into a nicer code is not added, provided the data stays correct, the answer is never 500 and a retry
+is safe; races that are normal traffic are the exception. The audit removed each of the reference's
+locks in turn on a scratch copy (repeated 6-way races and trigger-gated read-to-insert windows):
+- **Removed:** the plans' owner advisory lock (without it 1 answer in 6 of a simultaneous overlap race
+  is a 503 deadlock in the exclusion constraint, one row stored, its retry 409); the three
+  `FOR KEY SHARE` delete guards (list, todo, tags): the foreign key's own check holds the data, and a
+  delete that wins the read-to-insert window only changes the create's answer. That answer was the
+  wrong code (409 `*_IN_USE`, or 500 for the unmapped tag-link keys), so foreign keys now map by side
+  (`ConstraintErrorCodes.byForeignKeyOnWrite`, decided from `JDBCException.getSQL()`: PostgreSQL names
+  the child table on both sides) to new placeholder-free `*_GONE` codes (404). Chosen over services
+  catching the violation and passing the id: one declarative map entry per key, no try/catch in every
+  child-writing service, and no guessing which of two parents (a todo's list or its tags) was gone.
+- **Kept:** the todo's `findForUpdate…` (without it, double submits answered `DUPLICATE_RECORD` or 503
+  deadlocks, and tag replaces racing the delete 500).
+- **Replaced:** the refresh token's `PESSIMISTIC_WRITE` by a conditional `UPDATE … WHERE revoked_at IS
+  NULL` with a rows-affected check (identical answers to the lock, measured); logout uses the same
+  statement, so a logout racing a refresh never answers 409.
+
 ## Step 1: shape (decided 2026-11-13)
 
 - **Name:** `house-review`. The built-in `/code-review` already exists, so this name avoids

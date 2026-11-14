@@ -51,10 +51,10 @@ The rules below say which mode they apply to.
 - **Check:** another module never uses this module's repositories or internal helpers, nor its
   entities in `api-facades` mode. It goes through the owner's service or `api` contract.
 - **A parent in another module** (`api-facades` mode) is a UUID column with a database foreign key
-  (no entity relation), validated and locked through the owner's facade: `<module>.api.<Things>`, an
+  (no entity relation), validated through the owner's facade: `<module>.api.<Things>`, an
   interface the owner's service implements, returning a view record (`TodoView`), with a
-  `get<Owned><Thing>ViewForWrite` that locks the parent `FOR KEY SHARE` (`MANDATORY`: only inside the
-  caller's write) so the child can't race the parent's delete, and a batch lookup
+  `get<Owned><Thing>View` (not locked: a child written while the parent is deleted is refused by the
+  foreign key, DATA-29, DATA-33) and a batch lookup
   (`getOwnedTodoViews(ids, ownerId)`) for a list page, one statement per batch. Reference:
   `todo.api.Todos`, used by `planning.service.PlanService`. The view is a module contract, never a
   response body: the consumer maps it into a record of its own (ARCH-06). A module with no facade yet (the sign-in piece's `user`) gets one
@@ -62,7 +62,8 @@ The rules below say which mode they apply to.
   foreign-key 409 with the wrong code).
 - **The foreign key's mapping belongs to the module that owns the constraint** (whose changeset
   declares it), even when the code it answers is the parent module's (`fk_plans_todo_id_owner_id` →
-  `TODO_IN_USE`, in `PlanningConstraintErrorCodes`).
+  `TODO_IN_USE` for the todo's delete, `TODO_GONE` for a plan's insert after it, in
+  `PlanningConstraintErrorCodes`).
 - **Severity:** High for repositories; Medium for entities and helpers.
 - **Not a finding when:** `service-entity-methods` mode allows entity hand-out through service
   methods.
@@ -169,7 +170,7 @@ Within a module as well as across modules.
     `OrderLineRepository`). It enforces the members' business rules, so a member entity has **no
     service of its own** and is reached through the root (`/orders/{orderId}/lines`);
   - **another aggregate is reached only through its root's service**, by its entity methods
-    (`getOwnedTodoListForWrite`): they carry validation, ownership, locking and, later, caching and
+    (`getOwnedTodoList`): they carry validation, ownership, locking and, later, caching and
     its invalidation. Using another aggregate's repository bypasses all of them, and so does a
     mapper building another aggregate's response (the four reasons in ARCH-06);
   - **a Manager (application) service** (`<UseCase>Manager`, in `service`) exists only when one

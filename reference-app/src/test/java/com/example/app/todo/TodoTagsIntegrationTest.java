@@ -1,7 +1,6 @@
 package com.example.app.todo;
 
 import com.example.app.support.IntegrationTest;
-import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,8 +42,6 @@ class TodoTagsIntegrationTest extends IntegrationTest {
     private static final String TAGS = "/api/v1/tags";
     /** app.limits.todo.max-tags in config/limits.yml. */
     private static final int MAX_TAGS = 10;
-    /** Below the pool size (10) with the delete, the gate and the polling connection. */
-    private static final int CREATORS = 4;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -537,61 +534,23 @@ class TodoTagsIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Todos tagged while the tag is deleted: every create 201 carrying the tag, the delete 204, and then no row keeps the tag")
+    @DisplayName("Todos tagged while the tag is deleted: the delete is 204, every create 404 TAG_GONE, and no todo or link is stored")
     void tagWritesRacingATagDeleteKeepTheInvariant() throws Exception {
         TestUser user = newUser();
         String tag = createTag(user, "Contested");
         String listId = createList(user, "Race");
-        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        CountDownLatch gateClosed = new CountDownLatch(1);
-        CountDownLatch openGate = new CountDownLatch(1);
-        CountDownLatch start = new CountDownLatch(1);
-        List<Future<Answer>> creates = new ArrayList<>();
-        Future<Answer> delete;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // Holds every todo_tags insert (and the delete's cascade) until the delete is waiting, so the
-            // delete lands between each create's read of the tag and its insert: what the tag lock is for.
-            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
-                jdbc.execute("lock table todo_tags in share mode");
-                gateClosed.countDown();
-                awaitQuietly(openGate);
-            }));
-            awaitLatch(gateClosed);
-            try {
-                for (int creator = 0; creator < CREATORS; creator++) {
-                    Callable<Answer> create = () -> {
-                        awaitLatch(start);
-                        return answerOf(postAs(user.accessToken(), TODOS, createPayload(listId, "Racer", List.of(tag))));
-                    };
-                    creates.add(executor.submit(create));
-                }
-                start.countDown();
-                // One deadline for both waits: the first waiters' lock_timeout runs through the second.
-                long deadline = lockWaitDeadline();
-                awaitLockWaiters(CREATORS, null, deadline);
-                delete = executor.submit(() -> answerOf(deleteAs(user.accessToken(), TAGS + "/" + tag)));
-                awaitLockWaiters(CREATORS + 1, delete, deadline);
-            } finally {
-                openGate.countDown();
-            }
-            within(gate);
-        }
-        List<String> racers = new ArrayList<>();
-        for (Future<Answer> create : creates) {
-            Answer answer = within(create);
-            assertThat(answer.status()).as(answer.body()).isEqualTo(201);
-            List<String> carried = JsonPath.read(answer.body(), "$.response.tags[*].id");
-            assertThat(carried).as("the create wrote its tag row").containsExactly(tag);
-            racers.add(JsonPath.read(answer.body(), "$.response.id"));
-        }
-        Answer deleteAnswer = within(delete);
 
-        assertThat(deleteAnswer.status()).as(deleteAnswer.body()).isEqualTo(204);
-        assertThat(racers).hasSize(CREATORS);
-        for (String racer : racers) {
-            assertThat(tagRows("todo_id", racer)).isZero();
-            assertThat(versionOf(racer)).isZero();
-        }
+        // Held at the todo's insert, before its link: nothing locks the tag for a create, so the delete
+        // goes through, and the link's foreign key refuses each create after it, todo and all.
+        List<Answer> creates = createsHeldAtTheirInsert("todos",
+                () -> postAs(user.accessToken(), TODOS, createPayload(listId, "Racer", List.of(tag))),
+                () -> deleteAs(user.accessToken(), TAGS + "/" + tag).andExpect(status().isNoContent()));
+
+        assertThat(creates).extracting(Answer::status).containsOnly(404);
+        assertRefusalsAre(creates, 404, "TAG_GONE");
+        assertThat(tagRows("tag_id", tag)).isZero();
+        Integer todos = jdbc.queryForObject("select count(*) from todos where todo_list_id = ?::uuid", Integer.class, listId);
+        assertThat(todos).isZero();
     }
 
     @Test
@@ -663,44 +622,6 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         putTags(user, todo, List.of(), versionOf(todo))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.tags", empty()));
-    }
-
-    @Test
-    @DisplayName("Renaming a tag isn't held up by a todo being tagged with it, and the todo shows the new name")
-    void tagRenameIsNotBlockedByATagAssignmentInFlight() throws Exception {
-        TestUser user = newUser();
-        String tag = createTag(user, "Before");
-        String listId = createList(user, "Rename");
-        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        CountDownLatch gateClosed = new CountDownLatch(1);
-        CountDownLatch openGate = new CountDownLatch(1);
-        Future<Answer> create;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // Holds the create after it has locked the tag and before it writes its row.
-            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
-                jdbc.execute("lock table todo_tags in share mode");
-                gateClosed.countDown();
-                awaitQuietly(openGate);
-            }));
-            awaitLatch(gateClosed);
-            try {
-                create = executor.submit(() -> answerOf(postAs(user.accessToken(), TODOS, createPayload(listId, "Tagged", List.of(tag)))));
-                awaitLockWaiters(1, create);
-
-                putAs(user.accessToken(), TAGS + "/" + tag, """
-                        {"name": "After", "color": null, "active": true, "version": 0}
-                        """)
-                        .andExpect(status().isOk())
-                        .andExpect(jsonPath("$.response.name").value("After"));
-            } finally {
-                openGate.countDown();
-            }
-            within(gate);
-        }
-        Answer created = within(create);
-
-        assertThat(created.status()).as(created.body()).isEqualTo(201);
-        assertThat(JsonPath.<List<String>>read(created.body(), "$.response.tags[*].name")).containsExactly("After");
     }
 
     @Test

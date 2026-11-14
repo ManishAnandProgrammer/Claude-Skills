@@ -19,7 +19,6 @@ import com.example.app.todo.mapper.TagMapper;
 import com.example.app.todo.repository.TagRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -80,17 +79,15 @@ public class TagService {
     }
 
     /**
-     * The owner's tags with these ids, in id order, locked {@code FOR KEY SHARE} until the caller's
-     * transaction ends, so putting one on a todo can't race its delete. Only inside that write
-     * transaction: a lock outside one would end at once. An id that isn't one of the owner's tags is
-     * {@code TAG_NOT_FOUND}, naming the lowest of them, so the answer is repeatable.
+     * The owner's tags with these ids. An id that isn't one of the owner's tags is
+     * {@code TAG_NOT_FOUND}, naming the lowest of them, so the answer is repeatable. Not locked: a tag
+     * deleted before its link is written is refused by the link's foreign key, 404 {@code TAG_GONE}.
      */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public List<Tag> getOwnedTagsForWrite(Set<UUID> ids, UUID ownerId) {
+    public List<Tag> getOwnedTags(Set<UUID> ids, UUID ownerId) {
         if (ids.isEmpty()) {
             return List.of();
         }
-        List<Tag> tags = repository.findForKeyShareByIdInAndOwnerId(ids, ownerId);
+        List<Tag> tags = repository.findByIdInAndOwnerId(ids, ownerId);
         if (tags.size() < ids.size()) {
             throw AppException.of(ErrorCode.TAG_NOT_FOUND, lowestMissing(ids, tags));
         }

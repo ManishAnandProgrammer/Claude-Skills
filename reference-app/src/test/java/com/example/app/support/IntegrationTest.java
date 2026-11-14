@@ -84,6 +84,8 @@ public abstract class IntegrationTest {
     protected static final String PASSWORD = "Correct-Horse-9";
     /** How many requests {@link #race} fires at once. */
     protected static final int RACERS = 6;
+    /** How many creates {@link #createsHeldAtTheirInsert} holds at once: below the pool size (10) with the parent's delete, the gate and the polling connection. */
+    protected static final int HELD_CREATES = 4;
     /**
      * Under lock_timeout (3 s), so a request held by a test lock never times out first. A test that
      * waits for several sessions in turn shares one deadline across the waits ({@link #lockWaitDeadline}).
@@ -367,6 +369,44 @@ public abstract class IntegrationTest {
             }
             return answers;
         }
+    }
+
+    /**
+     * Fires {@code create} {@link #HELD_CREATES} times, holds each one at its insert into {@code table}
+     * while {@code meanwhile} runs, then lets them go; returns the creates' answers. The hold is a SHARE
+     * lock on the table, which reads and foreign key checks pass: a parent's delete run as
+     * {@code meanwhile} lands between each create's read of the parent and its insert.
+     */
+    protected List<Answer> createsHeldAtTheirInsert(String table, Callable<ResultActions> create, Callable<ResultActions> meanwhile)
+            throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch gateClosed = new CountDownLatch(1);
+        CountDownLatch openGate = new CountDownLatch(1);
+        List<Future<Answer>> pending = new ArrayList<>();
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.execute("lock table " + table + " in share mode");
+                gateClosed.countDown();
+                awaitQuietly(openGate);
+            }));
+            awaitLatch(gateClosed);
+            try {
+                for (int creator = 0; creator < HELD_CREATES; creator++) {
+                    Callable<Answer> once = () -> answerOf(create.call());
+                    pending.add(executor.submit(once));
+                }
+                awaitLockWaiters(HELD_CREATES, null);
+                meanwhile.call();
+            } finally {
+                openGate.countDown();
+            }
+            within(gate);
+        }
+        List<Answer> answers = new ArrayList<>();
+        for (Future<Answer> answer : pending) {
+            answers.add(within(answer));
+        }
+        return answers;
     }
 
     /** A refusal names no constraint (of any kind), SQL or Java internals anywhere in its body. */

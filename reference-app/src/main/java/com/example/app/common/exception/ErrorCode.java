@@ -80,10 +80,14 @@ public enum ErrorCode {
     TODO_LIST_NOT_FOUND,
     TODO_LIST_NAME_TAKEN,
     TODO_LIST_IN_USE,
+    /** Deleted between the write's read of it and the insert or update of a todo into it (a foreign key, ERR-06: no id). */
+    TODO_LIST_GONE,
 
     // ── Todo ─────────────────────────────────────────────────────────────
     TODO_NOT_FOUND,
     TODO_IN_USE,
+    /** Deleted between the write's read of it and the insert of a row onto it (a time entry, a plan, a tag link). */
+    TODO_GONE,
 
     // ── TimeEntry ────────────────────────────────────────────────────────
     TIME_ENTRY_NOT_FOUND,
@@ -91,6 +95,8 @@ public enum ErrorCode {
     // ── Tag ──────────────────────────────────────────────────────────────
     TAG_NOT_FOUND,
     TAG_NAME_TAKEN,
+    /** Deleted between the write's read of it and the insert of its link to a todo. */
+    TAG_GONE,
     // media:begin
 
     // ── Todo attachments ─────────────────────────────────────────────────

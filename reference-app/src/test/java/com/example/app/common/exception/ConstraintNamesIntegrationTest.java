@@ -48,6 +48,9 @@ class ConstraintNamesIntegrationTest extends IntegrationTest {
             for (ErrorCode code : module.byConstraintName().values()) {
                 assertThat(messageSource.getMessage(code.name(), null, Locale.ENGLISH)).as(code.name()).doesNotContain("{");
             }
+            for (ErrorCode code : module.byForeignKeyOnWrite().values()) {
+                assertThat(messageSource.getMessage(code.name(), null, Locale.ENGLISH)).as(code.name()).doesNotContain("{");
+            }
         }
     }
 

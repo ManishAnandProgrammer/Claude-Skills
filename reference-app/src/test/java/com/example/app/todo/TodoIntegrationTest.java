@@ -19,7 +19,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -42,11 +41,10 @@ class TodoIntegrationTest extends IntegrationTest {
 
     private static final String TODOS = "/api/v1/todos";
     private static final String LISTS = "/api/v1/todo-lists";
-    /** Below the pool size (10) with the delete, the gate and the polling connection. */
-    private static final int CREATORS = 4;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
     private String createList(TestUser user, String name) throws Exception {
         return read(postAs(user.accessToken(), LISTS, """
                 {"name": "%s"}
@@ -313,94 +311,21 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Todo creates racing their list's delete: the creates that read the list first all land, and the delete is 409 TODO_LIST_IN_USE")
+    @DisplayName("Todos created while their list is deleted: the delete is 204, every create 404 TODO_LIST_GONE, and no todo is left without its list")
     void createsRacingTheListDeleteNeverOrphanATodo() throws Exception {
         TestUser user = newUser();
         String listId = createList(user, "Contested");
-        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        CountDownLatch gateClosed = new CountDownLatch(1);
-        CountDownLatch openGate = new CountDownLatch(1);
-        CountDownLatch start = new CountDownLatch(1);
-        List<Future<Answer>> creates = new ArrayList<>();
-        Future<Answer> delete;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // Holds every todo insert until the delete has run, so the delete lands between each
-            // create's read of the list and its insert: the interleaving the FOR KEY SHARE lock is for.
-            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
-                jdbc.execute("lock table todos in share mode");
-                gateClosed.countDown();
-                awaitQuietly(openGate);
-            }));
-            awaitLatch(gateClosed);
-            try {
-                for (int creator = 0; creator < CREATORS; creator++) {
-                    Callable<Answer> create = () -> {
-                        awaitLatch(start);
-                        return answerOf(postAs(user.accessToken(), TODOS, todoPayload(listId, "Racer", "LOW", null)));
-                    };
-                    creates.add(executor.submit(create));
-                }
-                start.countDown();
-                // One deadline for both waits: the first waiters' lock_timeout runs through the second.
-                long deadline = lockWaitDeadline();
-                awaitLockWaiters(CREATORS, null, deadline);
-                delete = executor.submit(() -> answerOf(deleteAs(user.accessToken(), LISTS + "/" + listId)));
-                awaitLockWaiters(CREATORS + 1, delete, deadline);
-            } finally {
-                openGate.countDown();
-            }
-            within(gate);
-        }
-        List<Answer> createAnswers = new ArrayList<>();
-        for (Future<Answer> create : creates) {
-            createAnswers.add(within(create));
-        }
-        Answer deleteAnswer = within(delete);
 
-        // Every create held its FOR KEY SHARE lock on the list before the delete came, so the delete
-        // waited for their inserts and then found them: without the lock it would delete the list under them.
-        assertThat(createAnswers).extracting(Answer::status).containsOnly(201);
-        assertThat(deleteAnswer.status()).isEqualTo(409);
-        assertRefusalsAre(List.of(deleteAnswer), 409, "TODO_LIST_IN_USE");
-        Integer lists = jdbc.queryForObject("select count(*) from todo_lists where id = ?::uuid", Integer.class, listId);
+        // Nothing locks the list for a create, so the delete goes through; the foreign key refuses each
+        // insert that comes after it.
+        List<Answer> creates = createsHeldAtTheirInsert("todos",
+                () -> postAs(user.accessToken(), TODOS, todoPayload(listId, "Racer", "LOW", null)),
+                () -> deleteAs(user.accessToken(), LISTS + "/" + listId).andExpect(status().isNoContent()));
+
+        assertThat(creates).extracting(Answer::status).containsOnly(404);
+        assertRefusalsAre(creates, 404, "TODO_LIST_GONE");
         Integer todos = jdbc.queryForObject("select count(*) from todos where todo_list_id = ?::uuid", Integer.class, listId);
-        assertThat(lists).isOne();
-        assertThat(todos).isEqualTo(CREATORS);
-    }
-
-    @Test
-    @DisplayName("Renaming a list isn't held up by a todo being created in it")
-    void listRenameIsNotBlockedByATodoCreateInFlight() throws Exception {
-        TestUser user = newUser();
-        String listId = createList(user, "Before");
-        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        CountDownLatch gateClosed = new CountDownLatch(1);
-        CountDownLatch openGate = new CountDownLatch(1);
-        Future<Answer> create;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // Holds the create after it has locked the list and before it writes its row.
-            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
-                jdbc.execute("lock table todos in share mode");
-                gateClosed.countDown();
-                awaitQuietly(openGate);
-            }));
-            awaitLatch(gateClosed);
-            try {
-                create = executor.submit(() -> answerOf(postAs(user.accessToken(), TODOS, todoPayload(listId, "In flight", "LOW", null))));
-                awaitLockWaiters(1, create);
-
-                putAs(user.accessToken(), LISTS + "/" + listId, """
-                        {"name": "After %s", "version": 0}
-                        """.formatted(UUID.randomUUID()))
-                        .andExpect(status().isOk());
-            } finally {
-                openGate.countDown();
-            }
-            within(gate);
-        }
-        Answer created = within(create);
-
-        assertThat(created.status()).as(created.body()).isEqualTo(201);
+        assertThat(todos).isZero();
     }
 
     @Test

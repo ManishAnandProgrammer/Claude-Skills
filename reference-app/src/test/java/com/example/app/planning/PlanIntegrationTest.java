@@ -3,10 +3,7 @@ package com.example.app.planning;
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -14,11 +11,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
@@ -37,10 +30,6 @@ class PlanIntegrationTest extends IntegrationTest {
 
     private static final String PLANS = "/api/v1/plans";
     private static final String TODOS = "/api/v1/todos";
-    private static final int CREATORS = 4;
-
-    @Autowired
-    private PlatformTransactionManager transactionManager;
 
     private String createTodo(TestUser user, String title) throws Exception {
         String listId = read(postAs(user.accessToken(), "/api/v1/todo-lists", """
@@ -264,52 +253,19 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Concurrent creates of overlapping plans store exactly one; the others are 409 PLAN_OVERLAPS")
+    @DisplayName("Concurrent creates of overlapping plans store exactly one; the others are 409 PLAN_OVERLAPS or 503 DATABASE_CONTENTION, never 500")
     void concurrentOverlappingCreatesStoreOne() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user, "Contested days");
 
         List<Answer> answers = race(() -> create(user, todoId, "2026-11-20", "2026-11-22"));
 
-        assertThat(answers).extracting(Answer::status).containsOnlyOnce(201).containsOnly(201, 409);
+        // Inserts at the same instant each wait in the exclusion check for the other's row, and
+        // PostgreSQL ends that as a deadlock: the victim's 503 is a safe retry, which then answers 409.
+        assertThat(answers).extracting(Answer::status).containsOnlyOnce(201).isSubsetOf(201, 409, 503);
         assertRefusalsAre(answers, 409, "PLAN_OVERLAPS");
+        assertRefusalsAre(answers, 503, "DATABASE_CONTENTION");
         assertThat(plansOf(user)).isOne();
-    }
-
-    /**
-     * The guard of the race above, which only sometimes deadlocks without it: overlapping inserts each
-     * wait in the exclusion constraint for the other's uncommitted row. Held by the test, the owner's
-     * lock keeps a create from touching the table at all until it is released.
-     */
-    @Test
-    @DisplayName("A plan create queues on its owner's lock before it reads or writes anything")
-    void createsQueueOnTheOwnersLock() throws Exception {
-        TestUser user = newUser();
-        String todoId = createTodo(user, "Queued");
-        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        CountDownLatch locked = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        Future<Answer> create;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<?> holder = executor.submit(() -> transaction.executeWithoutResult(status -> {
-                jdbc.queryForList("select pg_advisory_xact_lock(hashtextextended('plans:' || ?, 0))", user.id().toString());
-                locked.countDown();
-                awaitQuietly(release);
-            }));
-            awaitLatch(locked);
-            try {
-                create = executor.submit(() -> answerOf(create(user, todoId, "2026-11-20", "2026-11-22")));
-                awaitLockWaiters(1, create);
-
-                assertThat(create.isDone()).as("the create waits for the owner's lock").isFalse();
-                assertThat(plansOf(user)).isZero();
-            } finally {
-                release.countDown();
-            }
-            within(holder);
-        }
-
-        assertThat(within(create).status()).isEqualTo(201);
     }
 
     @Test
@@ -411,95 +367,25 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Plans racing their todo's delete: the creates that read the todo first all land, and the delete is 409 TODO_IN_USE")
+    @DisplayName("Plans created while their todo is deleted: the delete is 204, every create 404 TODO_GONE, and no plan is left without its todo")
     void childWritesRacingAParentDeleteKeepTheInvariant() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user, "Contested");
         LocalDate firstDay = LocalDate.parse("2026-11-01");
-        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        CountDownLatch gateClosed = new CountDownLatch(1);
-        CountDownLatch openGate = new CountDownLatch(1);
-        CountDownLatch start = new CountDownLatch(1);
-        List<Future<Answer>> creates = new ArrayList<>();
-        Future<Answer> delete;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // Holds every plan insert until the delete has run, so the delete lands between each create's
-            // lock of the todo (through the todo module's facade) and its insert.
-            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
-                jdbc.execute("lock table plans in share mode");
-                gateClosed.countDown();
-                awaitQuietly(openGate);
-            }));
-            awaitLatch(gateClosed);
-            try {
-                for (int creator = 0; creator < CREATORS; creator++) {
-                    String day = firstDay.plusDays(creator).toString();
-                    Callable<Answer> create = () -> {
-                        awaitLatch(start);
-                        return answerOf(create(user, todoId, day, day));
-                    };
-                    creates.add(executor.submit(create));
-                }
-                start.countDown();
-                // One deadline for both waits: the first waiters' lock_timeout runs through the second.
-                long deadline = lockWaitDeadline();
-                awaitLockWaiters(CREATORS, null, deadline);
-                delete = executor.submit(() -> answerOf(deleteAs(user.accessToken(), TODOS + "/" + todoId)));
-                awaitLockWaiters(CREATORS + 1, delete, deadline);
-            } finally {
-                openGate.countDown();
-            }
-            within(gate);
-        }
-        List<Answer> createAnswers = new ArrayList<>();
-        for (Future<Answer> create : creates) {
-            createAnswers.add(within(create));
-        }
-        Answer deleteAnswer = within(delete);
+        AtomicInteger creator = new AtomicInteger();
 
-        // Every create held the todo FOR KEY SHARE before the delete came, so the delete waited for their
-        // inserts and then found them: without the lock it would delete the todo under them.
-        assertThat(createAnswers).extracting(Answer::status).containsOnly(201);
-        assertThat(deleteAnswer.status()).isEqualTo(409);
-        assertRefusalsAre(List.of(deleteAnswer), 409, "TODO_IN_USE");
-        Integer todos = jdbc.queryForObject("select count(*) from todos where id = ?::uuid", Integer.class, todoId);
-        assertThat(todos).isOne();
-        assertThat(plansOf(user)).isEqualTo(CREATORS);
-    }
+        // Each create on its own day, so only the foreign key can refuse them. Nothing locks the todo
+        // for a create, so the delete goes through, and the key refuses each insert after it.
+        List<Answer> creates = createsHeldAtTheirInsert("plans",
+                () -> {
+                    String day = firstDay.plusDays(creator.getAndIncrement()).toString();
+                    return create(user, todoId, day, day);
+                },
+                () -> deleteAs(user.accessToken(), TODOS + "/" + todoId).andExpect(status().isNoContent()));
 
-    @Test
-    @DisplayName("Editing a todo isn't held up by a plan being created for it")
-    void todoEditIsNotBlockedByAPlanInFlight() throws Exception {
-        TestUser user = newUser();
-        String todoId = createTodo(user, "Still editable");
-        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        CountDownLatch gateClosed = new CountDownLatch(1);
-        CountDownLatch openGate = new CountDownLatch(1);
-        Future<Answer> create;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // Holds the create after it has locked the todo and before it writes its row.
-            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
-                jdbc.execute("lock table plans in share mode");
-                gateClosed.countDown();
-                awaitQuietly(openGate);
-            }));
-            awaitLatch(gateClosed);
-            try {
-                create = executor.submit(() -> answerOf(create(user, todoId, "2026-11-20", "2026-11-22")));
-                awaitLockWaiters(1, create);
-
-                patchAs(user.accessToken(), TODOS + "/" + todoId + "/status", """
-                        {"status": "DONE", "version": 0}
-                        """)
-                        .andExpect(status().isOk());
-            } finally {
-                openGate.countDown();
-            }
-            within(gate);
-        }
-        Answer created = within(create);
-
-        assertThat(created.status()).as(created.body()).isEqualTo(201);
+        assertThat(creates).extracting(Answer::status).containsOnly(404);
+        assertRefusalsAre(creates, 404, "TODO_GONE");
+        assertThat(plansOf(user)).isZero();
     }
 
     /** Plans on consecutive days, as {@code user}, across two todos; returns their ids in calendar order. */

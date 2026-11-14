@@ -36,7 +36,7 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
 | `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
 | `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@AssertTrue boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
-| `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, validated and locked through the owner's facade; its view mapped into a response record of the plan's own), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409, its writers serialised per owner), a **range in a body** (`isDateRangeOrdered`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
+| `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, validated through the owner's facade, not locked; its view mapped into a response record of the plan's own), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; a simultaneous overlap may answer 503, no scope lock), a **range in a body** (`isDateRangeOrdered`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 
 The rules behind the shape are the house-review references, which are the source of truth:
 `rest-api.md`, `error-contract.md`, `persistence.md`, `java.md`, `code-smells.md`, `lenses.md`
@@ -104,9 +104,10 @@ without it (member), or does it have its own lifecycle (root)?". Record the answ
 **Module** (if `{{modules}}` is set): every generated class goes under `{{appPackage}}` with
 `{module}` substituted; cross-module access follows `{{moduleContracts}}` (architecture.md
 ARCH-04/05/06): a parent in another module is referenced by id (a UUID column with a database
-foreign key), never by an entity relation, in `api-facades` mode, and is validated and locked through
-that module's facade (golden `todo.api.Todos` + `TodoView`, used by `PlanService`: a view lookup, a
-batch lookup for a list page, and a `…ViewForWrite` that locks `FOR KEY SHARE`, `MANDATORY`). A
+foreign key), never by an entity relation, in `api-facades` mode, and is validated through that
+module's facade (golden `todo.api.Todos` + `TodoView`, used by `PlanService`: a view lookup, not
+locked, and a batch lookup for a list page; the foreign key refuses a child written after the
+parent's delete, DATA-29). A
 module without a facade (the sign-in piece's `user`) gets one in the same change: an interface in
 `<module>.api` that its service implements, with its view record. **The view never goes on the
 wire:** the consuming module maps it into a response record of its own (golden `PlanTodoResponse`,
@@ -154,8 +155,9 @@ child table fails the build of the parent too.
   `TodoApi` / `TodoController` / `TodoService`): no service, controller or API of its own; endpoints
   nested under the root (`/<roots>/{<root>Id}/<members>`) in the root's API, controller and service.
   Ask: may a root with members be deleted (cascade), or is it 409 `<ROOT>_IN_USE`? Follow the golden
-  methods for the rest (owner check on the root first, only create locks the root, the root's
-  version untouched).
+  methods for the rest (owner check on the root first, the root read without a lock on create: its
+  foreign key refuses an entry after the root's delete, 404 `<ROOT>_GONE`; the root's version
+  untouched).
 - **Variant N: many-to-many between aggregates** (golden `TodoTag`, `Todo.replaceTags`,
   `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql`). Ask:
   which aggregate **writes** the link (the link becomes a member `<A><B>` of that root, ARCH-15)?
@@ -163,8 +165,9 @@ child table fails the build of the parent too.
   `<B>_IN_USE`? Two facts the golden code relies on:
   - A's mapped-by link set carries `@OptimisticLock(excluded = false)`, or A's version never moves
     when the set changes (DATA-30);
-  - B's rows are locked through B's service with a native `FOR KEY SHARE … ORDER BY id`, so a rename
-    of B isn't blocked and the lock order is fixed (DATA-29).
+  - B's rows are read through B's service without a lock (`getOwned<B>s`): a link written after B's
+    delete is refused by its foreign key, mapped on the write side to 404 `<B>_GONE` (DATA-29,
+    DATA-33).
 
   Schema (composite owner FKs on both sides, DATA-33), API (`PUT /<as>/{id}/<bs>`, A's own PUT
   refuses `<b>Ids`) and the list (one grouped query for a batch's links) as in the golden files.
@@ -270,17 +273,20 @@ fields. Golden: `TodoResponse`, `TodoSummaryResponse`.
 `ERROR_PREFIX_NOT_FOUND`, `ERROR_PREFIX_<FIELD>_TAKEN` per unique field, `ERROR_PREFIX_IN_USE` when
 referenced; the mapper entries; a message in every `{{messagesFile}}`; the handler's
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
-`*_IN_USE`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02). A state
+`*_IN_USE` for the parent's delete, and `ERROR_PREFIX_GONE`, a 404 without placeholders, for a
+child's insert or update after it: `byForeignKeyOnWrite`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02). A state
 conflict is 409, a wrong value 400 (ERR-05).
 **Bootstrap brings no feature codes**: every code, mapping, message, constraint entry and limit key
 is added here. Constraint mappings go in the module's own `ConstraintErrorCodes` bean (the handler
 aggregates them): the module **whose changeset declares the constraint** maps it, even to another
 module's code (golden `PlanningConstraintErrorCodes`: `fk_plans_todo_id_owner_id` → `TODO_IN_USE`).
-A child's composite owner FK `(parent_id, owner_id)` maps to the parent's `*_IN_USE` (DATA-33). A
+A child's composite owner FK `(parent_id, owner_id)` maps twice: to the parent's `*_IN_USE` in
+`byConstraintName` (the delete side) and to the parent's `*_GONE` in `byForeignKeyOnWrite` (the
+insert/update side; a cascading key only there), golden `TodoConstraintErrorCodes` (DATA-33). A
 code answered from a constraint gets a message without `{0}` (the handler has no argument for it);
 an apostrophe is written `''`, and a year or an id passed as a number `{0,number,#}` (ERR-06). No
-overlapping ranges: an exclusion constraint mapped to `<ENTITY>_OVERLAPS`, its writers serialised
-per scope first (DATA-35, golden `0011-plans.sql`, `PlanRepository.lockPlansOfOwner`).
+overlapping ranges: an exclusion constraint mapped to `<ENTITY>_OVERLAPS`, with no scope lock (a
+simultaneous overlap answers a retryable 503; DATA-35, golden `0011-plans.sql`, `PlanService.create`).
 
 ### 4.5 Mapper
 Golden `TodoMapper`: `toEntity(request, resolvedParents…, ownerId)`, `update(entity, request,
@@ -289,13 +295,13 @@ resolvedParents…)` (only mutable fields; moves through the entity method), `to
 
 ### 4.6 Repository
 `<Entity>Repository extends {{BaseRepository}}<Entity, ID>, Custom<Entity>Repository`, plus
-`findByIdAndOwnerId` when owned, and the locks by purpose (DATA-29), each with a one-line javadoc
-of why: a native `findForKeyShareBy…` (`FOR KEY SHARE`) when children are written into it, a delete
-guard that doesn't block its edits (golden `TodoListRepository`, `TodoRepository`); a
+`findByIdAndOwnerId` when owned, and a lock only for a rule no constraint, foreign key or
+`@Version` holds (DATA-29), with a one-line javadoc naming that rule: a
 `@Lock(PESSIMISTIC_WRITE) findForUpdateBy…` when a write changes its member rows (files, links) or
-deletes it (golden `TodoRepository`); `@Lock(PESSIMISTIC_READ) findForShareBy…` only when a mutable
-column is re-checked under the lock (row 23b; no golden code). Always by id and owner, so nobody queues behind a row
-they can't see.
+deletes it (golden `TodoRepository`), also taken on a parent before a cap or a multi-row rule is
+checked (row 23b; no golden code); a conditional `@Modifying` update with a rows-affected check for
+a claim (golden `RefreshTokenRepository.revokeIfLive`). No lock on a parent that children are written
+into: the foreign key holds it. Always by id and owner, so nobody queues behind a row they can't see.
 
 ### 4.7 Custom repository and Criteria projection impl
 Golden: `TodoRepositoryImpl` (cursor), `TodoListRepositoryImpl` (offset + dropdown).
@@ -339,8 +345,8 @@ before the root's own delete (golden `TodoTagRepository.deleteAllOfTodo`), since
 per row misses the removed ones (409); delete loads (404) then flushes; a state change on an entity
 goes through a method that guards the state (an `edit(...)` calling `requirePending()`; no golden
 code), never public setters a later caller can use in the wrong state; ownership through
-`findByIdAndOwnerId` (another user's record is 404); parents written into are locked with
-`getOwned<Parent>ForWrite` (`MANDATORY`); list sizes from `{{Paging}}`. No remote call inside a
+`findByIdAndOwnerId` (another user's record is 404); parents written into are read with the plain
+owned lookup (`getOwned<Parent>`, not locked); list sizes from `{{Paging}}`. No remote call inside a
 transaction (DATA-01). Never lock "the current X" by a mutable column (DATA-32).
 
 ### 4.9 API interface (OpenAPI)
@@ -349,7 +355,8 @@ status and errorCode the endpoint can return (except `API_VERSION_UNSUPPORTED`: 
 to every operation; error `@Content` needs no `mediaType`, a customizer publishes it as
 `application/problem+json`): 200/201/204, 400 (`VALIDATION_FAILED`,
 `REQUEST_UNREADABLE`, `REQUEST_PARAMETER_INVALID` for a bad id, enum, date or cursor), 401, 403
-(roles), 404, 409 (`*_TAKEN`, `OPTIMISTIC_LOCK_CONFLICT`, `*_IN_USE`), 503. A delete documents
+(roles), 404 (incl. a parent's `*_GONE` on a child's write), 409 (`*_TAKEN`, `OPTIMISTIC_LOCK_CONFLICT`,
+`*_IN_USE`), 503. A delete documents
 `OPTIMISTIC_LOCK_CONFLICT` only when it can happen: an unlocked delete can lose a race (golden
 `TodoListApi`, `PlanApi`); a delete that loads its row `findForUpdateBy…`, takes no version and
 removes its cascadable member rows set-based can't (golden `TodoApi`; the race test

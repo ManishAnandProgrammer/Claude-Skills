@@ -64,7 +64,7 @@ public interface PlanApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's)",
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's); TODO_GONE (deleted while the plan was being saved)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "PLAN_OVERLAPS (it shares a day with another of your plans)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

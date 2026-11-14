@@ -247,33 +247,52 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Severity:** High.
 
 ### DATA-29: Locks, pollers and caps
+- **Principle:** a lock names the rule it protects that **no constraint, foreign key or `@Version`
+  already holds** (its repository method's one-line javadoc says which). A lock that only turns a
+  rare race's 503 or 409 into a nicer code is not added, provided the data stays correct, the answer
+  is never 500 and a retry is safe. The exception is a race that is normal traffic (two tabs
+  refreshing one token, a double-clicked submit): there the answer must be the documented one.
+  Measured 2026-11-14 (lock audit of the reference, every lock removed in turn): the owner-scope
+  advisory lock and the three `FOR KEY SHARE` delete guards protected nothing the database didn't
+  already hold, and were removed; the todo's `findForUpdate…` and the token's single-winner rotation
+  hold the error contract, and stayed (the token's as a conditional update).
 - **Check:**
-  - advisory locks are transaction-scoped (`pg_advisory_xact_lock`) with a 64-bit key.
-    Session-level locks leak on pooled connections. Detect `hashtext(`: it is 32-bit, so unrelated
-    keys collide and wait on each other; use `hashtextextended(key, 0)`;
-  - a "max N per parent" cap locks the parent before counting, or uses a constraint (incident R5:
-    a cap of 5, and 6 created);
-  - multi-row locks are taken in a consistent order (`ORDER BY id`, `order_updates=true`);
-  - **one lock vocabulary, chosen by purpose** (each repository method's name says which, with a
-    one-line javadoc of why):
-    - `findForKeyShare…` (native `FOR KEY SHARE`, multi-row `ORDER BY id`): a **delete guard**, a row
-      locked only so it can't be deleted or re-keyed while a row pointing at it is written (the list a
-      todo goes into, the todo a time entry or a plan goes onto, the tags of a todo). An ordinary
-      update of that row (a rename, a status change) isn't blocked, and two such guards never
-      deadlock with an update of either row. `FOR SHARE` here is a finding: it blocks every edit of
-      the parent for the length of the child's write, and two writers that each lock their own row
-      for update and the other's `FOR SHARE` (swap two employees' managers) deadlock: 503 instead of
-      200. JPA's `PESSIMISTIC_READ` is `FOR SHARE`, so the guard is a native query
-      (reference: `TodoListRepository`, `TodoRepository.findForKeyShareByIdAndOwnerId`,
-      `TagRepository`);
-    - `findForShare…` (`@Lock(PESSIMISTIC_READ)`): **a mutable column re-checked** under the lock
-      (ship an order only while its account is active; test row 23b), where a concurrent change of
-      that column must wait;
+  - **the lock vocabulary has three entries**, chosen by purpose:
     - `findForUpdate…` (`@Lock(PESSIMISTIC_WRITE)`, which Hibernate issues as `FOR NO KEY UPDATE` on
       PostgreSQL): **the owner of a write**, the row the transaction itself changes, taken first when
       the write also changes its member rows (attachments, tag links) or deletes it, so concurrent
-      writers queue there (MEDIA-07, the reference's `TodoService.update`, `replaceTags`, `delete`);
+      writers queue there (MEDIA-07, the reference's `TodoService.update`, `replaceTags`, `delete`).
+      It costs nothing (the version bump locks that row anyway) and holds the answers: without it a
+      same-version double submit answered 409 `DUPLICATE_RECORD` (84 of 120) or a deadlock's 503
+      (16 of 120) instead of `OPTIMISTIC_LOCK_CONFLICT`, and a member write racing the delete 500;
     - pollers' `FOR UPDATE SKIP LOCKED` (below);
+    - **a claim is a conditional update**, not a read lock: `UPDATE … SET <claimed> WHERE id = ? AND
+      <still claimable>` and the rows affected decide (1: this writer won; 0: re-read and take the
+      loser's path). One refresh token rotated once, a one-time code used once, a status only one
+      writer may flip. A `@Modifying(flushAutomatically = true, clearAutomatically = true)` JPQL
+      update that bumps `version` and `updatedAt` itself (DATA-24); the clear detaches what was read,
+      so a lazy relation needed afterwards is loaded before it (reference:
+      `RefreshTokenRepository.revokeIfLive`, `TokenService.refresh`, logout's `revoke`);
+  - **caps and multi-row invariants lock the parent** (its `findForUpdate…`) before counting or
+    reading the rows the rule spans: "max N per parent" (incident R5: a cap of 5, and 6 created), a
+    mutable column of another row re-checked before the write (ship an order only while its account
+    is active; test row 23b), a version chain's close-and-open (DATA-36). Or a constraint holds it, or
+    the parent's `@Version` does when the collection bumps it (the reference's attachment cap,
+    DATA-30);
+  - **a parent read before a child's insert is not locked.** The foreign key holds the data: its
+    check locks the parent `FOR KEY SHARE` from the insert on, so a delete can't remove a parent under
+    a committed child. A delete that wins the window between the read and the insert makes the insert
+    fail on the key, answered with the parent's not-found code (DATA-33, error-contract ERR-02). A
+    `FOR KEY SHARE` or `FOR SHARE` "delete guard" on that read is a finding unless its javadoc names
+    another rule; `FOR SHARE` there also blocks every edit of the parent, and two writers that each
+    update their own row and share-lock the other's (swap two employees' managers) deadlock;
+  - an exclusion constraint's concurrent overlapping inserts can deadlock (a rare 503, exactly one
+    row stored): not a reason to serialise the scope (DATA-35);
+  - advisory locks only for a rule that has no row to lock; transaction-scoped
+    (`pg_advisory_xact_lock`) with a 64-bit key. Session-level locks leak on pooled connections.
+    Detect `hashtext(`: it is 32-bit, so unrelated keys collide and wait on each other; use
+    `hashtextextended(key, 0)`;
+  - multi-row locks are taken in a consistent order (`ORDER BY id`, `order_updates=true`);
   - **member rows another aggregate's delete removes by cascade** (a tag's delete takes its
     `todo_tags` rows with it) are outside the root's lock: the root's delete removes them with one
     statement that doesn't count them (`TodoTagRepository.deleteAllOfTodo`) before its own delete,
@@ -285,7 +304,11 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - pollers claim with `FOR UPDATE SKIP LOCKED` plus a lease in a short claim transaction, do the
     remote work between transactions, and use fencing when several instances run;
   - `lock_timeout` bounds every wait.
-- **Severity:** High.
+- **Detect:** a lock whose javadoc names no rule, or only a nicer error code; `findForKeyShare…` /
+  `FOR KEY SHARE` / `PESSIMISTIC_READ` on a parent read before a child insert; `@Lock` on a lookup
+  whose caller only flips one column once (a claim: a conditional update instead).
+- **Severity:** High (a missing lock for a real rule); Medium (a lock that protects nothing: it adds
+  waits and deadlock paths).
 
 ### DATA-30: Child additions don't bump the parent version
 - **Check:** uniqueness checked in memory on a loaded collection isn't safe: adding through the
@@ -472,14 +495,21 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     `UNIQUE (id, owner_id)` on the parent (a new changeset when the parent's is applied);
   - the plain `owner_id` foreign key keeps its own index (the composite one doesn't lead with it);
   - the service still loads the parent by id **and** owner before writing the child (a foreign
-    parent is a 404, REST-16), so the composite FK firing can only mean the parent's delete: it maps
-    to the parent's `*_IN_USE`;
+    parent is a 404, REST-16), so the composite FK firing means a delete, on one side or the other.
+    The module's `ConstraintErrorCodes` maps it twice, by the statement that tripped it (PostgreSQL
+    names the child table and the same constraint on both sides; Hibernate's `JDBCException.getSQL()`
+    tells them apart): `byConstraintName` for a **delete** of the parent (409 `<PARENT>_IN_USE`),
+    `byForeignKeyOnWrite` for an **insert or update** of the child whose parent was deleted after the
+    read (404 `<PARENT>_GONE`: a not-found code without placeholders, ERR-06, since the handler has no
+    id to give it). A key with `ON DELETE CASCADE` trips only on the write side. An unmapped side is a
+    500 (reference: `TodoConstraintErrorCodes`, `ConstraintViolationCodes`);
   - a child that can change parent does it through an entity method that checks the owner
     (`moveTo`); one that can't has `updatable = false` on its parent column.
 - **Why:** the ownership check in the service is one line a later change can drop; the constraint
   makes a cross-owner row impossible.
 - **Detect:** an owned child table whose parent FK is the parent id alone; a parent column on the
-  child that is updatable with no owner check.
+  child that is updatable with no owner check; a child's foreign key mapped only to `*_IN_USE` (its
+  insert after a racing delete answers 409 "in use" for a parent that is gone, or 500 when unmapped).
 - **Severity:** Medium (High when a cross-owner row would leak data, REST-16).
 
 ### DATA-34: Values that stored records reference are retired, not deleted
@@ -503,19 +533,20 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - the bounds say inclusive or not (`'[]'` for days a person reads as "from the 20th to the 22nd";
     `'[)'` for instants), the API text says it, and a `CHECK (start <= end)` backs the request's
     `@AssertTrue is<X>RangeOrdered()` (400);
-  - **the scope's writers are serialised first:** two concurrent inserts that overlap each wait in
-    the exclusion check for the other's uncommitted row, which PostgreSQL resolves as a deadlock (503)
-    instead of one 409. Lock the scope's row, or, when it is another module's, take a transaction
-    advisory lock with a 64-bit key of the scope (`pg_advisory_xact_lock(hashtextextended('plans:' ||
-    owner_id, 0))`, reference `PlanRepository.lockPlansOfOwner`), before anything else in the write;
+  - **no scope lock for the constraint's sake** (DATA-29): two overlapping inserts at the same instant
+    each wait in the exclusion check for the other's uncommitted row, and PostgreSQL ends it as a
+    deadlock. The victim answers 503 `DATABASE_CONTENTION`, exactly one row is stored, and its retry
+    answers 409 (measured 2026-11-14: about 1 answer in 6 of a 6-way race, never 500, never two
+    rows). Serialise the scope only when that 503 is normal traffic for the endpoint, or when the
+    write spans several rows of the scope (a version chain's close-and-open, DATA-36: lock the
+    referent row);
   - the constraint is named (`ex_<table>_<columns>`) and mapped by its module's
     `ConstraintErrorCodes` to a 409 code (`<ENTITY>_OVERLAPS`, a message without placeholders: ERR-06).
     Hibernate leaves 23P01 unnamed; the driver names it (error-contract.md ERR-02);
   - tests: an overlap on the first day and on the last day of an existing range, one inside and one
     around it, all 409 without internals; the day before and the day after accepted; another scope's
-    same range accepted; concurrent overlapping creates store exactly one and never answer 503; the
-    scope's lock, held by the test, keeps a create waiting before it touches the table (TEST-05,
-    TEST-09).
+    same range accepted; concurrent overlapping creates store exactly one, the others 409
+    `<ENTITY>_OVERLAPS` or 503 `DATABASE_CONTENTION` with their bodies checked, never 500 (TEST-05).
 
   Reference: `planning/` (`Plan`, changeset `0011-plans.sql`, `PlanningConstraintErrorCodes`,
   `PlanIntegrationTest`).

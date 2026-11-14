@@ -8,9 +8,10 @@ import java.util.Map;
 
 /**
  * The constraints of changeset 0011, mapped here because this module owns them: the overlap a plan
- * create can trip, and the foreign key that refuses deleting a todo that still has plans. That one
- * answers the todo module's {@code TODO_IN_USE}: the code belongs to the refused delete, the mapping to
- * the module whose table holds the constraint.
+ * create can trip, and the foreign key to the todo. Tripped by a todo's delete, it answers the todo
+ * module's {@code TODO_IN_USE}; tripped by a plan's insert (the todo was deleted after the create read
+ * it), {@code TODO_GONE}. The codes belong to the todo, the mapping to the module whose table holds
+ * the constraint.
  */
 @Component
 class PlanningConstraintErrorCodes implements ConstraintErrorCodes {
@@ -20,5 +21,10 @@ class PlanningConstraintErrorCodes implements ConstraintErrorCodes {
         return Map.of(
                 "ex_plans_owner_id_dates", ErrorCode.PLAN_OVERLAPS,
                 "fk_plans_todo_id_owner_id", ErrorCode.TODO_IN_USE);
+    }
+
+    @Override
+    public Map<String, ErrorCode> byForeignKeyOnWrite() {
+        return Map.of("fk_plans_todo_id_owner_id", ErrorCode.TODO_GONE);
     }
 }

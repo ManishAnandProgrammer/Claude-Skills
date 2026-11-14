@@ -450,6 +450,38 @@ class AuthIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("Logout racing a refresh with one token: logout is 204, the refresh 200 or 401, and at most the refresh's new session lives")
+    void logoutRacingARefreshRevokesTheTokenOnce() throws Exception {
+        for (int round = 0; round < 5; round++) {
+            TestUser user = newUser();
+            CountDownLatch start = new CountDownLatch(1);
+            Answer logout;
+            Answer refreshed;
+            try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                Future<Answer> logoutOnce = executor.submit(() -> {
+                    awaitLatch(start);
+                    return answerOf(postAs(null, "/api/v1/auth/logout", """
+                            {"refreshToken": "%s"}
+                            """.formatted(user.refreshToken())));
+                });
+                Future<Answer> refreshOnce = executor.submit(() -> {
+                    awaitLatch(start);
+                    return answerOf(refresh(user.refreshToken()));
+                });
+                start.countDown();
+                logout = within(logoutOnce);
+                refreshed = within(refreshOnce);
+            }
+
+            // Whichever revokes the token first wins; the other's conditional update changes nothing.
+            assertThat(logout.status()).as(logout.body()).isEqualTo(204);
+            assertThat(refreshed.status()).as(refreshed.body()).isIn(200, 401);
+            assertRefusalsAre(List.of(refreshed), 401, "AUTH_INVALID_REFRESH_TOKEN");
+            assertThat(liveRefreshTokens(user)).isEqualTo(refreshed.status() == 200 ? 1 : 0);
+        }
+    }
+
+    @Test
     @DisplayName("A duplicate refresh within the grace window is refused but keeps the new session")
     void duplicateRefreshWithinGraceKeepsTheSession() throws Exception {
         TestUser user = newUser();

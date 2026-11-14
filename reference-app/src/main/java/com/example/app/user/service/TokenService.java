@@ -11,6 +11,7 @@ import com.example.app.user.dto.response.TokenResponse;
 import com.example.app.user.repository.RefreshTokenRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.Hibernate;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -64,29 +65,37 @@ class TokenService {
      *       must commit although the request is refused, hence {@code noRollbackFor};</li>
      *   <li>signed out, or already revoked for reuse: refused.</li>
      * </ul>
-     * <p>The row lock serialises concurrent refreshes with one token: the second waits, then sees
-     * it rotated.</p>
+     * <p>The token is read without a lock and revoked by a conditional update: of concurrent refreshes
+     * (or a refresh and a logout) with one token, only one revokes it; the others find it revoked
+     * when they read it again, and take the paths above.</p>
      */
     @Transactional(noRollbackFor = AppException.class)
     TokenResponse refresh(String rawToken) {
         Instant now = clock.instant();
-        RefreshToken token = repository.findByTokenHash(Hashes.sha256Hex(rawToken))
-                .orElseThrow(AppException.supply(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
+        String tokenHash = Hashes.sha256Hex(rawToken);
+        RefreshToken token = findToken(tokenHash);
         if (token.isRevoked()) {
             refuseRevoked(token, now);
         }
         if (token.isExpired(now)) {
             throw AppException.of(ErrorCode.AUTH_INVALID_REFRESH_TOKEN);
         }
-        token.revoke(RevocationReason.ROTATED, now);
-        return issueTokens(token.getUser());
+        // Loaded now: the revoking update clears the persistence context, which detaches the lazy user.
+        User user = Hibernate.unproxy(token.getUser(), User.class);
+        if (repository.revokeIfLive(tokenHash, RevocationReason.ROTATED, now) == 0) {
+            refuseRevoked(findToken(tokenHash), now);
+        }
+        return issueTokens(user);
     }
 
     /** Idempotent: an unknown or already revoked token is not an error (logout always succeeds). */
     @Transactional
     void revoke(String rawToken) {
-        repository.findByTokenHash(Hashes.sha256Hex(rawToken))
-                .ifPresent(token -> token.revoke(RevocationReason.LOGOUT, clock.instant()));
+        repository.revokeIfLive(Hashes.sha256Hex(rawToken), RevocationReason.LOGOUT, clock.instant());
+    }
+
+    private RefreshToken findToken(String tokenHash) {
+        return repository.findByTokenHash(tokenHash).orElseThrow(AppException.supply(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
     }
 
     /** One batch of the purge; each batch is its own short transaction. */

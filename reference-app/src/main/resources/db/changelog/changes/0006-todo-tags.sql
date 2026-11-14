@@ -28,8 +28,7 @@ CREATE TABLE todo_tags (
     CONSTRAINT fk_todo_tags_todo_id_owner_id FOREIGN KEY (todo_id, owner_id) REFERENCES todos (id, owner_id),
     -- The owner's rule: a tag's delete is never blocked. It disappears from every todo carrying it,
     -- and those todos keep their version: only the label is lost, never a todo or its content.
-    -- TodoService locks the tags it puts on a todo FOR KEY SHARE, so a delete racing that write
-    -- waits for it, then removes the new rows too.
+    -- A link written while its tag is being deleted is refused by this key: 404 TAG_GONE.
     CONSTRAINT fk_todo_tags_tag_id_owner_id FOREIGN KEY (tag_id, owner_id) REFERENCES tags (id, owner_id) ON DELETE CASCADE
 );
 -- The tag's foreign key: the cascade of a tag's delete finds its rows through it.

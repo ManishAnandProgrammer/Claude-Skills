@@ -53,6 +53,7 @@ the generic text.
 | `AccessDeniedException` | 403 | `ACCESS_DENIED` | WARN |
 | `AuthenticationException` | 401 | `AUTHENTICATION_REQUIRED` | WARN |
 | `DataIntegrityViolationException`, unique violation | 409 | `DUPLICATE_RECORD`, or **the domain code** when the constraint name maps to one | DEBUG |
+| `DataIntegrityViolationException`, foreign key (23503), told apart by the statement that tripped it (`JDBCException.getSQL()`: the server's error names the child table on both sides) | a **delete**: 409; an **insert or update**: 404; unmapped: 500 | the delete: the module's `byConstraintName` code (`<PARENT>_IN_USE`); the insert or update: its `byForeignKeyOnWrite` code (`<PARENT>_GONE`, the parent deleted after the service read it, DATA-33) | DEBUG (500: ERROR) |
 | `DataIntegrityViolationException`, other | 500 | `DATA_INTEGRITY_ERROR` | ERROR |
 | `ObjectOptimisticLockingFailureException` (or a known version constraint) | 409 | `OPTIMISTIC_LOCK_CONFLICT` | DEBUG |
 | Transient database failure (ERR-03) | 503 + `Retry-After` | per kind | WARN (ERROR + stack for query timeout) |
@@ -126,7 +127,7 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
   - a number that names something rather than counts it (a year, an id, a code, a version) is
     `{0,number,#}`, or the caller passes it as a String: a plain `{0}` formats a `Number` by locale,
     so 2026 reads "2,026". A quantity may keep the grouping ("48,213 bytes");
-  - a code answered from a constraint name (`*_TAKEN`, `*_IN_USE`, an exclusion's `*_OVERLAPS`) has a
+  - a code answered from a constraint name (`*_TAKEN`, `*_IN_USE`, `*_GONE`, an exclusion's `*_OVERLAPS`) has a
     message without placeholders: the handler has no argument to give it, and `{0}` would reach the
     client as is.
 

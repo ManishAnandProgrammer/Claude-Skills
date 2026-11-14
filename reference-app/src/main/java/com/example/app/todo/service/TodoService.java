@@ -39,7 +39,6 @@ import com.example.app.todo.repository.TodoRepository;
 import com.example.app.todo.repository.TodoTagRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -79,8 +78,8 @@ public class TodoService implements Todos {
     @Transactional
     public ObjectWrapper<TodoResponse> create(TodoCreateRequest request) {
         UUID ownerId = currentUser.id();
-        TodoList todoList = todoListService.getOwnedTodoListForWrite(request.todoListId(), ownerId);
-        List<Tag> tags = tagService.getOwnedTagsForWrite(Objects.requireNonNullElse(request.tagIds(), Set.of()), ownerId);
+        TodoList todoList = todoListService.getOwnedTodoList(request.todoListId(), ownerId);
+        List<Tag> tags = tagService.getOwnedTags(Objects.requireNonNullElse(request.tagIds(), Set.of()), ownerId);
         Todo todo = mapper.toEntity(request, todoList, tags, ownerId);
         // media:begin
         Set<String> attachmentKeys = Objects.requireNonNullElse(request.attachmentKeys(), Set.of());
@@ -113,7 +112,7 @@ public class TodoService implements Todos {
         UUID ownerId = currentUser.id();
         Todo todo = getOwnedTodoForUpdate(id, ownerId);
         todo.checkVersion(request.version());
-        TodoList todoList = todoListService.getOwnedTodoListForWrite(request.todoListId(), ownerId);
+        TodoList todoList = todoListService.getOwnedTodoList(request.todoListId(), ownerId);
         // media:begin
         // Before any other change: the claim's statement flushes what is pending, and a change flushed
         // there and another at the end would increment the version twice.
@@ -168,7 +167,7 @@ public class TodoService implements Todos {
         UUID ownerId = currentUser.id();
         Todo todo = getOwnedTodoForUpdate(id, ownerId);
         todo.checkVersion(request.version());
-        todo.replaceTags(tagService.getOwnedTagsForWrite(request.tagIds(), ownerId));
+        todo.replaceTags(tagService.getOwnedTags(request.tagIds(), ownerId));
         repository.flush();
         return ObjectWrapper.withObject(toResponse(todo));
     }
@@ -217,17 +216,10 @@ public class TodoService implements Todos {
         return repository.findByIdInAndOwnerId(ids, ownerId).stream().map(mapper::toView).toList();
     }
 
-    /** Only inside the caller's write transaction: a lock outside one would end at once. */
-    @Override
-    @Transactional(propagation = Propagation.MANDATORY)
-    public TodoView getOwnedTodoViewForWrite(UUID id, UUID ownerId) {
-        return mapper.toView(getOwnedTodoForKeyShare(id, ownerId));
-    }
-
-    /** The todo is locked {@code FOR KEY SHARE}, so the entry can't race the todo's delete, and an edit of the todo doesn't wait. */
+    /** Not locked: an entry written while its todo is deleted is refused by its foreign key, 404 {@code TODO_GONE}. */
     @Transactional
     public ObjectWrapper<TimeEntryResponse> createTimeEntry(UUID todoId, TimeEntryCreateRequest request) {
-        Todo todo = getOwnedTodoForKeyShare(todoId, currentUser.id());
+        Todo todo = getOwnedTodo(todoId, currentUser.id());
         TimeEntry saved = timeEntryRepository.saveAndFlush(timeEntryMapper.toEntity(request, todo));
         return ObjectWrapper.withObject(timeEntryMapper.toResponse(saved));
     }
@@ -287,10 +279,6 @@ public class TodoService implements Todos {
         Todo todo = getOwnedTodo(id, ownerId);
         todo.checkVersion(expectedVersion);
         return todo;
-    }
-
-    private Todo getOwnedTodoForKeyShare(UUID id, UUID ownerId) {
-        return repository.findForKeyShareByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
     }
 
     private Todo getOwnedTodoForUpdate(UUID id, UUID ownerId) {

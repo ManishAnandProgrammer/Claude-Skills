@@ -18,11 +18,4 @@ public interface Todos {
      * (a page of plans); unknown and another owner's ids are simply absent.
      */
     List<TodoView> getOwnedTodoViews(Collection<UUID> ids, UUID ownerId);
-
-    /**
-     * The owner's todo, locked {@code FOR KEY SHARE} until the caller's transaction ends (which it
-     * requires): a row the caller writes against it can't race the todo's delete, and an edit of the todo
-     * doesn't wait. 404 {@code TODO_NOT_FOUND} as above.
-     */
-    TodoView getOwnedTodoViewForWrite(UUID id, UUID ownerId);
 }

@@ -20,7 +20,6 @@ import com.example.app.todo.mapper.TodoListMapper;
 import com.example.app.todo.repository.TodoListRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -78,16 +77,10 @@ public class TodoListService {
     }
 
     /**
-     * Locked {@code FOR KEY SHARE} until the caller's transaction ends, so a todo written into the list
-     * can't race the list's delete, while a rename of the list goes ahead. Only inside that write
-     * transaction: a lock outside one would end at once.
+     * Not locked: a todo written into the list while the list is deleted is refused by its foreign key,
+     * 404 {@code TODO_LIST_GONE}.
      */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public TodoList getOwnedTodoListForWrite(UUID id, UUID ownerId) {
-        return repository.findForKeyShareByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_LIST_NOT_FOUND, id));
-    }
-
-    private TodoList getOwnedTodoList(UUID id, UUID ownerId) {
+    public TodoList getOwnedTodoList(UUID id, UUID ownerId) {
         return repository.findByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_LIST_NOT_FOUND, id));
     }
 }
