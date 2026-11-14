@@ -11,7 +11,8 @@ Target: **$ARGUMENTS**
 
 - `bootstrap`: set up the shared house infrastructure once. Read
   `~/.claude/skills/crud-gen/references/bootstrap.md` and follow it; skip the rest of this file.
-- a path to an entity: generate its CRUD (Steps 0–8 below).
+- a path to an entity: generate its CRUD (Steps 0–8 below). When the entity **already has generated
+  code** (its service or repository exists), this is **update mode**: read *Updating an entity* first.
 
 ## The goal: generated code passes house-review
 
@@ -33,6 +34,7 @@ tell the user to run the skills installer.
 | `<ref>/todo/controller/api/*Api.java`, `controller/*Controller.java` | OpenAPI interface, thin package-private controller |
 | `~/.claude/skills-reference/src/test/java/com/example/app/todo/*IntegrationTest.java` | The tests every entity ships with |
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
+| `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
 | `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@OrderedRange`), a bounded number, a calendar date (`@NotAfterToday`) |
 
 The rules behind the shape are the house-review references, which are the source of truth:
@@ -44,6 +46,28 @@ on the generated files, and it must come back clean.
 Everything that differs between projects is a **profile key**, written `{{key}}`.
 
 ---
+
+## Updating an entity (update mode)
+
+The developer changed an entity that already has generated code (a field, a relation, a rule). The
+steps are the same; these rules come first:
+1. **Diff first.** `git diff` on the entity tells what changed; generate only what the change
+   touches (requests, response, mapper, repository predicates, service, API docs, changeset,
+   tests). Leave everything else byte-for-byte as it is, even if you would write it differently today
+   (offer that as a separate refactoring).
+2. **A new changeset, never an edit** of an applied one; existing rows need a default or a backfill
+   for a new `NOT NULL` column (ask what the default is).
+3. **No breaking change** (REST-20): a new response field and an optional request field are fine;
+   a removed or renamed field, a new required request field, a new refusal on an existing call or
+   a changed meaning are breaking. A PUT stays a full replace of what it covered before: a new
+   relation that clients set gets **its own sub-resource** (`PUT /<roots>/{id}/<relation>`) rather
+   than a field that old clients would send absent. When a breaking change is unavoidable, stop
+   and ask; record it where the project lists breaking changes.
+4. **Every existing test must pass unchanged.** A test that has to change is a breaking change in
+   disguise (rule 3). New behaviour gets a **new test class** named for the feature
+   (`TodoTagsIntegrationTest`), reusing the existing class's fixture helpers via the test base or a
+   shared support class, not copies.
+5. **Guard proof** (Step 7): prove a guard of the *new* behaviour fails without its fix.
 
 ## Step 0: Load the project profile
 
@@ -129,6 +153,31 @@ child table fails the build of the parent too.
   `UNIQUE (id, owner_id)` for the composite FK. Deleting a root that still has members is 409
   `<ROOT>_IN_USE` unless the owner chooses a cascade (ask). The nested list costs 2 statements
   (the ownership check, then the batch). Everything else below applies.
+- **Variant N: many-to-many between aggregates** (a `@ManyToMany`, or two roots linked; golden
+  `TodoTag`). Ask which aggregate **writes** the link: the link becomes a member entity of that root
+  (`<A><B>`, extends `{{AuditBase}}`), used only by A's service (ARCH-15).
+  - **Schema** (pre-flight, new changesets): the other side gets `UNIQUE (id, owner_id)`; the link
+    table has `id`, `a_id`, `b_id`, `owner_id`, the audit columns and `version`; `UNIQUE (a_id, b_id)`
+    (leading with `a_id`, it serves A's FK and the links of a batch); composite FKs
+    `(a_id, owner_id) → a(id, owner_id)` and `(b_id, owner_id) → b(id, owner_id)` (the database
+    refuses a link across owners); no FK on `owner_id` alone; index `(b_id, owner_id, a_id)`. Deleting
+    B: `ON DELETE CASCADE` on the B side only when the owner says links simply disappear (a label);
+    otherwise 409 `<B>_IN_USE`. Ask.
+  - **Entity:** A holds a mapped-by `Set<<A><B>>` with `@OptimisticLock(excluded = false)` (Hibernate
+    7.4 excludes mapped-by collections from the version by default), cascade PERSIST/REMOVE,
+    orphan removal, no getter; `replace<Bs>(List<B>)` with the owner guard is the only writer.
+  - **API:** `PUT /<as>/{id}/<bs> {<b>Ids, version}` replaces the set (A's own PUT stays a full
+    replace and refuses `<b>Ids`); optional `<b>Ids` on create; `Set<@NotNull ID>` with
+    `@ConfiguredMaxSize("<a>.max-<bs>")`, no `@NotEmpty`, a repeated id counts once (documented);
+    responses carry `<bs>: [{id, <displayField>}]` in id order. The version changes only when the
+    set does.
+  - **Service:** B through B's service: `getOwned<Bs>ForWrite(ids, ownerId)` (`MANDATORY`; a native
+    `FOR KEY SHARE … ORDER BY id`, so a rename of B isn't blocked and lock order is fixed; 404
+    `<B>_NOT_FOUND` naming the lowest missing id); A locked for update before its link rows; A's
+    delete removes its links through the aggregate.
+  - **List:** the row projection without links, then **one grouped query** for the batch's links
+    (`with<Bs>`): 2 statements per batch, 1 when empty; the `<b>Id` filter is an `exists` on the
+    link table (no join to B).
 - **Variant A: list CRUD** (no FK with `unique = true`). **Variant B: one per parent** (a unique
   FK): a nested singleton resource; GET returns a null object when absent, PUT creates or
   replaces.
@@ -185,13 +234,15 @@ filter.
 ### 4.2 Requests (records)
 `<Entity>Create{{requestSuffix}}`, `<Entity>Update{{requestSuffix}}` (with `@NotNull Long version`),
 one per state action (`<Entity>Status{{requestSuffix}}`). **Every String carries `@MaxLength("<entity>.<field>")`** and its
-number is added to `app.limits.text` in `config/limits.yml`; collections carry `@NotEmpty` and a
-`@ConfiguredMax` size; a date with a meaningful upper bound carries `@LatestDate("<entity>.<field>")`
+number is added to `app.limits.text` in `config/limits.yml`; collections carry a configured size
+limit (`@ConfiguredMaxSize("<entity>.<field>")`) and `@NotNull` elements, plus `@NotEmpty` only when
+an empty collection is meaningless (an optional set of tags may be empty); a date with a meaningful upper bound carries `@LatestDate("<entity>.<field>")`
 (`app.limits.latest-date`), e.g. below a sort sentinel. `@Schema` on every component. Golden:
 `TodoCreateRequest`.
 
 ### 4.3 Responses (records)
-`<Entity>Response` (every field, FKs as ids, ending with `{{auditFields}}`) for the detail; for list
+`<Entity>Response` (every field, FKs as ids, ending with `{{auditFields}}`; a reference to another
+aggregate that clients display is `{id, name}`, a list of them for a many-to-many) for the detail; for list
 rows a `<Entity>SummaryResponse` without heavy columns (long text), still ending with the audit
 fields. Golden: `TodoResponse`, `TodoSummaryResponse`.
 
