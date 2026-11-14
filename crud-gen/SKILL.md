@@ -192,6 +192,9 @@ child table fails the build of the parent too.
 ## Step 4: Generate
 
 ### Conventions (all generated code)
+- **KISS and SRP first** (SMELL-29): code a Java engineer with 2–3 years of experience reads without
+  deep generics or reflection. Each repository method writes its query top to bottom and calls the
+  plain helpers (`Cursor`, `Seek`, `CursorBatch.of`); never invent a helper that takes lambdas.
 - `Objects.isNull` / `Objects.nonNull`; enums compared with `==`; no `var`; text blocks for every
   multi-line string.
 - Streams for pure pipelines with method references; a `for` loop when the body has side effects.

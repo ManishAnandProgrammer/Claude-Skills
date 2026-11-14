@@ -219,3 +219,26 @@ Lines are counted without blank or comment lines.
   adds no clarity is inlined.
 - **Not a finding when:** the name documents intent that an expression would hide.
 - **Severity:** Low.
+
+### SMELL-29: Accidental complexity (KISS, SRP)
+Owner's top priority (2026-11-14): code a Java engineer with 2–3 years of experience understands
+perfectly, without deep generics knowledge or reflection. Complexity from the domain is accepted;
+complexity added to look smart or save keystrokes is a finding.
+- **Check:**
+  - a **toolbox, not a framework**: shared code is plain helper methods called from straightforward
+    code (a repository writes its Criteria query top to bottom and calls `Cursor.read`,
+    `Seek.after`); a helper that takes the caller's logic as lambdas or functional interfaces and
+    assembles the work itself is a finding when a plain call would do;
+  - **generics**: more than one type parameter on a house class or method, wildcard bounds the
+    reader must decode, or type tokens passed around to make a generic helper work, are findings
+    (bounds that mirror a JDK or Jakarta signature, such as `<V extends Comparable<? super V>>`
+    for `CriteriaBuilder.greaterThan`, are fine);
+  - **reflection** (field access, `Class.forName`, generic type resolution) in application code;
+  - **a hook added for one caller** (a parameter, flag or interface method that only one use needs)
+    is speculative generality: the helper is growing into a framework;
+  - **DRY means knowledge**: one place for a rule, a format or a security check; similar-looking
+    query code that differs in what it selects and filters is not duplication.
+- **Detect:** `Function<Root<T>, …>` or `(builder, root, query) -> …` passed into a house helper;
+  three type parameters on a record; a helper whose signature changed for one new caller; a
+  reader who needs a debugger to see what SQL a method runs.
+- **Severity:** Medium (High when the indirection hides a security or correctness rule).
