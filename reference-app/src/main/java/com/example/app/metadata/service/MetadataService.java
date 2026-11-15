@@ -59,6 +59,21 @@ public class MetadataService implements Metadata {
         repository.saveAndFlush(mapper.toEntity(key, value));
     }
 
+    // tenancy-row:begin
+    // /**
+    //  * Check, then insert: a seed runs in its tenant's activating transaction, and the only other writer of
+    //  * the row is the backfill changeset, which runs before its release serves (should the two meet, the
+    //  * activation fails and approving again retries).
+    //  */
+    // @Override
+    // @Transactional
+    // public <T> void createIfAbsent(MetadataKey<T> key, T value) {
+    //     if (repository.findByKey(key.name()).isEmpty()) {
+    //         create(key, value);
+    //     }
+    // }
+
+    // tenancy-row:end
     /** Copies the value as stored, without validating it again: it was valid when written, and a limit lowered since must not block the new context. */
     @Override
     @Transactional

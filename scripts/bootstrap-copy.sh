@@ -292,7 +292,7 @@ LIST
                 echo "$ROW/src/main/java/$reference_path/media/api/UploadLimits.java"
                 if chosen_piece example; then
                     echo "$ROW/src/main/java/$reference_path/todo/service/TodoAttachmentPolicySeed.java"
-                    echo "$ROW/src/test/java/$reference_path/todo/TodoAttachmentPolicyBackfillIntegrationTest.java"
+                    echo "$ROW/src/test/java/$reference_path/todo/TodoSeedsBackfillIntegrationTest.java"
                 fi
             fi
             ;;

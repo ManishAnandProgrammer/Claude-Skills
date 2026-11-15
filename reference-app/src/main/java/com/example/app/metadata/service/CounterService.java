@@ -35,6 +35,16 @@ public class CounterService implements Counters {
      * something a client can cause: 500.
      */
     @Override
+    @Transactional
+    public void createIfAbsent(String name, long lastValue) {
+        // tenancy-row:begin
+        // repository.insertIfAbsent(TenantContext.id(), name, lastValue, clock.instant(), currentUser.findId().orElse(null));
+        // tenancy-row:else
+        repository.insertIfAbsent(name, lastValue, clock.instant(), currentUser.findId().orElse(null));
+        // tenancy-row:end
+    }
+
+    @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public long next(String name) {
         // tenancy-row:begin

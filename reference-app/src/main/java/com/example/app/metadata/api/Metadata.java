@@ -17,6 +17,15 @@ public interface Metadata {
 
     /** Creates the key's value; 400 {@code VALIDATION_FAILED} when the record breaks its constraints. */
     <T> void create(MetadataKey<T> key, T value);
+    // tenancy-row:begin
+
+    // /**
+    //  * Creates the key's value in the current tenant unless it has one (then nothing changes). Row mode's
+    //  * {@code TenantProvisioned} seeds: the changeset that backfills the existing tenants reaches a tenant
+    //  * still PENDING too, and its approval must then keep that row instead of failing on it.
+    //  */
+    // <T> void createIfAbsent(MetadataKey<T> key, T value);
+    // tenancy-row:end
 
     /**
      * Seeds {@code target} with {@code source}'s current value: a new context starting from the

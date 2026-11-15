@@ -16,6 +16,22 @@ import java.util.UUID;
  *
  * <p>A fixed counter (one for the whole application) is seeded by the changeset that needs it; a
  * per-context one by the lifecycle code that creates its context.</p>
+ *   <!-- tenancy:begin -->
+ *
+ * <p>With tenancy {@code counters} is tenant data, so a fixed counter is one per tenant: a tenant's
+ * display numbers (ticket #1, #2, ...) use a fixed name, never {@link #perContext} with the tenant's id.
+ * Schema per tenant seeds it in the tenant changeset (it runs in every new schema). Row mode seeds it from
+ * a {@code TenantProvisioned} listener with {@link #createIfAbsent}, beside a changeset that backfills
+ * the tenants already there: the backfill also reaches a tenant still PENDING, whose approval then finds
+ * the row. The create calls {@link #createIfAbsent} before {@link #next} too, so a tenant that an
+ * instance without the listener activated (a rolling deploy) still numbers from 1.</p>
+ *   <!-- tenancy:end -->
+ *
+ * <p>{@link #next} holds the counter's row until the caller commits, so the creates numbered by one
+ * counter queue one behind the other: take the number last, after every check of the create. Numbers
+ * stay gapless only while their records are never deleted; a display number whose records may be
+ * deleted accepts the gap (a deleted record's number is never handed out again), and says so in its
+ * API text.</p>
  */
 public interface Counters {
 
@@ -29,6 +45,13 @@ public interface Counters {
      * exists is refused at the flush: 409 {@code DUPLICATE_RECORD}.
      */
     void create(String name, long lastValue);
+
+    /**
+     * Seeds a counter unless it exists (then nothing changes), in the caller's transaction and without an
+     * error that would doom it: for a seed that may meet the row created another way first, and for a
+     * create that must number even where its seed never ran.
+     */
+    void createIfAbsent(String name, long lastValue);
 
     /**
      * The next number, inside the caller's transaction, which it requires. The row stays locked

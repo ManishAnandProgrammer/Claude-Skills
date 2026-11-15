@@ -48,6 +48,22 @@ class CounterIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("createIfAbsent seeds a missing counter and leaves an existing one as it is, in a transaction that still commits")
+    void createIfAbsentKeepsAnExistingCounter() {
+        String name = newCounterName();
+        counters.createIfAbsent(name, 0);
+        assertThat(nextCommitted(name)).isEqualTo(1L);
+
+        Long next = new TransactionTemplate(transactionManager).execute(status -> {
+            counters.createIfAbsent(name, 0);
+            return counters.next(name);
+        });
+
+        assertThat(next).isEqualTo(2L);
+        assertThat(jdbc.queryForObject("select count(*) from counters where key = ?", Integer.class, name)).isOne();
+    }
+
+    @Test
     @DisplayName("A new counter hands out lastValue + 1, then one more per call; the row's version and updatedAt follow")
     void numbersAreSequential() {
         String invoices = newCounterName();

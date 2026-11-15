@@ -25,7 +25,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Every native statement on a tenant table names its tenant (house-review TEN-37): Hibernate's tenant
  * filter never reaches native SQL, and the policy is the fallback, not the filter. Read from the
  * repositories' {@code @Query(nativeQuery = true)} statements: each reference to a tenant table (after
- * {@code FROM}, {@code JOIN}, {@code UPDATE} or {@code INTO}) needs its own {@code tenant_id = :tenantId}.
+ * {@code FROM}, {@code JOIN}, {@code UPDATE} or {@code INTO}) needs its own {@code tenant_id = :tenantId}, or,
+ * for an insert, {@code tenant_id} in its column list with {@code :tenantId} passed.
  * Native SQL lives in repositories (a {@code JdbcTemplate} on a tenant table elsewhere is a review
  * finding this test can't see).
  */
@@ -36,6 +37,8 @@ class NativeQueryTenantIntegrationTest extends IntegrationTest {
     private static final Pattern TABLE = Pattern.compile("\\b(?:from|join|update|into)\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
     /** The tenant predicate, with or without a table alias. */
     private static final Pattern TENANT_PREDICATE = Pattern.compile("\\btenant_id\\s*=\\s*:tenantId\\b");
+    /** An insert's table and its column list: listing tenant_id names the row's tenant, as a predicate does. */
+    private static final Pattern INSERT_COLUMNS = Pattern.compile("\\binsert\\s+into\\s+(\\w+)\\s*\\(([^)]*)\\)", Pattern.CASE_INSENSITIVE);
 
     @Autowired
     private ApplicationContext context;
@@ -57,6 +60,13 @@ class NativeQueryTenantIntegrationTest extends IntegrationTest {
             }
         }
         long predicates = TENANT_PREDICATE.matcher(statement).results().count();
+        Matcher insert = INSERT_COLUMNS.matcher(statement);
+        while (insert.find()) {
+            boolean tenantTable = tenantTables.contains(insert.group(1).toLowerCase(Locale.ROOT));
+            if (tenantTable && insert.group(2).matches("(?s).*\\btenant_id\\b.*") && statement.contains(":tenantId")) {
+                predicates++;
+            }
+        }
         return predicates < tenantTableReferences;
     }
 
@@ -85,7 +95,7 @@ class NativeQueryTenantIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The check catches a statement without the predicate, and a subquery's table left without its own")
+    @DisplayName("The check catches a statement without the predicate, a subquery's table left without its own, and an insert without tenant_id")
     void theCheckCatchesAMissingPredicate() {
         Set<String> tenantTables = Set.of("tenancy_probe");
 
@@ -99,5 +109,9 @@ class NativeQueryTenantIntegrationTest extends IntegrationTest {
                 WHERE id IN (SELECT id FROM tenancy_probe WHERE label = 'probe' AND tenant_id = :tenantId)
                   AND tenant_id = :tenantId""", tenantTables)).isFalse();
         assertThat(missesItsTenant("DELETE FROM refresh_tokens WHERE expires_at < :cutoff", tenantTables)).isFalse();
+        // An insert names its tenant in its column list (TEN-37), with the passed tenant as the value.
+        assertThat(missesItsTenant("INSERT INTO tenancy_probe (id, label) VALUES (:id, 'probe')", tenantTables)).isTrue();
+        assertThat(missesItsTenant("INSERT INTO tenancy_probe (id, tenant_id, label) VALUES (:id, :tenantId, 'probe')",
+                tenantTables)).isFalse();
     }
 }
