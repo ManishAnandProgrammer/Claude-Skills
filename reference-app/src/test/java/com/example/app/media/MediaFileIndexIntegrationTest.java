@@ -1,5 +1,6 @@
 package com.example.app.media;
 
+import com.example.app.media.repository.MediaFileRepository;
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -19,11 +20,11 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Each job's lease statement (MediaFileRepository, copied here verbatim) reads its own partial index in
- * order: that index named in the plan and no sort on the expiry column. A sort of the ids alone is fine:
- * the planner may de-duplicate the {@code IN}'s ids with one once other tests have left media rows. Scans
- * that read whole tables are switched off, because on the few rows of a test database they would win on
- * cost and hide a missing index.
+ * Each job's lease statement (MediaFileRepository's own constant, what the job runs) reads its own
+ * partial index in order: that index named in the plan and no sort on the expiry column. Its batch is an
+ * init plan, computed once: as the inner side of a semi-join it could run again and lease more rows than
+ * the batch. Scans that read whole tables are switched off, because on the few rows of a test database
+ * they would win on cost and hide a missing index.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MediaFileIndexIntegrationTest extends IntegrationTest {
@@ -58,35 +59,23 @@ class MediaFileIndexIntegrationTest extends IntegrationTest {
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze media_files"));
     }
 
-    private static String lease(String status, String expiryColumn) {
-        return """
-                UPDATE media_files
-                SET lease_until = now() + :leaseSeconds * interval '1 second'
-                WHERE id IN (SELECT id
-                               FROM media_files
-                              WHERE status = '%s'
-                                AND %s < now()
-                                AND (lease_until IS NULL OR lease_until < now())
-                              ORDER BY %s, id
-                              LIMIT :batchSize
-                              FOR UPDATE SKIP LOCKED)
-                RETURNING id""".formatted(status, expiryColumn, expiryColumn);
-    }
-
     static Stream<Arguments> jobQueries() {
         return Stream.of(
-                Arguments.of("verification", lease("IN_REVIEW", "upload_expires_at"), "idx_media_files_in_review_upload_expires_at_id"),
-                Arguments.of("cleanup, released", lease("RELEASED", "upload_expires_at"), "idx_media_files_released_upload_expires_at_id"),
-                Arguments.of("cleanup, expired pending", lease("PENDING", "expires_at"), "idx_media_files_pending_expires_at_id"));
+                Arguments.of("verification", MediaFileRepository.LEASE_FOR_VERIFICATION, "idx_media_files_in_review_upload_expires_at_id"),
+                Arguments.of("cleanup, released", MediaFileRepository.LEASE_RELEASED, "idx_media_files_released_upload_expires_at_id"),
+                Arguments.of("cleanup, expired pending", MediaFileRepository.LEASE_EXPIRED_PENDING, "idx_media_files_pending_expires_at_id"));
     }
 
     @ParameterizedTest(name = "{0}: {2}")
     @MethodSource("jobQueries")
-    @DisplayName("Every job's lease reads its own partial index in order")
+    @DisplayName("Every job's lease reads its own partial index in order, its batch an init plan run once")
     void everyJobQueryReadsItsIndex(String name, String statement, String index) {
         MapSqlParameterSource parameters = new MapSqlParameterSource()
                 .addValue("leaseSeconds", 300L)
                 .addValue("batchSize", 200);
+        // tenancy-row:begin
+        // parameters.addValue("tenantId", testTenant().id());
+        // tenancy-row:end
 
         List<String> planLines = new TransactionTemplate(transactionManager).execute(status -> {
             jdbc.execute("set local enable_seqscan = off");
@@ -96,5 +85,6 @@ class MediaFileIndexIntegrationTest extends IntegrationTest {
         String plan = String.join("\n", planLines);
 
         assertThat(plan).as(plan).contains("using " + index + " on").doesNotContainPattern("Sort Key: [^\\n]*expires_at");
+        assertThat(plan).as(plan).contains("InitPlan").doesNotContain("Semi Join");
     }
 }

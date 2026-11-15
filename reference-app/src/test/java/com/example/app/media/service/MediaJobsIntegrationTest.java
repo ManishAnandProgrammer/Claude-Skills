@@ -216,4 +216,28 @@ class MediaJobsIntegrationTest extends IntegrationTest {
             assertThat(second).hasSize(2).doesNotContainAnyElementsOf(firstBatch);
         }
     }
+
+    /**
+     * More due rows than the batch, among a few hundred unrelated ones, so the planner sees a table worth
+     * joining: the lease's batch must still be exactly its size (MediaFileRepository's comment on the
+     * leases). Rolled back, so the rows never reach a job.
+     */
+    @Test
+    @DisplayName("One lease takes exactly its batch, never more, with more due rows than the batch")
+    void aLeaseTakesExactlyItsBatch() {
+        for (int index = 0; index < 300; index++) {
+            insertFile("UPLOADED", PAST, FUTURE);
+        }
+        for (int index = 0; index < 6; index++) {
+            insertFile("IN_REVIEW", "timestamptz '2000-01-01' + interval '%d seconds'".formatted(index), FUTURE);
+        }
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze media_files"));
+
+        List<MediaFileKey> batch = new TransactionTemplate(transactionManager).execute(status -> {
+            status.setRollbackOnly();
+            return mediaFiles.leaseForVerification(2, LEASE);
+        });
+
+        assertThat(batch).hasSize(2);
+    }
 }

@@ -19,6 +19,52 @@ import java.util.UUID;
  */
 public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
 
+    /*
+     * The jobs' leases, constants so that MediaFileIndexIntegrationTest plans exactly what the jobs run.
+     * Each batch is an ARRAY(...) of the locked ids, which PostgreSQL computes once (an init plan). Written
+     * as "id IN (SELECT ... LIMIT ... FOR UPDATE SKIP LOCKED)", the planner may put the subquery on the
+     * inner side of a join and run it again per outer row; every rerun skips the rows the earlier runs
+     * locked and returns others, so one lease took more rows than its batch.
+     */
+    String LEASE_FOR_VERIFICATION = """
+            UPDATE media_files
+            SET lease_until = now() + :leaseSeconds * interval '1 second'
+            WHERE id = ANY (ARRAY(SELECT id
+                                    FROM media_files
+                                   WHERE status = 'IN_REVIEW'
+                                     AND upload_expires_at < now()
+                                     AND (lease_until IS NULL OR lease_until < now())
+                                   ORDER BY upload_expires_at, id
+                                   LIMIT :batchSize
+                                   FOR UPDATE SKIP LOCKED))
+            RETURNING id""";
+
+    String LEASE_RELEASED = """
+            UPDATE media_files
+            SET lease_until = now() + :leaseSeconds * interval '1 second'
+            WHERE id = ANY (ARRAY(SELECT id
+                                    FROM media_files
+                                   WHERE status = 'RELEASED'
+                                     AND upload_expires_at < now()
+                                     AND (lease_until IS NULL OR lease_until < now())
+                                   ORDER BY upload_expires_at, id
+                                   LIMIT :batchSize
+                                   FOR UPDATE SKIP LOCKED))
+            RETURNING id""";
+
+    String LEASE_EXPIRED_PENDING = """
+            UPDATE media_files
+            SET lease_until = now() + :leaseSeconds * interval '1 second'
+            WHERE id = ANY (ARRAY(SELECT id
+                                    FROM media_files
+                                   WHERE status = 'PENDING'
+                                     AND expires_at < now()
+                                     AND (lease_until IS NULL OR lease_until < now())
+                                   ORDER BY expires_at, id
+                                   LIMIT :batchSize
+                                   FOR UPDATE SKIP LOCKED))
+            RETURNING id""";
+
     /**
      * PENDING to IN_REVIEW for the keys that are the caller's, of this purpose, never claimed and still
      * claimable; the others are left alone. The row locks last until the caller's transaction ends, so
@@ -68,18 +114,7 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
      * instances get disjoint batches, and a crashed instance's rows return when its lease runs out.
      * The lease is bookkeeping, not a change of the file: no version or audit columns.
      */
-    @Query(nativeQuery = true, value = """
-            UPDATE media_files
-            SET lease_until = now() + :leaseSeconds * interval '1 second'
-            WHERE id IN (SELECT id
-                           FROM media_files
-                          WHERE status = 'IN_REVIEW'
-                            AND upload_expires_at < now()
-                            AND (lease_until IS NULL OR lease_until < now())
-                          ORDER BY upload_expires_at, id
-                          LIMIT :batchSize
-                          FOR UPDATE SKIP LOCKED)
-            RETURNING id""")
+    @Query(nativeQuery = true, value = LEASE_FOR_VERIFICATION)
     List<UUID> leaseForVerification(int batchSize, long leaseSeconds);
 
     /** The verification's result, for files still IN_REVIEW (a removal since wins); ends the lease. */
@@ -96,33 +131,11 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
     int recordVerification(Collection<UUID> ids, String status);
 
     /** Like {@link #leaseForVerification}, for removed files whose upload URL expired ({@code idx_media_files_released_upload_expires_at_id}). */
-    @Query(nativeQuery = true, value = """
-            UPDATE media_files
-            SET lease_until = now() + :leaseSeconds * interval '1 second'
-            WHERE id IN (SELECT id
-                           FROM media_files
-                          WHERE status = 'RELEASED'
-                            AND upload_expires_at < now()
-                            AND (lease_until IS NULL OR lease_until < now())
-                          ORDER BY upload_expires_at, id
-                          LIMIT :batchSize
-                          FOR UPDATE SKIP LOCKED)
-            RETURNING id""")
+    @Query(nativeQuery = true, value = LEASE_RELEASED)
     List<UUID> leaseReleased(int batchSize, long leaseSeconds);
 
     /** Like {@link #leaseForVerification}, for never-attached files past their claim window ({@code idx_media_files_pending_expires_at_id}). */
-    @Query(nativeQuery = true, value = """
-            UPDATE media_files
-            SET lease_until = now() + :leaseSeconds * interval '1 second'
-            WHERE id IN (SELECT id
-                           FROM media_files
-                          WHERE status = 'PENDING'
-                            AND expires_at < now()
-                            AND (lease_until IS NULL OR lease_until < now())
-                          ORDER BY expires_at, id
-                          LIMIT :batchSize
-                          FOR UPDATE SKIP LOCKED)
-            RETURNING id""")
+    @Query(nativeQuery = true, value = LEASE_EXPIRED_PENDING)
     List<UUID> leaseExpiredPending(int batchSize, long leaseSeconds);
 
     /**
