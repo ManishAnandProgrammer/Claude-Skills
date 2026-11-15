@@ -334,8 +334,18 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     A lock by id alone lets any signed-in caller queue behind another user's writers before its 404;
   - pollers claim with `FOR UPDATE SKIP LOCKED` plus a lease in a short claim transaction, do the
     remote work between transactions, and use fencing when several instances run;
+  - **a `LIMIT … FOR UPDATE SKIP LOCKED` batch is computed once**: `WHERE id = ANY (ARRAY(SELECT id …
+    LIMIT :batch FOR UPDATE SKIP LOCKED))` (an uncorrelated `ARRAY` sublink is an init plan) or a
+    `MATERIALIZED` CTE, never `WHERE id IN (SELECT … LIMIT … FOR UPDATE SKIP LOCKED)`: the planner may
+    put that subquery on the inner side of a join and run it again per outer row, each run skipping the
+    rows the earlier ones locked and returning others, so one lease takes more than its batch (measured:
+    a batch of 2 leased 5) and "disjoint, bounded batches" rests on plan luck. The test explains the
+    statement the repository runs (a constant, not a copy) and asserts `InitPlan` and no `Semi Join`
+    (reference `MediaFileRepository.LEASE_*`, `MediaFileIndexIntegrationTest`); a behaviour test alone
+    passes on a near-empty table;
   - `lock_timeout` bounds every wait.
-- **Detect:** a lock whose javadoc names no rule, or only a nicer error code; `findForKeyShare…` /
+- **Detect:** `IN (SELECT … FOR UPDATE SKIP LOCKED)` or `IN (SELECT … LIMIT …)` in a writing statement;
+  a lock whose javadoc names no rule, or only a nicer error code; `findForKeyShare…` /
   `FOR KEY SHARE` / `PESSIMISTIC_READ` on a parent read before a child insert; `@Lock` on a lookup
   whose caller only flips one column once (a claim: a conditional update instead).
 - **Severity:** High (a missing lock for a real rule); Medium (a lock that protects nothing: it adds

@@ -104,8 +104,9 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
     through `sql(...)`, the job's schedule is off): IN_REVIEW refused, MISSING refused, all UPLOADED
     accepted, a record without files passes the gate;
   - **both jobs share their rows between instances through a lease:** a short transaction marks a
-    batch (`UPDATE … SET lease_until = now() + :lease WHERE id IN (SELECT … ORDER BY …, id LIMIT
-    :batch FOR UPDATE SKIP LOCKED) RETURNING …`), the storage calls run with no transaction, a second
+    batch (`UPDATE … SET lease_until = now() + :lease WHERE id = ANY (ARRAY(SELECT … ORDER BY …, id
+    LIMIT :batch FOR UPDATE SKIP LOCKED)) RETURNING …`: computed once, DATA-29; never `id IN (SELECT …)`,
+    which may lease more than the batch), the storage calls run with no transaction, a second
     short transaction writes the results. A row lock lasts only as long as its transaction, and a
     storage call must not hold one, so the lock only hands out the lease; a crashed instance's lease
     expires and another picks the rows up. Each job query has a partial index on its status
@@ -114,7 +115,8 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
 - **Detect:** `headObject`/`deleteObject` reached from a `@Transactional` method; a verification
   that runs before the URL expired; a scheduler that deletes or unlinks attachments; MISSING
   without a metric; a job that selects without `SKIP LOCKED` and a lease, or holds a row lock
-  across a storage call; a job query with no partial index on its status.
+  across a storage call; a lease written `id IN (SELECT … SKIP LOCKED)`; a job query with no partial
+  index on its status.
 - **Severity:** High.
 
 ### MEDIA-07: A record's files change by add/remove, inside a count range
