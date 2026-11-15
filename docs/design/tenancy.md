@@ -626,6 +626,33 @@ rewriting its data. Row mode extracts by logical replication filtered by `tenant
 Not built (backfills): the backfills in `0017` and `0018` run on every new database with nothing to copy;
 no golden test starts from a database with data from before them.
 
+## Built (2026-11-15): the members list and the `Members` facade
+
+Owner decision (2026-11-15): tenant ADMINs couldn't see their team, and the role change's `version` was
+returned by nothing but the add and the previous change.
+
+- **`GET /tenant-members`** (ADMIN, `@AdminOnly` like the other member endpoints) and
+  **`GET /tenant-members/{userId}`**: the crud-gen offset list (`TenantMemberFilter` with `ids`, `role`,
+  an email `query` and `TenantMemberSort` NEWEST (default) / OLDEST; `TenantMembershipRepositoryImpl`, a
+  Criteria projection into `TenantMemberResponse` with `OffsetPages`; `PaginationWrapper`). Rows come from
+  `tenant_memberships` (the authority on who belongs, its role and its `version`) joined to `users` (email,
+  name); a removed member's membership is deleted, so they are not listed and their GET is 404
+  `TENANT_MEMBER_NOT_FOUND`, like another tenant's member. The tenant's own `members` table isn't read: in
+  schema mode it sits in another schema, and it adds nothing the membership doesn't say. `createdAt` is
+  when the person joined (again, after a removal). Reads go by the token's role; the changes keep
+  checking the caller's membership under the tenant's lock (TEN-08).
+- **The tenant in every statement:** `tenant_memberships` is a platform table in both modes (no policy),
+  so the list, the GET and the facade name `TenantContext.current()` themselves.
+- **Indexes (`0020-tenant-members-list`, a platform changeset):** `(tenant_id, id)` for both orders,
+  replacing `idx_tenant_memberships_tenant_id`; `(tenant_id, role, id)` for the role filter (ADMIN is
+  rare, and the last-ADMIN count and the owner lookup filter by it too); `ids` probes
+  `uq_tenant_memberships_user_id_tenant_id`. `TenantMemberIndexIntegrationTest`.
+- **`user.api.Members`** (`MembershipService` implements it): `isMember(userId)`,
+  `getMemberView(userId)` (404 `TENANT_MEMBER_NOT_FOUND`), `getMemberViews(userIds)` in one statement;
+  `MemberView(userId, email, fullName)` lives in `user.api` beside it, as `TodoView` and `TenantView` do
+  (an `api` package may not depend on `dto`). Other modules ask it about a person, never the membership
+  or user repositories. Tests: `TenantMemberListIntegrationTest`, `MembersIntegrationTest`.
+
 ## Later (rules and notes, not in the first setup)
 
 - **Moving a tenant out (after the extraction readiness above):**

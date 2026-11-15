@@ -77,16 +77,18 @@ With **AskUserQuestion** (several per call):
    locally `compose.yaml` creates them). Record `tenancy` in both profiles.
 
    Say what tenancy brings and what it doesn't yet. It brings tenant ADMINs managing their members
-   (`/tenant-members`: add an existing account by email, change a role, remove; the last ADMIN stays.
-   The caller must be an ADMIN at the moment of the call, whatever the token says, so a removed or
-   demoted ADMIN's older token is 403 there at once. A role change takes the `version` the add or the
-   previous change answered; sign-ins don't move it, but with no members list yet another ADMIN can't
-   read it),
+   (`/tenant-members`: an offset-paged list of the tenant's members and one member's GET, with `ids`,
+   `role` and an email `query`, each row with the `version` a role change sends back; add an existing
+   account by email, change a role, remove; the last ADMIN stays. The caller of a change must be an
+   ADMIN at the moment of the call, whatever the token says, so a removed or demoted ADMIN's older
+   token is 403 there at once; the reads go by the token's role. Sign-ins don't move the version), the
+   `user.api.Members` facade other modules ask about a person ("a member of this tenant?", a view by
+   id or by a batch of ids),
    switch-tenant, impersonation (a reason required) with an audit row that staff read at
    `GET /platform/tenants/{id}/audit`, and a tenant's owner as its ADMIN. Roles don't
    include each other: a record that members and the owner both write names both roles where a role
    is listed (an upload purpose: `"USER", "ADMIN"`). Not built: invitations of people without an
-   account, a members list endpoint, disabling platform staff, a retention job for CLOSED tenants,
+   account, disabling platform staff, a retention job for CLOSED tenants,
    a metric for a failed provisioning. Record the ones the project needs as open items.
 
 Write `.claude/crud-profile.md` and `.claude/review-profile.md` from their templates. The review

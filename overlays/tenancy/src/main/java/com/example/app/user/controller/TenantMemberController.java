@@ -3,8 +3,10 @@ package com.example.app.user.controller;
 import com.example.app.common.security.AdminOnly;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.wrapper.ObjectWrapper;
+import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.user.controller.api.TenantMemberApi;
 import com.example.app.user.dto.request.TenantMemberAddRequest;
+import com.example.app.user.dto.request.TenantMemberFilter;
 import com.example.app.user.dto.request.TenantMemberUpdateRequest;
 import com.example.app.user.dto.response.TenantMemberResponse;
 import com.example.app.user.service.MembershipService;
@@ -12,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -30,6 +33,18 @@ class TenantMemberController implements TenantMemberApi {
 
     private final MembershipService service;
     private final CurrentUser currentUser;
+
+    @Override
+    @GetMapping(version = "v1+")
+    public PaginationWrapper<TenantMemberResponse> all(@Valid TenantMemberFilter filter) {
+        return service.findMembers(filter);
+    }
+
+    @Override
+    @GetMapping(path = "/{userId}", version = "v1+")
+    public ObjectWrapper<TenantMemberResponse> get(@PathVariable UUID userId) {
+        return service.findMember(userId);
+    }
 
     @Override
     @PostMapping(version = "v1+")

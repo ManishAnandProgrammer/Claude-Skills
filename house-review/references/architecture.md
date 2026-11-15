@@ -63,7 +63,7 @@ The rules below say which mode they apply to.
   moves to `api`, as `MediaFileStatus`). Reference: `todo.api.Todos`, used by
   `planning.service.PlanService` (`create` locks, `findById` and the list don't). The view is a module contract, never a
   response body: the consumer maps it into a record of its own (ARCH-06). A module with no facade yet (the sign-in piece's `user`) gets one
-  in the same change, never a repository call or an unvalidated id (an unknown id would surface as a
+  in the same change (with tenancy it has one: the overlay's `user.api.Members`, tenant-scoped), never a repository call or an unvalidated id (an unknown id would surface as a
   foreign-key 409 with the wrong code).
 - **The foreign key's mapping belongs to the module that owns the constraint** (whose changeset
   declares it), even when the code it answers is the parent module's (`fk_plans_todo_id_owner_id` →

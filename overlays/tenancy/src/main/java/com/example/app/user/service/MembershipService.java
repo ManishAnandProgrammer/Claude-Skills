@@ -2,19 +2,24 @@ package com.example.app.user.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.pagination.Paging;
 import com.example.app.common.tenancy.TenantContext;
 import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
+import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.tenant.api.TenantCreated;
 import com.example.app.tenant.api.TenantProvisioned;
 import com.example.app.tenant.api.TenantStatus;
 import com.example.app.tenant.api.TenantView;
 import com.example.app.tenant.api.Tenants;
+import com.example.app.user.api.MemberView;
+import com.example.app.user.api.Members;
 import com.example.app.user.domain.Member;
 import com.example.app.user.domain.Role;
 import com.example.app.user.domain.TenantMembership;
 import com.example.app.user.domain.User;
 import com.example.app.user.dto.request.TenantMemberAddRequest;
+import com.example.app.user.dto.request.TenantMemberFilter;
 import com.example.app.user.dto.request.TenantMemberUpdateRequest;
 import com.example.app.user.dto.response.MembershipResponse;
 import com.example.app.user.dto.response.TenantMemberResponse;
@@ -28,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,18 +46,20 @@ import java.util.stream.Collectors;
 /**
  * Who belongs to which tenant, with which role. Tokens are issued for one membership at a time. Every
  * membership has its person in the tenant's own {@code members} table, written in the same transaction
- * (house-review TEN-17): the tenant's tables reference that row, never the platform's users.
+ * (house-review TEN-17): the tenant's tables reference that row, never the platform's users. Other
+ * modules ask {@link Members} whether a person belongs to the current tenant.
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class MembershipService {
+public class MembershipService implements Members {
 
     private final TenantMembershipRepository repository;
     private final MemberRepository members;
     private final UserService users;
     private final Tenants tenants;
     private final MembershipMapper mapper;
+    private final Paging paging;
     private final Clock clock;
 
     /**
@@ -66,6 +74,46 @@ public class MembershipService {
         return ListWrapper.fromList(memberships.stream()
                 .map(membership -> mapper.toResponse(membership, byId.get(membership.getTenantId()), currentTenantId))
                 .toList());
+    }
+
+    /**
+     * The current tenant's members, for its ADMINs: the rows carry the version a role change sends back.
+     * Removed members are not listed (their membership is deleted; their row in the tenant's own data
+     * stays, marked left).
+     */
+    public PaginationWrapper<TenantMemberResponse> findMembers(TenantMemberFilter filter) {
+        return PaginationWrapper.fromPage(repository.findByFilter(filter, TenantContext.current(),
+                paging.offset(filter, filter.getSort().toSort())));
+    }
+
+    /** 404 {@code TENANT_MEMBER_NOT_FOUND} for an account that isn't a member of the current tenant. */
+    public ObjectWrapper<TenantMemberResponse> findMember(UUID userId) {
+        return ObjectWrapper.withObject(mapper.toMemberResponse(getCurrentMembership(userId)));
+    }
+
+    @Override
+    public boolean isMember(UUID userId) {
+        return repository.existsByUserIdAndTenantId(userId, TenantContext.current());
+    }
+
+    @Override
+    public MemberView getMemberView(UUID userId) {
+        return mapper.toView(getCurrentMembership(userId));
+    }
+
+    @Override
+    public List<MemberView> getMemberViews(Collection<UUID> userIds) {
+        if (userIds.isEmpty()) {
+            return List.of();
+        }
+        return repository.findWithUserByTenantIdAndUserIdIn(TenantContext.current(), userIds).stream()
+                .map(mapper::toView)
+                .toList();
+    }
+
+    private TenantMembership getCurrentMembership(UUID userId) {
+        return repository.findWithUserByUserIdAndTenantId(userId, TenantContext.current())
+                .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_NOT_FOUND, userId));
     }
 
     /**

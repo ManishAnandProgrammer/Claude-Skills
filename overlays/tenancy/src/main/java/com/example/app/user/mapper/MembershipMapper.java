@@ -1,6 +1,7 @@
 package com.example.app.user.mapper;
 
 import com.example.app.tenant.api.TenantView;
+import com.example.app.user.api.MemberView;
 import com.example.app.user.domain.TenantMembership;
 import com.example.app.user.domain.User;
 import com.example.app.user.dto.response.MembershipResponse;
@@ -38,5 +39,10 @@ public class MembershipMapper {
                 membership.getUpdatedAt(),
                 membership.getCreatedBy(),
                 membership.getUpdatedBy());
+    }
+
+    public MemberView toView(TenantMembership membership) {
+        User user = membership.getUser();
+        return new MemberView(user.getId(), user.getEmail(), user.getFullName());
     }
 }

@@ -472,7 +472,7 @@ done
 # rewritten here to list exactly the copied changesets, the platform's in the first, every other in
 # the second. Row mode has one master with the platform's changesets first: every tenant table
 # references tenants, and the app role's default privileges (0013) then cover each tenant table.
-platform_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql"
+platform_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql 0020-tenant-members-list.sql"
 # $1: platform, tenant or all; the copied changesets of that kind, in order.
 changesets_of() {
     local want="$1" changeset name

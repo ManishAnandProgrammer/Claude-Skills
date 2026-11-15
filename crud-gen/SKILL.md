@@ -155,9 +155,14 @@ course): ask, per parent, whether its screen picks it from a dropdown. A parent 
 the picker is the first screen that needs it.
 
 A module without a facade (the sign-in piece's `user`) gets one in the same change: an interface in
-`<module>.api` that its service implements, with its view record. With tenancy, a lookup of a
-**member** is scoped by `TenantContext.current()` and answers the tenancy piece's
-`TENANT_MEMBER_NOT_FOUND` (no second "member not found" code). **The view never goes on the
+`<module>.api` that its service implements, with its view record. **With tenancy, other modules ask
+`Members`** (the tenancy overlay's `user.api.Members` + `MemberView`, implemented by
+`MembershipService`): `isMember(userId)`, `getMemberView(userId)` and `getMemberViews(userIds)` (one
+statement, absent ids simply absent), each scoped by `TenantContext.current()`, answering
+`TENANT_MEMBER_NOT_FOUND` (no second "member not found" code; golden `MembersIntegrationTest`). Never the
+membership or user repositories: a reference to a person is validated there before the write. A
+project that needs more about a member (a role rule) adds a method there, never a domain type in the
+view. **The view never goes on the
 wire:** the consuming module maps it into a response record of its own (golden `PlanTodoResponse`,
 `TodoAttachmentResponse`; ARCH-06, enforced by `ModuleBoundaryArchTest`).
 
@@ -210,7 +215,8 @@ against the template, TEN-24); never `platform.yaml`, which holds the platform's
 has **no `tenant_id`** (the schema is the tenant), the entity's `@Table` names no schema, and a
 native query names none either (TEN-21): the connection hook picks the schema. A reference to a person
 is a foreign key to the schema's own `members (user_id)` (`fk_<table>_owner_id`), never to
-`platform.users`: no key leaves the tenant schema (TEN-16, `SchemaCatalogIntegrationTest`), so the schema
+`platform.users`, and a person the request names (an assignee) is checked through `Members` (Step 1)
+before the write: no key leaves the tenant schema (TEN-16, `SchemaCatalogIntegrationTest`), so the schema
 can move to a database of its own. Ownership checks are unchanged: they separate users inside one tenant.
 A display number is a per-tenant counter (`Counters`, TEN-18).
 
@@ -225,7 +231,7 @@ names as such; it joins `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES` with
 | `tenant_id uuid NOT NULL` with **no default** and `fk_<table>_tenant_id → tenants (id)`: every insert names its tenant, so a forgotten one fails at once. The golden `0002`–`0011` blocks still show a `current_setting` default; it predates the rule and the row overlay's `0016` drops it (an applied changeset is never edited): never copy it into a new changeset | TEN-30 |
 | `ENABLE` + `FORCE ROW LEVEL SECURITY` and the one `tenant_isolation` policy (`USING` and `WITH CHECK`, the same predicate) **in the changeset that creates the table** | TEN-30 |
 | Every unique constraint and list index has `tenant_id` among its leading equality columns: the owner first when the table has an owner (`(owner_id, tenant_id, sort…, id)`), `tenant_id` first when it has none or a list filters by the tenant alone (`(tenant_id, sort…, id)`); names as in single-tenant | TEN-33, DATA-10 |
-| A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually applied by then; the key exists for the child). A reference to a person (an owner, an assignee) is to the tenant's own members, never to `users` or `tenant_memberships` (platform tables): `(owner_id, tenant_id) → members (user_id, tenant_id)` as `fk_<table>_<column>` (golden: the row overlay's `0018-owners-reference-members`). A member's row is never deleted (a removal marks it left), so the key never blocks a removal and the record keeps its owner; a project whose records must be reassigned before a removal says so (an open item: the members API has no such check) | TEN-33, TEN-16, TEN-17 |
+| A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually applied by then; the key exists for the child). A reference to a person (an owner, an assignee) is to the tenant's own members, never to `users` or `tenant_memberships` (platform tables): `(owner_id, tenant_id) → members (user_id, tenant_id)` as `fk_<table>_<column>` (golden: the row overlay's `0018-owners-reference-members`); a person the request names (an assignee) is checked through `Members` (Step 1) before the write, since the key also accepts a member who left. A member's row is never deleted (a removal marks it left), so the key never blocks a removal and the record keeps its owner; a project whose records must be reassigned before a removal says so (an open item: the members API has no such check) | TEN-33, TEN-16, TEN-17 |
 | The replica identity: `ALTER TABLE <t> REPLICA IDENTITY USING INDEX <uq_…>` **in the changeset that creates the table**, on a unique key that includes `tenant_id` (the parent key `(id, …, tenant_id)` of its composite references, or `(tenant_id, key)`); a table without one gets `uq_<table>_id_tenant_id (id, tenant_id)` | TEN-38 |
 | A display number (an invoice or order number) is a per-tenant counter (`Counters.perContext`, the metadata piece), never an identity column or a sequence: one sequence serves every tenant | TEN-18 |
 | A changeset already applied gets no new comment (its checksum changes): a later note (a TEN-36 search warning) goes in the runbook or the entity's javadoc | DATA-13 |

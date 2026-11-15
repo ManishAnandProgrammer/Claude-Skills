@@ -9,7 +9,8 @@ The shared layer `~/Documents/claude-skills/overlays/tenancy/src/main/java/com/e
 `common/tenancy/` (`TenantContext`, `TenantScope`, `TenantIdentifierResolver`, `TenantTaskDecorator`),
 `config/PlatformSecurityConfig` (the platform chain), the `tenant` module (`TenantService` with
 `approve`, `PlatformTenantController`, `PlatformAuditService`, `AllowAllSupportAccess`), `user/`
-(`TenantMembership`, `MembershipService` with "my tenants", `PlatformUser`, `PlatformAuthService`,
+(`TenantMembership`, `MembershipService` with "my tenants" and the members list, `user/api/Members` +
+`MemberView` (the facade other modules ask about a person), `PlatformUser`, `PlatformAuthService`,
 `ImpersonationService`, `TokenService`, `TenantRegistrationService`),
 `metadata/service/PlatformMetadataService` (a direct cross-tenant edit), `config/tenancy.yml`,
 changeset `0012`. Schema per tenant, `overlays/tenancy-schema/`: `common/tenancy/`
@@ -26,7 +27,8 @@ their tenant), with `metadata` `metadata/repository/CounterRepository`, with `ex
 `docs/tenancy-runbook.md`, `docker/postgres-init/`; the tenant tables' `tenant_id`, keys and policies
 are `tenancy-row` blocks in the reference's own changesets `0002`–`0011` and entities, `0017-members`,
 with `example` `0018-owners-reference-members`, with a piece that brings tenant tables
-`0019-replica-identity`. Both modes: changeset `0015-platform-users-read-only`, `config/PoolRoleCheck`,
+`0019-replica-identity`. Both modes: changesets `0015-platform-users-read-only` and
+`0020-tenant-members-list` (the members list's indexes), `config/PoolRoleCheck`,
 `tenant/service/StaffTenantService`, `user/domain/Member` with `MemberRepository` (the tenant's own
 members, TEN-17) and each mode's `0017-members` (schema mode's `0018-owners-reference-members` with
 `example`).
@@ -36,7 +38,9 @@ Tests: `tenant/**`, `archunit/TenancyArchTest`, `todo/TodoTenantIsolationIntegra
 on the schema, the extraction guards included) and `tenant/row/NativeQueryTenantIntegrationTest` (the
 guard on native SQL); schema mode's `tenant/schema/SchemaCatalogIntegrationTest` (no key leaves a tenant
 schema); both modes' `config/PoolRoleCheckIntegrationTest`, `media/service/MediaJobsPerTenantTest`,
-`media/mapper/MediaKeysPerTenantTest` and `metadata/CounterTenantIntegrationTest`. In a bootstrapped project these sit at the same paths under
+`media/mapper/MediaKeysPerTenantTest`, `metadata/CounterTenantIntegrationTest` and `user/`'s
+`TenantMemberIntegrationTest`, `TenantMemberListIntegrationTest`, `TenantMemberIndexIntegrationTest`,
+`MembersIntegrationTest`. In a bootstrapped project these sit at the same paths under
 its own package. The design and its experiments: the skills repo's `docs/design/tenancy.md`.
 
 The flow: JWT (`tenant_id`) → `TenantContext` → Hibernate's resolver → the connection hook runs one
@@ -147,10 +151,14 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   the current membership is refused (reference: `TokenService.refresh`).
 - **Check:** `tenant_memberships` is a platform table (TEN-35), so no policy narrows it: every query for
   one tenant's members names the tenant itself (`findByUserIdAndTenantId(userId, tenantId)`,
-  `countByTenantIdAndRole`), and only login and "my tenants" read a user's memberships across tenants.
+  `countByTenantIdAndRole`, the members list's `TenantMembershipRepositoryImpl.findByFilter(filter,
+  tenantId, …)`, the `Members` facade), and only login and "my tenants" read a user's memberships across
+  tenants.
   The members test crosses tenants: another tenant's member is 404 `TENANT_MEMBER_NOT_FOUND`, and a
   person who is a member of two tenants is changed and removed in the caller's tenant only
-  (`TenantMemberIntegrationTest.anotherTenantsMemberIs404`, `changesStayInTheCallersTenant`).
+  (`TenantMemberIntegrationTest.anotherTenantsMemberIs404`, `changesStayInTheCallersTenant`), and the
+  list and a member's GET show the caller's tenant only (`TenantMemberListIntegrationTest
+  .listShowsOnlyThisTenantsMembers`, `getOfANonMemberIs404`; `MembersIntegrationTest` for the facade).
 - **Detect:** `users.tenant_id`; the role read from `users.role` into a tenant token;
   `@PreAuthorize`/`@AdminOnly` as the only check on an endpoint that grants or keeps roles; a members
   service that takes no caller id; a membership lookup by user or by id alone on a tenant-plane path
