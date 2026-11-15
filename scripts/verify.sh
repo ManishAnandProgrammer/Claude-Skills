@@ -251,6 +251,8 @@ if wants 2f; then
         && grep -q "session_version" "$files/src/main/java/com/acme/files/user/domain/User.java" \
         || { echo "FAILED: the session version per account is incomplete in the copy with the session-version piece" >&2; exit 1; }
     grep -rqE "membership_id|MEMBERSHIP_CLAIM|TenantDeactivated|MembershipService" "$files/src" && { echo "FAILED: the session version's tenancy parts in a copy without tenancy" >&2; exit 1; }
+    grep -q "SESSION_VERSION_STALE" "$files/src/main/java/com/acme/files/user/domain/Role.java" \
+        || { echo "FAILED: the Role javadoc doesn't say a role change reaches the next request with the session version" >&2; exit 1; }
     for attachment in main/java/com/acme/files/todo/domain/TodoAttachment.java test/java/com/acme/files/todo/TodoAttachmentsIntegrationTest.java \
                       main/resources/db/changelog/changes/0010-todo-attachments.sql; do
         [ -f "$files/src/$attachment" ] || { echo "FAILED: $attachment is missing from the example and media copy" >&2; exit 1; }
@@ -279,6 +281,9 @@ if wants 2g; then
     grep -rqE "(example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration):(begin|else|end)|TODO_LIST|todo_lists|METADATA_|media_files|UploadPurpose|TenantOwnedEntity|app\.tenant_id" "$tenancy/src" \
         && { echo "FAILED: markers or other pieces' entries left in the tenancy copy" >&2; exit 1; }
     [ -f "$tenancy/src/main/java/com/acme/tenancy/config/LazyConnectionConfig.java" ] && { echo "FAILED: the lazy proxy in a tenancy copy (the hook borrows lazily)" >&2; exit 1; }
+    # The token's role is the membership's: no operator statement on users.role in the Role javadoc.
+    grep -q "UPDATE users" "$tenancy/src/main/java/com/acme/tenancy/user/domain/Role.java" \
+        && { echo "FAILED: the Role javadoc of a tenancy copy names the users.role statement (the role is the membership's)" >&2; exit 1; }
     no_session_version "$tenancy/src" "$tenancy/docs"
     [ -f "$tenancy/src/main/resources/db/changelog/db.changelog-master.yaml" ] && { echo "FAILED: a single master in a schema-per-tenant copy" >&2; exit 1; }
     [ -f "$tenancy/src/main/java/com/acme/tenancy/user/controller/TenantRegistrationController.java" ] \

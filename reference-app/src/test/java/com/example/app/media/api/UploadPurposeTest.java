@@ -22,4 +22,15 @@ class UploadPurposeTest {
             assertThat(roles).as(purpose.name()).containsAll(purpose.roles());
         }
     }
+
+    @Test
+    @DisplayName("A purpose takes exactly the roles it names: each of them may upload, every other role and an unknown one may not")
+    void onlyTheNamedRolesMayUpload() {
+        for (UploadPurpose purpose : UploadPurpose.values()) {
+            for (Role role : Role.values()) {
+                assertThat(purpose.mayUpload(role.name()::equals)).as(purpose + " for " + role).isEqualTo(purpose.roles().contains(role.name()));
+            }
+            assertThat(purpose.mayUpload("NOT_A_ROLE"::equals)).as(purpose.name()).isFalse();
+        }
+    }
 }

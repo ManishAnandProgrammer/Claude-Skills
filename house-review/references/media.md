@@ -51,8 +51,10 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
 - **Check:**
   - `POST /upload-urls` checks only "may this person upload for this purpose", which the
     `UploadPurpose` constant names (a role). The purpose arrives in the body, so this one check is
-    `purpose.roles().stream().anyMatch(currentUser::hasRole)` in the service (403 `ACCESS_DENIED`), not an annotation
-    (REST-25 covers checks a method can name up front);
+    `purpose.mayUpload(currentUser::hasRole)` in the service (403 `ACCESS_DENIED`), not an annotation
+    (REST-25 covers checks a method can name up front). `UploadPurposeTest.onlyTheNamedRolesMayUpload`
+    unit-tests the refusal, so it stays tested when a purpose names every role and the endpoint's 403
+    tests are skipped;
   - attaching happens inside the owning resource's own create or update (`POST /todos`,
     `PUT /todos/{id}`), which keeps its own checks (whose record, is it editable), takes the count
     range from `Uploads.fileCountRange(purpose)` and calls `Uploads.claim`;

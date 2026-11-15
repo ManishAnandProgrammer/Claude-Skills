@@ -21,7 +21,9 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
    `EMPLOYEE_PHOTO("ADMIN")`; ask when the record's subject should change the file too). Roles don't
    include each other: a record that members and their tenant's ADMIN owner both edit is
    `STUDENT_PHOTO("USER", "ADMIN")`. For a
-   shared root that is the writing role Step 1 decided, never `USER` while signup is public. Its
+   shared root that is the writing role Step 1 decided: without tenancy never `USER` while signup is
+   public; with tenancy a `USER` is a member a tenant ADMIN added, so `USER` is fine when every member
+   writes the record (Step 1, SEC-01). Its
    starting limits (min/max size, min/max files, content types from `AllowedContentTypes` only,
    MEDIA-09) reach **every** tenant, the existing ones included: the owner's write reads the count
    range, so a tenant without the row answers every create 404 `UPLOAD_POLICY_NOT_FOUND`. Per mode:
@@ -31,17 +33,22 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
    - `row`: a changeset can't seed a tenant's row. New tenants get it from a `TenantProvisioned`
      listener (golden `overlays/tenancy-row/.../todo/service/TodoAttachmentPolicySeed`), the tenants
      that exist when the purpose ships from a backfill changeset that lifts `FORCE` for its own
-     transaction, with the listener's numbers (golden: `0010`'s `…-existing-tenants` changeset; its test
-     `TodoAttachmentPolicyBackfillIntegrationTest`, which runs the changeset for a tenant without the
-     row). Generate both, and their test. Ask the user for the limits; never SVG,
+     transaction, with the listener's numbers (golden: `0010`'s `…-existing-tenants` changeset). The
+     backfill also reaches a tenant still PENDING, so the listener **creates its row only when missing**
+     (`Uploads.definePolicy` does; a seed that inserts again fails the approval on the unique key, on
+     every retry: a tenant that can never be activated). Golden tests in `TodoSeedsBackfillIntegrationTest`:
+     `existingTenantsGetThePolicy` (the changeset for a tenant without the row) and
+     `aPendingTenantThroughTheBackfillsIsActivated` (the backfill, then the approval: ACTIVE, one row).
+     Generate both, and both tests. Ask the user for the limits; never SVG,
    HTML or XML. With the **project's first purpose**, the media piece's own endpoint tests
    (`UploadUrlIntegrationTest`, `UploadPolicyIntegrationTest`, `PresignedUploadIntegrationTest`)
    stop being skipped: they run against `UploadPurpose.values()[0]` with its role; run them. When that
    purpose names **every** role (`STUDENT_PHOTO("USER", "ADMIN")`), `newNonUploader` has no role to
-   pick, and the two "a role the purpose doesn't name is 403" tests stay skipped: the upload's role
-   check (MEDIA-04) is then untested. Say so in the report as an open test duty, to close with the
-   first purpose limited to fewer roles (a 403 test of `POST /upload-urls` for that purpose, in its
-   owner's attachments class).
+   pick, and two tests stay skipped: `UploadUrlIntegrationTest.aRoleThePurposeDoesNotNameIs403` and
+   `UploadPolicyIntegrationTest.canUploadIsFalseForAnUnlistedRole` (a 200 with `canUpload: false`).
+   That is expected, not an open duty: the refusal itself is `UploadPurpose.mayUpload`, which both
+   endpoints call and `UploadPurposeTest.onlyTheNamedRolesMayUpload` tests for every purpose with an
+   unknown role (MEDIA-04).
 2. **Link entity and changeset.** `<Entity><X>` (golden `TodoAttachment`): the owner as a
    `@ManyToOne(fetch = LAZY)` relation (same module), the media file as a plain `UUID mediaFileId`
    column (the media module's: an id with a database foreign key, ARCH-04), audit columns, inserted

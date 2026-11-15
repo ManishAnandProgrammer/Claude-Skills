@@ -18,10 +18,16 @@ is code-smells.md, java.md and architecture.md.
   account is a USER, so each write (POST, PUT, PATCH, DELETE, upload purposes for its files) needs a
   role (`@AdminOnly` or the project's own, REST-25). Rows naming people (a borrower's name, an email,
   a phone) need the same decision for reads: list, get, filters and dropdown. The decision is in the
-  profiles' conventions; the tests prove a USER's 403 with a valid body.
+  profiles' conventions; the tests prove a USER's 403 with a valid body. **With tenancy** the rule is
+  different: the public signup reaches no tenant data (a tenant token needs a membership a tenant ADMIN
+  granted), so a tenant-shared table written by every member is a legitimate owner decision. It is
+  recorded with that reason, and the tests prove every role reaches every endpoint on another member's
+  record (crud-gen tests.md row 14), not a USER's 403. The same goes for an upload purpose naming
+  `USER`: never while a public signup reaches the table, fine for a member someone added.
 - **Detect:** a controller whose service has no owner scope and whose write methods carry no role
-  annotation while signup is public; a shared resource with personal fields readable by every USER
-  without a recorded decision.
+  annotation while signup is public and there is no tenancy; a shared resource with personal fields
+  readable by every USER without a recorded decision. Not a finding: the same with tenancy and a
+  recorded "every member writes" decision.
 - **Severity:** Critical when a refusal is missing (a shared table any account can write is
   Critical); High for personal data readable by every account (SEC-04).
 

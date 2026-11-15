@@ -104,14 +104,32 @@ without it (member), or does it have its own lifecycle (root)?". Record the answ
 **Owned or shared** (SEC-01): does each row belong to one user (an owner column: golden `Todo`), or
 is the table **shared** (a catalogue, reference data, staff records: nobody owns a row)? For a shared
 root, ask **who may write** (create, update, actions, delete, its upload purposes) and **who may
-read**, and record both in the profiles' conventions. While signup is public (the `sign-in` piece),
-every internet account is a USER: refuse `controllerSecurity: none` for a shared root's writes; they
-carry a role (`@AdminOnly`, or the project's own role annotation, REST-25). A field that names a
+read**, and record both in the profiles' conventions. **Without tenancy**, while signup is public
+(the `sign-in` piece), every internet account is a USER: refuse `controllerSecurity: none` for a shared
+root's writes; they carry a role (`@AdminOnly`, or the project's own role annotation, REST-25). **With
+tenancy** the public signup reaches no tenant data: a tenant token needs a membership that an ADMIN of
+that tenant granted (an account without one can't sign in, `TenantPlanesIntegrationTest
+.accountWithoutMembershipIsRefused`), so "every member writes the tenant's customers" is a sound owner
+decision: record it with that reason; the role check is then the owner's call, not a rule. A field that names a
 person (a name, an email, a phone) on a shared root asks the same for reads: list, get, filters and
 dropdown carry the role unless the owner decides that every account may search those people (record
 it). The role that writes a shared root gets that resource named in its javadoc (`Role`: "ADMIN: desk
 staff: the catalogue, loans, settings") **when its first write is generated**, whether or not the
-convention was decided at bootstrap. Golden role checks: `UploadPolicyController` (open read, `@AdminOnly` write) and
+convention was decided at bootstrap; when every role writes it, it is named on each. Check first that
+`Role`'s javadoc is true for the pieces the project has (with tenancy the role is the membership's,
+granted through `/tenant-members`; with the session version a change reaches the next request) and
+correct it before adding to it.
+
+**A shared root that other records will reference** asks two more questions before its first child
+exists, while the answer is cheapest:
+- **retired or deleted?** A catalogue entry (a course, a product) that children reference is either
+  retired with an active flag (it leaves the dropdown, `activeField`, and old children keep pointing at
+  it: the golden `Tag` shape, REST-13) or hard-deleted, and then refused while referenced (409
+  `<ENTITY>_IN_USE`, DATA-34). Record the choice;
+- **how is a person erased?** A root with personal fields (name, email, photo) that children will
+  reference can no longer simply be deleted (DATA-07 says personal data is truly deletable; DATA-33's
+  `*_IN_USE` refuses it): ask the erasure path (delete the children first, anonymise the person's
+  fields, or cascade) and record it. Golden role checks: `UploadPolicyController` (open read, `@AdminOnly` write) and
 `MetadataController` (admin-only), with their 403 tests (`UploadPolicyIntegrationTest`,
 `MetadataIntegrationTest.onlyAdminsReachTheApi`). A shared root has no `ownerId`: `findById`, no
 owner parameter, unscoped lists (tests.md *Shared tables*).
