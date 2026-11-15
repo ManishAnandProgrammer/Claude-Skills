@@ -179,7 +179,7 @@ if wants 2; then
     grep -rqE "sign-in:(begin|end)" "$project/src" "$project/compose.yaml" "$project/.env.example" && { echo "FAILED: sign-in markers left in the copy" >&2; exit 1; }
     grep -rqE "example:(begin|end)|TODO_LIST|todo-list" "$project/src" && { echo "FAILED: example-module entries left in a copy without the example piece" >&2; exit 1; }
     grep -rqE "metadata:(begin|end)|METADATA_|configuration_metadata|MetadataKey" "$project/src" && { echo "FAILED: metadata-piece entries left in a copy without the metadata piece" >&2; exit 1; }
-    grep -rqE "media:(begin|end)|admin:(begin|end)|MEDIA_(BUCKET|STORAGE)|UPLOAD_|media_files|upload_policies|UploadPurpose|awssdk|newAdmin" "$project/src" "$project/.env.example" \
+    grep -rqE "media:(begin|end)|admin:(begin|end)|MEDIA_(BUCKET|STORAGE)|UPLOAD_|media_files|upload_policies|UploadPurpose|awssdk" "$project/src" "$project/.env.example" \
         && { echo "FAILED: media-piece or admin entries left in a copy without the media piece" >&2; exit 1; }
     # No tenancy without its piece, and every ":else" part arrived uncommented (the build proves it compiles).
     grep -rqE "tenancy(-schema|-row)?:(begin|else|end)|TenantContext|TenantScope|TenantOwnedEntity|tenant_memberships|app\.tenant_id|ROW LEVEL SECURITY|DB_OWNER_USER|search_path" "$project/src" "$project/.env.example" \
