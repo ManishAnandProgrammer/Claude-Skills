@@ -622,5 +622,5 @@ done
 echo "then: add @ConfigurationPropertiesScan to the application class; set spring.application.name, and DB_NAME"
 echo "      in .env.example to the same name; delete Initializr's application.properties (application.yml"
 echo "      replaces it), its <App>ApplicationTests (a bare @SpringBootTest with no database: the copied"
-echo "      test base replaces it) and, before copying, its TestcontainersConfiguration; new changesets"
-echo "      continue after the highest copied number."
+echo "      test base replaces it) and, before copying, its TestcontainersConfiguration; the project's own"
+echo "      changesets start at 0100 (the pieces own 0001-0099)."

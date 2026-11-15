@@ -159,7 +159,8 @@ it, and the guard (a test, a limit, an alert) that would have caught it earlier.
 
 A release whose changesets change existing rows (a backfill, a new `NOT NULL` column, a new unique key):
 its tests ran on the previous release's seeded database (`./mvnw verify
--Dapp.test.upgrade.previous-release=<n>`, the highest changeset number production has). Also run the
+-Dapp.test.upgrade.previous-release=<pieces>,<project>`, the highest changeset number production has in
+each range: the house pieces' below 0100, the project's own from 0100). Also run the
 migration once against a restored copy of production (a recent backup, restored as the backup and
 restore section of your platform describes) and check what the backfills did there, and how long they
 held their tables: a backfill rewrites its table under a lock, so a big one runs in a quiet hour.

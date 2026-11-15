@@ -225,13 +225,16 @@ rows already there, a per-tenant seed for the tenants that exist) is tested on a
 holds the previous release's data, never only on an empty one: on an empty database a backfill that
 starts a counter at 0 instead of the highest number, or reaches only the ACTIVE tenants, passes every test.
 The test base's `PreviousReleaseDatabase` (core) builds that database for the whole run when
-`app.test.upgrade.previous-release` names the release in production (the highest changeset number it
-shipped): Liquibase applies the changesets up to it, `src/test/resources/db/upgrade/previous-release-seed.sql`
+`app.test.upgrade.previous-release` names the release in production (the highest changeset number of
+each range it shipped, `<pieces>[,<project>]`: the pieces own 0001-0099, the project 0100 and up, and a
+piece's changeset added since the release runs after the project's, so one number can't say what shipped;
+`26,105`, or `23` while the project has none of its own): Liquibase applies the changesets up to the
+first one the release didn't ship, `src/test/resources/db/upgrade/previous-release-seed.sql`
 fills them as a used database holds them, then the application's own run applies the newer changesets
 (schema per tenant: each provisioned tenant's schema at that release too, with
 `previous-release-tenant-seed.sql`, which the deploy-time `TenantMigrations` then brings up). Every test of
 that run works on the upgraded database; `UpgradeFromPreviousReleaseIntegrationTest` (row 30) asserts the
-backfills. Run it as `./mvnw verify -Dapp.test.upgrade.previous-release=<n>`.
+backfills. Run it as `./mvnw verify -Dapp.test.upgrade.previous-release=<pieces>,<project>`.
 
 The seed is realistic rather than tidy: several accounts and one with most of the rows, statuses skewed
 as they are in production, every table filled, with tenancy tenants in every status (each with what that

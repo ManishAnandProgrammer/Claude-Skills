@@ -27,15 +27,19 @@ import java.util.UUID;
 
 /**
  * The database the application meets when it upgrades a live one, for the whole test run: when
- * {@code app.test.upgrade.previous-release} names the release in production (the highest changeset number
- * it shipped; verify.sh passes it), Liquibase first applies that release's changesets alone, then
+ * {@code app.test.upgrade.previous-release} names the release in production (the highest changeset numbers
+ * it shipped, {@code <pieces>[,<project>]}; verify.sh passes it), Liquibase first applies that release's changesets alone, then
  * {@code db/upgrade/previous-release-seed.sql} fills the tables the way a used database holds them, and only
  * then does the application's own Liquibase run apply the changesets that came after, over that data.
  * Every test of the run then works on the upgraded database, and {@code UpgradeFromPreviousReleaseIntegrationTest}
  * checks what the new changesets did to the seeded rows (crud-gen tests.md, *Upgrading a used database*).
  *
- * <p>A changeset belongs to the new release when its file's number is higher than the previous release's:
- * the run stops before the first such changeset. Without the property nothing happens.</p>
+ * <p>Changeset numbers come in two ranges: the house pieces' 0001 to 0099, a project's own from 0100. A piece
+ * changed after a project's release appends its next number (0027) after the project's (0105), so one highest
+ * number can't tell what shipped: the release names both, {@code 26,105} (the pieces' alone, {@code 23}, while
+ * the project has none of its own). A changeset belongs to the new release when its file's number is above the
+ * release's in its range: the run stops before the first such changeset. Without the property nothing
+ * happens.</p>
  *
  * <p>Schema per tenant: the application's own run is the platform changelog's. Each tenant the seed
  * records as provisioned ({@code tenant_migrations} MIGRATED, no last changeset yet) then gets its schema as
@@ -59,14 +63,14 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
         String previousRelease = environment.getProperty(PREVIOUS_RELEASE);
         if (bean instanceof SpringLiquibase application && !upgraded && Objects.nonNull(previousRelease)) {
             upgraded = true;
-            migrateToThePreviousRelease(application, Integer.parseInt(previousRelease));
+            migrateToThePreviousRelease(application, Release.parse(previousRelease));
             seed(application.getDataSource());
-            provisionTheSeededTenants(application, Integer.parseInt(previousRelease));
+            provisionTheSeededTenants(application, Release.parse(previousRelease));
         }
         return bean;
     }
 
-    private void migrateToThePreviousRelease(SpringLiquibase application, int previousRelease) {
+    private void migrateToThePreviousRelease(SpringLiquibase application, Release previousRelease) {
         Map<String, String> parameters = Binder.get(environment)
                 .bind("spring.liquibase.parameters", Bindable.mapOf(String.class, String.class))
                 .orElse(Map.of());
@@ -91,7 +95,7 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
         }
     }
 
-    private void provisionTheSeededTenants(SpringLiquibase platform, int previousRelease) {
+    private void provisionTheSeededTenants(SpringLiquibase platform, Release previousRelease) {
         JdbcTemplate owner = new JdbcTemplate(platform.getDataSource());
         String appRole = owner.queryForObject("select quote_ident(?)", String.class,
                 environment.getRequiredProperty("app.tenancy.schema.app-role"));
@@ -112,7 +116,7 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
         }
     }
 
-    private void migrateTenantSchema(SpringLiquibase platform, String schema, int previousRelease) {
+    private void migrateTenantSchema(SpringLiquibase platform, String schema, Release previousRelease) {
         PreviousReleaseLiquibase previous = new PreviousReleaseLiquibase(platform,
                 environment.getRequiredProperty("app.tenancy.schema.tenant-changelog"), Map.of(), schema);
         try (Connection connection = platform.getDataSource().getConnection()) {
@@ -135,11 +139,11 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
         }
     }
 
-    /** How many changesets come before the first one of a file numbered after {@code previousRelease}. */
-    static int changesetsOf(Liquibase liquibase, int previousRelease) throws LiquibaseException {
+    /** How many changesets come before the first one of a file {@code previousRelease} didn't ship. */
+    static int changesetsOf(Liquibase liquibase, Release previousRelease) throws LiquibaseException {
         int count = 0;
         for (ChangeSet changeSet : liquibase.getDatabaseChangeLog().getChangeSets()) {
-            if (numberOf(changeSet.getFilePath()) > previousRelease) {
+            if (!previousRelease.shipped(numberOf(changeSet.getFilePath()))) {
                 return count;
             }
             count++;
@@ -155,6 +159,32 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
             digits++;
         }
         return digits == 0 ? 0 : Integer.parseInt(fileName.substring(0, digits));
+    }
+
+    /**
+     * The highest changeset numbers a release shipped: the pieces' (below {@link #FIRST_PROJECT_NUMBER}) and
+     * the project's own ({@link #FIRST_PROJECT_NUMBER} and up; one below it while the project has none).
+     */
+    record Release(int pieces, int project) {
+
+        static final int FIRST_PROJECT_NUMBER = 100;
+
+        /** {@code 26,105}, or {@code 23} for a release with no changeset of the project's own. */
+        static Release parse(String release) {
+            String[] numbers = release.split(",");
+            int pieces = Integer.parseInt(numbers[0].strip());
+            int project = numbers.length > 1 ? Integer.parseInt(numbers[1].strip()) : FIRST_PROJECT_NUMBER - 1;
+            if (numbers.length > 2 || pieces >= FIRST_PROJECT_NUMBER || project < FIRST_PROJECT_NUMBER - 1) {
+                throw new IllegalArgumentException("%s is <pieces>[,<project>]: the pieces' highest number below %d, the project's from it"
+                        .formatted(release, FIRST_PROJECT_NUMBER));
+            }
+            return new Release(pieces, project);
+        }
+
+        /** Whether the file numbered {@code number} was in this release; a file without a number always is. */
+        boolean shipped(int number) {
+            return number < FIRST_PROJECT_NUMBER ? number <= pieces : number <= project;
+        }
     }
 
     /**

@@ -92,5 +92,5 @@ One tenant alone: `pg_dump -n t_<tenant id without dashes>` and restore that sch
   once the deploy is through, or approve tenants only then. `platform.tenant_migrations.last_changeset`
   behind the template's names such a schema.
 - Before a release whose tenant changesets change existing rows ships, its tests run on schemas at the
-  previous release, seeded (`./mvnw verify -Dapp.test.upgrade.previous-release=<n>`; the application's
+  previous release, seeded (`./mvnw verify -Dapp.test.upgrade.previous-release=<pieces>,<project>`; the application's
   runbook, *Before upgrading a live database*), and the migration runs once against a restored copy.

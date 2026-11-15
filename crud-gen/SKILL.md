@@ -230,6 +230,9 @@ that only ever ran on Testcontainers is still yours to edit. Committed alone isn
 the app is: look for the changeset's id in `databasechangelog` of the local database (with
 `{{tenancy}}` = `schema`, of the template and every tenant schema) when a local stack has started
 since it was written. When unsure, it is applied: write a new changeset. Changesets use `--changeset {{changesetAuthor}}:NNNN-…` (the golden files say `dev`: a placeholder).
+**Numbers:** the house pieces own 0001-0099; a project's own changesets are numbered from **0100** (the
+next one after the project's highest at or above 0100, never after a piece's number, DATA-13), so a piece's
+later changeset never shares a number with the project's.
 
 List **every** failure, of every entity in the run, in **one table** (check, what is wrong, the fix:
 the entity change and a **new** changeset; never edit an applied one), then ask **once** with

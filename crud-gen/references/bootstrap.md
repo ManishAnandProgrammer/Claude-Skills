@@ -205,18 +205,22 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   piece that brings tenant tables), 0020 (the members list's index), row mode with the example 0023
   (the owners' dependency statistics); session-version 0021 without tenancy (the users column) or 0022
   with it (the membership column, a platform changeset); example 0024 (tags by status, newest first) and
-  0025 (a todo's requester), with metadata 0026 (the todos' display numbers). A project's own changesets
-  start after the highest number **any** piece reserves (0026 today: the first is **0027**), not after the
-  highest copied one: a piece
-  turned on later (the session version, the ladder's next rung) then brings its own numbers without
-  two files sharing one. When a project already used a reserved number, the late piece's changesets
-  are copied under the next free numbers instead (rename the file and its changeset id together).
+  0025 (a todo's requester), with metadata 0026 (the todos' display numbers). **The pieces own 0001 to
+  0099; a project's own changesets start at 0100** (`0100-orders.sql`, then 0101, …), whatever the copy
+  holds: a piece turned on later (the session version) or a piece's new changeset in a later skills
+  release brings its own number below 0100 without two files sharing one, appended to the master after
+  the project's (the master's order is the order they run in, so a late 0027 runs after 0105). An
+  existing project whose own changesets already use numbers below 0100 keeps them (an applied changeset
+  is never renamed) and numbers its next one 0100; a piece's file that would share a number with one of
+  them is copied as is (different names, different ids: only the upgrade path reads the number, and it
+  reads the ranges below).
 - The answers of step 0: signup policy, external IdP (`SecurityConfig`), client-IP mode,
   `app.limits.*` values, pool and admission sizes (admission ≥ 2× pool, checked at startup).
 - The upgrade path (core's `support/PreviousReleaseDatabase`, `support/ReadCost` for the index tests'
   read bounds) is inert until the project has a release in production: then it writes
   `src/test/resources/db/upgrade/previous-release-seed.sql` (with the example, the reference's is there to
-  follow) and runs `./mvnw verify -Dapp.test.upgrade.previous-release=<n>` before each release that
+  follow) and runs `./mvnw verify -Dapp.test.upgrade.previous-release=<pieces>,<project>` (the highest
+  number of each range in production, `26,105`) before each release that
   changes existing rows (tests.md, *Upgrading a used database*).
 - `ErrorCode`: remove the sign-in codes if `sign-in` wasn't copied. Constraint mappings live in each
   module's `ConstraintErrorCodes` bean (`UserConstraintErrorCodes`, ...), which the handler
@@ -237,7 +241,7 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   the owner keeps it anyway (a key is planned), record an open item in the closing summary and the
   profile: the admin API has no test until the first fixed key exists, and that key's change adds them. **A
   first fixed key** is seeded by a changeset of its own (META-05; golden `0014-todo-list-defaults.sql`:
-  the record's defaults written out), next free number; with `tenancy-schema` it runs in every tenant
+  the record's defaults written out), the project's next number (from 0100); with `tenancy-schema` it runs in every tenant
   schema as it is; with `tenancy-row` the changeset's `tenancy-row` block seeds the existing tenants
   (RLS lifted for its own transaction) and a `TenantProvisioned` listener seeds new ones (golden
   `overlays/tenancy-row/.../todo/service/TodoListDefaultsSeed.java`). Its tests are crud-gen tests.md's

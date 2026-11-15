@@ -566,6 +566,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - an applied changeset is never edited;
   - sequences and seed rows needed at runtime are created in migrations;
   - foreign keys are named `fk_<table>_<column>`;
+  - changeset numbers: the house pieces own 0001-0099, the project's own start at 0100 (crud-gen
+    bootstrap.md); a project changeset numbered below 0100 after the skills were adopted is a finding
+    (a piece's later changeset would share its number, and the upgrade path's release ranges misread it);
   - Liquibase migrates the app's own database URL;
   - *profile-optional:* the app uses a DML-only role, and Liquibase the owner role;
   - a data migration checks that every row maps to the new shape and fails the changeset rather
