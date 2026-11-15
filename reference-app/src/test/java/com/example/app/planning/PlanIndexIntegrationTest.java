@@ -89,7 +89,11 @@ class PlanIndexIntegrationTest extends IntegrationTest {
         // tenancy-row:end
         todoId = jdbc.queryForObject("select todo_id from plans where owner_id = ? limit 1", UUID.class, ownerId);
         planIds = jdbc.queryForList("select id from plans where owner_id = ? limit 21", UUID.class, ownerId);
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze todos, plans"));
+        // A finer sample: in a full run the tables also hold every other class's rows (other tenants' too).
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            jdbc.execute("set local default_statistics_target = 1000");
+            jdbc.execute("analyze todos, plans");
+        });
     }
 
     static Stream<Arguments> scopedOrders() {

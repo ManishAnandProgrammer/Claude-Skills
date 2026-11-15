@@ -151,8 +151,12 @@ class TodoIndexIntegrationTest extends IntegrationTest {
         // tenancy-row:end
         tagId = jdbc.queryForObject("select id from tags where owner_id = ? and name = 'Seeded 0'", UUID.class, ownerId);
         taggedTodos = jdbc.queryForList("select todo_id from todo_tags where tag_id = ? limit 21", UUID.class, tagId);
-        new TransactionTemplate(transactionManager)
-                .executeWithoutResult(status -> jdbc.execute("analyze todo_lists, todos, tags, todo_tags"));
+        // A finer sample: in a full run the tables also hold every other class's rows (other tenants' too),
+        // and the default one misjudges the seeded owner's share.
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            jdbc.execute("set local default_statistics_target = 1000");
+            jdbc.execute("analyze todo_lists, todos, tags, todo_tags");
+        });
     }
 
     static Stream<Arguments> scopedOrders() {
@@ -281,12 +285,14 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                           and exists (select 1 from todo_tags tt where tt.todo_id = t.id and tt.tag_id = :tag)
                         order by t.due_sort, t.id limit 21""",
                         List.of("idx_todos_owner_id_due_sort_id", "uq_todo_tags_todo_id_tag_id")),
-                Arguments.of("todos with a tag, NEWEST (the order's index, probing the pair)", """
+                // A tag is on one todo in ten, and NEWEST is todo_id descending: with good estimates the planner may
+                // instead walk the tag's pairs backwards and probe each todo by its key. Both read a bounded set in order.
+                Arguments.of("todos with a tag, NEWEST (the order's index probing the pair, or the pairs probing the todos)", """
                         select t.id from todos t
                         where t.owner_id = :owner
                           and exists (select 1 from todo_tags tt where tt.todo_id = t.id and tt.tag_id = :tag)
                         order by t.id desc limit 21""",
-                        List.of("idx_todos_owner_id_id", "uq_todo_tags_todo_id_tag_id")),
+                        List.of("(idx_todos_owner_id_id|pk_todos)", "uq_todo_tags_todo_id_tag_id")),
                 Arguments.of("the tags of a batch (the list's second step)", """
                         select tt.todo_id, g.id, g.name from todo_tags tt join tags g on g.id = tt.tag_id
                         where tt.todo_id in (:todos) order by g.id""",

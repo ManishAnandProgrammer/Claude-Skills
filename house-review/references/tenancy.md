@@ -341,8 +341,15 @@ an extraction is an operation, not a migration project (the tooling itself is "L
   sequence serves every tenant in row mode, so the numbers interleave, reveal another tenant's volume and
   don't move with the tenant. Tests: `CounterTenantIntegrationTest` (one name, two tenants, each from 1);
   row mode's catalogue test fails on any sequence not named in `PLATFORM_SEQUENCES`.
+- **Check:** `counters` is tenant data, so a tenant's display number is a **fixed** counter name
+  (`TICKET_NUMBER`), never `Counters.perContext` with the tenant id; schema mode seeds it in the tenant
+  changeset, row mode needs TEN-34's seed pair (and `createIfAbsent` on the create). The create takes the
+  number **last**, after every check: `next` holds the counter's row until commit, so one tenant's creates
+  queue behind each other (worth a race test: consecutive numbers, no duplicate). A display number whose
+  records may be deleted has gaps; the API text says a deleted record's number is not handed out again.
 - **Detect:** `GENERATED … AS IDENTITY`, `serial`, `CREATE SEQUENCE` or `nextval` for tenant data in row
-  mode; a display number derived from a global id.
+  mode; a display number derived from a global id; `perContext(…, tenantId)`; `next` called before the
+  create's own checks.
 - **Severity:** Medium (High when the number is a legal sequence, such as an invoice number).
 
 ### TEN-19: Stored files sit under their tenant's prefix
@@ -497,11 +504,22 @@ E1–E3 and the row tests named below, which run as the real application role.
     ahead of the list's own index on the test data (`TodoIndexIntegrationTest`): last, it serves the key
     and no order;
   - the one reference to a platform table is `tenant_id → tenants`, a plain key; a person is the
-    tenant's own member, `(owner_id, tenant_id) → members (user_id, tenant_id)` (TEN-16).
+    tenant's own member, `(owner_id, tenant_id) → members (user_id, tenant_id)` (TEN-16);
+  - **a scope column that determines `tenant_id`** (an owner or a member: a person lives in one tenant)
+    has dependency statistics with it, `CREATE STATISTICS st_<table>_<column>_tenant_id (dependencies)
+    ON <column>, tenant_id FROM <table>`, in the table's changeset (golden row overlay
+    `0023-owner-tenant-statistics.sql`). Without them the planner multiplies the person's share of the
+    table by the tenant's, estimates a few rows (one, for a member of a tenant among many) and picks
+    another index with the same leading columns plus a sort: the exclusion constraint's GiST index
+    (`PlanRowIndexIntegrationTest`, red without them), or a join probing by id. The constraint's own
+    `tenant_id WITH =` is right (a person in two tenants has two rotas); its `&&` stays the constraint's
+    (it isn't leakproof, so a list's overlap filter can't use the GiST index under the policy, TEN-36);
+- **an exclusion constraint** is a key like the others: `tenant_id WITH =` among its equality columns.
 - **Not a finding (DATA-10):** the `tenant_id → tenants` key of an owner-scoped table has no index
   leading with `tenant_id`: tenants are closed, never deleted, so the key is never checked from the
   parent side. Tenant deletion (later) adds the indexes it needs.
-- **Detect:** `UNIQUE (key)` or `UNIQUE (owner_id, name)` without `tenant_id`; a tenant table's
+- **Detect:** an owner- or member-scoped tenant table without the dependency statistics; an index test
+  plan with `rows=1` on a member scope that holds dozens; `UNIQUE (key)` or `UNIQUE (owner_id, name)` without `tenant_id`; a tenant table's
   `FOREIGN KEY (parent_id) REFERENCES parent (id)`; an extra `(owner_id)` index beside `(owner_id,
   tenant_id, …)` (it took the list plans, with a sort, in the todo index tests).
 - **Severity:** Critical for a foreign key that can cross tenants; Medium for a key or index without
@@ -520,8 +538,20 @@ E1–E3 and the row tests named below, which run as the real application role.
   for new ones (golden `0010`'s `…-existing-tenants` changeset and its test). A listener alone leaves
   every existing tenant without the row. A failed provisioning leaves the
   tenant PENDING and logs it; approving again retries.
+- **Check:** the backfill gives the row to **every** tenant, a PENDING registration included, so the
+  listener creates its row **only when missing** (`Uploads.definePolicy`, `Metadata.createIfAbsent`,
+  `Counters.createIfAbsent`: one `INSERT … ON CONFLICT DO NOTHING` naming its tenant, or a check first).
+  A plain insert meets the backfilled row on approval, the unique key refuses it, the activation rolls
+  back, and every retry fails the same way: the tenant can never be activated. Tested by approving a
+  PENDING tenant after the backfill ran (golden `TodoSeedsBackfillIntegrationTest
+  .aPendingTenantThroughTheBackfillsIsActivated`, red with a plain insert). During a rolling deploy an
+  old instance (without the listener) may approve a tenant after the new release's backfill ran: the
+  tenant then lacks the row, so a row the code can't work without is created on use too (a display
+  number's create calls `Counters.createIfAbsent` before `next`), or the runbook says to approve only
+  once the deploy is through.
 - **Detect:** `INSERT` into a tenant table in a changeset outside a `NO FORCE` … `FORCE` backfill; a
-  new seed listener without the backfill for existing tenants; a seed listener on `TenantCreated` or
+  new seed listener without the backfill for existing tenants; a seed listener that inserts
+  unconditionally (`metadata.create`, `counters.create`, `repository.save`) beside a backfill; a seed listener on `TenantCreated` or
   `TenantApproved` (no tenant scope yet, or no committed tenant); seeding inside the approving
   transaction; `NO FORCE` without `FORCE` again in the same changeset.
 - **Severity:** High.

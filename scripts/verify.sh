@@ -367,6 +367,8 @@ if wants 2j; then
         || { echo "FAILED: the reference's tenant tables lost their policies in the row-mode copy" >&2; exit 1; }
     [ -f "$rowtenants/src/main/java/com/acme/rowtenants/todo/service/TodoAttachmentPolicySeed.java" ] \
         || { echo "FAILED: the todo attachments' seed listener is missing from the row-mode copy" >&2; exit 1; }
+    grep -q "0023-owner-tenant-statistics.sql" "$rowmaster" \
+        || { echo "FAILED: the owners' dependency statistics are missing from the row-mode master" >&2; exit 1; }
     [ "$(grep -n "0022-memberships-session-version.sql" "$rowmaster" | cut -d: -f1)" -lt "$(grep -n "0002-todo-lists.sql" "$rowmaster" | cut -d: -f1)" ] \
         && [ ! -f "$rowtenants/src/main/resources/db/changelog/changes/0021-users-session-version.sql" ] \
         || { echo "FAILED: the session version isn't per membership, with the platform's changesets, in the row-mode copy" >&2; exit 1; }
