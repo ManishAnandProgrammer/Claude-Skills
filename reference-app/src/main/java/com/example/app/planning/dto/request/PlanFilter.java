@@ -4,9 +4,9 @@ import com.example.app.common.limits.ConfiguredMaxSize;
 import com.example.app.common.limits.EarliestDate;
 import com.example.app.common.limits.LatestDate;
 import com.example.app.common.pagination.CursorFilter;
+import com.example.app.common.validation.CrossField;
 import com.example.app.common.validation.DateRanges;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -57,7 +57,7 @@ public class PlanFilter extends CursorFilter {
     }
 
     /** An inverted range is a mistake the client should hear about, not an empty list. */
-    @AssertTrue(message = "{plan.planned-range}")
+    @CrossField(reportedOn = "plannedTo", message = "{plan.planned-range}")
     public boolean isPlannedRangeOrdered() {
         return DateRanges.isOrdered(plannedFrom, plannedTo);
     }

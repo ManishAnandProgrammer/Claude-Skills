@@ -1,5 +1,7 @@
 package com.example.app.common.exception;
 
+import com.example.app.common.validation.CrossField;
+import com.example.app.common.validation.DateRanges;
 import com.example.app.common.web.ProblemTypes;
 import com.example.app.common.web.RetryAfterProperties;
 import jakarta.validation.Constraint;
@@ -99,6 +101,23 @@ class RequestErrorsTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[*].pointer", contains("#")))
                 .andExpect(jsonPath("$.errors[*].detail", contains("endsOn must not be before startsOn")));
+    }
+
+    @Test
+    @DisplayName("""
+            A @CrossField getter is reported on the field it names, never on its own name: in a list element \
+            #/items/0/endsOn, in a query object the parameter""")
+    void crossFieldGettersNameTheirField() throws Exception {
+        postBody("/probe/body", """
+                {"email": "a@example.com", "items": [{"name": "ok", "startsOn": "2026-11-20", "endsOn": "2026-11-19"}]}""")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/items/0/endsOn")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("endsOn must not be before startsOn")));
+        mvc.perform(get("/probe/filter").param("min", "5").param("max", "4"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[*].parameter", contains("max")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("min must not be above max")));
     }
 
     @Test
@@ -227,14 +246,24 @@ class RequestErrorsTest {
     record ProbeAddress(@NotBlank String city) {
     }
 
-    record ProbeItem(@NotBlank String name, @Positive Integer count) {
+    record ProbeItem(@NotBlank String name, @Positive Integer count, LocalDate startsOn, LocalDate endsOn) {
+
+        @CrossField(reportedOn = "endsOn", message = "endsOn must not be before startsOn")
+        public boolean isDateRangeOrdered() {
+            return DateRanges.isOrdered(startsOn, endsOn);
+        }
     }
 
     @OrderedDates
     record ProbePeriod(LocalDate startsOn, LocalDate endsOn) implements DateRange {
     }
 
-    record ProbeFilter(@Max(100) Integer size) {
+    record ProbeFilter(@Max(100) Integer size, Integer min, Integer max) {
+
+        @CrossField(reportedOn = "max", message = "min must not be above max")
+        public boolean isRangeOrdered() {
+            return Objects.isNull(min) || Objects.isNull(max) || min <= max;
+        }
     }
 
     interface DateRange {

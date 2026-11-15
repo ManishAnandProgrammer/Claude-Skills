@@ -160,7 +160,7 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("endsOn before startsOn is 400 naming dateRangeOrdered; the same day twice is a one-day plan")
+    @DisplayName("endsOn before startsOn is 400 reported on endsOn; the same day twice is a one-day plan")
     void rangeMustBeOrdered() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user, "Ordered");
@@ -168,7 +168,7 @@ class PlanIntegrationTest extends IntegrationTest {
         create(user, todoId, "2026-11-22", "2026-11-21")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[*].pointer", contains("#/dateRangeOrdered")))
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/endsOn")))
                 .andExpect(jsonPath("$.errors[*].detail", contains("endsOn must not be before startsOn")));
         create(user, todoId, "2026-11-22", "2026-11-22").andExpect(status().isCreated());
         assertThat(plansOf(user)).isOne();
@@ -217,7 +217,7 @@ class PlanIntegrationTest extends IntegrationTest {
         create(user, todoId, "-300000-01-01", "2026-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[*].pointer", containsInAnyOrder("#/startsOn", "#/lengthInDays")))
+                .andExpect(jsonPath("$.errors[*].pointer", containsInAnyOrder("#/startsOn", "#/endsOn")))
                 .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("must be on or after 1900-01-01", "must be at most " + MAX_DAYS)));
         create(user, todoId, "-300000-01-01", "-300000-01-01")
                 .andExpect(status().isBadRequest())
@@ -228,7 +228,7 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A plan of the configured maximum length is accepted; one day longer is 400 naming lengthInDays, nothing stored")
+    @DisplayName("A plan of the configured maximum length is accepted; one day longer is 400 reported on endsOn, nothing stored")
     void lengthIsBounded() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user, "Long");
@@ -237,7 +237,7 @@ class PlanIntegrationTest extends IntegrationTest {
         create(user, todoId, first.toString(), first.plusDays(MAX_DAYS).toString())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[*].pointer", contains("#/lengthInDays")))
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/endsOn")))
                 .andExpect(jsonPath("$.errors[*].detail", contains("must be at most " + MAX_DAYS)));
         assertThat(plansOf(user)).isZero();
         create(user, todoId, first.toString(), first.plusDays(MAX_DAYS - 1).toString()).andExpect(status().isCreated());
@@ -691,14 +691,14 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("plannedFrom after plannedTo is 400 naming plannedRangeOrdered; one day for both is a range")
+    @DisplayName("plannedFrom after plannedTo is 400 reported on plannedTo; one day for both is a range")
     void plannedRangeMustBeOrdered() throws Exception {
         TestUser user = newUser();
 
         getAs(user.accessToken(), PLANS + "?plannedFrom=2026-03-11&plannedTo=2026-03-10")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[*].parameter", contains("plannedRangeOrdered")))
+                .andExpect(jsonPath("$.errors[*].parameter", contains("plannedTo")))
                 .andExpect(jsonPath("$.errors[*].detail", contains("plannedFrom must not be after plannedTo")));
         getAs(user.accessToken(), PLANS + "?plannedFrom=2026-03-10&plannedTo=2026-03-10").andExpect(status().isOk());
     }

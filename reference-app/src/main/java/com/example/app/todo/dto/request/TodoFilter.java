@@ -5,10 +5,10 @@ import com.example.app.common.limits.EarliestDate;
 import com.example.app.common.limits.LatestDate;
 import com.example.app.common.limits.MaxLength;
 import com.example.app.common.pagination.CursorFilter;
+import com.example.app.common.validation.CrossField;
 import com.example.app.todo.domain.TodoPriority;
 import com.example.app.todo.domain.TodoStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -80,8 +80,9 @@ public class TodoFilter extends CursorFilter {
     /**
      * A range filter comes with the order of its own column: under DUE_DATE it is a range of the due index,
      * under NEWEST no index serves it (newest first, filtered by a date, walks the owner's whole history).
+     * Reported on the filter, the field that needs the order.
      */
-    @AssertTrue(message = "{todo.due-filter-order}")
+    @CrossField(reportedOn = "dueOnOrBefore", message = "{todo.due-filter-order}")
     public boolean isDueOnOrBeforeSortedByDueDate() {
         return Objects.isNull(dueOnOrBefore) || sort == TodoSort.DUE_DATE;
     }

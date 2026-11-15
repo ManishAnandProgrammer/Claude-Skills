@@ -5,8 +5,8 @@ import com.example.app.common.limits.ConfiguredMaxSize;
 import com.example.app.common.limits.EarliestDate;
 import com.example.app.common.limits.LatestDate;
 import com.example.app.common.pagination.CursorFilter;
+import com.example.app.common.validation.CrossField;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -65,12 +65,12 @@ public class TimeEntryFilter extends CursorFilter {
     }
 
     /** An inverted range is a mistake the client should hear about, not an empty list. */
-    @AssertTrue(message = "{time-entry.spent-on-range}")
+    @CrossField(reportedOn = "spentOnTo", message = "{time-entry.spent-on-range}")
     public boolean isSpentOnRangeOrdered() {
         return Objects.isNull(spentOnFrom) || Objects.isNull(spentOnTo) || !spentOnFrom.isAfter(spentOnTo);
     }
 
-    @AssertTrue(message = "{time-entry.minutes-range}")
+    @CrossField(reportedOn = "maxMinutes", message = "{time-entry.minutes-range}")
     public boolean isMinutesRangeOrdered() {
         return Objects.isNull(minMinutes) || Objects.isNull(maxMinutes) || minMinutes <= maxMinutes;
     }

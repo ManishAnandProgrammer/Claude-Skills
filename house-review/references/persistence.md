@@ -637,7 +637,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     database must allow it (RDS and Cloud SQL do), else a DBA creates it before the first migration;
   - the bounds say inclusive or not (`'[]'` for days a person reads as "from the 20th to the 22nd";
     `'[)'` for instants), the API text says it, and a `CHECK (start <= end)` backs the request's
-    `@AssertTrue is<X>RangeOrdered()` (400);
+    `@CrossField(reportedOn = "<end>") is<X>RangeOrdered()` (400 on the end field, ERR-07);
   - **no scope lock for the constraint's sake** (DATA-29): two overlapping inserts at the same instant
     each wait in the exclusion check for the other's uncommitted row, and PostgreSQL ends it as a
     deadlock. The victim answers 503 `DATABASE_CONTENTION`, exactly one row is stored, and its retry

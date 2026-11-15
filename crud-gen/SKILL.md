@@ -35,7 +35,7 @@ tell the user to run the skills installer.
 | `~/.claude/skills-reference/src/test/java/com/example/app/todo/*IntegrationTest.java` | The tests every entity ships with |
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
 | `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
-| `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@AssertTrue boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
+| `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@CrossField(reportedOn = "<x>To") boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
 | `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getOwnedTodoWithItsList`, `toResponse`), `TodoRepository.findWithTodoListByIdAndOwnerId`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`; the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` at the create; shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) |
 | `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`) of a **configured maximum length** (`getLengthInDays`, `plan.max-days`), an **overlap filter with a lower index bound** (`plannedFrom`/`plannedTo`: `ends_on >= from`, `starts_on <= to` and the derived `starts_on >= from - (max - 1)`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 
@@ -404,8 +404,12 @@ description and its 400 response name it.
 **Shapes** (golden `Tag` / `TimeEntry`):
 - **Range filters:** `<x>From` / `<x>To` for dates, `min<X>` / `max<X>` for numbers, both inclusive;
   each bound carries the field's own constraints (`@Min`, `@ConfiguredMax`); the filter has one
-  `@AssertTrue boolean is<X>RangeOrdered()` per range (true when either bound is absent), so an
-  inverted range is a 400 naming `<x>RangeOrdered` (golden `TimeEntryFilter`).
+  `@CrossField(reportedOn = "<x>To", message = …) boolean is<X>RangeOrdered()` per range (true when either
+  bound is absent), so an inverted range is a 400 naming the range's end, the parameter a form shows the
+  error under (`spentOnTo`, `maxMinutes`; golden `TimeEntryFilter`; ERR-07). Any other rule across fields
+  takes the same shape, reported on the field that needs the other (golden
+  `TodoFilter.isDueOnOrBeforeSortedByDueDate`, on `dueOnOrBefore`); a plain `@AssertTrue` is refused by
+  ArchUnit, since it is reported on the getter's own name.
 - **Flags:** the list filters a flag as `status` (`DropdownStatus`, default `ALL`), the dropdown
   defaults to `ACTIVE`; a flag without rules is set by the update (`@Setter`).
 - **Pattern fields:** `@Pattern` with a readable message instead of `@MaxLength`, **only when the
@@ -416,8 +420,9 @@ description and its 400 response name it.
   backed by a database `CHECK`. The message names the **exact** character classes and length, never a
   looser word: `[A-Za-z0-9-]{1,20}` is "1 to 20 ASCII letters (A-Z, a-z), digits or hyphens", not
   "letters" (`ÄB1` is a letter and is refused).
-- **Ranges in a body** (a plan's `startsOn`/`endsOn`): one `@AssertTrue @Schema(hidden = true)
-  boolean is<X>RangeOrdered()` on the request record, like a range filter, backed by a `CHECK`
+- **Ranges in a body** (a plan's `startsOn`/`endsOn`): one `@CrossField(reportedOn = "endsOn", message = …)
+  @Schema(hidden = true) boolean is<X>RangeOrdered()` on the request record, like a range filter (a 400 at
+  `#/endsOn`), backed by a `CHECK`
   (golden `PlanCreateRequest`); the API text says whether the ends are inclusive. An updatable range
   changes through **one** entity method that takes both ends and guards them (`reschedule(from, to)`,
   `IllegalStateException` on an inverted range; no golden code: `Plan` is immutable), never a setter
@@ -434,8 +439,9 @@ description and its 400 response name it.
   filters the scope's whole history before `:to`, and "who is on call this week" reads years (DATA-10).
   So **ask the maximum range length** (a plan spans at most a month, a shift a week) and make it a
   configured limit (`limits.yml` `<entity>.max-days`, with the comment "raise it any time, lower it
-  only once no stored range is longer"): checked on create and update by `@ConfiguredMax("<entity>.max-days")`
-  on a hidden getter `getLengthInDays()` (null while a date is missing or the range inverted), and used
+  only once no stored range is longer"): checked on create and update by
+  `@ConfiguredMax(value = "<entity>.max-days", reportedOn = "endsOn")` on a hidden getter `getLengthInDays()`
+  (a 400 at `#/endsOn`, like an inverted range) (null while a date is missing or the range inverted), and used
   by the repository for a third predicate, `startsOn >= :from - (max - 1)` (golden `PlanCreateRequest`,
   `PlanFilter.plannedFrom`/`plannedTo`, `PlanRepositoryImpl.filterPredicates`). Without a maximum
   (open-ended ranges), record the decision that the filter scans the scope's history. Tests: tests.md

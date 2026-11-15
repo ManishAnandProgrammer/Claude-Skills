@@ -60,7 +60,7 @@ public interface PlanApi {
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (a missing field, a date outside the configured earliest and latest ones, or \
-            endsOn before startsOn, named dateRangeOrdered; see errors), REQUEST_UNREADABLE (a malformed id \
+            endsOn before startsOn or too far after it, reported on endsOn; see errors), REQUEST_UNREADABLE (a malformed id \
             or date)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",

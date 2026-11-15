@@ -11,7 +11,8 @@ import java.lang.annotation.Target;
 
 /**
  * The number (an Integer or a Long) is at most {@code app.limits.<value>}, e.g. {@code "offset-page.max-size"}.
- * On a getter, a number derived from several fields (golden {@code PlanCreateRequest.getLengthInDays}).
+ * On a getter, a number derived from several fields (golden {@code PlanCreateRequest.getLengthInDays}), reported
+ * on the field a form shows it under ({@link #reportedOn}, as {@code CrossField}).
  */
 @Documented
 @Constraint(validatedBy = {ConfiguredMaxValidator.class, ConfiguredMaxLongValidator.class})
@@ -20,6 +21,9 @@ import java.lang.annotation.Target;
 public @interface ConfiguredMax {
 
     String value();
+
+    /** On a getter: the sibling field the violation names (a range's end); empty on a field or parameter. */
+    String reportedOn() default "";
 
     String message() default "must be at most {max}";
 

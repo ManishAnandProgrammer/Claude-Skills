@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import java.util.List;
 import java.util.stream.Stream;
 
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -160,21 +161,22 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
 
     static Stream<Arguments> invalidLimits() {
         return Stream.of(
-                Arguments.of("minSizeBytes above maxSizeBytes", limits(2000, 1000, 0, 5, "[\"application/pdf\"]", 0)),
-                Arguments.of("minFiles above maxFiles", limits(1, 1000, 3, 2, "[\"application/pdf\"]", 0)),
-                Arguments.of("maxFiles over the configured maximum", limits(1, 1000, 0, 51, "[\"application/pdf\"]", 0)),
-                Arguments.of("maxSizeBytes over 5 GiB", limits(1, 5368709121L, 0, 5, "[\"application/pdf\"]", 0)),
-                Arguments.of("minSizeBytes of 0", limits(0, 1000, 0, 5, "[\"application/pdf\"]", 0)),
-                Arguments.of("no content types", limits(1, 1000, 0, 5, "[]", 0)));
+                Arguments.of("minSizeBytes above maxSizeBytes", limits(2000, 1000, 0, 5, "[\"application/pdf\"]", 0), "#/maxSizeBytes"),
+                Arguments.of("minFiles above maxFiles", limits(1, 1000, 3, 2, "[\"application/pdf\"]", 0), "#/maxFiles"),
+                Arguments.of("maxFiles over the configured maximum", limits(1, 1000, 0, 51, "[\"application/pdf\"]", 0), "#/maxFiles"),
+                Arguments.of("maxSizeBytes over 5 GiB", limits(1, 5368709121L, 0, 5, "[\"application/pdf\"]", 0), "#/maxSizeBytes"),
+                Arguments.of("minSizeBytes of 0", limits(0, 1000, 0, 5, "[\"application/pdf\"]", 0), "#/minSizeBytes"),
+                Arguments.of("no content types", limits(1, 1000, 0, 5, "[]", 0), "#/contentTypes"));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("invalidLimits")
-    @DisplayName("Limits that break a range or a configured maximum are 400 VALIDATION_FAILED")
-    void invalidLimitsAre400(String name, String body) throws Exception {
+    @DisplayName("Limits that break a range or a configured maximum are 400 VALIDATION_FAILED on the field a form shows it under")
+    void invalidLimitsAre400(String name, String body, String pointer) throws Exception {
         replace(newAdmin(), body)
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[*].pointer", contains(pointer)));
     }
 
     @Test

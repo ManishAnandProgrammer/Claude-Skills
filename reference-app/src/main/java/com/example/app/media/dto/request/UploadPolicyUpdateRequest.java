@@ -2,8 +2,8 @@ package com.example.app.media.dto.request;
 
 import com.example.app.common.limits.ConfiguredMax;
 import com.example.app.common.limits.ConfiguredMaxSize;
+import com.example.app.common.validation.CrossField;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -41,13 +41,13 @@ public record UploadPolicyUpdateRequest(
         @NotNull
         Long version) {
 
-    @AssertTrue(message = "{upload-policy.size-range}")
+    @CrossField(reportedOn = "maxSizeBytes", message = "{upload-policy.size-range}")
     @Schema(hidden = true)
     public boolean isSizeRangeOrdered() {
         return Objects.isNull(minSizeBytes) || Objects.isNull(maxSizeBytes) || minSizeBytes <= maxSizeBytes;
     }
 
-    @AssertTrue(message = "{upload-policy.file-range}")
+    @CrossField(reportedOn = "maxFiles", message = "{upload-policy.file-range}")
     @Schema(hidden = true)
     public boolean isFileRangeOrdered() {
         return Objects.isNull(minFiles) || Objects.isNull(maxFiles) || minFiles <= maxFiles;

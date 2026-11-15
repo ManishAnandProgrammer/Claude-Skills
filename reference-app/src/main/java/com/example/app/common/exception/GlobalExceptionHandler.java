@@ -3,6 +3,7 @@ package com.example.app.common.exception;
 import com.example.app.common.ratelimit.RateLimitExceededException;
 import com.example.app.common.web.ProblemTypes;
 import com.example.app.common.web.RetryAfterProperties;
+import jakarta.validation.ConstraintViolation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
 import org.springframework.context.MessageSourceResolvable;
@@ -51,6 +52,9 @@ import java.util.Optional;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+
+    /** The attribute of {@code CrossField} and {@code ConfiguredMax} that names the field a rule across fields is reported on. */
+    private static final String REPORTED_ON = "reportedOn";
 
     private final MessageSource messageSource;
     private final ProblemTypes problemTypes;
@@ -262,12 +266,29 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static List<RequestError> describe(boolean body, Errors errors) {
         List<RequestError> described = new ArrayList<>();
         for (FieldError error : errors.getFieldErrors()) {
-            described.add(located(body, error.getField(), error.getDefaultMessage()));
+            described.add(located(body, reportedField(error), error.getDefaultMessage()));
         }
         for (ObjectError error : errors.getGlobalErrors()) {
             described.add(RequestError.atPointer(JsonPointers.WHOLE_BODY, error.getDefaultMessage()));
         }
         return described;
+    }
+
+    /**
+     * The field a violation names: its own, or, for a rule across fields on a getter ({@code CrossField},
+     * {@code ConfiguredMax} with {@code reportedOn}), the sibling its constraint names
+     * ({@code items[0].dateRangeOrdered} becomes {@code items[0].endsOn}).
+     */
+    private static String reportedField(FieldError error) {
+        if (!error.contains(ConstraintViolation.class)) {
+            return error.getField();
+        }
+        Object reportedOn = error.unwrap(ConstraintViolation.class).getConstraintDescriptor().getAttributes().get(REPORTED_ON);
+        if (!(reportedOn instanceof String sibling) || sibling.isEmpty()) {
+            return error.getField();
+        }
+        String path = error.getField();
+        return path.substring(0, path.lastIndexOf('.') + 1) + sibling;
     }
 
     private static RequestError located(boolean body, String field, String detail) {

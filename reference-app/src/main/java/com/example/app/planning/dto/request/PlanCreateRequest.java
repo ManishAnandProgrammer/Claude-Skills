@@ -3,9 +3,9 @@ package com.example.app.planning.dto.request;
 import com.example.app.common.limits.ConfiguredMax;
 import com.example.app.common.limits.EarliestDate;
 import com.example.app.common.limits.LatestDate;
+import com.example.app.common.validation.CrossField;
 import com.example.app.common.validation.DateRanges;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
@@ -29,8 +29,8 @@ public record PlanCreateRequest(
         @NotNull @EarliestDate("plan.dates") @LatestDate("plan.dates")
         LocalDate endsOn) {
 
-    /** A range in a body is checked like a range filter: inverted is a 400 naming dateRangeOrdered. */
-    @AssertTrue(message = "{plan.date-range}")
+    /** A range in a body is checked like a range filter: inverted is a 400 naming its end, endsOn. */
+    @CrossField(reportedOn = "endsOn", message = "{plan.date-range}")
     @Schema(hidden = true)
     public boolean isDateRangeOrdered() {
         return DateRanges.isOrdered(startsOn, endsOn);
@@ -39,9 +39,9 @@ public record PlanCreateRequest(
     /**
      * The days the plan spans, both ends counted: bounded so the list's plannedFrom filter has a lower
      * bound to read back to (PlanRepositoryImpl). Null when a date is missing or the range inverted, which
-     * their own checks report.
+     * their own checks report. Too long is reported on the end, as an inverted range is.
      */
-    @ConfiguredMax("plan.max-days")
+    @ConfiguredMax(value = "plan.max-days", reportedOn = "endsOn")
     @Schema(hidden = true)
     public Long getLengthInDays() {
         return DateRanges.lengthInDays(startsOn, endsOn);

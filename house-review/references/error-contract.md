@@ -162,9 +162,15 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
     (`~` → `~0`, `/` → `~1`); an element of a **set** has no position, so it points to the set (`"#/tagIds"`);
   - a **query or path parameter** (a bound filter's field, a `@RequestParam`, a type mismatch):
     `"parameter": "size"`;
-  - a **class-level or cross-field rule**: on the field the violation is reported on (its property node:
-    an `@AssertTrue boolean isDateRangeOrdered()` is `#/dateRangeOrdered`, a class-level constraint
-    with `addPropertyNode("endsOn")` is `#/endsOn`), else the body as a whole, `"pointer": "#"`.
+  - a **rule across fields** (a range in order, a filter that needs an order): on the field a form shows
+    the error under, the pair's **end** (`#/endsOn`, `"parameter": "plannedTo"`) or the field that needs the
+    other (`dueOnOrBefore`), never on a synthetic name no client sends (`#/dateRangeOrdered`). The house
+    shape is a hidden boolean getter with `@CrossField(reportedOn = "endsOn", message = …)` (common.validation;
+    a limit on a derived number, `@ConfiguredMax(value = …, reportedOn = "endsOn")`): the handler names the
+    sibling its constraint names, `items[0].endsOn` in a list element. A class-level constraint reports on
+    `addPropertyNode("endsOn")`; one that names no field points to the body as a whole, `"pointer": "#"`.
+    ArchUnit (`ConventionArchTest`) refuses a plain `@AssertTrue` and a getter's `@ConfiguredMax` without
+    `reportedOn`.
 
   `detail` is the constraint's message (from the MessageSource) or a fixed phrase (`invalid value`,
   `unknown field`), never a converter's or Jackson's message. Code that refuses a value itself builds

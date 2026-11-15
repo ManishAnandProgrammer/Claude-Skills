@@ -648,12 +648,12 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=2026-11-02&spentOnTo=2026-11-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[*].parameter", contains("spentOnRangeOrdered")))
+                .andExpect(jsonPath("$.errors[*].parameter", contains("spentOnTo")))
                 .andExpect(jsonPath("$.errors[*].detail", contains("spentOnFrom must not be after spentOnTo")));
         getAs(user.accessToken(), entries(todoId) + "?minMinutes=31&maxMinutes=30")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[*].parameter", contains("minutesRangeOrdered")))
+                .andExpect(jsonPath("$.errors[*].parameter", contains("maxMinutes")))
                 .andExpect(jsonPath("$.errors[*].detail", contains("minMinutes must not be above maxMinutes")));
     }
 

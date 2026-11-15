@@ -770,7 +770,7 @@ class TodoIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), TODOS + "?dueOnOrBefore=2026-11-30&sort=NEWEST")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[*].parameter", contains("dueOnOrBeforeSortedByDueDate")))
+                .andExpect(jsonPath("$.errors[*].parameter", contains("dueOnOrBefore")))
                 .andExpect(jsonPath("$.errors[0].detail").value("dueOnOrBefore needs sort DUE_DATE"));
         getAs(user.accessToken(), TODOS + "?dueOnOrBefore=2026-11-30&sort=DUE_DATE")
                 .andExpect(status().isOk());

@@ -1,5 +1,6 @@
 package com.example.app.archunit;
 
+import com.example.app.common.limits.ConfiguredMax;
 import com.example.app.common.scheduling.MultiInstanceSafe;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaAnnotation;
@@ -17,6 +18,7 @@ import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import jakarta.persistence.Lob;
+import jakarta.validation.constraints.AssertTrue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.springframework.core.annotation.AnnotatedElementUtils;
@@ -69,6 +71,19 @@ class ConventionArchTest {
     static final ArchRule scheduledJobsDeclareTheirConcurrencyPosture = methods().that().areAnnotatedWith(Scheduled.class)
             .should().beAnnotatedWith(MultiInstanceSafe.class)
             .because("several instances run: a job is either safe on all of them at once, or takes a distributed lock (ARCH-12)");
+
+    @ArchTest
+    static final ArchRule crossFieldRulesNameTheirField = noMethods().should().beAnnotatedWith(AssertTrue.class)
+            .because("a rule across fields is @CrossField(reportedOn = ...): an @AssertTrue getter is reported on its own name, a field no client sends (ERR-07)");
+
+    @ArchTest
+    static final ArchRule derivedLimitsNameTheirField = methods().that().areAnnotatedWith(ConfiguredMax.class)
+            // A getter, not a record component's accessor (which carries the component's annotation).
+            .and().haveNameMatching("(get|is)[A-Z].*")
+            .should(nameTheFieldTheyAreReportedOn())
+            .because("a limit on a getter checks a number derived from fields: reportedOn names the field a form shows it under (ERR-07)")
+            // A project without such a getter yet.
+            .allowEmptyShould(true);
 
     @ArchTest
     static final ArchRule noOptionalParameters = noCodeUnits().that().doNotHaveModifier(JavaModifier.SYNTHETIC)
@@ -213,6 +228,16 @@ class ConventionArchTest {
     /** The method's mapping with its composed annotation ({@code @GetMapping}, ...) merged in; null when it has none. */
     private static RequestMapping handlerMapping(JavaMethod method) {
         return AnnotatedElementUtils.findMergedAnnotation(method.reflect(), RequestMapping.class);
+    }
+
+    private static ArchCondition<JavaMethod> nameTheFieldTheyAreReportedOn() {
+        return new ArchCondition<>("name the field they are reported on") {
+            @Override
+            public void check(JavaMethod method, ConditionEvents events) {
+                boolean named = !method.reflect().getAnnotation(ConfiguredMax.class).reportedOn().isEmpty();
+                events.add(new SimpleConditionEvent(method, named, method.getFullName() + " has @ConfiguredMax without reportedOn"));
+            }
+        };
     }
 
     private static ArchCondition<JavaCodeUnit> haveAnOptionalParameter() {

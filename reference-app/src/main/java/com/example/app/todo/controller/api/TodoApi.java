@@ -47,7 +47,7 @@ public interface TodoApi {
     @ApiResponse(responseCode = "200", description = "One batch, with pageInfo {nextCursor, hasMore}")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (size, query, after or the number of ids out of range; dueOnOrBefore with \
-            sort NEWEST, naming dueOnOrBeforeSortedByDueDate); REQUEST_PARAMETER_INVALID (an unknown \
+            sort NEWEST, reported on dueOnOrBefore); REQUEST_PARAMETER_INVALID (an unknown \
             status, priority or sort, a malformed date, id, todoListId or tagId, a non-numeric size, or an \
             after that is tampered or from another sort; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
