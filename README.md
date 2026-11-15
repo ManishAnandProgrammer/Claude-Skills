@@ -37,6 +37,9 @@ minutes. On success it records a fingerprint of the code it tested (`reference-a
 `.githooks/`). `install.sh` enables a pre-push hook (`.githooks/pre-push`) that refuses a push whose
 code differs from that record; skill text and guides alone never need a new run. So: change, run
 `verify.sh`, commit, push. Skip once with `git push --no-verify`.
+While iterating, `scripts/verify.sh --only 2i,2j` runs just the named stages (ids in the script's
+header: `reference`, `2`, `2b` … `2j`, `2d`, `image`); a partial run never records the fingerprint,
+so the full run before a push stays mandatory.
 
 ## Install (once per machine)
 ```bash
