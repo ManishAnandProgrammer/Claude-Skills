@@ -2,8 +2,11 @@ package com.example.app.metadata;
 
 import com.example.app.support.IntegrationTest;
 import com.example.app.support.WithoutTestTenant;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
 
 import java.util.UUID;
 
@@ -13,24 +16,30 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** A direct cross-tenant edit: staff change one tenant's configuration, audited, and only that tenant's. */
 @WithoutTestTenant
+@ResourceLock(MetadataIntegrationTest.FIXED_KEY)
 class PlatformMetadataIntegrationTest extends IntegrationTest {
 
     private static final String VALUE = """
             {"reminderMinutesBefore": 45, "archiveDoneTodos": false, "dailyDigestAt": "07:15"}""";
 
-    private void storeDefaults() {
-        sql("delete from configuration_metadata where key = ?", MetadataIntegrationTest.FIXED_KEY);
-        sql("""
-                insert into configuration_metadata (id, key, value, created_at, updated_at, version)
-                values (uuidv7(), ?, '{}'::jsonb, now(), now(), 0)
-                """, MetadataIntegrationTest.FIXED_KEY);
+    /** The test tenant's key as seeded, put back after each test. */
+    private StoredMetadata seeded;
+
+    @BeforeEach
+    void startFromTheDefaults() {
+        seeded = storedMetadata(MetadataIntegrationTest.FIXED_KEY);
+        storeMetadata(MetadataIntegrationTest.FIXED_KEY, "{}");
+    }
+
+    @AfterEach
+    void restoreTheSeededKey() {
+        restoreMetadata(seeded);
     }
 
     @Test
     @DisplayName("Staff replace a tenant's key as its admin would; the tenant reads it, the change is audited")
     void staffEditATenantsConfiguration() throws Exception {
         TestUser admin = newAdmin();
-        storeDefaults();
         UUID tenantId = testTenant().id();
 
         putAs(platformToken(), "/api/v1/platform/tenants/" + tenantId + "/metadata/" + MetadataIntegrationTest.FIXED_KEY, """

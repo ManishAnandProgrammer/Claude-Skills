@@ -39,12 +39,14 @@ import com.example.app.todo.repository.TodoRepository;
 import com.example.app.todo.repository.TodoTagRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -203,9 +205,16 @@ public class TodoService implements Todos {
         // media:end
     }
 
+    /** Locked as the todo's own writes lock it (findForUpdateByIdAndOwnerId), so they queue behind the caller. */
     @Override
-    public TodoView getOwnedTodoView(UUID id, UUID ownerId) {
-        return mapper.toView(getOwnedTodo(id, ownerId));
+    @Transactional(propagation = Propagation.MANDATORY)
+    public TodoView getOwnedTodoViewForUpdate(UUID id, UUID ownerId) {
+        return mapper.toView(getOwnedTodoForUpdate(id, ownerId));
+    }
+
+    @Override
+    public Optional<TodoView> findOwnedTodoView(UUID id, UUID ownerId) {
+        return repository.findByIdAndOwnerId(id, ownerId).map(mapper::toView);
     }
 
     @Override

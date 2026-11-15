@@ -55,7 +55,8 @@ public interface PlanApi {
             From startsOn to endsOn, both inclusive (one day: the same date twice), between a configured \
             earliest and latest date. The days must be free: a plan that shares even one day with another of yours is refused \
             with 409 PLAN_OVERLAPS (a plan ending on the 22nd and one starting on the 22nd overlap; one \
-            starting on the 23rd doesn't). A plan never changes: to move it, delete it and create another.""")
+            starting on the 23rd doesn't). The todo must be open: a plan for a DONE todo is refused with \
+            409 PLAN_TODO_DONE. A plan never changes: to move it, delete it and create another.""")
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (a missing field, a date outside the configured earliest and latest ones, or \
@@ -64,9 +65,9 @@ public interface PlanApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's); TODO_GONE (deleted while the plan was being saved)",
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "409", description = "PLAN_OVERLAPS (it shares a day with another of your plans)",
+    @ApiResponse(responseCode = "409", description = "PLAN_OVERLAPS (it shares a day with another of your plans); PLAN_TODO_DONE (the todo is done)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

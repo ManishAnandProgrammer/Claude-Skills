@@ -7,6 +7,7 @@ import com.example.app.todo.api.TodoView;
 import com.example.app.todo.domain.Tag;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.domain.TodoList;
+import com.example.app.todo.domain.TodoStatus;
 import com.example.app.todo.dto.internal.TodoTagRow;
 import com.example.app.todo.dto.request.TodoCreateRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
@@ -42,7 +43,7 @@ public class TodoMapper {
 
     /** The todo as other modules see it (the todo.api facade). */
     public TodoView toView(Todo todo) {
-        return new TodoView(todo.getId(), todo.getTitle());
+        return new TodoView(todo.getId(), todo.getTitle(), todo.getStatus() == TodoStatus.OPEN);
     }
 
     public void update(Todo todo, TodoUpdateRequest request, TodoList todoList) {

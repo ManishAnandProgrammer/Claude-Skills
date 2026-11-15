@@ -18,7 +18,15 @@ app:
     # The columns are text; these are the contract.
     text:
       search-query: 100
-      cursor: 512
+      # A cursor carries its sort keys as JSON, Base64url-encoded: up to 6 bytes per character of the
+      # longest text key a cursor carries (a dropdown's label, a text sort key), since a control
+      # character is escaped \u00XX and a 4-byte letter stays 4, plus about 100 bytes of frame (the
+      # sort's name, the id), times 4/3: (6 x longest + 100) x 4/3. A new text key a cursor carries
+      # raises it (LimitsIntegrationTest.CURSOR_TEXT_KEYS checks it).
+      # example:begin
+      # The example's longest such key is a todo list's name (100): 933.
+      # example:end
+      cursor: 1000
       user.email: 254
       user.full-name: 100
       user.refresh-token: 100

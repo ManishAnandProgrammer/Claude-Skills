@@ -83,6 +83,9 @@ class TagIndexIntegrationTest extends IntegrationTest {
 
         assertThat(plan).as(plan).contains("using " + index + " on").doesNotContain("Sort");
         String indexCondition = plan.lines().filter(line -> line.contains("Index Cond:")).findFirst().orElse("");
-        assertThat(indexCondition).as(plan).contains(scope);
+        // One column at a time: an unscoped order (a whole shared table) has none, and contains() refuses an empty list.
+        for (String column : scope) {
+            assertThat(indexCondition).as(plan).contains(column);
+        }
     }
 }

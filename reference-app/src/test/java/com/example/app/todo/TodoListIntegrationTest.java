@@ -748,6 +748,42 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("A dropdown cursor taken after a name at its limit, of control characters and 4-byte letters, continues the walk")
+    void dropdownCursorOfTheLongestNameIsAccepted() throws Exception {
+        TestUser user = newUser();
+        // 100 characters. The cursor's JSON escapes U+0001 in six bytes and writes 𐌰 in four: the longest cursor
+        // a name can give (app.limits.text.cursor is sized for it).
+        String longest = read(postAs(user.accessToken(), LISTS, namePayload("A" + "\\u0001\uD800\uDF30".repeat(49) + "Z"))
+                .andExpect(status().isCreated()), "$.response.name");
+        createList(user, "B");
+
+        assertThat(longest.codePointCount(0, longest.length())).isEqualTo(100);
+        assertThat(walk(user, DROPDOWN + "?size=1")).containsExactly(List.of(longest), List.of("B"));
+    }
+
+    @Test
+    @DisplayName("A dropdown query that matches none of your lists answers an empty batch, hasMore false")
+    void dropdownWithNoMatchIsEmpty() throws Exception {
+        TestUser user = newUser();
+        createList(user, "Groceries");
+
+        getAs(user.accessToken(), DROPDOWN + "?query=nothing-matches-" + UUID.randomUUID())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.length()").value(0))
+                .andExpect(jsonPath("$.pageInfo.hasMore").value(false))
+                .andExpect(jsonPath("$.pageInfo.nextCursor").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("An unknown dropdown status is 400 REQUEST_PARAMETER_INVALID naming status")
+    void dropdownUnknownStatusIs400() throws Exception {
+        getAs(newUser().accessToken(), DROPDOWN + "?status=ARCHIVED")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                .andExpect(jsonPath("$.failed", contains("status: invalid value")));
+    }
+
+    @Test
     @DisplayName("A dropdown cursor taken in one direction is refused in the other")
     void dropdownCursorFromAnotherDirectionIsRefused() throws Exception {
         TestUser user = newUser();

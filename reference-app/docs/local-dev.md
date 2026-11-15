@@ -19,6 +19,21 @@
 <!-- 4. With tenancy, `compose.yaml` creates the two database roles on a new data directory; platform -->
 <!--    staff are rows you insert (`docs/tenancy-runbook.md`, section 2); staff then create or approve -->
 <!--    tenants. -->
+<!-- tenancy:else -->
+<!-- sign-in:begin -->
+<!-- admin:begin -->
+4. **The first admin.** No endpoint grants a role, and the admin endpoints (configuration, upload
+   policies, whatever the project gave the ADMIN role) answer 403 to every new account. Sign up through
+   the API (or the UI), then, as the database owner:
+   ```bash
+   set -a; . ./.env; set +a
+   docker compose exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" \
+     -c "update users set role = 'ADMIN' where email = 'you@example.com'"
+   ```
+   The role is in the next access token: sign in again. In production an operator runs the same
+   statement (`docs/runbook.md`, *Operator tasks*).
+<!-- admin:end -->
+<!-- sign-in:end -->
 <!-- tenancy:end -->
 
 `docker compose down -v` removes the data. An app started from `target/*.jar` breaks when a build

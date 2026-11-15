@@ -187,6 +187,7 @@ LIST
             # The metadata piece's sample configuration and the tests that exercise the mechanism through it.
             if chosen_piece metadata; then cat <<LIST
 src/main/java/$reference_path/metadata/api/TodoListSettings.java
+src/main/resources/db/changelog/changes/0014-todo-list-defaults.sql
 src/test/java/$reference_path/metadata/MetadataIntegrationTest.java
 LIST
             fi
@@ -256,6 +257,10 @@ LIST
             echo "$ROW/docs"
             echo "$ROW/docker"
             # Upload policies' starting limits per tenant, and the module listener that seeds them.
+            # The example's fixed metadata key in every new tenant (0014 seeds the existing ones).
+            if chosen_piece metadata && chosen_piece example; then
+                echo "$ROW/src/main/java/$reference_path/todo/service/TodoListDefaultsSeed.java"
+            fi
             if chosen_piece media; then
                 echo "$ROW/src/main/java/$reference_path/media/api/UploadLimits.java"
                 if chosen_piece example; then

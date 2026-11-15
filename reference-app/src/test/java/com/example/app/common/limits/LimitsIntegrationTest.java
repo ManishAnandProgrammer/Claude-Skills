@@ -1,5 +1,6 @@
 package com.example.app.common.limits;
 
+import com.example.app.common.pagination.Cursor;
 import com.example.app.common.pagination.CursorFilter;
 import com.example.app.common.pagination.PageFilter;
 import com.example.app.support.IntegrationTest;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,6 +36,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class LimitsIntegrationTest extends IntegrationTest {
+
+    /**
+     * Every text limit whose value a cursor carries: a dropdown's label, a cursor list's text sort key.
+     * crud-gen adds the key of each new one, so a longer key can't outgrow the cursor limit unnoticed.
+     */
+    private static final List<String> CURSOR_TEXT_KEYS = List.of(
+            // example:begin
+            "todo-list.name",
+            "tag.name"
+            // example:end
+    );
+
+    /** Longer than any sort's name, so the frame of every real cursor is at most this one's. */
+    private static final String LONGEST_SORT = "A_SORT_NAME_OF_THIRTY_LETTERS_";
 
     @Autowired
     private Limits limits;
@@ -128,6 +144,21 @@ class LimitsIntegrationTest extends IntegrationTest {
         getAs(null, "/v3/api-docs")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.components.schemas.SignupRequest.properties.fullName.maxLength").value(100));
+    }
+
+    @Test
+    @DisplayName("""
+            The cursor limit holds a cursor taken after the longest value of every text key a cursor carries, \
+            control characters (escaped in the cursor's JSON) included""")
+    void cursorLimitHoldsTheLongestTextKeys() {
+        int cursorLimit = limits.maxLength("cursor");
+        for (String key : CURSOR_TEXT_KEYS) {
+            // \u0001 is the worst character: JSON writes it as six bytes.
+            String longest = "\u0001".repeat(limits.maxLength(key));
+            String cursor = Cursor.write(LONGEST_SORT, longest, UUID.randomUUID());
+
+            assertThat(cursor.length()).as("a cursor after the longest " + key).isLessThanOrEqualTo(cursorLimit);
+        }
     }
 
     static class SomeFilter extends PageFilter {

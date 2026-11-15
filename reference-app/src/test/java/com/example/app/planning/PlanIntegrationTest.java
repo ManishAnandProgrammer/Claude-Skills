@@ -1,9 +1,13 @@
 package com.example.app.planning;
 
 import com.example.app.support.IntegrationTest;
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -11,6 +15,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,6 +26,7 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,6 +39,9 @@ class PlanIntegrationTest extends IntegrationTest {
 
     private static final String PLANS = "/api/v1/plans";
     private static final String TODOS = "/api/v1/todos";
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private String createTodo(TestUser user, String title) throws Exception {
         String listId = read(postAs(user.accessToken(), "/api/v1/todo-lists", """
@@ -253,14 +265,16 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Concurrent creates of overlapping plans store exactly one; the others are 409 PLAN_OVERLAPS or 503 DATABASE_CONTENTION, never 500")
+    @DisplayName("Concurrent creates of overlapping plans for two todos store exactly one; the others are 409 PLAN_OVERLAPS or 503 DATABASE_CONTENTION, never 500")
     void concurrentOverlappingCreatesStoreOne() throws Exception {
         TestUser user = newUser();
-        String todoId = createTodo(user, "Contested days");
+        List<String> todoIds = List.of(createTodo(user, "Contested days"), createTodo(user, "Same days"));
+        AtomicInteger racer = new AtomicInteger();
 
-        List<Answer> answers = race(() -> create(user, todoId, "2026-11-20", "2026-11-22"));
+        List<Answer> answers = race(() -> create(user, todoIds.get(racer.getAndIncrement() % 2), "2026-11-20", "2026-11-22"));
 
-        // Inserts at the same instant each wait in the exclusion check for the other's row, and
+        // The creates of one todo queue on its lock; the exclusion is per owner, so creates for two todos
+        // still meet at the same instant, each waiting in the exclusion check for the other's row, and
         // PostgreSQL ends that as a deadlock: the victim's 503 is a safe retry, which then answers 409.
         assertThat(answers).extracting(Answer::status).containsOnlyOnce(201).isSubsetOf(201, 409, 503);
         assertRefusalsAre(answers, 409, "PLAN_OVERLAPS");
@@ -366,26 +380,140 @@ class PlanIntegrationTest extends IntegrationTest {
         deleteAs(user.accessToken(), TODOS + "/" + todoId).andExpect(status().isNoContent());
     }
 
+    /**
+     * Row 23 with a locked parent: each create locks the todo (it checks the todo is open), so the delete
+     * waits for the held creates instead of landing between a create's read and its insert. It then finds
+     * their plans: every create 201, the delete 409 TODO_IN_USE, and TODO_GONE can't happen.
+     */
     @Test
-    @DisplayName("Plans created while their todo is deleted: the delete is 204, every create 404 TODO_GONE, and no plan is left without its todo")
-    void childWritesRacingAParentDeleteKeepTheInvariant() throws Exception {
+    @DisplayName("Plans created while their todo is deleted: the delete waits for them, every create is 201 and the delete 409 TODO_IN_USE")
+    void createsRacingTheTodoDeleteAreKeptAndTheDeleteIsRefused() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user, "Contested");
-        LocalDate firstDay = LocalDate.parse("2026-11-01");
-        AtomicInteger creator = new AtomicInteger();
+        List<Callable<ResultActions>> creates = new ArrayList<>();
+        for (int day = 0; day < HELD_CREATES; day++) {
+            // Each on its own day, so only the todo's delete could refuse them.
+            String date = LocalDate.parse("2026-11-01").plusDays(day).toString();
+            creates.add(() -> create(user, todoId, date, date));
+        }
 
-        // Each create on its own day, so only the foreign key can refuse them. Nothing locks the todo
-        // for a create, so the delete goes through, and the key refuses each insert after it.
-        List<Answer> creates = createsHeldAtTheirInsert("plans",
-                () -> {
-                    String day = firstDay.plusDays(creator.getAndIncrement()).toString();
-                    return create(user, todoId, day, day);
-                },
-                () -> deleteAs(user.accessToken(), TODOS + "/" + todoId).andExpect(status().isNoContent()));
+        HeldWrites race = writesHeldWhileTheParentWaits("plans", creates, () -> deleteAs(user.accessToken(), TODOS + "/" + todoId));
 
-        assertThat(creates).extracting(Answer::status).containsOnly(404);
-        assertRefusalsAre(creates, 404, "TODO_GONE");
+        assertThat(race.writes()).extracting(Answer::status).containsOnly(201);
+        assertThat(race.parentWrite().status()).isEqualTo(409);
+        assertRefusalsAre(List.of(race.parentWrite()), 409, "TODO_IN_USE");
+        assertThat(plansOf(user)).isEqualTo(HELD_CREATES);
+        getAs(user.accessToken(), TODOS + "/" + todoId).andExpect(status().isOk());
+    }
+
+    /**
+     * Row 23b: a create checks the todo is open under the todo's lock. Held at its insert, the plan keeps
+     * the todo's completion waiting, which then applies after the plan, made while the todo was open.
+     * Without the lock the completion commits first and the plan is stored for a done todo (the helper's
+     * "waits" assertion goes red).
+     */
+    @Test
+    @DisplayName("A todo completed while a plan for it is being created waits for the plan: the plan is 201, the completion 200 after it")
+    void completionRacingACreateWaitsForIt() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Nearly done");
+        List<Callable<ResultActions>> creates = List.of(() -> create(user, todoId, "2026-11-20", "2026-11-22"));
+
+        HeldWrites race = writesHeldWhileTheParentWaits("plans", creates, () -> complete(user, todoId, 0));
+
+        assertThat(race.writes()).extracting(Answer::status).containsExactly(201);
+        assertThat(race.parentWrite().status()).isEqualTo(200);
+        assertThat(plansOf(user)).isOne();
+        create(user, todoId, "2026-12-20", "2026-12-22")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_TODO_DONE"));
+    }
+
+    @Test
+    @DisplayName("A plan for a done todo is 409 PLAN_TODO_DONE and stores nothing; reopened, the todo takes plans again")
+    void planForADoneTodoIs409() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Done already");
+        complete(user, todoId, 0).andExpect(status().isOk());
+
+        String body = create(user, todoId, "2026-11-20", "2026-11-22")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_TODO_DONE"))
+                .andReturn().getResponse().getContentAsString();
+        assertNoInternals(body);
         assertThat(plansOf(user)).isZero();
+
+        patchAs(user.accessToken(), TODOS + "/" + todoId + "/status", """
+                {"status": "OPEN", "version": 1}
+                """).andExpect(status().isOk());
+        create(user, todoId, "2026-11-20", "2026-11-22").andExpect(status().isCreated());
+    }
+
+    @Test
+    @DisplayName("A batch whose plan and todo are deleted between its two statements leaves that plan out, never 500")
+    void listLeavesOutAPlanWhoseTodoVanishedBetweenTheReads() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Vanishing");
+        String vanishing = createPlan(user, todoId, "2026-11-20", "2026-11-20");
+        String staying = createPlan(user, createTodo(user, "Staying"), "2026-11-21", "2026-11-21");
+
+        Answer batch = whileThePlanAndItsTodoGoBetweenTheReads(vanishing, todoId, () -> getAs(user.accessToken(), PLANS));
+
+        assertThat(batch.status()).isEqualTo(200);
+        assertThat(JsonPath.<List<String>>read(batch.body(), "$.response[*].id")).containsExactly(staying);
+    }
+
+    @Test
+    @DisplayName("A plan deleted with its todo between the plan's read and the todo's is 404 PLAN_NOT_FOUND, never the todo's code")
+    void getOfAPlanWhoseTodoVanishedBetweenTheReadsIs404() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Vanishing");
+        String id = createPlan(user, todoId, "2026-11-20", "2026-11-20");
+
+        Answer answer = whileThePlanAndItsTodoGoBetweenTheReads(id, todoId, () -> getAs(user.accessToken(), PLANS + "/" + id));
+
+        assertThat(answer.status()).isEqualTo(404);
+        assertRefusalsAre(List.of(answer), 404, "PLAN_NOT_FOUND");
+    }
+
+    private ResultActions complete(TestUser user, String todoId, long version) throws Exception {
+        return patchAs(user.accessToken(), TODOS + "/" + todoId + "/status", """
+                {"status": "DONE", "version": %d}
+                """.formatted(version));
+    }
+
+    /**
+     * Runs {@code read} (the plan, then its todo through the todo module's facade: two statements) while
+     * the plan and its todo are deleted between them. A transaction deletes both and holds the todos table
+     * ACCESS EXCLUSIVE: the read's first statement (plans only) still sees the plan, its second (the todos)
+     * waits for that lock. Once it waits there, the deletion commits.
+     */
+    private Answer whileThePlanAndItsTodoGoBetweenTheReads(String planId, String todoId, Callable<ResultActions> read)
+            throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch deleted = new CountDownLatch(1);
+        CountDownLatch commit = new CountDownLatch(1);
+        try (ExecutorService executor = newExecutor()) {
+            Future<?> deletion = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.execute("lock table todos in access exclusive mode");
+                jdbc.update("delete from plans where id = ?", UUID.fromString(planId));
+                jdbc.update("delete from todos where id = ?", UUID.fromString(todoId));
+                deleted.countDown();
+                awaitQuietly(commit);
+            }));
+            awaitLatch(deleted);
+            Future<Answer> reading;
+            try {
+                Callable<Answer> once = () -> answerOf(read.call());
+                reading = executor.submit(once);
+                awaitLockWaiters(1, reading);
+                assertThat(reading.isDone()).as("the read waits at its todo lookup").isFalse();
+            } finally {
+                commit.countDown();
+            }
+            within(deletion);
+            return within(reading);
+        }
     }
 
     /** Plans on consecutive days, as {@code user}, across two todos; returns their ids in calendar order. */
@@ -583,14 +711,16 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The API docs describe the overlap refusal and the todo's 404")
+    @DisplayName("The API docs describe the overlap and done-todo refusals and the todo's 404, without TODO_GONE (the create locks the todo)")
     void apiDocsDescribeThePlanErrors() throws Exception {
         getAs(null, "/v3/api-docs")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].get.responses['400'].description", containsString("REQUEST_PARAMETER_INVALID")))
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].get.parameters[?(@.name == 'ids')].schema.maxItems", contains(100)))
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['409'].description", containsString("PLAN_OVERLAPS")))
+                .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['409'].description", containsString("PLAN_TODO_DONE")))
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['404'].description", containsString("TODO_NOT_FOUND")))
+                .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['404'].description", not(containsString("TODO_GONE"))))
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].delete.responses['409'].description", containsString("plans")));
     }
 }

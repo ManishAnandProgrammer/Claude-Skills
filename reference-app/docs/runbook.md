@@ -145,3 +145,19 @@ GC logs and out-of-memory heap dumps are already in `/diagnostics/<start>/`.
 
 Keep the notes, the query output and the files in `/diagnostics`. Write down the cause, what fixed
 it, and the guard (a test, a limit, an alert) that would have caught it earlier.
+<!-- tenancy:begin -->
+<!-- tenancy:else -->
+<!-- sign-in:begin -->
+<!-- admin:begin -->
+
+## Operator tasks
+
+**The first admin** (and every later one). No endpoint grants a role: the person signs up, then an
+operator with the database owner's credentials runs, once per account,
+`UPDATE users SET role = 'ADMIN' WHERE email = '<their email>';` (check it says `UPDATE 1`) and writes
+down who asked and why. The role reaches the account's next access token: they sign in again (a token
+already issued keeps its old role until it expires, `app.jwt.access-token-ttl`). Taking it away is the
+same statement with `'USER'`, under the same delay.
+<!-- admin:end -->
+<!-- sign-in:end -->
+<!-- tenancy:end -->

@@ -92,6 +92,7 @@ public final class ErrorCodeHttpStatusMapper {
         // media:end
         MAPPING.put(ErrorCode.PLAN_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.PLAN_OVERLAPS, HttpStatus.CONFLICT);
+        MAPPING.put(ErrorCode.PLAN_TODO_DONE, HttpStatus.CONFLICT);
         // example:end
     }
 

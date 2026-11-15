@@ -22,7 +22,8 @@ The house reference application: real, building, tested code that the skills cop
     `ADMIN` role.
 - The `todo` module is the **golden crud-gen output**: what a generated entity looks like, with its
   tests. The `planning` module adds the shapes `todo` can't host: a parent in another module
-  (`todo.api.Todos`) and no overlapping ranges (an exclusion constraint). crud-gen generates like it; house-review cites it as compliant code.
+  (`todo.api.Todos`), locked by the create because a plan is only for an open todo, and no
+  overlapping ranges (an exclusion constraint). crud-gen generates like it; house-review cites it as compliant code.
 - Skills find it at `~/.claude/skills-reference` (linked by the installers).
 
 It is not an application anyone deploys. Its domain (todo lists and todos) only exists to show

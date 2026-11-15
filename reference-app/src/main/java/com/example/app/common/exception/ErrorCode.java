@@ -133,5 +133,7 @@ public enum ErrorCode {
     PLAN_NOT_FOUND,
     /** Answered from the exclusion constraint ex_plans_owner_id_dates: no arguments. */
     PLAN_OVERLAPS,
+    /** A plan for a todo that is done: plans are for open todos. */
+    PLAN_TODO_DONE,
     // example:end
 }

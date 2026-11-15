@@ -9,8 +9,9 @@ public enum Role {
     // admin:begin (with the first piece that has admin endpoints: metadata or media)
     /**
      * Changes application-wide settings: configuration metadata, upload policies. No endpoint grants
-     * it: an operator sets it in the database ({@code UPDATE users SET role = 'ADMIN'}), and it takes
-     * effect at the user's next sign-in.
+     * it: an operator sets it in the database ({@code UPDATE users SET role = 'ADMIN'}; docs/runbook.md,
+     * Operator tasks), and it takes effect at the user's next sign-in. A project names here everything
+     * its ADMIN writes, from the first generated write that takes the role.
      */
     ADMIN
     // admin:end

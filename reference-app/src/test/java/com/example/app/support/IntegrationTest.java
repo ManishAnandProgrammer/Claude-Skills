@@ -87,7 +87,10 @@ public abstract class IntegrationTest {
     protected static final String PASSWORD = "Correct-Horse-9";
     /** How many requests {@link #race} fires at once. */
     protected static final int RACERS = 6;
-    /** How many creates {@link #createsHeldAtTheirInsert} holds at once: below the pool size (10) with the parent's delete, the gate and the polling connection. */
+    /**
+     * How many writes {@link #createsHeldAtTheirInsert} and {@link #writesHeldWhileTheParentWaits} hold at once:
+     * below the pool size (10) with the parent's write, the gate and the polling connection.
+     */
     protected static final int HELD_CREATES = 4;
     /**
      * Under lock_timeout (3 s), so a request held by a test lock never times out first. A test that
@@ -310,6 +313,45 @@ public abstract class IntegrationTest {
     }
 
     // media:end
+    // metadata:begin
+    /** A fixed metadata key's row as stored: its JSON value and version, to put back after a test changed it. */
+    protected record StoredMetadata(String key, String value, long version) {
+    }
+
+    /**
+     * The key's row now ({@link #restoreMetadata} puts it back). Fails when the key isn't stored: a fixed
+     * key is seeded by the changeset that needs it (META-05), so a missing one is a seed that didn't run.
+     */
+    protected StoredMetadata storedMetadata(String key) {
+        return jdbc.queryForObject("select value::text as value, version from configuration_metadata where key = ?",
+                (row, number) -> new StoredMetadata(key, row.getString("value"), row.getLong("version")), key);
+    }
+
+    /**
+     * Sets a fixed key's value directly, at version 0 (no admin, no version check), creating the row when a
+     * test deleted it. A class that changes a fixed key holds the key's {@code @ResourceLock}, reads it
+     * ({@link #storedMetadata}) and sets its own in {@code @BeforeEach}, and puts it back
+     * ({@link #restoreMetadata}) in {@code @AfterEach}: real code reads the key (a create that starts from
+     * it), and other classes must find the seeded value, never a test's.
+     */
+    protected void storeMetadata(String key, String json) {
+        storeMetadataRow(key, json, 0);
+    }
+
+    /** Puts a key's row back as {@link #storedMetadata} read it, value and version. */
+    protected void restoreMetadata(StoredMetadata stored) {
+        storeMetadataRow(stored.key(), stored.value(), stored.version());
+    }
+
+    private void storeMetadataRow(String key, String json, long version) {
+        assertThat(sql("""
+                insert into configuration_metadata (id, key, value, created_at, updated_at, version)
+                values (uuidv7(), ?, ?::jsonb, now(), now(), ?)
+                on conflict on constraint uq_configuration_metadata_key
+                do update set value = excluded.value, version = excluded.version, updated_at = now()
+                """, key, json, version)).isEqualTo(1);
+    }
+    // metadata:end
     protected ResultActions signup(String email, String password) throws Exception {
         return postAs(null, "/api/v1/auth/signup", """
                 {"email": "%s", "fullName": "Test User", "password": "%s"}
@@ -417,6 +459,59 @@ public abstract class IntegrationTest {
             answers.add(within(answer));
         }
         return answers;
+    }
+
+    /** The answers of {@link #writesHeldWhileTheParentWaits}: each held write's, then the parent's write's. */
+    protected record HeldWrites(List<Answer> writes, Answer parentWrite) {
+    }
+
+    /**
+     * For a write that locks its parent first (a locked facade view, DATA-29): runs each of {@code writes}
+     * at once and holds it at its insert into {@code table} (a SHARE lock on the table, as
+     * {@link #createsHeldAtTheirInsert}), by when it holds the parent's lock. Then submits
+     * {@code parentWrite} (the parent's delete or state change) on its own thread and asserts that it
+     * <b>waits</b> while the gate is shut: that wait is what the parent's lock buys, and without the lock
+     * the parent's write would finish under the gate and fail this assertion (TEST-09). Then opens the gate
+     * and returns every answer. The writes queue on the parent's lock in no fixed order, and the parent's
+     * write may get it between two of them: assert the set of outcomes, never their order.
+     */
+    protected HeldWrites writesHeldWhileTheParentWaits(String table, List<Callable<ResultActions>> writes,
+                                                       Callable<ResultActions> parentWrite) throws Exception {
+        assertThat(writes).as("held writes, within the pool").hasSizeBetween(1, HELD_CREATES);
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch gateClosed = new CountDownLatch(1);
+        CountDownLatch openGate = new CountDownLatch(1);
+        List<Future<Answer>> pending = new ArrayList<>();
+        Future<Answer> parent;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.execute("lock table " + table + " in share mode");
+                gateClosed.countDown();
+                awaitQuietly(openGate);
+            }));
+            awaitLatch(gateClosed);
+            try {
+                long deadline = lockWaitDeadline();
+                for (Callable<ResultActions> write : writes) {
+                    Callable<Answer> once = () -> answerOf(write.call());
+                    pending.add(executor.submit(once));
+                }
+                // One write holds the parent's lock and waits at its insert; the others wait for the parent.
+                awaitLockWaiters(writes.size(), null, deadline);
+                Callable<Answer> parentOnce = () -> answerOf(parentWrite.call());
+                parent = executor.submit(parentOnce);
+                awaitLockWaiters(writes.size() + 1, parent, deadline);
+                assertThat(parent.isDone()).as("the parent's write waits for the held writes' lock on the parent").isFalse();
+            } finally {
+                openGate.countDown();
+            }
+            within(gate);
+        }
+        List<Answer> answers = new ArrayList<>();
+        for (Future<Answer> answer : pending) {
+            answers.add(within(answer));
+        }
+        return new HeldWrites(answers, within(parent));
     }
 
     /** A refusal names no constraint (of any kind), SQL or Java internals anywhere in its body. */

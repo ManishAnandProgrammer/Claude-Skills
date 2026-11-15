@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -41,17 +42,23 @@ public class PlanService {
     private final Paging paging;
 
     /**
-     * The todo, the todo module's, is validated through its facade, and not locked: a plan written while
-     * its todo is deleted is refused by its foreign key, 404 {@code TODO_GONE}. A plan sharing a day with
-     * another of the owner's is refused at the flush by {@code ex_plans_owner_id_dates}: 409
-     * {@code PLAN_OVERLAPS}. Nothing serialises the owner's creates: two overlapping ones at the same
-     * instant can deadlock in that constraint, and the victim answers 503 {@code DATABASE_CONTENTION}.
-     * That is rare, the data stays right (one plan), and the retry it asks for answers 409.
+     * A plan is only for an open todo, a rule no constraint can hold (it reads another module's table):
+     * so the todo is read through its facade <b>locked</b>, and the todo's completion and delete wait for
+     * this create. A completion that commits first makes it 409 {@code PLAN_TODO_DONE}; a delete that
+     * waited finds the plan and answers 409 {@code TODO_IN_USE}, so the insert never meets a deleted todo
+     * ({@code TODO_GONE} can't happen here). A plan sharing a day with another of the owner's is refused at
+     * the flush by {@code ex_plans_owner_id_dates}: 409 {@code PLAN_OVERLAPS}. The lock queues the creates
+     * of one todo, not of one owner: overlapping creates for two of the owner's todos at the same instant
+     * can still deadlock in that constraint, and the victim answers 503 {@code DATABASE_CONTENTION}. That
+     * is rare, the data stays right (one plan), and the retry it asks for answers 409.
      */
     @Transactional
     public ObjectWrapper<PlanResponse> create(PlanCreateRequest request) {
         UUID ownerId = currentUser.id();
-        TodoView todo = todos.getOwnedTodoView(request.todoId(), ownerId);
+        TodoView todo = todos.getOwnedTodoViewForUpdate(request.todoId(), ownerId);
+        if (!todo.open()) {
+            throw AppException.of(ErrorCode.PLAN_TODO_DONE, todo.id());
+        }
         Plan saved = repository.saveAndFlush(mapper.toEntity(request, ownerId));
         return ObjectWrapper.withObject(mapper.toResponse(saved, todo));
     }
@@ -67,11 +74,17 @@ public class PlanService {
         return CursorWrapper.of(withTodos(batch.items(), ownerId), batch.nextCursor());
     }
 
-    /** The todo can't be gone: its delete is refused while it has plans. */
+    /**
+     * Two reads, the plan and then its todo, each seeing the database at its own moment. The todo's delete
+     * is refused while it has plans, so a todo missing at the second read went after its plan: the plan
+     * is gone too, and answers {@code PLAN_NOT_FOUND}, as it would a moment later.
+     */
     public ObjectWrapper<PlanResponse> findById(UUID id) {
         UUID ownerId = currentUser.id();
         Plan plan = getOwnedPlan(id, ownerId);
-        return ObjectWrapper.withObject(mapper.toResponse(plan, todos.getOwnedTodoView(plan.getTodoId(), ownerId)));
+        TodoView todo = todos.findOwnedTodoView(plan.getTodoId(), ownerId)
+                .orElseThrow(AppException.supply(ErrorCode.PLAN_NOT_FOUND, id));
+        return ObjectWrapper.withObject(mapper.toResponse(plan, todo));
     }
 
     @Transactional
@@ -80,13 +93,22 @@ public class PlanService {
         repository.flush();
     }
 
+    /**
+     * The batch's todos in one lookup. The two statements see the database at two moments: a plan whose
+     * todo the lookup misses was deleted with it in between (as {@link #findById} says), so it is left out
+     * of the batch, as a read a moment later would leave it out. The cursor still continues after the last
+     * row the batch read.
+     */
     private List<PlanResponse> withTodos(List<PlanRow> rows, UUID ownerId) {
         Set<UUID> todoIds = rows.stream().map(PlanRow::todoId).collect(Collectors.toSet());
         Map<UUID, TodoView> todosById = todos.getOwnedTodoViews(todoIds, ownerId).stream()
                 .collect(Collectors.toMap(TodoView::id, Function.identity()));
         List<PlanResponse> responses = new ArrayList<>();
         for (PlanRow row : rows) {
-            responses.add(mapper.toResponse(row, todosById.get(row.todoId())));
+            TodoView todo = todosById.get(row.todoId());
+            if (Objects.nonNull(todo)) {
+                responses.add(mapper.toResponse(row, todo));
+            }
         }
         return responses;
     }

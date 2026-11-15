@@ -8,6 +8,7 @@ import com.example.app.metadata.api.Metadata;
 import com.example.app.metadata.api.MetadataKey;
 import com.example.app.metadata.api.MetadataKeys;
 import com.example.app.support.IntegrationTest;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,9 +44,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ({@code TODO_LIST_SETTINGS_<listId>}), which the admin API never reaches. Bootstrap copies this
  * class only with the example piece.
  *
- * <p>The fixed key is one row shared by every test here: each test starts from the record's
- * defaults at version 0, and the lock keeps tests that change it from running at the same time.
- * Per-context tests use list ids of their own.</p>
+ * <p>The fixed key is one row, seeded by changeset 0014 and shared by the whole run: each test here
+ * starts from the record's defaults at version 0 and puts the seeded row back afterwards (other
+ * classes, and real code that reads the key, find it as seeded), and the lock keeps tests that change it
+ * from running at the same time. Per-context tests use list ids of their own.</p>
  */
 @ResourceLock(MetadataIntegrationTest.FIXED_KEY)
 class MetadataIntegrationTest extends IntegrationTest {
@@ -75,15 +77,18 @@ class MetadataIntegrationTest extends IntegrationTest {
                 """.formatted(value, version);
     }
 
+    /** The fixed key's row as seeded, read before each test changes it. */
+    private StoredMetadata seeded;
+
     @BeforeEach
-    void resetTheFixedKey() {
-        storeFixedKeyRaw("{}");
+    void startFromTheDefaults() {
+        seeded = storedMetadata(FIXED_KEY);
+        storeMetadata(FIXED_KEY, "{}");
     }
 
-    /** The fixed key's row replaced by {@code json} at version 0, as an older or newer instance could have written it. */
-    private void storeFixedKeyRaw(String json) {
-        sql("delete from configuration_metadata where key = ?", FIXED_KEY);
-        storeRaw(DEFAULTS, json);
+    @AfterEach
+    void restoreTheSeededKey() {
+        restoreMetadata(seeded);
     }
 
     /** A configuration stored as raw JSON, as an older or newer instance could have written it. */
@@ -110,6 +115,13 @@ class MetadataIntegrationTest extends IntegrationTest {
         String stored = jdbc.queryForObject("select value::text from configuration_metadata where key = ?", String.class, key.name());
         assertThat(stored).contains("\"reminderMinutesBefore\": 15", "\"archiveDoneTodos\": true", "\"dailyDigestAt\": \"07:45:00\"");
         assertThat(storedVersion(key)).isZero();
+    }
+
+    @Test
+    @DisplayName("The fixed key is seeded by its changeset (META-05), with the record's defaults written out")
+    void fixedKeyIsSeeded() {
+        assertThat(seeded.value()).contains("\"reminderMinutesBefore\": 30", "\"archiveDoneTodos\": false",
+                "\"dailyDigestAt\": \"09:00:00\"");
     }
 
     @Test
@@ -302,7 +314,7 @@ class MetadataIntegrationTest extends IntegrationTest {
         MetadataKey<TodoListSettings> stored = MetadataKeys.todoListSettings(newListId());
         storeRaw(stored, """
                 {"reminderMinutesBefore": 5}""");
-        storeFixedKeyRaw("""
+        storeMetadata(FIXED_KEY, """
                 {"reminderMinutesBefore": 5}""");
 
         assertThat(metadata.get(stored)).isEqualTo(new TodoListSettings(5, false, LocalTime.of(9, 0)));
@@ -325,7 +337,7 @@ class MetadataIntegrationTest extends IntegrationTest {
         String newer = """
                 {"reminderMinutesBefore": 7, "snoozeMinutes": 90, "nested": {"a": [1, 2]}}""";
         storeRaw(key, newer);
-        storeFixedKeyRaw(newer);
+        storeMetadata(FIXED_KEY, newer);
 
         assertThat(metadata.get(key)).isEqualTo(new TodoListSettings(7, null, null));
         getAs(admin.accessToken(), DEFAULTS_PATH)
