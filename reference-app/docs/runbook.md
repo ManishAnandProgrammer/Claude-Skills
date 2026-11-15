@@ -171,6 +171,12 @@ held their tables: a backfill rewrites its table under a lock, so a big one runs
 
 ## Operator tasks
 
+**Suspending an account** (abuse, a compromised account, someone who left) is an ADMIN's
+`PATCH /api/v1/users/{id}/status` with `{"status": "SUSPENDED", "version": n}`, never an `UPDATE users`:
+the endpoint also revokes every refresh token and, with the session version, ends the access tokens at
+once; SQL would leave them working. `ACTIVE` reactivates (the ended sessions stay ended). An ADMIN never
+suspends their own account, so one ADMIN always remains.
+
 **The first admin** (and every later one). No endpoint grants a role: the person signs up, then an
 operator with the database owner's credentials runs, once per account,
 `UPDATE users SET role = 'ADMIN' WHERE email = '<their email>';` (check it says `UPDATE 1`) and writes

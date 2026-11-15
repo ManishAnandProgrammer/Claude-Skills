@@ -1,15 +1,19 @@
 package com.example.app.user.repository;
 
 import com.example.app.user.domain.User;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 // session-version:begin
 // tenancy:begin
 // tenancy:else
 import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
 // tenancy:end
 // session-version:end
+import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,6 +26,24 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
 
     boolean existsByEmail(String email);
+
+    /**
+     * The account a token is about to be issued for, read with a share lock (FOR SHARE) held until the issue
+     * commits: every change of the account's access (a suspension, a password change) updates this row
+     * first, so an issue and such a change never interleave. The issue either commits before the change
+     * starts (and the change revokes what it issued) or reads the changed row (and refuses).
+     */
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("select u from User u where u.id = :userId")
+    Optional<User> findForTokenIssue(UUID userId);
+
+    /**
+     * The accounts with these ids, locked for update in id order (two changes locking the same accounts
+     * queue instead of deadlocking): an account status change locks the caller and the target together.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id in :userIds order by u.id")
+    List<User> findAllForUpdate(Collection<UUID> userIds);
     // session-version:begin
     // tenancy:begin
     // tenancy:else

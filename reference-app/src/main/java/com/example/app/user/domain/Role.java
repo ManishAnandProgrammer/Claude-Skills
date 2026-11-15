@@ -20,12 +20,13 @@ package com.example.app.user.domain;
  */
 public enum Role {
     USER,
-    // admin:begin (with the first piece that has admin endpoints: metadata or media)
+    // admin:begin (with the first piece that has admin endpoints: sign-in's account suspension, metadata, media)
     // tenancy:begin
     // /** Everything a USER works, plus the tenant's members (who belongs, with which role) and its own settings. */
     // tenancy:else
     /**
-     * Changes application-wide settings: configuration metadata, upload policies. No endpoint grants
+     * Suspends and reactivates other accounts ({@code PATCH /users/{id}/status}), and changes
+     * application-wide settings: configuration metadata, upload policies. No endpoint grants
      * it: an operator sets it in the database ({@code UPDATE users SET role = 'ADMIN'}; docs/runbook.md,
      * Operator tasks), and it reaches the user's next sign-in or refresh at the latest.
      *   <!-- session-version:begin -->

@@ -46,8 +46,14 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.USER_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.USER_EMAIL_TAKEN, HttpStatus.CONFLICT);
         MAPPING.put(ErrorCode.USER_PASSWORD_BREACHED, HttpStatus.BAD_REQUEST);
+        MAPPING.put(ErrorCode.USER_PASSWORD_INCORRECT, HttpStatus.BAD_REQUEST);
+        // tenancy:begin
+        // tenancy:else
+        MAPPING.put(ErrorCode.USER_OWN_STATUS_CHANGE, HttpStatus.FORBIDDEN);
+        // tenancy:end
         MAPPING.put(ErrorCode.AUTH_INVALID_CREDENTIALS, HttpStatus.UNAUTHORIZED);
         MAPPING.put(ErrorCode.AUTH_INVALID_REFRESH_TOKEN, HttpStatus.UNAUTHORIZED);
+        MAPPING.put(ErrorCode.AUTH_ACCOUNT_SUSPENDED, HttpStatus.FORBIDDEN);
         // session-version:begin
         MAPPING.put(ErrorCode.SESSION_VERSION_STALE, HttpStatus.UNAUTHORIZED);
         // session-version:end

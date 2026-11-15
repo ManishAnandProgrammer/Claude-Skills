@@ -37,8 +37,8 @@
 #              every request against Redis (the database when Redis is down); every access change raises it
 #              in its own transaction, so older tokens are refused at once (401 SESSION_VERSION_STALE), and
 #              DELETE /users/me/sessions signs out everywhere. Per account, or per membership with tenancy
-#   metadata, media and the tenancy pieces have admin endpoints: with sign-in, each brings the ADMIN role
-#   and the test base's newAdmin() (the "admin" markers).
+#   sign-in (account suspension), metadata, media and the tenancy pieces have admin endpoints: each brings
+#   the ADMIN role and the test base's newAdmin() (the "admin" markers).
 #
 # Where files come from: reference-app/ is a plain application, without tenancy. A tenancy mode adds
 # layers over it, each mirroring the reference's tree: overlays/tenancy (what every mode shares) and
@@ -96,8 +96,9 @@ package_path="${package//.//}"
 
 chosen_piece() { [[ ",$pieces," == *",$1,"* ]]; }
 
-# The ADMIN role (Role.ADMIN, its changeset, newAdmin()) comes with the first piece that has admin endpoints.
-admin_chosen() { chosen_piece metadata || chosen_piece media || tenancy_chosen; }
+# The ADMIN role (Role.ADMIN, its changeset, newAdmin()) comes with the first piece that has admin endpoints:
+# sign-in's account suspension already has one.
+admin_chosen() { chosen_piece sign-in || chosen_piece metadata || chosen_piece media || tenancy_chosen; }
 
 # The tenancy part every mode shares (overlays/tenancy, the "tenancy" markers): schema per tenant or row mode.
 tenancy_chosen() { chosen_piece tenancy-schema || chosen_piece tenancy-row; }
@@ -139,10 +140,6 @@ LIST
         # Counters count per tenant.
         echo "$SHARED/src/test/java/$reference_path/metadata/CounterTenantIntegrationTest.java"
     fi
-    # The tenant owner's ADMIN role, unless another piece already brings it.
-    if ! chosen_piece metadata && ! chosen_piece media; then
-        echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
-    fi
 }
 
 # Files per piece, relative to reference-app/, or to the repository when they start with overlays/.
@@ -178,6 +175,9 @@ src/main/java/$reference_path/common/ratelimit/RateLimitProperties.java
 src/main/java/$reference_path/common/ratelimit/RedisRateLimiter.java
 src/main/java/$reference_path/config/RedisClientConfig.java
 src/main/resources/db/changelog/changes/0001-users-and-refresh-tokens.sql
+src/main/resources/db/changelog/changes/0007-users-admin-role.sql
+src/main/resources/db/changelog/changes/0027-users-status.sql
+src/main/java/$reference_path/common/validation/PasswordPolicy.java
 src/test/java/$reference_path/user
 src/test/java/$reference_path/common/ratelimit/RedisRateLimiterTest.java
 src/test/java/$reference_path/config/RedisClientIntegrationTest.java
@@ -223,10 +223,6 @@ src/main/java/$reference_path/metadata/service
 src/main/resources/db/changelog/changes/0008-configuration-metadata.sql
 src/test/java/$reference_path/metadata/CounterIntegrationTest.java
 LIST
-            # The admin API's role, in the users table that sign-in creates.
-            if chosen_piece sign-in; then
-                echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
-            fi
             ;;
         media) cat <<LIST
 src/main/java/$reference_path/media
@@ -257,10 +253,6 @@ LIST
             if tenancy_chosen; then
                 echo "overlays/tenancy/src/test/java/$reference_path/media/service/MediaJobsPerTenantTest.java"
                 echo "overlays/tenancy/src/test/java/$reference_path/media/mapper/MediaKeysPerTenantTest.java"
-            fi
-            # The policy admin API's role, unless the metadata piece already brings it.
-            if chosen_piece sign-in && ! chosen_piece metadata; then
-                echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
             fi
             ;;
         tenancy-schema)
@@ -524,25 +516,31 @@ done
 # The Liquibase master lists the changesets that were copied, in order; an existing one is kept.
 # Schema per tenant has two masters, copied with the piece (platform.yaml, tenant.yaml): they are
 # rewritten here to list exactly the copied changesets, the platform's in the first, every other in
-# the second. Row mode has one master with the platform's changesets first: every tenant table
-# references tenants, and the app role's default privileges (0013) then cover each tenant table.
-platform_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql 0020-tenant-members-list.sql 0021-users-session-version.sql 0022-memberships-session-version.sql"
-# $1: platform, tenant or all; the copied changesets of that kind, in order.
+# the second. Row mode has one master with the tenancy base first (every tenant table references
+# tenants, and the app role's default privileges, 0013, then cover each tenant table), then every other
+# changeset in number order, so a release is a prefix of the master (the upgrade path's previous release,
+# support/PreviousReleaseDatabase). A later platform changeset that tenant tables don't need goes in
+# platform_changesets only, never in first_changesets.
+first_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql 0020-tenant-members-list.sql 0021-users-session-version.sql 0022-memberships-session-version.sql"
+platform_changesets="$first_changesets 0027-users-status.sql 0028-platform-users-deactivation.sql"
+# $1: platform, tenant, first, rest or all; the copied changesets of that kind, in order.
 changesets_of() {
     local want="$1" changeset name
     while IFS= read -r changeset; do
         name="$(basename "$changeset")"
         if { [ "$want" = platform ] && [[ " $platform_changesets " == *" $name "* ]]; } \
-            || { [ "$want" = tenant ] && [[ " $platform_changesets " != *" $name "* ]]; } || [ "$want" = all ]; then
+            || { [ "$want" = tenant ] && [[ " $platform_changesets " != *" $name "* ]]; } \
+            || { [ "$want" = first ] && [[ " $first_changesets " == *" $name "* ]]; } \
+            || { [ "$want" = rest ] && [[ " $first_changesets " != *" $name "* ]]; } || [ "$want" = all ]; then
             echo "$name"
         fi
     done < <(find "$target/src/main/resources/db/changelog/changes" -name '*.sql' | sort)
 }
-# $3: platform, tenant, all, or platform-first (row mode: the platform's, then every other).
+# $3: platform, tenant, all, or platform-first (row mode: the tenancy base, then every other).
 write_master() {
     local file="$1" header="$2" want="$3" includes="" names name
     if [ "$want" = platform-first ]; then
-        names="$(changesets_of platform; changesets_of tenant)"
+        names="$(changesets_of first; changesets_of rest)"
     else
         names="$(changesets_of "$want")"
     fi

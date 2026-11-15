@@ -44,6 +44,20 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
 
     long countByTenantIdAndRole(UUID tenantId, Role role);
 
+    /** The tenants where the user is an ADMIN, in id order (the order their locks are taken in). */
+    @Query("""
+            select m.tenantId from TenantMembership m
+             where m.user.id = :userId and m.role = com.example.app.user.domain.Role.ADMIN
+             order by m.tenantId""")
+    List<UUID> findTenantIdsWhereAdmin(UUID userId);
+
+    /** The tenant's ADMINs besides {@code userId} whose account is ACTIVE: the ones who could still manage it. */
+    @Query("""
+            select count(m) from TenantMembership m
+             where m.tenantId = :tenantId and m.role = com.example.app.user.domain.Role.ADMIN and m.user.id <> :userId
+               and m.user.status = com.example.app.user.domain.UserStatus.ACTIVE""")
+    long countOtherActiveAdmins(UUID tenantId, UUID userId);
+
     /**
      * Stamps a token issue on the membership. A machine-written stamp, not an edit (DATA-24's exception):
      * it sets neither {@code version} nor {@code updated_at}, so the version an ADMIN sends back on a role

@@ -38,8 +38,9 @@ import java.util.UUID;
  * changed after a project's release appends its next number (0027) after the project's (0105), so one highest
  * number can't tell what shipped: the release names both, {@code 26,105} (the pieces' alone, {@code 23}, while
  * the project has none of its own). A changeset belongs to the new release when its file's number is above the
- * release's in its range: the run stops before the first such changeset. Without the property nothing
- * happens.</p>
+ * release's in its range: the run stops before the first such changeset, so a master lists every release's
+ * changesets before the next one's (number order within each range; row mode's tenancy base first, which
+ * bootstrap-copy.sh writes so). Without the property nothing happens.</p>
  *
  * <p>Schema per tenant: the application's own run is the platform changelog's. Each tenant the seed
  * records as provisioned ({@code tenant_migrations} MIGRATED, no last changeset yet) then gets its schema as

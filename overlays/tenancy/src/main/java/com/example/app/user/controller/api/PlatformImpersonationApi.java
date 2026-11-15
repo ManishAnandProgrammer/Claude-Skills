@@ -30,7 +30,9 @@ public interface PlatformImpersonationApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus), SUPPORT_ACCESS_DENIED",
+    @ApiResponse(responseCode = "403", description = """
+            TENANT_NOT_ACTIVE (with tenantStatus), SUPPORT_ACCESS_DENIED, AUTH_ACCOUNT_SUSPENDED (the member's \
+            account is suspended: staff act as nobody who may not sign in)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "MEMBERSHIP_NOT_FOUND (no such member, or no ADMIN)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

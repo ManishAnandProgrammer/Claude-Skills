@@ -186,8 +186,12 @@ if wants 2; then
         && { echo "FAILED: tenancy entries left in a copy without a tenancy piece" >&2; exit 1; }
     [ -f "$project/src/main/java/com/acme/smoke/config/LazyConnectionConfig.java" ] && [ -f "$project/src/main/resources/db/changelog/db.changelog-master.yaml" ] \
         || { echo "FAILED: the lazy connection proxy or the single Liquibase master is missing from a copy without tenancy" >&2; exit 1; }
-    { [ -d "$project/src/main/java/com/acme/smoke/metadata" ] || grep -q "ADMIN" "$project/src/main/java/com/acme/smoke/user/domain/Role.java"; } \
-        && { echo "FAILED: the metadata module or its ADMIN role in a copy without the metadata piece" >&2; exit 1; }
+    [ -d "$project/src/main/java/com/acme/smoke/metadata" ] && { echo "FAILED: the metadata module in a copy without the metadata piece" >&2; exit 1; }
+    # Sign-in alone brings the ADMIN role: an ADMIN suspends and reactivates accounts.
+    grep -q "ADMIN" "$project/src/main/java/com/acme/smoke/user/domain/Role.java" \
+        && grep -q '"/{id}/status"' "$project/src/main/java/com/acme/smoke/user/controller/UserController.java" \
+        && [ -f "$project/src/main/resources/db/changelog/changes/0007-users-admin-role.sql" ] \
+        || { echo "FAILED: the ADMIN role or the account suspension endpoint is missing from the sign-in copy" >&2; exit 1; }
     no_session_version "$project/src" "$project/docs" "$project/compose.yaml" "$project/.env.example"
     # Bootstrap renames the application; tests must not depend on the reference's name.
     sed -i 's/\${APP_NAME:reference}/${APP_NAME:smoke}/' "$project/src/main/resources/application.yml"
@@ -307,6 +311,9 @@ if wants 2g; then
     grep -q "UPDATE users" "$tenancy/src/main/java/com/acme/tenancy/user/domain/Role.java" \
         && { echo "FAILED: the Role javadoc of a tenancy copy names the users.role statement (the role is the membership's)" >&2; exit 1; }
     no_session_version "$tenancy/src" "$tenancy/docs"
+    # Accounts are global: platform staff suspend them, never a tenant ADMIN through the tenant plane.
+    grep -q '"/{id}/status"' "$tenancy/src/main/java/com/acme/tenancy/user/controller/UserController.java" \
+        && { echo "FAILED: the tenant-plane account suspension endpoint in a tenancy copy" >&2; exit 1; }
     [ -f "$tenancy/src/main/resources/db/changelog/db.changelog-master.yaml" ] && { echo "FAILED: a single master in a schema-per-tenant copy" >&2; exit 1; }
     [ -f "$tenancy/src/main/java/com/acme/tenancy/user/controller/TenantRegistrationController.java" ] \
         && { echo "FAILED: the public registration endpoint in a copy without tenant-registration" >&2; exit 1; }

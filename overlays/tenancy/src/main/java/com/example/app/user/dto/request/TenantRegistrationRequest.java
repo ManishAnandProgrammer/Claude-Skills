@@ -2,12 +2,10 @@ package com.example.app.user.dto.request;
 
 import com.example.app.common.limits.MaxLength;
 import com.example.app.common.validation.AsciiOnly;
-import com.example.app.common.validation.MaxUtf8Bytes;
+import com.example.app.common.validation.PasswordPolicy;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 
 @Schema(description = "A new organisation, and the account that will own it")
 public record TenantRegistrationRequest(
@@ -28,11 +26,6 @@ public record TenantRegistrationRequest(
                 An existing account's password, or a new account's: at least 8 characters and at most 72 \
                 bytes in UTF-8, with an upper-case letter, a lower-case letter, a digit and one other character.""",
                 example = "Correct-Horse-9")
-        @NotBlank
-        // Security floors, not tunables, as at signup.
-        @Size(min = 8, message = "must be at least 8 characters")
-        @MaxUtf8Bytes(72)
-        @Pattern(regexp = "^(?=.*\\p{Lu})(?=.*\\p{Ll})(?=.*\\d)(?=.*[^\\p{L}\\d]).*$",
-                message = "must contain an upper-case letter, a lower-case letter, a digit and another character")
+        @PasswordPolicy
         String password) {
 }

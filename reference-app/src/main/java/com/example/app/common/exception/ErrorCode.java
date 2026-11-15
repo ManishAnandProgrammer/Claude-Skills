@@ -49,8 +49,17 @@ public enum ErrorCode {
     USER_NOT_FOUND,
     USER_EMAIL_TAKEN,
     USER_PASSWORD_BREACHED,
+    /** A password change whose current password doesn't match: counted as a failed login of the account. */
+    USER_PASSWORD_INCORRECT,
+    // tenancy:begin
+    // tenancy:else
+    /** Nobody suspends or reactivates their own account (house-review SEC-02): a rule that never depends on state, so 403. */
+    USER_OWN_STATUS_CHANGE,
+    // tenancy:end
     AUTH_INVALID_CREDENTIALS,
     AUTH_INVALID_REFRESH_TOKEN,
+    /** A suspended account gets no token from any path (after the password matched, at login). */
+    AUTH_ACCOUNT_SUSPENDED,
     // session-version:begin
     /** The access token was issued before the account's access last changed: refresh the tokens. */
     SESSION_VERSION_STALE,
@@ -75,7 +84,7 @@ public enum ErrorCode {
     // /** Members are existing accounts (invitations come later). */
     // TENANT_MEMBER_ACCOUNT_NOT_FOUND,
     // TENANT_MEMBER_EXISTS,
-    // /** Every tenant keeps an ADMIN: the last one can't be demoted or removed. */
+    // /** Every tenant keeps an ADMIN with an ACTIVE account: the last one can't be demoted, removed or suspended. */
     // TENANT_MEMBER_LAST_ADMIN,
     // /** Nobody changes or removes their own membership (house-review SEC-02): a rule that never depends on state, so 403. */
     // TENANT_MEMBER_OWN_CHANGE,

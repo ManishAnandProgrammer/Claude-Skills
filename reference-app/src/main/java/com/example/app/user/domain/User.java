@@ -32,6 +32,10 @@ public class User extends AuditableEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private UserStatus status;
     // session-version:begin
     // tenancy:begin
     // tenancy:else
@@ -53,6 +57,21 @@ public class User extends AuditableEntity {
                 .fullName(fullName.strip())
                 .passwordHash(passwordHash)
                 .role(Role.USER)
+                .status(UserStatus.ACTIVE)
                 .build();
+    }
+
+    /** The caller hashes the password; the service ends every session in the same transaction. */
+    public void changePassword(String newPasswordHash) {
+        passwordHash = newPasswordHash;
+    }
+
+    /** Suspends or reactivates; the service ends every session in the same transaction on a suspension. */
+    public void changeStatus(UserStatus newStatus) {
+        status = newStatus;
+    }
+
+    public boolean isActive() {
+        return status == UserStatus.ACTIVE;
     }
 }

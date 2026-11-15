@@ -16,6 +16,7 @@ public class UserMapper {
                 // tenancy:else
                 user.getRole(),
                 // tenancy:end
+                user.getStatus(),
                 user.getCreatedAt(),
                 user.getUpdatedAt(),
                 user.getCreatedBy(),

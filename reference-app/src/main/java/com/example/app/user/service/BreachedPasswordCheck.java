@@ -58,7 +58,7 @@ class BreachedPasswordCheck {
         }
         if (!bulkhead.tryAcquirePermission()) {
             unavailable.increment();
-            log.warn("Breached-password check skipped, {} lookups already in flight: signup proceeds",
+            log.warn("Breached-password check skipped, {} lookups already in flight: the password is accepted",
                     bulkhead.getBulkheadConfig().getMaxConcurrentCalls());
             return;
         }
@@ -67,7 +67,7 @@ class BreachedPasswordCheck {
             decision = checker.check(password);
         } catch (RuntimeException e) {
             unavailable.increment();
-            log.warn("Breached-password check unavailable, signup proceeds: {}", e.toString());
+            log.warn("Breached-password check unavailable, the password is accepted: {}", e.toString());
             return;
         } finally {
             bulkhead.onComplete();

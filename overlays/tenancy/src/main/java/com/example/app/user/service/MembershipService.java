@@ -39,9 +39,7 @@ import org.springframework.context.ApplicationEventPublisher;
 // session-version:end
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
-// session-version:begin
 import org.springframework.transaction.annotation.Propagation;
-// session-version:end
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -235,6 +233,30 @@ public class MembershipService implements Members {
     private void requireAnotherAdmin(UUID tenantId) {
         if (repository.countByTenantIdAndRole(tenantId, Role.ADMIN) < 2) {
             throw AppException.of(ErrorCode.TENANT_MEMBER_LAST_ADMIN);
+        }
+    }
+
+    /**
+     * Before an account's suspension (platform staff): 409 {@code TENANT_MEMBER_LAST_ADMIN} when the person is
+     * the last ADMIN with an ACTIVE account of a tenant that is still open (neither CLOSED nor REJECTED), so
+     * every tenant keeps someone who manages it. Each tenant where they are ADMIN is locked first, in id order,
+     * as a member change locks it: of two suspensions of a tenant's last two ADMINs, the second counts after
+     * the first committed. In the suspension's transaction (hence MANDATORY).
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    void requireAnotherAdminWhereAdmin(UUID userId) {
+        List<UUID> tenantIds = repository.findTenantIdsWhereAdmin(userId);
+        Set<UUID> openTenantIds = tenants.findAllById(tenantIds).stream()
+                .filter(tenant -> tenant.status() != TenantStatus.CLOSED && tenant.status() != TenantStatus.REJECTED)
+                .map(TenantView::id)
+                .collect(Collectors.toSet());
+        for (UUID tenantId : tenantIds) {
+            if (openTenantIds.contains(tenantId)) {
+                tenants.lockForMemberChange(tenantId);
+                if (repository.countOtherActiveAdmins(tenantId, userId) == 0) {
+                    throw AppException.of(ErrorCode.TENANT_MEMBER_LAST_ADMIN);
+                }
+            }
         }
     }
 

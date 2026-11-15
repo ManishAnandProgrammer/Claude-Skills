@@ -4,6 +4,7 @@ package com.example.app.user.dto.response;
 // tenancy:else
 import com.example.app.user.domain.Role;
 // tenancy:end
+import com.example.app.user.domain.UserStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
@@ -21,6 +22,7 @@ public record UserResponse(
         // tenancy:else
         @Schema(description = "Role", example = "USER") Role role,
         // tenancy:end
+        @Schema(description = "ACTIVE, or SUSPENDED (no sign-in until reactivated)", example = "ACTIVE") UserStatus status,
         @Schema(description = "When the account was created") Instant createdAt,
         @Schema(description = "When the account last changed") Instant updatedAt,
         @Schema(description = "Who created it; empty for self-signup") UUID createdBy,

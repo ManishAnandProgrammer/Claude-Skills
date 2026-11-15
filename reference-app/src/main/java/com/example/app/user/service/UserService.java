@@ -9,6 +9,7 @@ import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.api.Users;
 // tenancy:end
 import com.example.app.user.domain.User;
+import com.example.app.user.domain.UserStatus;
 import com.example.app.user.dto.request.SignupRequest;
 import com.example.app.user.dto.response.UserResponse;
 import com.example.app.user.mapper.UserMapper;
@@ -32,6 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Map;
 // tenancy:end
 // session-version:end
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -79,8 +82,7 @@ public class UserService implements Users {
     }
 
     public ObjectWrapper<UserResponse> me(UUID userId) {
-        User user = repository.findById(userId).orElseThrow(AppException.supply(ErrorCode.USER_NOT_FOUND));
-        return ObjectWrapper.withObject(mapper.toResponse(user));
+        return ObjectWrapper.withObject(mapper.toResponse(getUser(userId)));
     }
 
     // tenancy:begin
@@ -95,6 +97,51 @@ public class UserService implements Users {
     // tenancy:end
     Optional<User> findByEmail(String email) {
         return repository.findByEmail(Emails.normalize(email));
+    }
+
+    /** 404 {@code USER_NOT_FOUND}. */
+    User getUser(UUID userId) {
+        return repository.findById(userId).orElseThrow(AppException.supply(ErrorCode.USER_NOT_FOUND));
+    }
+
+    /**
+     * The account a token is about to be issued for, share-locked until the issue commits
+     * ({@code UserRepository.findForTokenIssue}): 403 {@code AUTH_ACCOUNT_SUSPENDED} unless it is ACTIVE.
+     * Every path that issues a token calls it before anything else touches the account's rows. A refusal
+     * leaves the caller's transaction committable: a refresh commits its own writes even when it refuses.
+     */
+    @Transactional(propagation = Propagation.MANDATORY, noRollbackFor = AppException.class)
+    User activeForTokenIssue(UUID userId) {
+        User user = repository.findForTokenIssue(userId).orElseThrow(AppException.supply(ErrorCode.USER_NOT_FOUND));
+        if (!user.isActive()) {
+            log.info("Token refused, the account is not active: userId={}, status={}", userId, user.getStatus());
+            throw AppException.of(ErrorCode.AUTH_ACCOUNT_SUSPENDED);
+        }
+        return user;
+    }
+
+    /** In the password change's transaction (hence MANDATORY), which also ends the account's sessions. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    void changePassword(UUID userId, String newPasswordHash) {
+        User user = getUser(userId);
+        user.changePassword(newPasswordHash);
+        repository.saveAndFlush(user);
+    }
+
+    /**
+     * The accounts with these ids, locked for update in id order until the caller's transaction ends (an
+     * account status change: the caller and the target). A missing one is simply not in the list.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    List<User> lockForStatusChange(Collection<UUID> userIds) {
+        return repository.findAllForUpdate(userIds);
+    }
+
+    /** The status change's write, after its checks; its caller ends the sessions in the same transaction. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    UserResponse changeStatus(User user, UserStatus status) {
+        user.changeStatus(status);
+        return mapper.toResponse(repository.saveAndFlush(user));
     }
     // session-version:begin
     // tenancy:begin

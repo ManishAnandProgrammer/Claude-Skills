@@ -61,6 +61,8 @@ class TenancyArchTest {
     private static final String TENANT_SERVICES = "com.example.app.tenant.service";
     private static final String PLATFORM_SERVICE_PREFIX = "Platform";
     private static final String IMPERSONATION_SERVICE = "ImpersonationService";
+    /** With tenancy only staff suspend accounts (global ones): a tenant-plane controller never reaches it. */
+    private static final String ACCOUNT_STATUS_SERVICE = "AccountStatusService";
     /** The one request that names a tenant: which of the caller's own memberships to switch to. */
     private static final Set<String> TENANT_NAMING_REQUESTS = Set.of("SwitchTenantRequest");
     private static final Path MAIN_SOURCES = Path.of("src/main/java");
@@ -233,7 +235,7 @@ class TenancyArchTest {
 
     private static boolean isControlPlaneService(JavaClass javaClass) {
         return javaClass.getPackageName().equals(TENANT_SERVICES) || javaClass.getSimpleName().startsWith(PLATFORM_SERVICE_PREFIX)
-                || javaClass.getSimpleName().equals(IMPERSONATION_SERVICE);
+                || javaClass.getSimpleName().equals(IMPERSONATION_SERVICE) || javaClass.getSimpleName().equals(ACCOUNT_STATUS_SERVICE);
     }
 
     private static DescribedPredicate<JavaClass> areControlPlaneServices() {

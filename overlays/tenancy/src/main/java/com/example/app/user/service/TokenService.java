@@ -19,13 +19,13 @@ import com.example.app.user.dto.response.TokenResponse;
 import com.example.app.user.repository.RefreshTokenRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.Hibernate;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
@@ -45,6 +45,12 @@ import java.util.UUID;
  * role, audience {@code tenant}. The tenant must be ACTIVE whenever tokens are issued (login, refresh,
  * switch), so a suspension takes effect within one access-token lifetime. Platform staff get an access
  * token with audience {@code platform}, no tenant and no refresh token.</p>
+ *
+ * <p>Every issue for an account (login, refresh, switch, impersonation, a password change) starts with the
+ * account's row, share-locked and ACTIVE ({@code UserService.activeForTokenIssue}), before it touches a
+ * refresh token or a membership: a suspension or a password change updates that row first, so either the
+ * issue commits before the change (which then revokes what it issued and raises the session versions over
+ * its access token) or it reads the change and refuses. Same order everywhere: no deadlock.</p>
  */
 @Service
 @Slf4j
@@ -65,11 +71,16 @@ class TokenService {
     private final MembershipService memberships;
     private final Tenants tenants;
     private final ImpersonationProperties impersonation;
+    private final UserService users;
 
-    /** Login's tokens; with tenancy, for the user's most recently used membership. */
+    /**
+     * Login's tokens, once the password matched, for the user's most recently used membership: 403
+     * {@code AUTH_ACCOUNT_SUSPENDED} for a suspended account.
+     */
     @Transactional
     TokenResponse issue(User user) {
-        return issueTokens(user, memberships.forLogin(user));
+        User account = users.activeForTokenIssue(user.getId());
+        return issueTokens(account, memberships.forLogin(account));
     }
 
     /**
@@ -92,8 +103,8 @@ class TokenService {
         Instant now = clock.instant();
         String tokenHash = Hashes.sha256Hex(rawToken);
         RefreshToken token = usableToken(tokenHash, now);
-        // Loaded now: the revoking update clears the persistence context, which detaches the lazy user.
-        User user = Hibernate.unproxy(token.getUser(), User.class);
+        // Locked before the token is spent; loaded now, since the revoking update clears the persistence context.
+        User user = users.activeForTokenIssue(token.getUser().getId());
         UUID tenantId = token.getTenantId();
         // Before the token is spent: no membership there any more, or a tenant no longer active, is a
         // refusal that keeps it.
@@ -117,7 +128,7 @@ class TokenService {
         Instant now = clock.instant();
         String tokenHash = Hashes.sha256Hex(rawToken);
         RefreshToken token = usableToken(tokenHash, now);
-        User user = Hibernate.unproxy(token.getUser(), User.class);
+        User user = users.activeForTokenIssue(token.getUser().getId());
         TenantMembership own = memberships.findForTenant(user, token.getTenantId())
                 .orElseThrow(AppException.supply(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
         requireIssuedForThisMembership(token, own);
@@ -131,9 +142,12 @@ class TokenService {
     /**
      * Staff acting as a member: a tenant token for the membership, with the staff member as actor
      * ({@code act.sub}, RFC 8693), short-lived and without a refresh token. It doesn't count as the
-     * member's use of the tenant ({@code lastUsedAt} stays).
+     * member's use of the tenant ({@code lastUsedAt} stays). A suspended member is 403
+     * {@code AUTH_ACCOUNT_SUSPENDED}: staff act as nobody who may not sign in.
      */
+    @Transactional(noRollbackFor = AppException.class)
     TokenResponse issueImpersonation(TenantMembership membership, UUID staffId) {
+        users.activeForTokenIssue(membership.getUser().getId());
         Instant now = clock.instant();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(properties.issuer())
@@ -171,6 +185,31 @@ class TokenService {
     @Transactional
     void revoke(String rawToken) {
         repository.revokeIfLive(Hashes.sha256Hex(rawToken), RevocationReason.LOGOUT, clock.instant());
+    }
+
+    /**
+     * A password change, in one transaction: the new hash (its update takes the account's row first), every
+     * refresh token of the account revoked in every tenant, every membership's session version raised (with
+     * that piece), and new tokens for the calling device, in the tenant it is signed in to. A suspended account
+     * changes nothing: 403 {@code AUTH_ACCOUNT_SUSPENDED}.
+     */
+    @Transactional
+    TokenResponse replacePassword(UUID userId, UUID tenantId, String newPasswordHash) {
+        users.changePassword(userId, newPasswordHash);
+        int revoked = repository.revokeAllOfUser(userId, RevocationReason.PASSWORD_CHANGED, clock.instant());
+        // session-version:begin
+        memberships.bumpSessionVersionsOfUser(userId);
+        // session-version:end
+        log.info("Password changed, every session ended: userId={}, sessions={}", userId, revoked);
+        // Read after the bump (the revoking update cleared the persistence context): its numbers are the new ones.
+        User user = users.activeForTokenIssue(userId);
+        return issueTokens(user, memberships.forTenant(user, tenantId));
+    }
+
+    /** A suspension's revocation, every tenant's, in the suspension's own transaction (hence MANDATORY), after its account update. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    int revokeForSuspension(UUID userId) {
+        return repository.revokeAllOfUser(userId, RevocationReason.SUSPENDED, clock.instant());
     }
     // session-version:begin
 

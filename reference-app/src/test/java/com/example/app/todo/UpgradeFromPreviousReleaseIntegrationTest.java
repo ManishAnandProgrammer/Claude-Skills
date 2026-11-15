@@ -53,6 +53,20 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("""
+            0027 left every seeded account ACTIVE and every seeded refresh token as it was: the live one live, the \
+            rotated one still ROTATED""")
+    void theSeededAccountsAreActive() {
+        assertThat(jdbc.queryForObject("select count(*) from users where email like 'upgrade-%' and status <> 'ACTIVE'", Integer.class))
+                .isZero();
+        assertThat(jdbc.queryForObject("select count(*) from users where email like 'upgrade-%'", Integer.class)).isPositive();
+        assertThat(jdbc.queryForObject("select revoked_at is null from refresh_tokens where token_hash = 'upgrade-live-token'", Boolean.class))
+                .isTrue();
+        assertThat(jdbc.queryForObject("select revocation_reason from refresh_tokens where token_hash = 'upgrade-rotated-token'", String.class))
+                .isEqualTo("ROTATED");
+    }
+
+    @Test
     @DisplayName("The seeded owner reads their lists' todos, a todo with its list's name, and creates one")
     void theSeededOwnerWorksAsBefore() throws Exception {
         String owner = heavyOwnersToken();
