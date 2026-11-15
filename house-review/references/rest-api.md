@@ -134,11 +134,17 @@ the path.
   - **free-text search** is the `query` parameter in every list and dropdown;
   - **sorting:** a sort enum (allow-list), a stable tie-breaker (id); a cursor carries its sort, and
     one from another sort is refused;
+  - **the cursor's length limit** (`app.limits.text.cursor`) holds the cursor the server writes after
+    the longest value of every text key a cursor carries (a text sort key, a dropdown's label):
+    Base64url JSON, a control character escaped in six bytes, so `(6 × @MaxLength + 100) × 4/3`.
+    Shorter, the next batch after a long value is a 400 on the server's own cursor (reference:
+    `limits.yml`, `LimitsIntegrationTest.cursorLimitHoldsTheLongestTextKeys`);
   - `POST /x/search` with a body only when a query string can't express the filter. The HTTP
     `QUERY` method (RFC 10008, June 2026) replaces it once the project's Spring has it in a GA
     release (merged for Spring Framework 7.1) and the proxies and OpenAPI tooling pass it.
 - **Detect:** a `PageRequest` from raw client values; an unbounded `findAll()` behind an endpoint;
-  a sort as a free String; an OFFSET list over a growing table; a count on a cursor list.
+  a sort as a free String; an OFFSET list over a growing table; a count on a cursor list; a cursor
+  limit below `(6 × max + 100) × 4/3` for a text sort key or a dropdown label.
 - **Severity:** High for an unbounded list, otherwise Medium.
 
 ### REST-09: Validation layers

@@ -52,18 +52,24 @@ The rules below say which mode they apply to.
   entities in `api-facades` mode. It goes through the owner's service or `api` contract.
 - **A parent in another module** (`api-facades` mode) is a UUID column with a database foreign key
   (no entity relation), validated through the owner's facade: `<module>.api.<Things>`, an
-  interface the owner's service implements, returning a view record (`TodoView`), with a
+  interface the owner's service implements, returning a view record (`TodoView`), with:
   `get<Owned><Thing>View` (not locked: a child written while the parent is deleted is refused by the
-  foreign key, DATA-29, DATA-33) and a batch lookup
-  (`getOwnedTodoViews(ids, ownerId)`) for a list page, one statement per batch. Reference:
-  `todo.api.Todos`, used by `planning.service.PlanService`. The view is a module contract, never a
+  foreign key, DATA-29, DATA-33); `get<Owned><Thing>ViewForUpdate`, `@Transactional(propagation =
+  MANDATORY)` over the owner's `findForUpdate…`, only for a write that checks the parent's state (a
+  plan only for an open todo), whose lock then names that rule (DATA-29); `find<Owned><Thing>View`
+  (`Optional`) for a record read just before it, where an empty one is the caller's own 404; and a batch
+  lookup (`getOwnedTodoViews(ids, ownerId)`) for a list page, one statement per batch. The view carries
+  the parent's state as a value the owner computes (`TodoView.open`), never a `domain` enum (or the enum
+  moves to `api`, as `MediaFileStatus`). Reference: `todo.api.Todos`, used by
+  `planning.service.PlanService` (`create` locks, `findById` and the list don't). The view is a module contract, never a
   response body: the consumer maps it into a record of its own (ARCH-06). A module with no facade yet (the sign-in piece's `user`) gets one
   in the same change, never a repository call or an unvalidated id (an unknown id would surface as a
   foreign-key 409 with the wrong code).
 - **The foreign key's mapping belongs to the module that owns the constraint** (whose changeset
   declares it), even when the code it answers is the parent module's (`fk_plans_todo_id_owner_id` →
   `TODO_IN_USE` for the todo's delete, `TODO_GONE` for a plan's insert after it, in
-  `PlanningConstraintErrorCodes`).
+  `PlanningConstraintErrorCodes`; kept although the plan's create locks the todo and can't trip it,
+  so a later unlocked write answers 404, not 500).
 - **Severity:** High for repositories; Medium for entities and helpers.
 - **Not a finding when:** `service-entity-methods` mode allows entity hand-out through service
   methods.

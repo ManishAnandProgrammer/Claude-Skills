@@ -450,7 +450,11 @@ resilience or failure-injection test is Medium).
   200": that test is flaky.
 - **A write guarded by another row's state** (checked under that row's `FOR UPDATE`, DATA-29) gets a race test against a
   change of that state, gated so the change really waits on the lock (hold the lock in the test's
-  own transaction, or a latch). Removing the lock must turn the test red (TEST-09).
+  own transaction, or a latch). The end state is often the same with or without the lock (the write,
+  then the change), so the assertion that proves it is "the change is still waiting while the gate
+  holds" (reference: the test base's `writesHeldWhileTheParentWaits`, used by
+  `PlanIntegrationTest.completionRacingACreateWaitsForIt`). Removing the lock must turn the test red
+  (TEST-09).
 
 ### TEST-06: Query count
 - **Check:** new paged lists assert a constant statement count, with a fixture **larger than one

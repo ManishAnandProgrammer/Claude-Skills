@@ -50,8 +50,14 @@ only when the project has that piece.
 - **Check:** the feature's lifecycle code creates its values (`create`, or `createFrom` to start a
   new context from the defaults or from another context, e.g. a new todo list); contexts that already exist are
   seeded by a changeset or a one-off job, never at application startup (DATA-28). Fixed keys and
-  fixed counters are seeded by the changeset that needs them. A missing value is 404
-  `METADATA_NOT_FOUND`, never a silent default: it means seeding didn't run.
+  fixed counters are seeded by the changeset that needs them (reference: `0014-todo-list-defaults.sql`;
+  in row mode its `tenancy-row` block for the existing tenants and a `TenantProvisioned` listener for
+  new ones, `TodoListDefaultsSeed`). A missing value is 404 `METADATA_NOT_FOUND`, never a silent
+  default: it means seeding didn't run.
+- **Tests of a fixed key** capture the stored row and put it back (`storedMetadata` /
+  `restoreMetadata` in the test base, under the key's `@ResourceLock`), never delete and re-insert it
+  at version 0 for good: real code reads the key, and the next class would find a test's value or none
+  (reference: `MetadataIntegrationTest`).
 - **Deleting a context** deletes its keys and counters in the same transaction (`Metadata.delete`,
   `Counters.delete`), so nothing is left behind for a later context to trip over.
 - **Severity:** Medium.

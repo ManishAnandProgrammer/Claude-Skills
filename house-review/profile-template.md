@@ -11,7 +11,7 @@ project doesn't have.
 
 | Key | Value | Notes |
 |---|---|---|
-| `mainBranch` | `main` | Base for diff mode |
+| `mainBranch` | `main` | Base for diff mode; read from git when the profile is written (`git symbolic-ref --short refs/remotes/origin/HEAD`, else the current branch of a new repository), never left at `main` unchecked |
 | `buildCommand` | `./mvnw -B verify` | Compile + full tests (run every review). Include env/JDK prefixes the project needs |
 | `testCommand` | `same` | Separate test command, if any |
 | `sourceRoots` | `src/main/java` | |

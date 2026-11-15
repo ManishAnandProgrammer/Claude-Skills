@@ -195,7 +195,9 @@ The backend handles no time zone.
   (auditing reads it too).
 - **Detect:** `ZoneId`/`ZonedDateTime`/`OffsetDateTime` in domain code; `LocalDate.now()` or
   `@PastOrPresent`/`@FutureOrPresent` on a `LocalDate` without the application clock; a `LocalDate`
-  derived from an `Instant` on the server; `LocalDateTime` for a moment; two `clock.instant()` /
+  derived from an `Instant` on the server; `LocalDate.now(clock)` stored as the day an action records
+  (returned on, approved on: the server's UTC day is yesterday east of UTC until midnight UTC; the
+  client sends the user's own day, `@NotAfterToday`); `LocalDateTime` for a moment; two `clock.instant()` /
   `LocalDate.now(clock)` calls in one close-and-open method; `now()` or `clock_timestamp()` in a
   query that writes a period bound the application also writes.
 - **Severity:** Medium (High when a stored date shifts).

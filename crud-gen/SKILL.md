@@ -36,7 +36,7 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
 | `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
 | `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@AssertTrue boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
-| `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, validated through the owner's facade, not locked; its view mapped into a response record of the plan's own), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; a simultaneous overlap may answer 503, no scope lock), a **range in a body** (`isDateRangeOrdered`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
+| `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 
 The rules behind the shape are the house-review references, which are the source of truth:
 `rest-api.md`, `error-contract.md`, `persistence.md`, `java.md`, `code-smells.md`, `lenses.md`
@@ -109,7 +109,9 @@ every internet account is a USER: refuse `controllerSecurity: none` for a shared
 carry a role (`@AdminOnly`, or the project's own role annotation, REST-25). A field that names a
 person (a name, an email, a phone) on a shared root asks the same for reads: list, get, filters and
 dropdown carry the role unless the owner decides that every account may search those people (record
-it). Golden role checks: `UploadPolicyController` (open read, `@AdminOnly` write) and
+it). The role that writes a shared root gets that resource named in its javadoc (`Role`: "ADMIN: desk
+staff: the catalogue, loans, settings") **when its first write is generated**, whether or not the
+convention was decided at bootstrap. Golden role checks: `UploadPolicyController` (open read, `@AdminOnly` write) and
 `MetadataController` (admin-only), with their 403 tests (`UploadPolicyIntegrationTest`,
 `MetadataIntegrationTest.onlyAdminsReachTheApi`). A shared root has no `ownerId`: `findById`, no
 owner parameter, unscoped lists (tests.md *Shared tables*).
@@ -118,15 +120,35 @@ owner parameter, unscoped lists (tests.md *Shared tables*).
 `{module}` substituted; cross-module access follows `{{moduleContracts}}` (architecture.md
 ARCH-04/05/06): a parent in another module is referenced by id (a UUID column with a database
 foreign key), never by an entity relation, in `api-facades` mode, and is validated through that
-module's facade (golden `todo.api.Todos` + `TodoView`, used by `PlanService`: a view lookup, not
-locked, and a batch lookup for a list page; the foreign key refuses a child written after the
-parent's delete, DATA-29). When the child's write **checks a mutable column of the parent** (lend
-only an AVAILABLE book), the facade adds a locked view, `get<Parent>ViewForUpdate(id)` with
-`@Transactional(propagation = MANDATORY)` over the parent's `findForUpdateById` (DATA-29, test row
-23b; no golden code yet). Writes of one parent then queue on that lock: an exclusion constraint's
-race answers 409 only, and the parent's delete waits for them (row 23's locked-parent outcome), so
-the golden plan texts about a 503 and `<PARENT>_GONE` don't apply there: don't copy them. A
-module without a facade (the sign-in piece's `user`) gets one in the same change: an interface in
+module's facade (golden `todo.api.Todos` + `TodoView`, used by `PlanService`). The facade's lookups,
+each scoped like the parent's own reads:
+- **`get<Parent>View(id)`, not locked**, for a child write that checks nothing of the parent: the
+  foreign key refuses a child written after the parent's delete, 404 `<PARENT>_GONE` (DATA-29). The
+  same shape as the next one without the lock and `MANDATORY` (same-module golden: `TodoService.createTimeEntry`).
+- **`get<Parent>ViewForUpdate(id)`, locked**, `@Transactional(propagation = MANDATORY)` over the
+  parent's `findForUpdateBy…`, for a child write that **checks a mutable column of the parent** (lend
+  only an AVAILABLE book; golden: a plan only for an open todo, `PlanService.create`, 409
+  `PLAN_TODO_DONE`). The lock names that rule (DATA-29: no constraint can check another table's column).
+  **Only the writes that check the state take it**: a create, and an update that moves the child to
+  another parent (it checks the new one). A write that checks nothing of the parent doesn't, even one
+  that can trip an exclusion constraint scoped by that parent (a loan's new dates): the constraint
+  holds that rule, and its rare simultaneous overlap answers DATA-35's 503 (document it). The parent's
+  state change and delete then wait for a locked write: the delete answers 409 `<PARENT>_IN_USE`, and
+  `<PARENT>_GONE` is unreachable on that write (keep its mapping, don't document it there); an
+  exclusion constraint scoped by the locked parent answers 409 only among locked writes, one scoped
+  wider (the owner's plans across todos) may still answer 503 (golden `PlanService.create`'s javadoc).
+  Tests: rows 23 (locked outcome) and 23b, both through `writesHeldWhileTheParentWaits`.
+- **The parent's state on the view** is a value the owner computes, a boolean for the rule
+  (`TodoView.open`, `BookView.available`), never the parent's domain enum: `ModuleBoundaryArchTest`
+  keeps `domain` types out of `api`. When consumers need the states themselves, the enum moves to
+  `<module>.api` (golden `media.api.MediaFileStatus`).
+- **`find<Parent>View(id)`, an `Optional`**, for a child read before it (the child's GET): the parent
+  can't be deleted under its children, so a parent missing at the second read went after the child,
+  and the answer is the child's own 404 `<ENTITY>_NOT_FOUND`, never the parent's code (golden
+  `PlanService.findById`). **`get<Parent>Views(ids)`** for a list page, one statement per batch, absent
+  ids simply absent (4.3: a row whose parent it misses is left out).
+
+A module without a facade (the sign-in piece's `user`) gets one in the same change: an interface in
 `<module>.api` that its service implements, with its view record. With tenancy, a lookup of a
 **member** is scoped by `TenantContext.current()` and answers the tenancy piece's
 `TENANT_MEMBER_NOT_FOUND` (no second "member not found" code). **The view never goes on the
@@ -149,7 +171,7 @@ Check before generating:
 | Impossible-state guards throw `IllegalStateException` | JAVA-20 |
 | No soft-delete flag; statuses are enums with a check constraint | DATA-07 |
 | A changeset with `--rollback`; FKs named `fk_<table>_<column>` | DATA-13 |
-| Unique text ignores case and surrounding spaces (one of the two shapes; partial when nullable) | DATA-05 |
+| Unique text ignores case and surrounding spaces (one of the two shapes; partial when nullable). A column whose `CHECK` admits one spelling only (an ISBN of exactly 13 digits: no case, no spaces) takes a plain `UNIQUE`, and its `@Schema` says "unique" without "ignoring case" | DATA-05 |
 | A value the mapper normalises (an email lower-cased and trimmed) has a `CHECK` with the same expression (`email = lower(trim(email))`, golden `users`) | DATA-05 |
 | A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one | DATA-05 |
 | Indexes: every FK (the list orders and filters are checked after 4.1, once they are chosen); keyset sort keys non-null (a generated column for a nullable one) | DATA-10 |
@@ -158,7 +180,10 @@ Check before generating:
 | The sequence exists for a display number | DATA-14 |
 
 Golden examples: `~/.claude/skills-reference/src/main/resources/db/changelog/changes/000{2,3,4,5}-*.sql`.
-Changesets use `--changeset {{changesetAuthor}}:NNNN-…` (the golden files say `dev`: a placeholder).
+**Applied** means the changeset has run on any database that outlives a test run (a teammate's, a
+shared dev or staging one, production) or has been pushed, where someone else may run it; a changeset
+that only ever ran on Testcontainers is still yours to edit. When unsure, it is applied: write a new
+changeset. Changesets use `--changeset {{changesetAuthor}}:NNNN-…` (the golden files say `dev`: a placeholder).
 
 List **every** failure, of every entity in the run, in **one table** (check, what is wrong, the fix:
 the entity change and a **new** changeset; never edit an applied one), then ask **once** with
@@ -276,7 +301,10 @@ dropdown needs no interface (golden `TodoFilter`).
 
 **Then the indexes** (DATA-10), now that the orders and filters are chosen: one per offered order
 and per scoping filter, ending with the id (none when the sort column is unique and not null), in a
-new changeset if the entity's own one is applied, with test row 28 for each.
+new changeset if the entity's own one is applied (Step 2), with test row 28 for each. An order index
+that leads with a foreign key column (`(author_id, id)`) also serves that key's checks: it
+**replaces** the key's own index from the pre-flight (`idx_books_author_id`), never sits beside it
+(golden `0003-todos.sql`'s comment).
 
 **Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
 `List<@NotNull ID> ids` with `@ConfiguredMaxSize("cursor-page.max-size")` (offset:
@@ -312,7 +340,14 @@ description and its 400 response name it.
   `@EarliestDate("<entity>.<field>")` (`app.limits.earliest-date`): a `LocalDate` reaches years
   PostgreSQL's `date` can't hold, and `-300000-01-01` is otherwise a 500 at the database (REST-09).
   A date that records the past (a day worked, a birth date) also takes `@NotAfterToday`, never
-  `@PastOrPresent` (JAVA-25); a filter on it a sanity `@LatestDate`. A planned date (a leave, a plan)
+  `@PastOrPresent` (JAVA-25); a filter on it a sanity `@LatestDate`. **A state action that records a
+  day** (returned on, approved on) takes it in the action's request, `@NotNull @EarliestDate
+  @NotAfterToday` (the user's own today, sent by the client), checked against the record's own dates
+  (a return before the loan's start: 400 `<ENTITY>_<FIELD>_BEFORE_<OTHER>`), never
+  `LocalDate.now(clock)`: the server's UTC day is yesterday for a desk east of UTC until midnight UTC
+  (JAVA-25). A moment the action records stays the server's `clock.instant()` (golden
+  `Todo.changeStatus`'s `completedAt`); the day's shape is `TimeEntryCreateRequest.spentOn` on the
+  action's record (no golden action takes one). A planned date (a leave, a plan)
   lies ahead or behind: no `@NotAfterToday`, a sanity `@LatestDate` (golden `plan.dates`), and the
   rules the business gives (within one calendar year: name it so, e.g. `isInOneCalendarYear`; no
   golden code).
@@ -325,7 +360,11 @@ number is added to `app.limits.text` in `config/limits.yml`; collections carry a
 limit (`@ConfiguredMaxSize("<entity>.<field>")`) and `@NotNull` elements, plus `@NotEmpty` only when
 an empty collection is meaningless (an optional set of tags may be empty); a date with a meaningful upper bound carries `@LatestDate("<entity>.<field>")`
 (`app.limits.latest-date`), e.g. below a sort sentinel. `@Schema` on every component. Golden:
-`TodoCreateRequest`.
+`TodoCreateRequest`. **A text field a cursor carries** (a cursor list's text sort key, a dropdown's
+label) sizes the cursor: `app.limits.text.cursor` must hold `(6 × its @MaxLength + 100) × 4/3`
+(Base64url JSON, a control character escaped in six bytes), so raise it when that is larger, and add
+the field's key to `LimitsIntegrationTest.CURSOR_TEXT_KEYS`; otherwise the next batch after a long
+value is a 400 on the cursor the server handed out (tests.md rows 16, 24).
 
 ### 4.3 Responses (records)
 `<Entity>Response` (every field, FKs as ids, ending with `{{auditFields}}`; a reference to another
@@ -335,18 +374,26 @@ fields. Golden: `TodoResponse`, `TodoSummaryResponse`. A list row's displayed pa
 **two steps**, in the same module as across modules: the batch, then one lookup of the batch's parent
 ids for their names (golden `PlanService`'s facade batch lookup; statement count + 1), never a join in
 the keyset query (with tenancy the join carries the tenant predicate twice and its plan turns on the
-cursor's position).
+cursor's position). The two statements see the database at two moments: a row whose parent the
+lookup misses (deleted with it, or moved and its old parent deleted, in between) is **left out** of the
+batch, never mapped with a null parent into a 500; the cursor still continues after the batch's last
+row (golden `PlanService.withTodos`, test `listLeavesOutAPlanWhoseTodoVanishedBetweenTheReads`). A
+single read of the child, then its parent, answers the child's own 404 when the parent is gone (Step 1's
+`find<Parent>View`; golden `PlanService.findById`).
 
 ### 4.4 ErrorCodes and messages (error-contract.md)
 `ERROR_PREFIX_NOT_FOUND`, `ERROR_PREFIX_<FIELD>_TAKEN` per unique field, `ERROR_PREFIX_IN_USE` when
-referenced; the mapper entries; a message in every `{{messagesFile}}`; the handler's
+referenced; **a status per code in `ErrorCodeHttpStatusMapper`** (the error contract's mapper, not the
+entity's; `ErrorCodeContractTest.everyErrorCodeHasAStatus` catches a missing one); a message in every
+`{{messagesFile}}`; the handler's
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
 `*_IN_USE` for the parent's delete, and `ERROR_PREFIX_GONE`, a 404 without placeholders, for a
 child's insert or update after it: `byForeignKeyOnWrite`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02). A state
 conflict is 409, a wrong value 400 (ERR-05). A child's foreign key adds the parent's `*_IN_USE` to
-**the parent's** delete docs (`@ApiResponse(409)`) and its docs test in the same change; never
-document a code before the constraint that raises it exists (no `*_IN_USE` on a delete nothing
-references yet).
+**the parent's** delete docs (`@ApiResponse(409)`) in the same change, asserted in **the child's**
+test class (with the parent's `deleteWhileReferencedIs409`): the parent's existing tests stay unchanged
+(*Updating an entity* rule 4). Never document a code before the constraint that raises it exists (no
+`*_IN_USE` on a delete nothing references yet).
 **Bootstrap brings no feature codes**: every code, mapping, message, constraint entry and limit key
 is added here. Constraint mappings go in the module's own `ConstraintErrorCodes` bean (the handler
 aggregates them): the module **whose changeset declares the constraint** maps it, even to another
@@ -358,6 +405,8 @@ code answered from a constraint gets a message without `{0}` (the handler has no
 an apostrophe is written `''`, and a year or an id passed as a number `{0,number,#}` (ERR-06). No
 overlapping ranges: an exclusion constraint mapped to `<ENTITY>_OVERLAPS`, with no scope lock (a
 simultaneous overlap answers a retryable 503; DATA-35, golden `0011-plans.sql`, `PlanService.create`).
+A lock a write already takes for a state rule (Step 1) queues the writes it covers, so their overlaps
+answer 409; never take a lock only to turn that 503 into a 409 (DATA-29).
 
 ### 4.5 Mapper
 Golden `TodoMapper`: `toEntity(request, resolvedParents…, ownerId)`, `update(entity, request,
@@ -369,10 +418,11 @@ resolvedParents…)` (only mutable fields; moves through the entity method), `to
 `findByIdAndOwnerId` when owned, and a lock only for a rule no constraint, foreign key or
 `@Version` holds (DATA-29), with a one-line javadoc naming that rule: a
 `@Lock(PESSIMISTIC_WRITE) findForUpdateBy…` when a write changes its member rows (files, links) or
-deletes it (golden `TodoRepository`), also taken on a parent before a cap or a multi-row rule is
-checked (row 23b; no golden code); a conditional `@Modifying` update with a rows-affected check for
-a claim (golden `RefreshTokenRepository.revokeIfLive`). No lock on a parent that children are written
-into: the foreign key holds it. Always by id and owner, so nobody queues behind a row they can't see.
+deletes it (golden `TodoRepository`), also taken on a parent before a cap, a multi-row rule or a check
+of the parent's state (row 23b; golden: the todo's `findForUpdateByIdAndOwnerId`, taken by a plan's
+create through `Todos.getOwnedTodoViewForUpdate`); a conditional `@Modifying` update with a
+rows-affected check for a claim (golden `RefreshTokenRepository.revokeIfLive`). No lock on a parent
+that children are written into for anything else: the foreign key holds it. Always by id and owner, so nobody queues behind a row they can't see.
 
 ### 4.7 Custom repository and Criteria projection impl
 Golden: `TodoRepositoryImpl` (cursor), `TodoListRepositoryImpl` (offset + dropdown).
@@ -417,7 +467,16 @@ per row misses the removed ones (409); delete loads (404) then flushes; a state 
 goes through a method that guards the state (an `edit(...)` calling `requirePending()`; no golden
 code), never public setters a later caller can use in the wrong state; ownership through
 `findByIdAndOwnerId` (another user's record is 404); parents written into are read with the plain
-owned lookup (`getOwned<Parent>`, not locked); list sizes from `{{Paging}}`. No remote call inside a
+owned lookup (`getOwned<Parent>`, not locked, unless the write checks the parent's state: Step 1); list sizes from `{{Paging}}`. **A parent in the same
+module** is reached through its service, public once a child needs it: `getOwned<Parent>(id)` returns
+the entity (golden `TodoListService.getOwnedTodoList`); a batch lookup for a write needs every id
+(`getOwned<Parent>s(ids)`, 404 naming a missing one, golden `TagService.getOwnedTags`), one for a
+list page's names returns those found (absent ids simply absent, as `Todos.getOwnedTodoViews`); both
+answer `List.of()` for no ids without a statement. **A rule from configuration** (a maximum loan
+length, an upload policy's file count) on an update runs only when the fields it reads change, so a
+lowered limit never blocks correcting another field of an existing record (golden
+`TodoService.changeAttachments`: the file count is checked only when the files change; tests.md
+row 25f). No remote call inside a
 transaction (DATA-01). Never lock "the current X" by a mutable column (DATA-32).
 
 ### 4.9 API interface (OpenAPI)
@@ -451,7 +510,8 @@ Role checks are meta-annotations such as `@AdminOnly` (REST-25, golden `Metadata
 
 ### 4.11 Dropdown (when the entity carries `{{dropdownAnnotation}}`)
 Read `references/dropdown.md`. Golden: `TodoListRepositoryImpl.findDropdownItems`,
-`TodoListService.dropdown`, `TodoListController.dropdown`.
+`TodoListService.dropdown`, `TodoListController.dropdown`. The label is a text key the cursor carries:
+size the cursor limit for it (4.2).
 
 ---
 
@@ -490,6 +550,8 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] A shared root: writes carry a role, personal-data reads decided, both in the profiles (Step 1).
 - [ ] A convention changed during the run (`controllerSecurity`, what a role means): the class
       javadoc of the services generated earlier, `Role`'s javadoc and the profiles say the new rule
-      (grep them).
+      (grep them). A role that now writes a shared root names it in `Role`'s javadoc (Step 1).
+- [ ] A text key a cursor carries: `app.limits.text.cursor` holds it and its key is in
+      `LimitsIntegrationTest.CURSOR_TEXT_KEYS` (4.2).
 - [ ] Build green, and one guard proven to fail (Step 7).
 - [ ] house-review clean (Step 8).

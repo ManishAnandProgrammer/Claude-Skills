@@ -150,7 +150,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - point-in-time exports are the legitimate `REPEATABLE_READ` case;
   - reads that must agree (a total and its parts, a check and the rows it vouches for) come from
     one statement: under READ COMMITTED each statement sees its own snapshot, so two queries can
-    disagree with each other.
+    disagree with each other;
+  - a two-step read (a batch, then one lookup of its parents' names; a record, then its parent's view)
+    expects the second step to miss a row deleted (or moved, its old parent deleted) in between: the
+    batch leaves that row out, the single read answers the record's own 404, never a null mapped into
+    a 500 or the parent's not-found code (reference: `PlanService.withTodos`, `findById`, tested by
+    gating the second statement: `PlanIntegrationTest.listLeavesOutAPlanWhoseTodoVanishedBetweenTheReads`).
 - **Severity:** Medium (High without the retry).
 
 ### DATA-22: Propagation pitfalls
@@ -276,11 +281,15 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - **caps and multi-row invariants lock the parent** (its `findForUpdate…`) before counting or
     reading the rows the rule spans: "max N per parent" (incident R5: a cap of 5, and 6 created), a
     mutable column of another row re-checked before the write (ship an order only while its account
-    is active; test row 23b), a version chain's close-and-open (DATA-36). Or a constraint holds it, or
-    the parent's `@Version` does when the collection bumps it (the reference's attachment cap,
-    DATA-30);
-  - **a parent read before a child's insert is not locked.** The foreign key holds the data: its
-    check locks the parent `FOR KEY SHARE` from the insert on, so a delete can't remove a parent under
+    is active; test row 23b; reference: a plan only for an open todo, `PlanService.create` through
+    `Todos.getOwnedTodoViewForUpdate`, tested by `PlanIntegrationTest.completionRacingACreateWaitsForIt`),
+    a version chain's close-and-open (DATA-36). Or a constraint holds it, or the parent's `@Version`
+    does when the collection bumps it (the reference's attachment cap, DATA-30). Only the writes that
+    check the rule take the lock: a write of the child that checks nothing of the parent (new dates
+    within one book) doesn't, even when an exclusion constraint scoped by that parent could deadlock it
+    (DATA-35's 503 stands);
+  - **a parent read before a child's insert is not locked** unless the write checks the parent's
+    state (above). The foreign key holds the data: its check locks the parent `FOR KEY SHARE` from the insert on, so a delete can't remove a parent under
     a committed child. A delete that wins the window between the read and the insert makes the insert
     fail on the key, answered with the parent's not-found code (DATA-33, error-contract ERR-02). A
     `FOR KEY SHARE` or `FOR SHARE` "delete guard" on that read is a finding unless its javadoc names

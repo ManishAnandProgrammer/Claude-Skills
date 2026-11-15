@@ -42,7 +42,13 @@ but no `@DropdownCandidate`, ask whether to add one.
 - Batches: walk `size=2` with `after` to the end (`hasMore` false, no `nextCursor`).
 - A cursor from the other direction, and a tampered cursor: 400 `REQUEST_PARAMETER_INVALID`.
 - `size` over the configured maximum: 400 naming `size`.
-- `status`: with an active flag, `ACTIVE`/`INACTIVE`/`ALL` behave as above; without one, a 400.
+- `status`: with an active flag, `ACTIVE`/`INACTIVE`/`ALL` behave as above; without one, a 400 for
+  each constant but `ACTIVE`; an unknown value (`ARCHIVED`) is 400 `REQUEST_PARAMETER_INVALID` either
+  way (golden `dropdownUnknownStatusIs400`, in both `TagIntegrationTest` and `TodoListIntegrationTest`).
+- A `query` matching nothing: an empty batch, `hasMore` false, no `nextCursor` (golden
+  `dropdownWithNoMatchIsEmpty`).
+- The label at its `@MaxLength`, of control characters and 4-byte letters: the batch it ends
+  continues (golden `dropdownCursorOfTheLongestNameIsAccepted`; the cursor limit, SKILL.md 4.2).
 - Mandatory filter missing: 400 naming it. Optional filter: a presence and absence pair.
 - No token: 401. Scoped reads: another user's items never appear (a presence check first).
 - Cacheable: a write evicts it.

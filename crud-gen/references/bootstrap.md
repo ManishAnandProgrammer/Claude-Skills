@@ -85,13 +85,16 @@ With **AskUserQuestion** (several per call):
    account, a members list endpoint, disabling platform staff, a retention job for CLOSED tenants,
    a metric for a failed provisioning. Record the ones the project needs as open items.
 
-Write `.claude/crud-profile.md` and `.claude/review-profile.md` from their templates.
+Write `.claude/crud-profile.md` and `.claude/review-profile.md` from their templates. The review
+profile's `mainBranch` is the repository's base branch, read from git (`git symbolic-ref --short
+refs/remotes/origin/HEAD`, else `git branch --show-current` on a new repository), never the
+template's `main` unchecked: a `diff` review against a branch that doesn't exist fails.
 
 ## 1. Copy the pieces
 **No project yet?** Start it from the reference rather than Initializr (same Boot version, the
 wrapper, the pom with every dependency the pieces can need; step 3 trims it to the approved ones):
 ```bash
-mkdir -p <project>/src/main/java/<package path> && cd <project> && git init
+mkdir -p <project>/src/main/java/<package path> && cd <project> && git init -b main
 cp -r ~/Documents/claude-skills/reference-app/{mvnw,mvnw.cmd,.mvn,.gitignore,.gitattributes} .
 sed -e 's|<groupId>com.example</groupId>|<groupId><group></groupId>|' \
     -e 's|<artifactId>reference-app</artifactId>|<artifactId><app></artifactId>|' \
@@ -153,7 +156,8 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   sign-in 0001; metadata 0008, plus 0007 (the ADMIN role) with sign-in; media 0009, plus 0007 with
   sign-in and without metadata; example 0002–0006 and 0011, plus 0010 with media; tenancy 0012
   (plus 0007 without metadata and media), schema per tenant 0013 (`0013-tenant-schemas`), row mode
-  0013 (`0013-row-security`). A project's own changesets continue after the highest copied number.
+  0013 (`0013-row-security`); example with metadata 0014 (the fixed key's seed). A project's own
+  changesets continue after the highest copied number.
 - The answers of step 0: signup policy, external IdP (`SecurityConfig`), client-IP mode,
   `app.limits.*` values, pool and admission sizes (admission ≥ 2× pool, checked at startup).
 - `ErrorCode`: remove the sign-in codes if `sign-in` wasn't copied. Constraint mappings live in each
@@ -162,10 +166,22 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
 - The ArchUnit rules' module list comes from the profile.
 - `docs/runbook.md`: the deployment's own commands (how an instance is stopped, how a release is
   rolled back) where it says `docker`; `<app>` stays a placeholder for `spring.application.name`.
+  With `sign-in` and an ADMIN role (metadata, media) and no tenancy, `docs/local-dev.md` step 4 and the
+  runbook's *Operator tasks* say how the first admin is made (sign up, then the owner's `UPDATE users
+  SET role = 'ADMIN'`, then sign in again); name it to the user in the closing summary, and add the
+  project's own role names when step 0 added roles.
 - With `metadata` but without `example`, `MetadataKeys.byName`'s list of fixed keys is empty (its
   comment stays): the project's first fixed key goes there; per-context keys never do. Until then
   `GET/PUT /metadata/{key}` only answer `METADATA_KEY_UNKNOWN`: ask whether the project has a first
-  fixed key (add it now) or only per-context keys and counters; with neither, drop the piece.
+  fixed key (add it now) or only per-context keys and counters; with neither, drop the piece. **A
+  first fixed key** is seeded by a changeset of its own (META-05; golden `0014-todo-list-defaults.sql`:
+  the record's defaults written out), next free number; with `tenancy-schema` it runs in every tenant
+  schema as it is; with `tenancy-row` the changeset's `tenancy-row` block seeds the existing tenants
+  (RLS lifted for its own transaction) and a `TenantProvisioned` listener seeds new ones (golden
+  `overlays/tenancy-row/.../todo/service/TodoListDefaultsSeed.java`). Its tests are crud-gen tests.md's
+  *A first fixed metadata key* list, ported from the golden `MetadataIntegrationTest` (bootstrap copies
+  that class only with `example`), with the test base's `storedMetadata` / `storeMetadata` /
+  `restoreMetadata`.
 - With `media`: set `app.media.bucket` and `app.media.region` (`app.media.endpoint` stays empty for
   AWS, the server's URL for another S3-compatible store); check `app.media.read-url-expiry`
   against the lifetime of the deployment's credentials (MEDIA-11). Credentials come from the SDK's
