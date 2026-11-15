@@ -222,7 +222,7 @@ public class TodoService implements Todos {
         if (ids.isEmpty()) {
             return List.of();
         }
-        return repository.findByIdInAndOwnerId(ids, ownerId).stream().map(mapper::toView).toList();
+        return repository.findViewsByIdInAndOwnerId(ids, ownerId);
     }
 
     /** Not locked: an entry written while its todo is deleted is refused by its foreign key, 404 {@code TODO_GONE}. */

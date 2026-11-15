@@ -1,10 +1,12 @@
 package com.example.app.todo.repository;
 
+import com.example.app.todo.api.TodoView;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.repository.custom.CustomTodoRepository;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
 import java.util.List;
@@ -15,7 +17,16 @@ public interface TodoRepository extends JpaRepository<Todo, UUID>, CustomTodoRep
 
     Optional<Todo> findByIdAndOwnerId(UUID id, UUID ownerId);
 
-    List<Todo> findByIdInAndOwnerId(Collection<UUID> ids, UUID ownerId);
+    /**
+     * The views of a page's todos (another module's names for its rows), the view's columns only: a page's
+     * lookup never loads whole rows for a name (house-review DATA-11).
+     */
+    @Query("""
+            select new com.example.app.todo.api.TodoView(todo.id, todo.title,
+                       case when todo.status = com.example.app.todo.domain.TodoStatus.OPEN then true else false end)
+              from Todo todo
+             where todo.id in :ids and todo.ownerId = :ownerId""")
+    List<TodoView> findViewsByIdInAndOwnerId(Collection<UUID> ids, UUID ownerId);
 
     /**
      * Owner of a write: the owner's todo, locked {@code FOR NO KEY UPDATE} (Hibernate's PostgreSQL write

@@ -3,13 +3,12 @@ package com.example.app.planning.dto.request;
 import com.example.app.common.limits.ConfiguredMax;
 import com.example.app.common.limits.EarliestDate;
 import com.example.app.common.limits.LatestDate;
+import com.example.app.common.validation.DateRanges;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-import java.util.Objects;
 import java.util.UUID;
 
 @Schema(description = "Days to set aside for one of your todos; your plans never share a day")
@@ -34,7 +33,7 @@ public record PlanCreateRequest(
     @AssertTrue(message = "{plan.date-range}")
     @Schema(hidden = true)
     public boolean isDateRangeOrdered() {
-        return Objects.isNull(startsOn) || Objects.isNull(endsOn) || !endsOn.isBefore(startsOn);
+        return DateRanges.isOrdered(startsOn, endsOn);
     }
 
     /**
@@ -45,9 +44,6 @@ public record PlanCreateRequest(
     @ConfiguredMax("plan.max-days")
     @Schema(hidden = true)
     public Long getLengthInDays() {
-        if (Objects.isNull(startsOn) || Objects.isNull(endsOn) || endsOn.isBefore(startsOn)) {
-            return null;
-        }
-        return ChronoUnit.DAYS.between(startsOn, endsOn) + 1;
+        return DateRanges.lengthInDays(startsOn, endsOn);
     }
 }

@@ -6,6 +6,7 @@ import com.example.app.common.pagination.PageFilter;
 import com.example.app.support.IntegrationTest;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaField;
+import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import io.swagger.v3.core.converter.AnnotatedType;
@@ -62,8 +63,8 @@ class LimitsIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            Every @MaxLength (on a field or a collection's elements), @ConfiguredMax, @ConfiguredMaxSize, @LatestDate \
-            and @EarliestDate key in the code, and @NotAfterToday's, has a configured value""")
+            Every @MaxLength (on a field or a collection's elements), @ConfiguredMax (on a field or a getter), \
+            @ConfiguredMaxSize, @LatestDate and @EarliestDate key in the code, and @NotAfterToday's, has a configured value""")
     void everyLimitKeyIsConfigured() {
         JavaClasses classes = new ClassFileImporter()
                 .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -102,6 +103,14 @@ class LimitsIntegrationTest extends IntegrationTest {
             }
         }
 
+        // A limit on a computed getter (a range's length: PlanCreateRequest.getLengthInDays) is on a method.
+        for (JavaMethod method : classes.stream().flatMap(javaClass -> javaClass.getMethods().stream()).toList()) {
+            if (method.isAnnotatedWith(ConfiguredMax.class)) {
+                checked++;
+                checkConfigured(missing, method.getAnnotationOfType(ConfiguredMax.class).value(),
+                        () -> limits.getLong(method.getAnnotationOfType(ConfiguredMax.class).value()));
+            }
+        }
         checkConfigured(missing, NotAfterTodayValidator.TOLERANCE_KEY, () -> limits.get(NotAfterTodayValidator.TOLERANCE_KEY));
 
         assertThat(checked).isPositive();

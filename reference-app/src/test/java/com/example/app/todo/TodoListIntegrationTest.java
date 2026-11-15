@@ -202,6 +202,23 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("Concurrent deletes of one list: one 204; each other is 404 TODO_LIST_NOT_FOUND or the documented 409 OPTIMISTIC_LOCK_CONFLICT")
+    void concurrentDeletesRemoveItOnce() throws Exception {
+        TestUser user = newUser();
+        String id = createList(user, "Contested");
+
+        List<Answer> answers = race(() -> deleteAs(user.accessToken(), LISTS + "/" + id));
+
+        // A racer that read the list before the winner's delete committed finds no row to delete (409);
+        // one that read it after finds no list (404). Which of the two each loser meets is timing.
+        assertThat(answers).extracting(Answer::status).containsOnlyOnce(204).isSubsetOf(204, 404, 409);
+        assertRefusalsAre(answers, 404, "TODO_LIST_NOT_FOUND");
+        assertRefusalsAre(answers, 409, "OPTIMISTIC_LOCK_CONFLICT");
+        Integer lists = jdbc.queryForObject("select count(*) from todo_lists where id = ?::uuid", Integer.class, id);
+        assertThat(lists).isZero();
+    }
+
+    @Test
     @DisplayName("A delete that loses the race to a rename is 409 OPTIMISTIC_LOCK_CONFLICT, and the renamed list stays")
     void deleteRacingARenameIs409() throws Exception {
         TestUser user = newUser();
