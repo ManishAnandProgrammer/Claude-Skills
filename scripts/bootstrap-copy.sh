@@ -32,6 +32,11 @@
 #     tenant-registration
 #              with a tenancy piece: the public POST /tenant-registrations (a PENDING tenant that staff
 #              approve); without it, only staff create tenants
+#     session-version
+#              with sign-in, opt-in: every access token carries a session version (claim sv), checked on
+#              every request against Redis (the database when Redis is down); every access change raises it
+#              in its own transaction, so older tokens are refused at once (401 SESSION_VERSION_STALE), and
+#              DELETE /users/me/sessions signs out everywhere. Per account, or per membership with tenancy
 #   metadata, media and the tenancy pieces have admin endpoints: with sign-in, each brings the ADMIN role
 #   and the test base's newAdmin() (the "admin" markers).
 #
@@ -45,7 +50,8 @@
 #
 # Shared files (ErrorCode, messages, limits, db.yml, compose.yaml, .env.example, Role, test base,
 # ArchUnit) mark a piece's entries with "<piece>:begin" / "<piece>:end" comment lines (sign-in,
-# example, metadata, media, admin, tenancy, tenancy-schema, tenancy-row, tenant-registration): without that piece
+# example, metadata, media, admin, tenancy, tenancy-schema, tenancy-row, tenant-registration,
+# session-version): without that piece
 # those blocks are left out; blocks may nest (a media block inside an example block arrives only with
 # both). A block may hold "<piece>:else": its lines after that marker are commented out in the
 # reference and replace the block's first part without the piece (uncommented: "// ", "# ", "-- " or
@@ -298,7 +304,32 @@ $SHARED/src/main/java/$reference_path/user/service/TenantRegistrationService.jav
 $SHARED/src/test/java/$reference_path/tenant/TenantRegistrationIntegrationTest.java
 LIST
             ;;
-        *) die "unknown piece: $1 (core, sign-in, example, metadata, media, tenancy-schema, tenancy-row, tenant-registration)" ;;
+        session-version)
+            # The check (core's common/ and config/ hold it, named here), the cache and its tests.
+            cat <<LIST
+src/main/java/$reference_path/common/security/SessionVersions.java
+src/main/java/$reference_path/common/security/SessionVersionFilter.java
+src/main/java/$reference_path/config/SessionVersionOpenApiCustomizer.java
+src/main/java/$reference_path/user/service/SessionVersionService.java
+src/main/java/$reference_path/user/service/SessionVersionProperties.java
+src/main/java/$reference_path/user/service/SessionVersionsRaised.java
+src/test/java/$reference_path/common/security/SessionVersionFilterIntegrationTest.java
+src/test/java/$reference_path/user/SessionVersionIntegrationTest.java
+src/test/java/$reference_path/user/service/SessionVersionServiceIntegrationTest.java
+LIST
+            # The number: the account's without tenancy, the membership's with it (and the tenant's
+            # suspension raises its members' numbers).
+            if tenancy_chosen; then cat <<LIST
+$SHARED/src/main/resources/db/changelog/changes/0022-memberships-session-version.sql
+$SHARED/src/main/java/$reference_path/user/dto/internal/MembershipSessionVersion.java
+$SHARED/src/main/java/$reference_path/tenant/api/TenantDeactivated.java
+$SHARED/src/test/java/$reference_path/user/SessionVersionTenancyIntegrationTest.java
+LIST
+            else
+                echo "src/main/resources/db/changelog/changes/0021-users-session-version.sql"
+            fi
+            ;;
+        *) die "unknown piece: $1 (core, sign-in, example, metadata, media, tenancy-schema, tenancy-row, tenant-registration, session-version)" ;;
     esac
 }
 
@@ -313,6 +344,7 @@ dependencies_for() {
         tenancy-schema) echo "(none beyond core: Hibernate's multi-tenancy and Liquibase, already there)" ;;
         tenancy-row) echo "(none beyond core: Hibernate's multi-tenancy and @TenantId, already there)" ;;
         tenant-registration) echo "(none beyond sign-in)" ;;
+        session-version) echo "(none beyond core and sign-in: Redis and Resilience4j's circuit breaker, already there)" ;;
     esac
 }
 
@@ -329,7 +361,7 @@ dest_for() {
 # with it, only the marker lines (and an ":else" part) go. In reference files a tenancy block is
 # commented out instead: kept uncommented with the piece, dropped without it.
 kept_markers=","
-for optional in sign-in example metadata media admin tenancy tenancy-schema tenancy-row tenant-registration; do
+for optional in sign-in example metadata media admin tenancy tenancy-schema tenancy-row tenant-registration session-version; do
     if { [ "$optional" = admin ] && admin_chosen; } || { [ "$optional" = tenancy ] && tenancy_chosen; } || chosen_piece "$optional"; then
         kept_markers+="$optional,"
     fi
@@ -339,7 +371,7 @@ done
 piece_filter() {
     KEPT="$kept_markers" SOURCE="$1" perl -ne '
         BEGIN { @open = (); $last_blank = 0; $dropped = 0; }
-        if (/\b(sign-in|example|metadata|media|admin|tenancy-schema|tenancy-row|tenancy|tenant-registration):(begin|else|end)\b/) {
+        if (/\b(sign-in|example|metadata|media|admin|tenancy-schema|tenancy-row|tenancy|tenant-registration|session-version):(begin|else|end)\b/) {
             my ($piece, $marker) = ($1, $2);
             my $kept = index($ENV{KEPT}, ",$piece,") >= 0;
             my $commented = $ENV{SOURCE} eq "reference" && $piece =~ /^tenan/;
@@ -436,6 +468,9 @@ fi
 if chosen_piece tenant-registration && ! tenancy_chosen; then
     die "tenant-registration needs a tenancy piece (tenancy-schema or tenancy-row)"
 fi
+if chosen_piece session-version && ! chosen_piece sign-in; then
+    die "session-version needs sign-in: it checks the tokens sign-in issues"
+fi
 if chosen_piece tenancy-schema; then
     echo "note: tenancy needs the database roles and the platform schema before the first start (docs/tenancy-runbook.md; compose.yaml creates them locally), and DB_OWNER_USER / DB_OWNER_PASSWORD" >&2
 fi
@@ -443,7 +478,7 @@ if chosen_piece tenancy-row; then
     echo "note: tenancy needs the database roles before the first start (docs/tenancy-runbook.md; compose.yaml creates them locally), and DB_OWNER_USER / DB_OWNER_PASSWORD" >&2
 fi
 # Every file any piece can name, whatever was chosen: a directory copy never takes another piece's file.
-all_pieces="core sign-in example metadata media tenancy-schema tenancy-row tenant-registration"
+all_pieces="core sign-in example metadata media tenancy-schema tenancy-row tenant-registration session-version"
 with_reference_prefix() { sed -e '/^overlays\//!s|^|reference-app/|'; }
 named_files="$(pieces="${all_pieces// /,}"; for piece in $all_pieces; do files_for "$piece"; done | with_reference_prefix)"
 # Core files a tenancy mode replaces: its connection hook borrows lazily, so the lazy proxy goes.
@@ -472,7 +507,7 @@ done
 # rewritten here to list exactly the copied changesets, the platform's in the first, every other in
 # the second. Row mode has one master with the platform's changesets first: every tenant table
 # references tenants, and the app role's default privileges (0013) then cover each tenant table.
-platform_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql 0020-tenant-members-list.sql"
+platform_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql 0020-tenant-members-list.sql 0021-users-session-version.sql 0022-memberships-session-version.sql"
 # $1: platform, tenant or all; the copied changesets of that kind, in order.
 changesets_of() {
     local want="$1" changeset name

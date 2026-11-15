@@ -51,6 +51,10 @@ public enum ErrorCode {
     USER_PASSWORD_BREACHED,
     AUTH_INVALID_CREDENTIALS,
     AUTH_INVALID_REFRESH_TOKEN,
+    // session-version:begin
+    /** The access token was issued before the account's access last changed: refresh the tokens. */
+    SESSION_VERSION_STALE,
+    // session-version:end
     // tenancy:begin
     //
     // // ── Tenancy ──────────────────────────────────────────────────────────

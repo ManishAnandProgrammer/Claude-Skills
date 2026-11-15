@@ -10,11 +10,23 @@ import com.example.app.user.mapper.UserMapper;
 import com.example.app.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+// session-version:begin
+// tenancy:begin
+// tenancy:else
+import org.springframework.context.ApplicationEventPublisher;
+// tenancy:end
+// session-version:end
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+// session-version:begin
+// tenancy:begin
+// tenancy:else
+import java.util.Map;
+// tenancy:end
+// session-version:end
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,6 +41,12 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final AuthRateLimits rateLimits;
     private final BreachedPasswordCheck breachedPasswordCheck;
+    // session-version:begin
+    // tenancy:begin
+    // tenancy:else
+    private final ApplicationEventPublisher events;
+    // tenancy:end
+    // session-version:end
 
     /**
      * Runs without a transaction: hashing the password takes about a quarter of a second of CPU and
@@ -59,4 +77,27 @@ public class UserService {
     Optional<User> findByEmail(String email) {
         return repository.findByEmail(User.normalizeEmail(email));
     }
+    // session-version:begin
+    // tenancy:begin
+    // tenancy:else
+
+    /** The account's session version (SessionVersionService's check, on a Redis miss); empty without an account. */
+    Optional<Integer> findSessionVersion(UUID userId) {
+        return repository.findSessionVersion(userId);
+    }
+
+    /**
+     * Raises the account's session version in the access change's own transaction (hence MANDATORY): two
+     * transactions could commit the change without the bump. Every access token issued before it, on every
+     * device, is refused from the commit on; Redis gets the new number after the commit.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    void bumpSessionVersion(UUID userId) {
+        repository.bumpSessionVersion(userId);
+        int raised = repository.findSessionVersion(userId).orElseThrow(AppException.supply(ErrorCode.USER_NOT_FOUND));
+        events.publishEvent(new SessionVersionsRaised(Map.of(userId, raised)));
+        log.info("Session version raised: userId={}, sv={}", userId, raised);
+    }
+    // tenancy:end
+    // session-version:end
 }

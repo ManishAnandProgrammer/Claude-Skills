@@ -393,6 +393,10 @@ class TenantMemberListIntegrationTest extends IntegrationTest {
     }
 
     private long statementsFor(TestUser admin, String path) throws Exception {
+        // session-version:begin
+        // A token's first request reads its session version from the database once (a Redis miss): not the list's.
+        getAs(admin.accessToken(), path).andExpect(status().isOk());
+        // session-version:end
         statistics().clear();
         getAs(admin.accessToken(), path).andExpect(status().isOk());
         return statistics().getPrepareStatementCount();

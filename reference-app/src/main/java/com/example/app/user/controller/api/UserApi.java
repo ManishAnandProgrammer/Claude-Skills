@@ -21,4 +21,17 @@ public interface UserApi {
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<UserResponse> me();
+    // session-version:begin
+
+    @Operation(summary = "Sign out everywhere", description = """
+            Ends every session of the signed-in account: every refresh token is revoked, and every access \
+            token issued so far, this one included, is refused from the next request on with 401 \
+            SESSION_VERSION_STALE (on every device). Sign in again afterwards.""")
+    @ApiResponse(responseCode = "204", description = "Signed out everywhere")
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    void endAllSessions();
+    // session-version:end
 }

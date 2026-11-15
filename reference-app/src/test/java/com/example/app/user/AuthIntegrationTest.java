@@ -28,6 +28,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+// session-version:begin
+// tenancy:begin
+// import java.util.UUID;
+// tenancy:end
+// session-version:end
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -601,6 +606,14 @@ class AuthIntegrationTest extends IntegrationTest {
                 // .audience(List.of("tenant"))
                 // .claim("tenant_id", testTenant().id().toString())
                 // tenancy:end
+                // session-version:begin
+                // A new account's (or membership's) session version.
+                .claim("sv", 0)
+                // tenancy:begin
+                // .claim("membership_id", jdbc.queryForObject("select id from tenant_memberships where user_id = ? and tenant_id = ?",
+                //         UUID.class, user.id(), testTenant().id()).toString())
+                // tenancy:end
+                // session-version:end
                 .build();
         return jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }

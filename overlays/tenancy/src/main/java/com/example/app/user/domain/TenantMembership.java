@@ -46,6 +46,16 @@ public class TenantMembership extends AuditableEntity {
      */
     @Column(name = "last_used_at")
     private Instant lastUsedAt;
+    // session-version:begin
+
+    /**
+     * The number every access token for this membership carries (claim {@code sv}); a token with another one
+     * is refused. Read-only here: only {@code TenantMembershipRepository}'s bumps write it, so an entity loaded
+     * before a bump can never write its older copy back, and a new membership starts at the column's default.
+     */
+    @Column(name = "session_version", insertable = false, updatable = false)
+    private int sessionVersion;
+    // session-version:end
 
     public static TenantMembership of(User user, UUID tenantId, Role role) {
         return TenantMembership.builder()

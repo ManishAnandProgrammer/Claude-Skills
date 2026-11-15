@@ -26,8 +26,32 @@ app:
       read-timeout: 3s
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  # session-version:begin
+  # The session version's copy in Redis (SessionVersionService). Also the longest an old number stays
+  # accepted when its bump's publish was lost (Redis unreachable right after the commit), or after an
+  # operator changed a number in SQL without updating Redis (docs/runbook.md). A miss costs one read by
+  # primary key.
+  session-version:
+    cache-ttl: 1m
+  # session-version:end
 
 resilience4j:
+  # session-version:begin
+  circuitbreaker:
+    instances:
+      # Redis reads and writes of the session version. Open (failures, or calls slower than Redis ever
+      # is), the check skips Redis and reads the database by primary key, so a dead or hung Redis costs
+      # no command timeout per request; a few probes after the wait close it again.
+      session-version-cache:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        slow-call-duration-threshold: 100ms
+        slow-call-rate-threshold: 50
+        wait-duration-in-open-state: 5s
+        permitted-number-of-calls-in-half-open-state: 3
+  # session-version:end
   bulkhead:
     instances:
       # Lookups in flight at once. A signup past it skips the check at once (no wait) rather than

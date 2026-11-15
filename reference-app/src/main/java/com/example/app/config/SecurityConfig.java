@@ -3,6 +3,10 @@ package com.example.app.config;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.logging.UserLogContextFilter;
 import com.example.app.common.security.CurrentUser;
+// session-version:begin
+import com.example.app.common.security.SessionVersionFilter;
+import com.example.app.common.security.SessionVersions;
+// session-version:end
 import com.example.app.common.web.ProblemResponses;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.nimbusds.jose.proc.SecurityContext;
@@ -52,6 +56,10 @@ import java.util.List;
  *   <li>{@code DispatcherType.ERROR} is permitted, so an exception that escapes to the container's
  *       error page isn't re-answered as a 401.</li>
  *   <li>Security errors are Problem Details with an {@code errorCode}, like every other error.</li>
+ *   <!-- session-version:begin -->
+ *   <li>The session version (the session-version piece): a verified token is accepted only while its
+ *       {@code sv} claim is current ({@link SessionVersionFilter}), one Redis read per request.</li>
+ *   <!-- session-version:end -->
  * </ul>
  */
 @Configuration
@@ -81,6 +89,10 @@ class SecurityConfig {
                                             JwtAuthenticationConverter jwtAuthenticationConverter,
                                             AuthenticationEntryPoint authenticationEntryPoint,
                                             AccessDeniedHandler accessDeniedHandler,
+                                            // session-version:begin
+                                            SessionVersions sessionVersions,
+                                            ProblemResponses problemResponses,
+                                            // session-version:end
                                             CurrentUser currentUser) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -99,6 +111,10 @@ class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .addFilterAfter(new UserLogContextFilter(currentUser), BearerTokenAuthenticationFilter.class);
+        // session-version:begin
+        // Behind the log context, so a refusal's log line names the user.
+        http.addFilterAfter(new SessionVersionFilter(sessionVersions, problemResponses), UserLogContextFilter.class);
+        // session-version:end
         return http.build();
     }
 

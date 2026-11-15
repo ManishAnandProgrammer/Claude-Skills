@@ -46,7 +46,7 @@ nothing: it is the code the skills copy.
 | `offsetLists` | `TodoList`, `Tag` | Bounded per user; page numbers and counts |
 | `NotXss` | `escape-on-output` | JSON API; clients render text |
 | `noEmojiFields` | `none` | |
-| `tokenRevocation` | `short-lived(15)` | |
+| `tokenRevocation` | `session-version` | The reference runs with the session-version piece on (`short-lived(15)` stays its access-token bound); copies without it are `short-lived(15)` |
 | `edgeRateLimiter` | `none` | |
 | `metricsAuth` | `network-only` | `/actuator/prometheus` has no token: served on the management port only, never published; `StartupChecks` refuses a missing or shared management port (test profile alone excepted) |
 | `apiDocsLocation` | `controller/api/<Name>Api` | |

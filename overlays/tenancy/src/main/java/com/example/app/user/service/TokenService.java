@@ -4,6 +4,9 @@ import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.security.Hashes;
+// session-version:begin
+import com.example.app.common.security.SessionVersions;
+// session-version:end
 import com.example.app.common.tenancy.TenantContext;
 import com.example.app.config.JwtProperties;
 import com.example.app.tenant.api.Tenants;
@@ -139,6 +142,11 @@ class TokenService {
                 .claim(ROLES_CLAIM, List.of(membership.getRole().name()))
                 .claim(TenantContext.TENANT_CLAIM, membership.getTenantId().toString())
                 .claim(CurrentUser.ACTOR_CLAIM, Map.of(CurrentUser.ACTOR_SUBJECT, staffId.toString()))
+                // session-version:begin
+                // The member's: a change of their access ends the impersonation too.
+                .claim(SessionVersions.CLAIM, membership.getSessionVersion())
+                .claim(SessionVersionService.MEMBERSHIP_CLAIM, membership.getId().toString())
+                // session-version:end
                 .build();
         return new TokenResponse(encode(claims), TOKEN_TYPE, impersonation.tokenTtl().toSeconds(), null);
     }
@@ -162,6 +170,20 @@ class TokenService {
     void revoke(String rawToken) {
         repository.revokeIfLive(Hashes.sha256Hex(rawToken), RevocationReason.LOGOUT, clock.instant());
     }
+    // session-version:begin
+
+    /**
+     * Signs the user out everywhere, every tenant included, in one transaction: every refresh token revoked,
+     * and every membership's session version raised, so every access token already issued is refused on its
+     * next request.
+     */
+    @Transactional
+    void endAllSessions(UUID userId) {
+        int revoked = repository.revokeAllOfUser(userId, RevocationReason.LOGOUT, clock.instant());
+        memberships.bumpSessionVersionsOfUser(userId);
+        log.info("Signed out everywhere: userId={}, sessions={}", userId, revoked);
+    }
+    // session-version:end
 
     private RefreshToken findToken(String tokenHash) {
         return repository.findByTokenHash(tokenHash).orElseThrow(AppException.supply(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
@@ -223,6 +245,11 @@ class TokenService {
                 .subject(user.getId().toString())
                 .claim(ROLES_CLAIM, List.of(membership.getRole().name()))
                 .claim(TenantContext.TENANT_CLAIM, membership.getTenantId().toString())
+                // session-version:begin
+                // From the same row as the role: a token never pairs a newer number with an older role.
+                .claim(SessionVersions.CLAIM, membership.getSessionVersion())
+                .claim(SessionVersionService.MEMBERSHIP_CLAIM, membership.getId().toString())
+                // session-version:end
                 .build();
         return encode(claims);
     }

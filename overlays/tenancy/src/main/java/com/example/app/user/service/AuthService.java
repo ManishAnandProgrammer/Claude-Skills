@@ -79,6 +79,17 @@ public class AuthService {
         rateLimits.logout(clientIp);
         tokenService.revoke(request.refreshToken());
     }
+    // session-version:begin
+
+    /**
+     * Signs the caller out on every device and in every tenant: their refresh tokens are revoked and their
+     * access tokens are refused from the next request on (the session version). Signed in, so not rate
+     * limited like logout.
+     */
+    public void logoutEverywhere(UUID userId) {
+        tokenService.endAllSessions(userId);
+    }
+    // session-version:end
 
     private AppException invalidCredentials() {
         refusedLogins.increment();

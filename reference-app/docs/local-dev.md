@@ -32,6 +32,11 @@
    ```
    The role is in the next access token: sign in again. In production an operator runs the same
    statement (`docs/runbook.md`, *Operator tasks*).
+<!-- session-version:begin -->
+   With the session version, add `, session_version = session_version + 1` to the statement and run
+   `docker compose exec redis redis-cli DEL sv:<your user id>`: the app's next request is 401
+   `SESSION_VERSION_STALE`, and its refresh carries the new role.
+<!-- session-version:end -->
 <!-- admin:end -->
 <!-- sign-in:end -->
 <!-- tenancy:end -->

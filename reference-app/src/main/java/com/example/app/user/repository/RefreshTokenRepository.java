@@ -39,6 +39,20 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
                    t.updatedAt = :now, t.version = t.version + 1
              where t.user.id = :userId and t.revokedAt is null""")
     int revokeAllOfUserForReuse(UUID userId, Instant now);
+    // session-version:begin
+
+    /**
+     * Revokes every live token of a user with {@code reason} (signing out everywhere). A bulk update: sets
+     * {@code updated_at} and bumps {@code version} itself.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update RefreshToken t
+               set t.revokedAt = :now, t.revocationReason = :reason,
+                   t.updatedAt = :now, t.version = t.version + 1
+             where t.user.id = :userId and t.revokedAt is null""")
+    int revokeAllOfUser(UUID userId, RevocationReason reason, Instant now);
+    // session-version:end
 
     @Modifying
     @Query(value = """

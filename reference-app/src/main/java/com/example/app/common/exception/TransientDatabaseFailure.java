@@ -25,9 +25,11 @@ import java.util.Optional;
  * the request shows up as an {@code SQLException} with no SQLSTATE (the pool or driver refused) or
  * one of class {@code 08}; a constraint failure carries {@code 23xxx} and stays a 500.</p>
  *
- * <p>The {@code Retry-After} range per kind is configured ({@code app.retry-after.*}, by error code).</p>
+ * <p>The {@code Retry-After} range per kind is configured ({@code app.retry-after.*}, by error code).
+ * Public for the servlet filters that read the database, outside the handler's reach: they answer the
+ * same 503 with {@code ProblemResponses}.</p>
  */
-enum TransientDatabaseFailure {
+public enum TransientDatabaseFailure {
 
     /** Waited past {@code lock_timeout}, or lost a deadlock: another request holds the rows. */
     CONTENTION(ErrorCode.DATABASE_CONTENTION),
@@ -46,7 +48,7 @@ enum TransientDatabaseFailure {
         this.errorCode = errorCode;
     }
 
-    static Optional<TransientDatabaseFailure> of(Throwable failure) {
+    public static Optional<TransientDatabaseFailure> of(Throwable failure) {
         for (Throwable cause = failure; Objects.nonNull(cause); cause = cause.getCause()) {
             switch (cause) {
                 case LockTimeoutException _, LockAcquisitionException _, PessimisticLockingFailureException _ -> {
@@ -82,7 +84,7 @@ enum TransientDatabaseFailure {
         return Objects.isNull(failure.getSQLState()) || isConnectionException(failure);
     }
 
-    ErrorCode errorCode() {
+    public ErrorCode errorCode() {
         return errorCode;
     }
 }

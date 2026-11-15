@@ -11,8 +11,9 @@ df56c1ae3f0a43839532337ae11c1fd9234ab6b5f8d8cf24e672b6afec2950fb  reference-app/
 76466a0bd180b6baf17f42c9b2a66c9df75fc272db755abffea63e2f8f6141f3  reference-app/src/main/java/com/example/app/user/controller/api/AuthApi.java
 b9f2fdf2584c4032e84fa0cc845d4fade2a81a6f03a7a74821b166271735ac1d  reference-app/src/main/java/com/example/app/user/controller/AuthController.java
 5b29eea3687be9e419905ae9ce03b6bf5ec40e6ebd3f5907a19dce002f6335e4  reference-app/src/main/java/com/example/app/user/domain/RefreshToken.java
-cfec5a4626ca8cd86a5989aad6074358a0041e050c66eba364f2020f3c16e419  reference-app/src/main/java/com/example/app/user/service/AuthService.java
-bb158495b2d7855fb7219e69e7e64f7b3c81a513bfdfc66d3f96649b8ea224f6  reference-app/src/main/java/com/example/app/user/service/TokenService.java
+8aa327a9be77b88ae3873e45b99a93eea9ba8d60b5dff3d1fd6497961ccac0fc  reference-app/src/main/java/com/example/app/user/service/AuthService.java
+7fba467dc74a75d6fa5a7b409de2930e37417f72cfba00ac4af8c195a9766117  reference-app/src/main/java/com/example/app/user/service/TokenService.java
 a5275ece02cb5b0d1d3d4d8527d85961d2469b72cc7f270c861b381ed11986b9  reference-app/src/test/java/com/example/app/support/IntegrationTest.java
 3e28cb2231095c2b14e17bca8bc48964b71e97857261db0dc93f429277091555  reference-app/src/test/java/com/example/app/TestcontainersConfiguration.java
 d9d11a9f1604519851f2bd9dbaabb8db6ab02f32ee032fd6c20f48cca10f776c  reference-app/src/test/java/com/example/app/user/service/RefreshTokenPurgeJobIntegrationTest.java
+fd7d7db54567443c3c209ee2c63a90613d0828b61aaf34b52992599d7c154770  reference-app/src/test/java/com/example/app/user/service/SessionVersionServiceIntegrationTest.java

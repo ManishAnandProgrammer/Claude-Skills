@@ -3,6 +3,9 @@ package com.example.app.user.service;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.security.Hashes;
+// session-version:begin
+import com.example.app.common.security.SessionVersions;
+// session-version:end
 import com.example.app.config.JwtProperties;
 import com.example.app.user.domain.RefreshToken;
 import com.example.app.user.domain.RevocationReason;
@@ -48,6 +51,9 @@ class TokenService {
     private final JwtEncoder jwtEncoder;
     private final JwtProperties properties;
     private final Clock clock;
+    // session-version:begin
+    private final UserService users;
+    // session-version:end
 
     @Transactional
     TokenResponse issue(User user) {
@@ -93,6 +99,19 @@ class TokenService {
     void revoke(String rawToken) {
         repository.revokeIfLive(Hashes.sha256Hex(rawToken), RevocationReason.LOGOUT, clock.instant());
     }
+    // session-version:begin
+
+    /**
+     * Signs the account out everywhere, in one transaction: every refresh token revoked, and the session
+     * version raised, so every access token already issued is refused on its next request.
+     */
+    @Transactional
+    void endAllSessions(UUID userId) {
+        int revoked = repository.revokeAllOfUser(userId, RevocationReason.LOGOUT, clock.instant());
+        users.bumpSessionVersion(userId);
+        log.info("Signed out everywhere: userId={}, sessions={}", userId, revoked);
+    }
+    // session-version:end
 
     private RefreshToken findToken(String tokenHash) {
         return repository.findByTokenHash(tokenHash).orElseThrow(AppException.supply(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
@@ -129,6 +148,10 @@ class TokenService {
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .subject(user.getId().toString())
                 .claim(ROLES_CLAIM, List.of(user.getRole().name()))
+                // session-version:begin
+                // From the same row as the role: a token never pairs a newer number with an older role.
+                .claim(SessionVersions.CLAIM, user.getSessionVersion())
+                // session-version:end
                 .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();

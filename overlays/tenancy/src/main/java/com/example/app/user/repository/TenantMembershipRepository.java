@@ -2,6 +2,9 @@ package com.example.app.user.repository;
 
 import com.example.app.user.domain.Role;
 import com.example.app.user.domain.TenantMembership;
+// session-version:begin
+import com.example.app.user.dto.internal.MembershipSessionVersion;
+// session-version:end
 import com.example.app.user.repository.custom.CustomTenantMembershipRepository;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -50,4 +53,45 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("update TenantMembership m set m.lastUsedAt = :now where m.id = :id")
     int markUsed(UUID id, Instant now);
+    // session-version:begin
+
+    /** The membership's session version, by primary key; empty once the membership is removed. */
+    @Query("select m.sessionVersion from TenantMembership m where m.id = :id")
+    Optional<Integer> findSessionVersion(UUID id);
+
+    /**
+     * The bumps below raise session versions in the transaction of the access change that needs them. A
+     * machine-written stamp (DATA-24's exception): the number alone, neither {@code version} nor
+     * {@code updated_at}, so the version an ADMIN sends back stays current. No clear: the entity maps the
+     * column read-only, so a copy loaded earlier can't write its older number back, and the caller's
+     * entities stay attached.
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("update TenantMembership m set m.sessionVersion = m.sessionVersion + 1 where m.id = :id")
+    int bumpSessionVersion(UUID id);
+
+    /** Every membership of the user (signing out everywhere). */
+    @Modifying(flushAutomatically = true)
+    @Query("update TenantMembership m set m.sessionVersion = m.sessionVersion + 1 where m.user.id = :userId")
+    int bumpSessionVersionsOfUser(UUID userId);
+
+    /** Every membership of the tenant (it was suspended), in one statement. */
+    @Modifying(flushAutomatically = true)
+    @Query("update TenantMembership m set m.sessionVersion = m.sessionVersion + 1 where m.tenantId = :tenantId")
+    int bumpSessionVersionsOfTenant(UUID tenantId);
+
+    /** The user's memberships' session versions as stored now (after a bump: read from the database, not the context). */
+    @Query("""
+            select new com.example.app.user.dto.internal.MembershipSessionVersion(m.id, m.sessionVersion)
+              from TenantMembership m
+             where m.user.id = :userId""")
+    List<MembershipSessionVersion> findSessionVersionsOfUser(UUID userId);
+
+    /** The tenant's memberships' session versions as stored now ({@code idx_tenant_memberships_tenant_id_id}). */
+    @Query("""
+            select new com.example.app.user.dto.internal.MembershipSessionVersion(m.id, m.sessionVersion)
+              from TenantMembership m
+             where m.tenantId = :tenantId""")
+    List<MembershipSessionVersion> findSessionVersionsOfTenant(UUID tenantId);
+    // session-version:end
 }

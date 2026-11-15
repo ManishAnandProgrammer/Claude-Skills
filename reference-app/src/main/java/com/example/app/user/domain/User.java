@@ -33,6 +33,19 @@ public class User extends AuditableEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
+    // session-version:begin
+    // tenancy:begin
+    // tenancy:else
+
+    /**
+     * The number every access token of the account carries (claim {@code sv}); a token with another one is
+     * refused. Read-only here: only {@code UserRepository.bumpSessionVersion} writes it, so an entity loaded
+     * before a bump can never write its older copy back, and a new account starts at the column's default.
+     */
+    @Column(name = "session_version", insertable = false, updatable = false)
+    private int sessionVersion;
+    // tenancy:end
+    // session-version:end
 
     /** A new self-registered account. The caller hashes the password. */
     public static User register(String email, String fullName, String passwordHash) {

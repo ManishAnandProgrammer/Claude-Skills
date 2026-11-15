@@ -26,6 +26,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TenantMemberIntegrationTest extends IntegrationTest {
 
     private static final String MEMBERS = "/api/v1/tenant-members";
+    // session-version:begin
+    // An older token of a demoted or removed ADMIN: refused by the session version before the write's own
+    // check of the caller's current role (which stays, and is what refuses it without the session version).
+    private static final int OLDER_TOKEN_STATUS = 401;
+    private static final String OLDER_TOKEN_REFUSAL = "SESSION_VERSION_STALE";
+    // session-version:else
+    // private static final int OLDER_TOKEN_STATUS = 403;
+    // private static final String OLDER_TOKEN_REFUSAL = "ACCESS_DENIED";
+    // session-version:end
 
     private static String addPayload(String email, String role) {
         return """
@@ -198,7 +207,11 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A demoted ADMIN's older token is 403 ACCESS_DENIED: it can't demote, remove, promote or add, so the last ADMIN stays")
+    // session-version:begin
+    @DisplayName("A demoted ADMIN's older token is 401 SESSION_VERSION_STALE: it can't demote, remove, promote or add, so the last ADMIN stays")
+    // session-version:else
+    // @DisplayName("A demoted ADMIN's older token is 403 ACCESS_DENIED: it can't demote, remove, promote or add, so the last ADMIN stays")
+    // session-version:end
     void aDemotedAdminsTokenManagesNoMore() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
@@ -210,17 +223,17 @@ class TenantMemberIntegrationTest extends IntegrationTest {
 
         // The owner's token still says ADMIN until it expires; second is now the only ADMIN.
         putAs(owner.accessToken(), MEMBERS + "/" + second.id(), rolePayload("USER", versionOf(tenant, second.id())))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().is(OLDER_TOKEN_STATUS))
+                .andExpect(jsonPath("$.errorCode").value(OLDER_TOKEN_REFUSAL));
         deleteAs(owner.accessToken(), MEMBERS + "/" + second.id())
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().is(OLDER_TOKEN_STATUS))
+                .andExpect(jsonPath("$.errorCode").value(OLDER_TOKEN_REFUSAL));
         putAs(owner.accessToken(), MEMBERS + "/" + member.id(), rolePayload("ADMIN", versionOf(tenant, member.id())))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().is(OLDER_TOKEN_STATUS))
+                .andExpect(jsonPath("$.errorCode").value(OLDER_TOKEN_REFUSAL));
         postAs(owner.accessToken(), MEMBERS, addPayload(email, "ADMIN"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().is(OLDER_TOKEN_STATUS))
+                .andExpect(jsonPath("$.errorCode").value(OLDER_TOKEN_REFUSAL));
         assertThat(roleOf(tenant, second.id())).isEqualTo("ADMIN");
         assertThat(roleOf(tenant, member.id())).isEqualTo("USER");
         assertThat(adminsOf(tenant)).isEqualTo(1);
@@ -231,7 +244,11 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A removed ADMIN's older token can't add them back: 403 ACCESS_DENIED, still no membership")
+    // session-version:begin
+    @DisplayName("A removed ADMIN's older token can't add them back: 401 SESSION_VERSION_STALE, still no membership")
+    // session-version:else
+    // @DisplayName("A removed ADMIN's older token can't add them back: 403 ACCESS_DENIED, still no membership")
+    // session-version:end
     void aRemovedAdminCantComeBack() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
@@ -240,8 +257,8 @@ class TenantMemberIntegrationTest extends IntegrationTest {
         deleteAs(owner.accessToken(), MEMBERS + "/" + second.id()).andExpect(status().isNoContent());
 
         postAs(second.accessToken(), MEMBERS, addPayload(second.email(), "ADMIN"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().is(OLDER_TOKEN_STATUS))
+                .andExpect(jsonPath("$.errorCode").value(OLDER_TOKEN_REFUSAL));
         Integer memberships = jdbc.queryForObject("select count(*) from tenant_memberships where tenant_id = ? and user_id = ?",
                 Integer.class, tenant.id(), second.id());
         assertThat(memberships).isZero();
@@ -304,8 +321,15 @@ class TenantMemberIntegrationTest extends IntegrationTest {
                 answers.add(within(answer));
             }
             // The second to take the tenant's lock is no ADMIN any more.
-            assertThat(answers).extracting(Answer::status).containsExactlyInAnyOrder(200, 403);
-            assertRefusalsAre(answers, 403, "ACCESS_DENIED");
+            // session-version:begin
+            // Or, when its request starts after the first one committed, its token is already stale.
+            assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).hasSize(2);
+            assertThat(answers).filteredOn(answer -> answer.status() != 200).extracting(Answer::errorCode)
+                    .first().isIn("ACCESS_DENIED", "SESSION_VERSION_STALE");
+            // session-version:else
+            // assertThat(answers).extracting(Answer::status).containsExactlyInAnyOrder(200, 403);
+            // assertRefusalsAre(answers, 403, "ACCESS_DENIED");
+            // session-version:end
         }
         assertThat(adminsOf(tenant)).isEqualTo(1);
     }

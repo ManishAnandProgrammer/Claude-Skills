@@ -8,6 +8,9 @@ import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.tenant.api.TenantApproved;
 import com.example.app.tenant.api.TenantChangeSource;
 import com.example.app.tenant.api.TenantCreated;
+// session-version:begin
+import com.example.app.tenant.api.TenantDeactivated;
+// session-version:end
 import com.example.app.tenant.api.TenantProvisioned;
 import com.example.app.tenant.api.TenantStatus;
 import com.example.app.tenant.api.TenantView;
@@ -171,5 +174,11 @@ public class TenantService implements Tenants {
         TenantStatus previous = tenant.getStatus();
         tenant.changeStatus(target);
         statusChanges.save(TenantStatusChange.of(tenant, previous, source));
+        // session-version:begin
+        // In this transaction: the members' session versions are raised with the status, or not at all.
+        if (previous == TenantStatus.ACTIVE && target != TenantStatus.ACTIVE) {
+            events.publishEvent(new TenantDeactivated(tenant.getId()));
+        }
+        // session-version:end
     }
 }

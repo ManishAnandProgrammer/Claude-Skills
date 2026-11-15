@@ -17,6 +17,10 @@ import java.util.Objects;
  * @param issuer          the {@code iss} claim written and required
  * @param accessTokenTtl  access tokens aren't checked against the database, so this bounds how long
  *                        a disabled account or a changed role keeps working
+ *   <!-- session-version:begin -->
+ *                        (with the session version, an access change ends them at once; this still
+ *                        bounds a token stolen without the account changing)
+ *   <!-- session-version:end -->
  * @param refreshTokenTtl lifetime of a refresh token (rotated on every use)
  * @param rotationGrace   a refresh token presented again this soon after its rotation is a client
  *                        duplicate, not a leak: refused without revoking every session

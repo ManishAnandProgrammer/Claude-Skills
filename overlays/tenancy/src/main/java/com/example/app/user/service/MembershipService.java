@@ -8,6 +8,9 @@ import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.tenant.api.TenantCreated;
+// session-version:begin
+import com.example.app.tenant.api.TenantDeactivated;
+// session-version:end
 import com.example.app.tenant.api.TenantProvisioned;
 import com.example.app.tenant.api.TenantStatus;
 import com.example.app.tenant.api.TenantView;
@@ -18,6 +21,9 @@ import com.example.app.user.domain.Member;
 import com.example.app.user.domain.Role;
 import com.example.app.user.domain.TenantMembership;
 import com.example.app.user.domain.User;
+// session-version:begin
+import com.example.app.user.dto.internal.MembershipSessionVersion;
+// session-version:end
 import com.example.app.user.dto.request.TenantMemberAddRequest;
 import com.example.app.user.dto.request.TenantMemberFilter;
 import com.example.app.user.dto.request.TenantMemberUpdateRequest;
@@ -27,8 +33,15 @@ import com.example.app.user.mapper.MembershipMapper;
 import com.example.app.user.repository.MemberRepository;
 import com.example.app.user.repository.TenantMembershipRepository;
 import lombok.RequiredArgsConstructor;
+// session-version:begin
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
+// session-version:end
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+// session-version:begin
+import org.springframework.transaction.annotation.Propagation;
+// session-version:end
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -48,8 +61,18 @@ import java.util.stream.Collectors;
  * membership has its person in the tenant's own {@code members} table, written in the same transaction
  * (house-review TEN-17): the tenant's tables reference that row, never the platform's users. Other
  * modules ask {@link Members} whether a person belongs to the current tenant.
+ *   <!-- session-version:begin -->
+ *
+ * <p>Each membership has a session version, which its tokens carry: every change of a membership's access
+ * (role change, removal, the tenant's suspension, the member signing out everywhere) raises it in the
+ * change's transaction and publishes {@link SessionVersionsRaised}, so the member's older tokens are
+ * refused on their next request.</p>
+ *   <!-- session-version:end -->
  */
 @Service
+// session-version:begin
+@Slf4j
+// session-version:end
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class MembershipService implements Members {
@@ -61,6 +84,9 @@ public class MembershipService implements Members {
     private final MembershipMapper mapper;
     private final Paging paging;
     private final Clock clock;
+    // session-version:begin
+    private final ApplicationEventPublisher events;
+    // session-version:end
 
     /**
      * The signed-in user's tenants, most recently used first: what a tenant picker shows, and the ids
@@ -141,6 +167,9 @@ public class MembershipService implements Members {
         }
         membership.changeRole(request.role());
         repository.flush();
+        // session-version:begin
+        bumpSessionVersion(membership.getId());
+        // session-version:end
         return ObjectWrapper.withObject(mapper.toMemberResponse(membership));
     }
 
@@ -154,6 +183,11 @@ public class MembershipService implements Members {
         if (membership.getRole() == Role.ADMIN) {
             requireAnotherAdmin(membership.getTenantId());
         }
+        // session-version:begin
+        // Raised before the row goes, so Redis gets a number no token carries: a request that read the old
+        // one just before the commit can't fill it back.
+        bumpSessionVersion(membership.getId());
+        // session-version:end
         repository.delete(membership);
         members.findByUserId(userId).ifPresent(member -> member.leave(clock.instant()));
         repository.flush();
@@ -283,4 +317,46 @@ public class MembershipService implements Members {
         return repository.findByUserIdAndTenantId(user.getId(), tenantId)
                 .orElseThrow(AppException.supply(ErrorCode.MEMBERSHIP_NOT_FOUND, tenantId));
     }
+    // session-version:begin
+
+    /** The membership's session version (SessionVersionService's check, on a Redis miss); empty once removed. */
+    Optional<Integer> findSessionVersion(UUID membershipId) {
+        return repository.findSessionVersion(membershipId);
+    }
+
+    /** Signing out everywhere: every one of the user's memberships, in the caller's transaction (hence MANDATORY). */
+    @Transactional(propagation = Propagation.MANDATORY)
+    void bumpSessionVersionsOfUser(UUID userId) {
+        repository.bumpSessionVersionsOfUser(userId);
+        publish(repository.findSessionVersionsOfUser(userId));
+        log.info("Session versions raised: userId={}", userId);
+    }
+
+    /**
+     * A tenant left ACTIVE: every member's tokens there stop at once, in one statement, in the status change's
+     * own transaction (hence MANDATORY). Their refresh tokens are refused while the tenant isn't ACTIVE
+     * (TokenService), and work again once it is.
+     */
+    @EventListener
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void endTenantSessions(TenantDeactivated deactivated) {
+        int memberships = repository.bumpSessionVersionsOfTenant(deactivated.tenantId());
+        publish(repository.findSessionVersionsOfTenant(deactivated.tenantId()));
+        log.info("Session versions raised: tenantId={}, memberships={}", deactivated.tenantId(), memberships);
+    }
+
+    /** In the access change's own transaction: two transactions could commit the change without the bump. */
+    private void bumpSessionVersion(UUID membershipId) {
+        repository.bumpSessionVersion(membershipId);
+        int raised = repository.findSessionVersion(membershipId)
+                .orElseThrow(() -> new IllegalStateException("A bumped membership without its row: " + membershipId));
+        events.publishEvent(new SessionVersionsRaised(Map.of(membershipId, raised)));
+        log.info("Session version raised: membershipId={}, sv={}", membershipId, raised);
+    }
+
+    private void publish(List<MembershipSessionVersion> versions) {
+        events.publishEvent(new SessionVersionsRaised(versions.stream()
+                .collect(Collectors.toMap(MembershipSessionVersion::membershipId, MembershipSessionVersion::sessionVersion))));
+    }
+    // session-version:end
 }

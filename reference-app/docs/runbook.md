@@ -23,6 +23,15 @@ Management port only (`MANAGEMENT_PORT`, 8081; never published): `curl -s localh
 | 503 `DATABASE_CONTENTION` in logs | a write waited past `lock_timeout` (3 s): find the blocker (step 2) |
 | 503 `QUERY_TIMEOUT` in logs (ERROR with stack) | a statement ran past `statement_timeout` (25 s): that query is the suspect |
 | `http_server_requests_seconds` by `uri`; `http_server_requests_seconds_count{status="503"}` by `uri` | which endpoint is slow, and where the 503s are (the log line's `errorCode` says why) |
+<!-- session-version:begin -->
+
+With the session version: `session_version_cache_fallbacks_total` rising, with the log line `Redis
+unavailable: session versions are read from the database`, means Redis is down or slow (or the circuit
+breaker `session-version-cache` is open): every signed-in request reads its version from the database
+by primary key until it recovers, one extra read per request. `session_version_publish_failures_total`
+above 0: a raised version didn't reach Redis, and the older one is accepted for up to
+`app.session-version.cache-ttl` (1 minute).
+<!-- session-version:end -->
 
 ## 2. What is the database doing?
 
@@ -158,6 +167,13 @@ operator with the database owner's credentials runs, once per account,
 down who asked and why. The role reaches the account's next access token: they sign in again (a token
 already issued keeps its old role until it expires, `app.jwt.access-token-ttl`). Taking it away is the
 same statement with `'USER'`, under the same delay.
+<!-- session-version:begin -->
+With the session version, raise it in the same statement and drop its copy in Redis, so the change
+reaches every device at once instead: `UPDATE users SET role = 'USER', session_version = session_version
++ 1 WHERE email = '<their email>' RETURNING id;`, then `redis-cli DEL sv:<that id>`. Their tokens are
+refused from the next request (401 `SESSION_VERSION_STALE`) and their app refreshes into the new role.
+Without the `DEL`, the old number stays accepted for up to `app.session-version.cache-ttl` (1 minute).
+<!-- session-version:end -->
 <!-- admin:end -->
 <!-- sign-in:end -->
 <!-- tenancy:end -->
