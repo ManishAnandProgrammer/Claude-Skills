@@ -807,9 +807,11 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A dropdown batch over the configured maximum is 400 naming size")
-    void dropdownSizeOverTheMaximumIs400() throws Exception {
-        getAs(newUser().accessToken(), DROPDOWN + "?size=101")
+    @DisplayName("A dropdown batch of the configured maximum is accepted, one more is 400 naming size")
+    void dropdownSizeFollowsTheConfiguredMaximum() throws Exception {
+        String token = newUser().accessToken();
+        getAs(token, DROPDOWN + "?size=100").andExpect(status().isOk());
+        getAs(token, DROPDOWN + "?size=101")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.failed[0]").value("size: must be at most 100"));

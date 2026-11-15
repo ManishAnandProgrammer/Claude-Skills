@@ -35,8 +35,24 @@ tenant table's changeset enables and forces RLS with its policy.
 
 ## 2. Platform staff
 
-Staff are rows, not an endpoint: insert one with a bcrypt hash of its password (strength 12) into
-`platform_users` (`role` `STAFF`). They sign in at `POST /api/v1/platform/auth/login`.
+Staff are rows, not an endpoint. As the owner role (`DB_OWNER_USER`), insert one with a bcrypt hash of
+its password (strength 12). The hash needs nothing but Docker (Apache's `htpasswd` writes `$2y$`, which
+the application's encoder reads):
+
+```bash
+set -a; . ./.env; set +a
+read -rs -p 'Password: ' password; echo
+hash="$(docker run --rm httpd:2.4-alpine htpasswd -nbBC 12 '' "$password" | tr -d ':\n')"
+docker compose exec -T postgres psql -U "$DB_OWNER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 \
+  -v email='staff@example.com' -v name='Sam Staff' -v hash="$hash" <<'SQL'
+insert into platform_users (id, email, full_name, password_hash, role, created_at, updated_at, version)
+values (uuidv7(), lower(trim(:'email')), :'name', :'hash', 'STAFF', now(), now(), 0);
+SQL
+```
+
+`INSERT 0 1` is the answer (`psql` variables work from standard input, not from `-c`). Elsewhere than
+the local stack, run the same `insert` with the operator's own `psql` connection as the owner role. They
+sign in at `POST /api/v1/platform/auth/login`.
 
 ## 3. Tenants
 

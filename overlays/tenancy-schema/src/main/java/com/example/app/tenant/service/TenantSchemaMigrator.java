@@ -15,6 +15,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.UUID;
 
 /**
@@ -122,7 +123,16 @@ class TenantSchemaMigrator {
         return ownerJdbc.queryForObject("select quote_ident(?)", String.class, role);
     }
 
+    /**
+     * Waits as long as the holder takes. The owner's connections carry Liquibase's {@code lock_timeout},
+     * which an advisory lock's wait honours too: without lifting it, an instance queued behind other
+     * instances' template runs for longer than that fails its startup. Only this connection: the owner's
+     * data source is unpooled, so the setting ends with it, and Liquibase runs on connections of its own.
+     */
     private static void waitForLock(Connection connection, String lock) throws SQLException {
+        try (Statement noTimeout = connection.createStatement()) {
+            noTimeout.execute("set lock_timeout = 0");
+        }
         try (PreparedStatement statement = connection.prepareStatement("select pg_advisory_lock(hashtextextended(?, 0))")) {
             statement.setString(1, lock);
             statement.execute();

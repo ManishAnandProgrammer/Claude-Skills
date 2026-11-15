@@ -442,9 +442,18 @@ public abstract class IntegrationTest {
 
     /** A new account that is a plain member of {@code tenant}, signed in there. */
     protected TestUser newUserIn(TestTenant tenant) throws Exception {
+        return newUserIn(tenant, "USER");
+    }
+
+    /**
+     * A new account with {@code role} in {@code tenant} only, signed in there: the stranger of an
+     * isolation test holds the role that writes the record (an ADMIN for an {@code @AdminOnly} root), so
+     * its 404 comes from the tenant scope, not from the role check.
+     */
+    protected TestUser newUserIn(TestTenant tenant, String role) throws Exception {
         String email = uniqueEmail("user");
         String userId = read(rawSignup(email, PASSWORD).andExpect(status().isCreated()), "$.response.id");
-        addMember(tenant, UUID.fromString(userId), "USER");
+        addMember(tenant, UUID.fromString(userId), role);
         return signIn(new TestUser(UUID.fromString(userId), email, null, null));
     }
 

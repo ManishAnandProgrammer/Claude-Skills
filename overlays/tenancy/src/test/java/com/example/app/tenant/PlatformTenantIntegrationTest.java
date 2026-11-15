@@ -91,6 +91,10 @@ class PlatformTenantIntegrationTest extends IntegrationTest {
         changeStatus(staff, tenantId, "CLOSED", version(staff, tenantId))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_STATUS_CHANGE_INVALID"));
+        // A target no state may move to is the same refusal, not a 400 (error-contract ERR-05).
+        changeStatus(staff, tenantId, "PENDING", version(staff, tenantId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("TENANT_STATUS_CHANGE_INVALID"));
         changeStatus(staff, tenantId, "SUSPENDED", version(staff, tenantId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.status").value("SUSPENDED"));

@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
@@ -170,7 +171,7 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Each day up to the configured latest date is accepted on either end; a day later is 400 with the limit, naming that field")
+    @DisplayName("Each day up to the configured latest date is accepted on both ends; a day later is 400 with the limit, naming each field past it")
     void datesFollowTheConfiguredLatestDate() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user, "Far ahead");
@@ -180,14 +181,17 @@ class PlanIntegrationTest extends IntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.failed", contains("endsOn: must be on or before 2999-12-31")));
+        // startsOn can't be late alone: an endsOn before it would be refused as an inverted range.
         create(user, todoId, "3000-01-01", "3000-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem("startsOn: must be on or before 2999-12-31")));
+                .andExpect(jsonPath("$.failed", containsInAnyOrder(
+                        "startsOn: must be on or before 2999-12-31", "endsOn: must be on or before 2999-12-31")));
+        assertThat(plansOf(user)).isOne();
     }
 
     @Test
-    @DisplayName("Each day from the configured earliest date is accepted; a day earlier is 400 with the limit, never a database error")
+    @DisplayName("Each day from the configured earliest date is accepted on both ends; a day earlier is 400 with the limit, naming each field before it, never a database error")
     void datesFollowTheConfiguredEarliestDate() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user, "Long ago");
@@ -197,10 +201,23 @@ class PlanIntegrationTest extends IntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.failed", contains("startsOn: must be on or after 1900-01-01")));
-        // A year PostgreSQL's date can't hold: refused here, not at the insert.
+        // endsOn can't be early alone: a startsOn after it would be refused as an inverted range.
+        create(user, todoId, "1899-12-31", "1899-12-31")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", containsInAnyOrder(
+                        "startsOn: must be on or after 1900-01-01", "endsOn: must be on or after 1900-01-01")));
+        // A year PostgreSQL's date can't hold, in each field: refused here, not at the insert.
         create(user, todoId, "-300000-01-01", "2026-01-01")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("startsOn: must be on or after 1900-01-01")));
+        create(user, todoId, "-300000-01-01", "-300000-01-01")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", containsInAnyOrder(
+                        "startsOn: must be on or after 1900-01-01", "endsOn: must be on or after 1900-01-01")));
+        assertThat(plansOf(user)).isOne();
     }
 
     @Test

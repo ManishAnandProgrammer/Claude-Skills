@@ -94,7 +94,12 @@ class TokenService {
         UUID tenantId = token.getTenantId();
         // Before the token is spent: no membership there any more, or a tenant no longer active, is a
         // refusal that keeps it.
-        memberships.forTenant(user, tenantId);
+        TenantMembership membership = memberships.forTenant(user, tenantId);
+        // Issued for a membership that was removed since: adding the member again starts new sessions,
+        // it doesn't revive the old ones.
+        if (token.getCreatedAt().isBefore(membership.getCreatedAt())) {
+            throw AppException.of(ErrorCode.AUTH_INVALID_REFRESH_TOKEN);
+        }
         tenants.requireActive(tenantId);
         revokeForRotation(tokenHash, now);
         // Read again: the revoking update cleared the persistence context.
@@ -202,7 +207,7 @@ class TokenService {
     private TokenResponse issueTokens(User user, TenantMembership membership) {
         tenants.requireActive(membership.getTenantId());
         Instant now = clock.instant();
-        membership.markUsed(now);
+        memberships.markUsed(membership, now);
         String refreshToken = newRefreshToken();
         repository.save(RefreshToken.issue(user, membership.getTenantId(), Hashes.sha256Hex(refreshToken),
                 now.plus(properties.refreshTokenTtl())));

@@ -18,7 +18,10 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID>, CustomTen
     @Query("select t.id from Tenant t where t.status = :status order by t.id")
     List<UUID> findIdsByStatus(TenantStatus status);
 
-    /** Locked for a rule over the tenant's members: it keeps at least one ADMIN (DATA-29). */
+    /**
+     * Locked for two rules over the tenant's members that no constraint holds (DATA-29): only a current
+     * ADMIN changes them, and the tenant keeps at least one ADMIN.
+     */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Tenant> findForUpdateById(UUID id);
 }

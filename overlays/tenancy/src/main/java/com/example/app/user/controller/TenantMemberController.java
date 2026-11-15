@@ -35,7 +35,7 @@ class TenantMemberController implements TenantMemberApi {
     @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
     public ObjectWrapper<TenantMemberResponse> add(@RequestBody @Valid TenantMemberAddRequest request) {
-        return service.addMember(request);
+        return service.addMember(currentUser.id(), request);
     }
 
     @Override

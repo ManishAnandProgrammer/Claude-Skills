@@ -46,6 +46,12 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
 
     private static final String PURPOSE = "TODO_ATTACHMENT";
     private static final long MAX_SIZE = 10_485_760;
+    /** {@code media.upload-key} in limits.yml: longer with tenancy, whose keys lead with the tenant id. */
+    // tenancy:begin
+    // private static final int UPLOAD_KEY_LIMIT = 140;
+    // tenancy:else
+    private static final int UPLOAD_KEY_LIMIT = 100;
+    // tenancy:end
     private static final String TODOS = "/api/v1/todos";
     private static final byte[] PDF = "%PDF-1.7 a small test file".getBytes(StandardCharsets.US_ASCII);
 
@@ -502,7 +508,8 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
      * The guard of the replacement race above: todos has no unique column, so here two replacements
      * without the lock would still end in one 200 and 409s; an owner whose update changes a unique column
      * would deadlock instead (media.md). So the order is proven directly: held at the todo, the update
-     * has touched nothing else yet.
+     * has touched nothing else yet. An owner with a unique column also has its racers each change that
+     * column to their own value (media.md, Tests): then the race itself goes red without the lock.
      */
     @Test
     @DisplayName("An update of the files locks the todo before any other table: its list, its files, its attachment rows")
@@ -569,7 +576,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         TestUser user = newUser();
         String listId = createList(user);
         String todoId = createTodo(user, listId, List.of());
-        String longest = PURPOSE + "/" + "k".repeat(100 - PURPOSE.length() - 1);
+        String longest = PURPOSE + "/" + "k".repeat(UPLOAD_KEY_LIMIT - PURPOSE.length() - 1);
         String tooLong = longest + "k";
 
         Answer created = answerOf(create(user, listId, List.of(longest)));
@@ -580,11 +587,11 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         create(user, listId, List.of(tooLong))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(allOf(startsWith("attachmentKeys"), endsWith(": must be at most 100 characters")))));
+                .andExpect(jsonPath("$.failed", hasItem(allOf(startsWith("attachmentKeys"), endsWith(": must be at most " + UPLOAD_KEY_LIMIT + " characters")))));
         update(user, listId, todoId, 0, "With files", List.of(tooLong), List.of())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(allOf(startsWith("addAttachmentKeys"), endsWith(": must be at most 100 characters")))));
+                .andExpect(jsonPath("$.failed", hasItem(allOf(startsWith("addAttachmentKeys"), endsWith(": must be at most " + UPLOAD_KEY_LIMIT + " characters")))));
     }
 
     @Test
@@ -654,9 +661,11 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/todos'].post.responses['409'].description", containsString("UPLOAD_NOT_AVAILABLE")))
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].put.responses['400'].description", containsString("UPLOAD_FILE_COUNT_OUT_OF_RANGE")))
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].put.responses['404'].description", containsString("TODO_ATTACHMENT_NOT_FOUND")))
+                .andExpect(jsonPath("$.paths['/api/v1/todos'].post.responses['404'].description", containsString("UPLOAD_POLICY_NOT_FOUND")))
+                .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].put.responses['404'].description", containsString("UPLOAD_POLICY_NOT_FOUND")))
                 .andExpect(jsonPath("$.components.schemas.TodoUpdateRequest.properties.removeAttachmentIds").exists())
-                .andExpect(jsonPath("$.components.schemas.TodoCreateRequest.properties.attachmentKeys.items.maxLength").value(100))
-                .andExpect(jsonPath("$.components.schemas.TodoUpdateRequest.properties.addAttachmentKeys.items.maxLength").value(100))
+                .andExpect(jsonPath("$.components.schemas.TodoCreateRequest.properties.attachmentKeys.items.maxLength").value(UPLOAD_KEY_LIMIT))
+                .andExpect(jsonPath("$.components.schemas.TodoUpdateRequest.properties.addAttachmentKeys.items.maxLength").value(UPLOAD_KEY_LIMIT))
                 .andExpect(jsonPath("$.components.schemas.TodoCreateRequest.properties.attachmentKeys.maxItems").value(50))
                 .andExpect(jsonPath("$.components.schemas.TodoResponse.properties.attachments").exists());
     }

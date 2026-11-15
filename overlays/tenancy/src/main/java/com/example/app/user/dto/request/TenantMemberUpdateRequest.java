@@ -10,7 +10,9 @@ public record TenantMemberUpdateRequest(
         @NotNull
         Role role,
 
-        @Schema(description = "The version you read; a stale one is 409 OPTIMISTIC_LOCK_CONFLICT", example = "0")
+        @Schema(description = """
+                The version the add or the last role change answered; a stale one is 409 \
+                OPTIMISTIC_LOCK_CONFLICT""", example = "0")
         @NotNull
         Long version) {
 }

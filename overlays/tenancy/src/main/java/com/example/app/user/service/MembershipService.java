@@ -23,6 +23,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -60,13 +61,14 @@ public class MembershipService {
     /**
      * A tenant ADMIN adds an existing account to the caller's tenant: 404
      * {@code TENANT_MEMBER_ACCOUNT_NOT_FOUND} without one, 409 {@code TENANT_MEMBER_EXISTS} (the unique
-     * pair) when it is already a member. Adding never removes an ADMIN, so it takes no lock.
+     * pair) when it is already a member.
      */
     @Transactional
-    public ObjectWrapper<TenantMemberResponse> addMember(TenantMemberAddRequest request) {
+    public ObjectWrapper<TenantMemberResponse> addMember(UUID callerId, TenantMemberAddRequest request) {
+        UUID tenantId = lockAsCurrentAdmin(callerId);
         User user = users.findByEmail(request.email())
                 .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_ACCOUNT_NOT_FOUND));
-        TenantMembership membership = repository.saveAndFlush(TenantMembership.of(user, TenantContext.current(), request.role()));
+        TenantMembership membership = repository.saveAndFlush(TenantMembership.of(user, tenantId, request.role()));
         return ObjectWrapper.withObject(mapper.toMemberResponse(membership));
     }
 
@@ -96,21 +98,40 @@ public class MembershipService {
 
     /**
      * 409 {@code TENANT_MEMBER_OWN_CHANGE} for the caller's own membership, 404
-     * {@code TENANT_MEMBER_NOT_FOUND} for a user who isn't a member here. The tenant is locked first:
-     * two ADMINs demoting each other at once (one with a token that predates their own demotion) would
-     * otherwise each count the other and leave none.
+     * {@code TENANT_MEMBER_NOT_FOUND} for a user who isn't a member here.
      */
     private TenantMembership otherMemberUnderTenantLock(UUID callerId, UUID userId) {
         if (userId.equals(callerId)) {
             throw AppException.of(ErrorCode.TENANT_MEMBER_OWN_CHANGE);
         }
-        UUID tenantId = TenantContext.current();
-        tenants.lockForMemberChange(tenantId);
+        UUID tenantId = lockAsCurrentAdmin(callerId);
         return repository.findByUserIdAndTenantId(userId, tenantId)
                 .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_NOT_FOUND, userId));
     }
 
-    /** 409 {@code TENANT_MEMBER_LAST_ADMIN} unless the tenant has an ADMIN besides the one changing. */
+    /**
+     * Locks the caller's tenant, then 403 {@code ACCESS_DENIED} unless the caller is an ADMIN there now.
+     * The token's role is up to one lifetime old: a removed or demoted ADMIN could otherwise add
+     * themselves back, or promote an account of theirs, and undo the change for good. Read under
+     * the lock, so of two ADMINs demoting each other at once the second finds itself demoted.
+     */
+    private UUID lockAsCurrentAdmin(UUID callerId) {
+        UUID tenantId = TenantContext.current();
+        tenants.lockForMemberChange(tenantId);
+        boolean admin = repository.findByUserIdAndTenantId(callerId, tenantId)
+                .filter(membership -> membership.getRole() == Role.ADMIN)
+                .isPresent();
+        if (!admin) {
+            throw AppException.of(ErrorCode.ACCESS_DENIED);
+        }
+        return tenantId;
+    }
+
+    /**
+     * 409 {@code TENANT_MEMBER_LAST_ADMIN} unless the tenant has an ADMIN besides the one changing. The
+     * caller is a current ADMIN and never changes their own membership, so the API can't reach it
+     * today; it stays as the rule's own guard for any later path (staff, an invitation flow).
+     */
     private void requireAnotherAdmin(UUID tenantId) {
         if (repository.countByTenantIdAndRole(tenantId, Role.ADMIN) < 2) {
             throw AppException.of(ErrorCode.TENANT_MEMBER_LAST_ADMIN);
@@ -153,7 +174,13 @@ public class MembershipService {
                 .orElse(memberships.getFirst());
     }
 
-    /** The member staff act as: the given user, else the tenant's oldest ADMIN. 404 {@code MEMBERSHIP_NOT_FOUND}. */
+    /** A token issue for the membership: login's "most recently used" order. The version stays. */
+    @Transactional
+    void markUsed(TenantMembership membership, Instant now) {
+        repository.markUsed(membership.getId(), now);
+    }
+
+    /** The member staff act as: the given user, else the ADMIN with the oldest membership. 404 {@code MEMBERSHIP_NOT_FOUND}. */
     @Transactional(readOnly = true, noRollbackFor = AppException.class)
     TenantMembership forImpersonation(UUID tenantId, UUID userId) {
         Optional<TenantMembership> membership = Objects.isNull(userId)

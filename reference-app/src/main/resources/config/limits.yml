@@ -34,7 +34,14 @@ app:
       media.file-name: 255
       media.content-type: 100
       # An uploadKey a record attaches: <PURPOSE>/<uuid>, so a purpose name of up to 63 characters.
+      # tenancy:begin
+      # # With tenancy the key leads with the tenant: <tenantId>/<PURPOSE>/<uuid>, 74 characters beside the
+      # # purpose, so 140 keeps a purpose name of up to 66 (100 would cap it at 26, and a longer purpose's
+      # # keys could never be attached).
+      # media.upload-key: 140
+      # tenancy:else
       media.upload-key: 100
+      # tenancy:end
       # media:end
       # example:begin
       todo-list.name: 100

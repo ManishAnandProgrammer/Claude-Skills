@@ -13,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Another tenant's records don't exist for a caller: GET, PUT and DELETE answer 404 as for a missing
  * id, lists never show them, and nothing of them changes. crud-gen generates this class per entity.
+ * Todos are written by any member, so the stranger is a plain USER; for a root only ADMINs write, the
+ * stranger is {@code newUserIn(newTenant(), "ADMIN")}, or the 404s would be the role check's 403.
  */
 @WithoutTestTenant
 class TodoTenantIsolationIntegrationTest extends IntegrationTest {

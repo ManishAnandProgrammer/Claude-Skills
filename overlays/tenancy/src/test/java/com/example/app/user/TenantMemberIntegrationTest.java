@@ -38,17 +38,9 @@ class TenantMemberIntegrationTest extends IntegrationTest {
                 """.formatted(role, version);
     }
 
-    /** A new account with {@code role} in {@code tenant} only, signed in there. */
-    private TestUser memberIn(TestTenant tenant, String role) throws Exception {
-        TestUser member = newUserIn(tenant);
-        assertThat(sql("update tenant_memberships set role = ? where tenant_id = ? and user_id = ?",
-                role, tenant.id(), member.id())).isEqualTo(1);
-        return signIn(member);
-    }
-
     /** A new account that is the tenant's only ADMIN (its owner is made a USER). */
     private TestUser soleAdminOf(TestTenant tenant) throws Exception {
-        TestUser admin = memberIn(tenant, "ADMIN");
+        TestUser admin = newUserIn(tenant, "ADMIN");
         sql("update tenant_memberships set role = 'USER' where tenant_id = ? and user_id <> ?", tenant.id(), admin.id());
         return admin;
     }
@@ -58,7 +50,6 @@ class TenantMemberIntegrationTest extends IntegrationTest {
                 String.class, tenant.id(), userId);
     }
 
-    /** Signing in moves it too (the membership's last use), so tests read it instead of assuming 0. */
     private long versionOf(TestTenant tenant, UUID userId) {
         return jdbc.queryForObject("select version from tenant_memberships where tenant_id = ? and user_id = ?",
                 Long.class, tenant.id(), userId);
@@ -95,7 +86,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     void addRefusesUnknownAccountsAndMembers() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
-        TestUser member = memberIn(tenant, "USER");
+        TestUser member = newUserIn(tenant, "USER");
 
         postAs(owner.accessToken(), MEMBERS, addPayload(uniqueEmail("nobody"), "USER"))
                 .andExpect(status().isNotFound())
@@ -113,7 +104,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     void adminChangesARole() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
-        TestUser member = memberIn(tenant, "USER");
+        TestUser member = newUserIn(tenant, "USER");
 
         long readVersion = versionOf(tenant, member.id());
 
@@ -132,7 +123,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     void adminRemovesAMember() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
-        TestUser member = memberIn(tenant, "USER");
+        TestUser member = newUserIn(tenant, "USER");
 
         deleteAs(owner.accessToken(), MEMBERS + "/" + member.id()).andExpect(status().isNoContent());
 
@@ -147,30 +138,106 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The last ADMIN can't be demoted or removed, even by an ADMIN whose token predates their own demotion: 409 TENANT_MEMBER_LAST_ADMIN")
-    void theLastAdminStays() throws Exception {
+    @DisplayName("A removed member added again starts afresh: the refresh token from before the removal is 401 AUTH_INVALID_REFRESH_TOKEN")
+    void aReAddedMembersOldSessionStaysEnded() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
-        TestUser second = memberIn(tenant, "ADMIN");
+        TestUser member = newUserIn(tenant, "USER");
+
+        deleteAs(owner.accessToken(), MEMBERS + "/" + member.id()).andExpect(status().isNoContent());
+        postAs(owner.accessToken(), MEMBERS, addPayload(member.email(), "USER")).andExpect(status().isCreated());
+
+        postAs(null, "/api/v1/auth/refresh-token", """
+                {"refreshToken": "%s"}
+                """.formatted(member.refreshToken()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));
+        login(member.email(), PASSWORD).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("A demoted ADMIN's older token is 403 ACCESS_DENIED: it can't demote, remove, promote or add, so the last ADMIN stays")
+    void aDemotedAdminsTokenManagesNoMore() throws Exception {
+        TestTenant tenant = newTenant();
+        TestUser owner = soleAdminOf(tenant);
+        TestUser second = newUserIn(tenant, "ADMIN");
+        TestUser member = newUserIn(tenant, "USER");
+        String email = uniqueEmail("sock-puppet");
+        rawSignup(email, PASSWORD).andExpect(status().isCreated());
         putAs(second.accessToken(), MEMBERS + "/" + owner.id(), rolePayload("USER", versionOf(tenant, owner.id()))).andExpect(status().isOk());
 
         // The owner's token still says ADMIN until it expires; second is now the only ADMIN.
         putAs(owner.accessToken(), MEMBERS + "/" + second.id(), rolePayload("USER", versionOf(tenant, second.id())))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_LAST_ADMIN"));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
         deleteAs(owner.accessToken(), MEMBERS + "/" + second.id())
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_LAST_ADMIN"));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+        putAs(owner.accessToken(), MEMBERS + "/" + member.id(), rolePayload("ADMIN", versionOf(tenant, member.id())))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+        postAs(owner.accessToken(), MEMBERS, addPayload(email, "ADMIN"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
         assertThat(roleOf(tenant, second.id())).isEqualTo("ADMIN");
+        assertThat(roleOf(tenant, member.id())).isEqualTo("USER");
         assertThat(adminsOf(tenant)).isEqualTo(1);
+        Integer added = jdbc.queryForObject("""
+                select count(*) from tenant_memberships m join users u on u.id = m.user_id where u.email = ?
+                """, Integer.class, email);
+        assertThat(added).isZero();
     }
 
     @Test
-    @DisplayName("Two ADMINs demoting each other at once leave exactly one ADMIN: one 200, the other 409 TENANT_MEMBER_LAST_ADMIN")
+    @DisplayName("A removed ADMIN's older token can't add them back: 403 ACCESS_DENIED, still no membership")
+    void aRemovedAdminCantComeBack() throws Exception {
+        TestTenant tenant = newTenant();
+        TestUser owner = soleAdminOf(tenant);
+        TestUser second = newUserIn(tenant, "ADMIN");
+
+        deleteAs(owner.accessToken(), MEMBERS + "/" + second.id()).andExpect(status().isNoContent());
+
+        postAs(second.accessToken(), MEMBERS, addPayload(second.email(), "ADMIN"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+        Integer memberships = jdbc.queryForObject("select count(*) from tenant_memberships where tenant_id = ? and user_id = ?",
+                Integer.class, tenant.id(), second.id());
+        assertThat(memberships).isZero();
+    }
+
+    @Test
+    @DisplayName("A member's sign-ins and refreshes leave the membership's version alone: the version the add answered still changes the role")
+    void tokenIssuesKeepTheVersion() throws Exception {
+        TestTenant tenant = newTenant();
+        TestUser owner = soleAdminOf(tenant);
+        String email = uniqueEmail("colleague");
+        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        ResultActions added = postAs(owner.accessToken(), MEMBERS, addPayload(email, "USER")).andExpect(status().isCreated());
+        UUID userId = UUID.fromString(read(added, "$.response.userId"));
+        Integer addedVersion = read(added, "$.response.version");
+
+        String refreshToken = read(login(email, PASSWORD).andExpect(status().isOk()), "$.response.refreshToken");
+        postAs(null, "/api/v1/auth/refresh-token", """
+                {"refreshToken": "%s"}
+                """.formatted(refreshToken)).andExpect(status().isOk());
+        login(email, PASSWORD).andExpect(status().isOk());
+
+        assertThat(versionOf(tenant, userId)).isEqualTo(addedVersion.longValue());
+        Integer stamped = jdbc.queryForObject("""
+                select count(*) from tenant_memberships where tenant_id = ? and user_id = ? and last_used_at is not null
+                """, Integer.class, tenant.id(), userId);
+        assertThat(stamped).isOne();
+        putAs(owner.accessToken(), MEMBERS + "/" + userId, rolePayload("ADMIN", addedVersion))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.version").value(addedVersion + 1));
+    }
+
+    @Test
+    @DisplayName("Two ADMINs demoting each other at once leave exactly one ADMIN: one 200, the other 403 ACCESS_DENIED")
     void concurrentDemotionsKeepAnAdmin() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
-        TestUser second = memberIn(tenant, "ADMIN");
+        TestUser second = newUserIn(tenant, "ADMIN");
         String demoteSecond = rolePayload("USER", versionOf(tenant, second.id()));
         String demoteOwner = rolePayload("USER", versionOf(tenant, owner.id()));
         List<Callable<ResultActions>> demotions = List.of(
@@ -194,8 +261,9 @@ class TenantMemberIntegrationTest extends IntegrationTest {
             for (Future<Answer> answer : pending) {
                 answers.add(within(answer));
             }
-            assertThat(answers).extracting(Answer::status).containsExactlyInAnyOrder(200, 409);
-            assertRefusalsAre(answers, 409, "TENANT_MEMBER_LAST_ADMIN");
+            // The second to take the tenant's lock is no ADMIN any more.
+            assertThat(answers).extracting(Answer::status).containsExactlyInAnyOrder(200, 403);
+            assertRefusalsAre(answers, 403, "ACCESS_DENIED");
         }
         assertThat(adminsOf(tenant)).isEqualTo(1);
     }
@@ -205,7 +273,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     void nobodyChangesTheirOwnMembership() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
-        memberIn(tenant, "ADMIN");
+        newUserIn(tenant, "ADMIN");
 
         putAs(owner.accessToken(), MEMBERS + "/" + owner.id(), rolePayload("USER", versionOf(tenant, owner.id())))
                 .andExpect(status().isConflict())
@@ -222,7 +290,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
         TestTenant mine = newTenant();
         TestTenant theirs = newTenant();
         TestUser owner = soleAdminOf(mine);
-        TestUser stranger = memberIn(theirs, "USER");
+        TestUser stranger = newUserIn(theirs, "USER");
 
         putAs(owner.accessToken(), MEMBERS + "/" + stranger.id(), rolePayload("ADMIN", versionOf(theirs, stranger.id())))
                 .andExpect(status().isNotFound())
@@ -241,7 +309,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     void onlyAdminsManageMembers() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
-        TestUser member = memberIn(tenant, "USER");
+        TestUser member = newUserIn(tenant, "USER");
         String email = uniqueEmail("candidate");
         rawSignup(email, PASSWORD).andExpect(status().isCreated());
 

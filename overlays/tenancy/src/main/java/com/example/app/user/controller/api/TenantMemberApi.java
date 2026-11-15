@@ -16,8 +16,10 @@ import java.util.UUID;
 
 @Tag(name = "Tenant members", description = """
         Who belongs to the caller's tenant, for its ADMINs. A change takes effect at the member's next \
-        login, refresh or switch: within one access-token lifetime (15 minutes). Every tenant keeps at \
-        least one ADMIN, and nobody changes or removes their own membership.""")
+        login, refresh or switch: within one access-token lifetime (15 minutes). Managing members is the \
+        exception: the caller must be an ADMIN at the moment of the call, so a removed or demoted ADMIN's \
+        older token is refused here at once. Every tenant keeps at least one ADMIN, and nobody changes or \
+        removes their own membership.""")
 public interface TenantMemberApi {
 
     @Operation(summary = "Add an existing account to this tenant", description = """
@@ -28,7 +30,7 @@ public interface TenantMemberApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an ADMIN of this tenant)",
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an ADMIN of this tenant now, whatever the token says)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TENANT_MEMBER_ACCOUNT_NOT_FOUND (no account with that email)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -44,13 +46,14 @@ public interface TenantMemberApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an ADMIN of this tenant)",
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an ADMIN of this tenant now, whatever the token says)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TENANT_MEMBER_NOT_FOUND (not a member of this tenant)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = """
             TENANT_MEMBER_LAST_ADMIN (it would leave no ADMIN), TENANT_MEMBER_OWN_CHANGE (your own \
-            membership), OPTIMISTIC_LOCK_CONFLICT (a stale version)""",
+            membership), OPTIMISTIC_LOCK_CONFLICT (a stale version: the one the add or the last change \
+            answered is current, sign-ins don't move it)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -59,13 +62,14 @@ public interface TenantMemberApi {
 
     @Operation(summary = "Remove a member from this tenant", description = """
             The account stays; it just no longer belongs here. Its refresh tokens for this tenant stop \
-            working at once, its access token within its lifetime.""")
+            working at once, for good (adding the member again doesn't revive them), its access token \
+            within its lifetime.""")
     @ApiResponse(responseCode = "204", description = "Removed")
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (a malformed id)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an ADMIN of this tenant)",
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an ADMIN of this tenant now, whatever the token says)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TENANT_MEMBER_NOT_FOUND (not a member of this tenant)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

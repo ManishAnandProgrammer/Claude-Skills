@@ -34,13 +34,30 @@ class TodoIndexIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    /** The id of a later batch's cursor; any value gives the plan its shape. */
-    private static final UUID SEEK_POSITION = UUID.fromString("01900000-0000-7000-8000-000000000000");
+    // The select lists of the repositories' projections: "select id" alone could be answered from an
+    // index only, a cheaper plan than the real query gets.
+    private static final String TODO_SUMMARY = """
+            select id, todo_list_id, title, status, priority, due_date, completed_at,
+                   created_at, updated_at, created_by, updated_by, version
+              from todos""";
+    private static final String TODO_LIST_ROW = """
+            select id, name, owner_id, created_at, updated_at, created_by, updated_by, version
+              from todo_lists""";
+    private static final String TAG_ROW = """
+            select id, name, color, active, owner_id, created_at, updated_at, created_by, updated_by, version
+              from tags""";
+    private static final String DROPDOWN_ITEM = "select id, name from todo_lists";
 
     private UUID ownerId;
     private UUID listId;
     private UUID tagId;
     private List<UUID> taggedTodos;
+    /**
+     * A later batch's cursor: a seeded todo's id (the owner's highest). A constant outside the seeded ids
+     * (older than every UUIDv7 id a project seeds) leaves no row past the seek, and the planner walks the
+     * primary key instead.
+     */
+    private UUID seekPosition;
 
     @BeforeAll
     void seedOneOwnerWithManyTodos() throws Exception {
@@ -59,6 +76,7 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                 where list.owner_id = ?
                 """, ownerId);
         listId = jdbc.queryForObject("select id from todo_lists where owner_id = ? limit 1", UUID.class, ownerId);
+        seekPosition = jdbc.queryForObject("select id from todos where owner_id = ? order by id desc limit 1", UUID.class, ownerId);
         // Other owners' lists, as in production: without them the owner holds most of the table, and
         // walking the primary key backwards with a filter can look as cheap as the owner's index.
         sql("""
@@ -85,50 +103,50 @@ class TodoIndexIntegrationTest extends IntegrationTest {
 
     static Stream<Arguments> scopedOrders() {
         return Stream.of(
-                Arguments.of("todos, DUE_DATE", "todos where owner_id = :owner order by due_sort, id",
+                Arguments.of("todos, DUE_DATE", TODO_SUMMARY + " where owner_id = :owner order by due_sort, id",
                         List.of("owner_id"),
                         "idx_todos_owner_id_due_sort_id"),
-                Arguments.of("todos, NEWEST", "todos where owner_id = :owner order by id desc",
+                Arguments.of("todos, NEWEST", TODO_SUMMARY + " where owner_id = :owner order by id desc",
                         List.of("owner_id"),
                         "idx_todos_owner_id_id"),
                 // A later batch adds the cursor's seek (Seek.after, TodoRepositoryImpl.seekAfter): the same
                 // index gives the order, and the seek's leading bound starts the scan at the cursor.
-                Arguments.of("todos, DUE_DATE, a later batch", """
-                        todos where owner_id = :owner
+                Arguments.of("todos, DUE_DATE, a later batch", TODO_SUMMARY + """
+                         where owner_id = :owner
                           and due_sort >= :due and (due_sort > :due or (due_sort = :due and id > :after))
                         order by due_sort, id""",
                         List.of("owner_id", "due_sort"),
                         "idx_todos_owner_id_due_sort_id"),
-                Arguments.of("todos, NEWEST, a later batch", "todos where owner_id = :owner and id < :after order by id desc",
+                Arguments.of("todos, NEWEST, a later batch", TODO_SUMMARY + " where owner_id = :owner and id < :after order by id desc",
                         List.of("owner_id"),
                         "idx_todos_owner_id_id"),
                 Arguments.of("todos of a list, DUE_DATE",
-                        "todos where owner_id = :owner and todo_list_id = :list order by due_sort, id",
+                        TODO_SUMMARY + " where owner_id = :owner and todo_list_id = :list order by due_sort, id",
                         List.of("owner_id", "todo_list_id"),
                         "idx_todos_todo_list_id_owner_id_due_sort_id"),
                 Arguments.of("todos of a list, NEWEST",
-                        "todos where owner_id = :owner and todo_list_id = :list order by id desc",
+                        TODO_SUMMARY + " where owner_id = :owner and todo_list_id = :list order by id desc",
                         List.of("owner_id", "todo_list_id"),
                         "idx_todos_todo_list_id_owner_id_id"),
                 Arguments.of("todos in a status, DUE_DATE",
-                        "todos where owner_id = :owner and status = :status order by due_sort, id",
+                        TODO_SUMMARY + " where owner_id = :owner and status = :status order by due_sort, id",
                         List.of("owner_id", "status"),
                         "idx_todos_owner_id_status_due_sort_id"),
                 Arguments.of("todos in a status, NEWEST",
-                        "todos where owner_id = :owner and status = :status order by id desc",
+                        TODO_SUMMARY + " where owner_id = :owner and status = :status order by id desc",
                         List.of("owner_id", "status"),
                         "idx_todos_owner_id_status_id"),
                 Arguments.of("todos due on or before, DUE_DATE",
-                        "todos where owner_id = :owner and due_sort <= :due and due_date <= :due order by due_sort, id",
+                        TODO_SUMMARY + " where owner_id = :owner and due_sort <= :due and due_date <= :due order by due_sort, id",
                         List.of("owner_id", "due_sort"),
                         "idx_todos_owner_id_due_sort_id"),
-                Arguments.of("todo lists, NAME", "todo_lists where owner_id = :owner order by name, id",
+                Arguments.of("todo lists, NAME", TODO_LIST_ROW + " where owner_id = :owner order by name, id",
                         List.of("owner_id"),
                         "idx_todo_lists_owner_id_name_id"),
-                Arguments.of("todo lists, NEWEST", "todo_lists where owner_id = :owner order by id desc",
+                Arguments.of("todo lists, NEWEST", TODO_LIST_ROW + " where owner_id = :owner order by id desc",
                         List.of("owner_id"),
                         "idx_todo_lists_owner_id_id"),
-                Arguments.of("todo list dropdown, DESC", "todo_lists where owner_id = :owner order by name desc, id desc",
+                Arguments.of("todo list dropdown, DESC", DROPDOWN_ITEM + " where owner_id = :owner order by name desc, id desc",
                         List.of("owner_id"),
                         "idx_todo_lists_owner_id_name_id"));
     }
@@ -136,19 +154,19 @@ class TodoIndexIntegrationTest extends IntegrationTest {
     @ParameterizedTest(name = "{0}: {3}")
     @MethodSource("scopedOrders")
     @DisplayName("Every offered order under every scoping filter reads its intended index in order")
-    void everyScopedOrderReadsAnIndexInOrder(String name, String fromWhereOrder, List<String> scope, String index) {
+    void everyScopedOrderReadsAnIndexInOrder(String name, String statement, List<String> scope, String index) {
         MapSqlParameterSource parameters = new MapSqlParameterSource()
                 .addValue("owner", ownerId)
                 .addValue("list", listId)
                 .addValue("status", "OPEN")
                 .addValue("due", LocalDate.of(2026, 12, 31))
-                .addValue("after", SEEK_POSITION);
+                .addValue("after", seekPosition);
 
         List<String> planLines = new TransactionTemplate(transactionManager).execute(status -> {
             jdbc.execute("set local enable_seqscan = off");
             jdbc.execute("set local enable_bitmapscan = off");
             return new NamedParameterJdbcTemplate(jdbc)
-                    .queryForList("explain select id from " + fromWhereOrder + " limit 21", parameters, String.class);
+                    .queryForList("explain " + statement + " limit 21", parameters, String.class);
         });
         String plan = String.join("\n", planLines);
 
@@ -220,9 +238,9 @@ class TodoIndexIntegrationTest extends IntegrationTest {
     static Stream<Arguments> idsLookups() {
         return Stream.of(
                 Arguments.of("todos by ids (the ids filter, the plans' todo lookup)",
-                        "select id from todos where owner_id = :owner and id in (:todos) order by due_sort, id"),
-                Arguments.of("todo lists by ids", "select id from todo_lists where owner_id = :owner and id in (:lists) order by name, id"),
-                Arguments.of("tags by ids", "select id from tags where owner_id = :owner and id in (:tags) order by name, id"));
+                        TODO_SUMMARY + " where owner_id = :owner and id in (:todos) order by due_sort, id"),
+                Arguments.of("todo lists by ids", TODO_LIST_ROW + " where owner_id = :owner and id in (:lists) order by name, id"),
+                Arguments.of("tags by ids", TAG_ROW + " where owner_id = :owner and id in (:tags) order by name, id"));
     }
 
     /**

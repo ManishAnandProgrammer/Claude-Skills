@@ -85,7 +85,11 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_GONE, TAG_GONE (deleted while the todo was being saved)",
+    @ApiResponse(responseCode = "404", description = "TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_GONE, TAG_GONE (deleted while the todo was being saved)"
+            // media:begin
+            + "; UPLOAD_POLICY_NOT_FOUND (no upload policy for the todos' attachments: an operator's setup is missing)"
+            // media:end
+            ,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:begin
     @ApiResponse(responseCode = "409", description = """
@@ -122,6 +126,7 @@ public interface TodoApi {
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_GONE (the new list deleted while the todo was being saved)"
             // media:begin
             + ", TODO_ATTACHMENT_NOT_FOUND (a removeAttachmentIds entry is not one of its files)"
+            + "; UPLOAD_POLICY_NOT_FOUND (no upload policy for the todos' attachments: an operator's setup is missing)"
             // media:end
             ,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

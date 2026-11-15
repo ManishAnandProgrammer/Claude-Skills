@@ -4,8 +4,10 @@ import com.example.app.user.domain.Role;
 import com.example.app.user.domain.TenantMembership;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,4 +28,14 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
     Optional<TenantMembership> findFirstByTenantIdAndRoleOrderById(UUID tenantId, Role role);
 
     long countByTenantIdAndRole(UUID tenantId, Role role);
+
+    /**
+     * Stamps a token issue on the membership. A machine-written stamp, not an edit (DATA-24's exception):
+     * it sets neither {@code version} nor {@code updated_at}, so the version an ADMIN sends back on a role
+     * change stays current through the member's sign-ins, and two token issues at once never conflict. It
+     * clears the persistence context, so a membership read before it is detached (its fields stay readable).
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update TenantMembership m set m.lastUsedAt = :now where m.id = :id")
+    int markUsed(UUID id, Instant now);
 }

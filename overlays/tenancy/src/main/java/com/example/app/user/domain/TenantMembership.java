@@ -40,7 +40,10 @@ public class TenantMembership extends AuditableEntity {
     @Column(nullable = false)
     private Role role;
 
-    /** When tokens were last issued for it: login picks the most recent. */
+    /**
+     * When tokens were last issued for it: login picks the most recent. A machine-written stamp, written
+     * only by {@code TenantMembershipRepository.markUsed}, outside the version an ADMIN sends back.
+     */
     @Column(name = "last_used_at")
     private Instant lastUsedAt;
 
@@ -55,9 +58,5 @@ public class TenantMembership extends AuditableEntity {
     /** A tenant ADMIN's change; the service keeps the tenant's last ADMIN. */
     public void changeRole(Role newRole) {
         role = newRole;
-    }
-
-    public void markUsed(Instant now) {
-        lastUsedAt = now;
     }
 }

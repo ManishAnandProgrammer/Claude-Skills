@@ -19,9 +19,9 @@ import java.util.UUID;
 public interface PlatformImpersonationApi {
 
     @Operation(summary = "Act as a tenant's member", description = """
-            Returns a short-lived tenant token for the member (default: the tenant's oldest ADMIN), with \
-            your platform account as its actor (claim act.sub). It works on every tenant endpoint with the \
-            member's role; there is no refresh token. The application's support-access policy may refuse \
+            Returns a short-lived tenant token for the member (default: the ADMIN with the oldest \
+            membership, not always the owner), with your platform account as its actor (claim act.sub). It \
+            works on every tenant endpoint with the member's role; there is no refresh token. The application's support-access policy may refuse \
             it (by default it allows every request).""")
     @ApiResponse(responseCode = "201", description = "A token for the tenant; refreshToken is null")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
