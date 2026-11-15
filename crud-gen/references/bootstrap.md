@@ -40,6 +40,37 @@ With **AskUserQuestion** (several per call):
    range API, timeouts, a bulkhead, failures counted; on or off with
    `app.security.breached-passwords.enabled`; fail-open. Fail-closed needs a code change: say so), `tokenRevocation`, the client-IP log mode, `metricsAuth` (how
    the metrics scrape is secured).
+
+   **Session version** (with sign-in; opt-in, default **no**: the `session-version` piece). Every
+   access token then carries the account's session version (with tenancy, the membership's: a change
+   in one tenant leaves the person's other tenants alone), every request compares it, and every
+   access change raises it in its own transaction: the person's older tokens, on every device, are
+   refused on their very next request (401 `SESSION_VERSION_STALE`) and the app refreshes into the
+   new access (a promotion needs no new sign-in; a removal or suspension makes the refresh fail). It
+   brings `DELETE /users/me/sessions` (sign out everywhere); with tenancy, role changes, removals and
+   a tenant's suspension bump. **Cost:** one Redis GET per authenticated request (the plain JWT's "no
+   lookup per request" is gone), a column, a circuit breaker; on a Redis miss one read by primary key,
+   cached for `app.session-version.cache-ttl` (1 minute); while Redis is down, that read on every
+   request instead (logged once, counted). **Say yes** when stale access is unacceptable even for
+   minutes: firing someone, a compromised account, a school removing a teacher at once, "log out
+   everywhere" as a feature. **Say no** (the default) when the 15-minute window is fine: rungs 1 to 3
+   below already stop the dangerous case, a stale role that undoes its own demotion. The ladder (pick
+   the lowest rung that is enough; 1 to 3 are always there):
+
+   | Rung | What | Revocation delay | Cost |
+   |---|---|---|---|
+   | 1 | Short access tokens (15 min) + refresh tokens in the database, rotated | ≤ token lifetime | none per request |
+   | 2 | A refresh re-reads role, status and membership from the database | ≤ token lifetime | one read per refresh |
+   | 3 | Access-changing writes check the caller's current role in the database, not the token | zero, for those writes | one read on those writes |
+   | 4 | **Session version** (this piece) | zero, every request | one Redis GET per request |
+   | 5 | Opaque tokens / server sessions (not offered) | zero | a session lookup per request and a store |
+
+   With yes, add `session-version` to `--with` and record `tokenRevocation: session-version` in the
+   review profile (house-review SEC-07: every later access-changing write bumps it). The sign-in piece
+   has no password change and no account suspension yet: a project that adds one bumps the version and
+   revokes the refresh tokens in that write's transaction (SEC-07). One device's logout stays as it is
+   (that refresh token only; a bump would sign out every device). A deny list of tokens is not offered:
+   it stores what it revokes and misses tokens issued while it runs.
 5. **Packaging:** a Dockerfile (JDK or jlink runtime with `jcmd` and JFR, non-root, the CFG-08
    flags) or Boot's `build-image` (record which flags Paketo sets).
 6. **Configuration metadata:** does the project need per-tenant, per-feature configuration (rules a
@@ -81,7 +112,8 @@ With **AskUserQuestion** (several per call):
    `role` and an email `query`, each row with the `version` a role change sends back; add an existing
    account by email, change a role, remove; the last ADMIN stays. The caller of a change must be an
    ADMIN at the moment of the call, whatever the token says, so a removed or demoted ADMIN's older
-   token is 403 there at once; the reads go by the token's role. Sign-ins don't move the version), the
+   token is 403 there at once; the reads go by the token's role, unless the session version is on: then
+   that token is 401 on every endpoint at once. Sign-ins don't move the version), the
    `user.api.Members` facade other modules ask about a person ("a member of this tenant?", a view by
    id or by a batch of ids),
    switch-tenant, impersonation (a reason required) with an audit row that staff read at
@@ -122,6 +154,7 @@ the root package, and copy the pieces. Step 2's Initializr clean-up doesn't appl
 | `media` | Optional, needs `sign-in`: the `media` module (`Uploads` with `fileCountRange`, `claim`, `release`, `describe`, `allUploaded`; `UploadPurpose`, `MediaFileView`, `MediaUrls`, `AllowedContentTypes`, `MediaFile` + `MediaFileStatus`, `UploadPolicy`; `POST /upload-urls`, `GET /upload-policies`, admin `PUT /upload-policies/{purpose}`; `MediaVerificationJob`, `MediaCleanupJob`), its configuration (`app.media.*`, `app.jobs.media-verification.*`, `app.jobs.media-cleanup.*`, `app.limits.upload-policy.*`), the `media_files` and `upload_policies` changesets, its tests against an S3-compatible server in Testcontainers (the endpoint tests run against the first `UploadPurpose`, so without the example they are **skipped until the project declares one**, crud-gen Step 5); rules in house-review `media.md`. An entity's attachments are generated by crud-gen (SKILL.md Step 5) |
 | `tenancy-schema` | Optional, needs `sign-in`: schema-per-tenant multi-tenancy, from the overlays (below), never from the reference itself. Shared by every mode (`overlays/tenancy`): `common/tenancy` (`TenantContext` from the token's `tenant_id`, `TenantScope.runAs`, `NO_TENANT`, Hibernate's resolver, `TenantTaskDecorator`), `config/PlatformSecurityConfig` (the platform chain; the main chain takes tenant tokens only), the `tenant` module (`Tenants` api, lifecycle with `approve` as the one way in, `TenantCreated` / `TenantApproved` / `TenantProvisioned`, `PlatformTenantController`, the `platform_audit` trail, `SupportAccessPolicy` with default allow), in `user`: memberships (role per tenant, `GET /users/me/tenants`) and the tenant's own `members` (`Member`: each mode's changeset `0017-members`; with `example`, `0018-owners-reference-members` points the owners at them instead of `users`, so a tenant's data is a closed graph, TEN-16/17), switch-tenant, platform staff and their login, impersonation (`act` claim); with `metadata`, the golden direct cross-tenant edit (`PlatformMetadataService`); `config/tenancy.yml`; changeset `0012`; the test base's tenancy version (one test tenant per run, `@WithoutTestTenant`, `newTenant()`, `newUserIn`, `platformToken()`), the plane, impersonation and ArchUnit tests (with `example`, the todo cross-tenant test). Schema per tenant only (`overlays/tenancy-schema`): the `TransactionLocalSchemaProvider` hook, `TenantSchemas`, `config/TenancyConfig`, `META-INF/orm.xml` (the platform's entities in schema `platform`), provisioning and the deploy-time migrations (`TenantProvisioningJob`, `TenantMigrations`, `tenant_migrations`, changeset `0013`), the two masters (`platform.yaml`, `tenant.yaml`, written by the script: the platform's changesets in the first, every other in the second), `docs/tenancy-runbook.md`, `docker/postgres-init/` (the roles for `docker compose up`), real roles in Testcontainers, the isolation and migration tests. Core's `LazyConnectionConfig` is left out (the hook borrows lazily). Rules: house-review `tenancy.md` |
 | `tenancy-row` | Optional, needs `sign-in`, not with `tenancy-schema`: row-mode multi-tenancy. The shared layer (`overlays/tenancy`) as for `tenancy-schema`, then row mode's own (`overlays/tenancy-row`): the `TransactionLocalTenantProvider` hook (`app.tenant_id`, transaction-local, with the read-only flag), `common/persistence/TenantOwnedEntity` (Hibernate's `@TenantId`; the reference's tenant entities extend it through their `tenancy-row` blocks), `config/TenancyConfig`, `TenantProvisioning` (an approved tenant is activated right after the approval commits, its defaults seeded on `TenantProvisioned`; with `media` and `example`, `TodoAttachmentPolicySeed`), changeset `0013-row-security` (the app role's grants), and in the reference's changesets `0002`–`0011` their `tenant_id`, tenant-carrying keys and composite foreign keys, and forced policies (`0016` drops those changesets' `tenant_id` defaults; the row overlay's `MediaFileRepository` and `CounterRepository` replace the reference's, their native statements naming `tenant_id = :tenantId`). One master, the platform's changesets first (every tenant table references `tenants`). `docs/tenancy-runbook.md`, `docker/postgres-init/` (the roles for `docker compose up`), real roles in Testcontainers (the app role `NOBYPASSRLS`), the row isolation test, the catalogue guard (`RowSecurityCatalogIntegrationTest`: every table a tenant table with its forced policy, a `tenant_id` without a default, a replica identity holding `tenant_id` (`0019-replica-identity`, TEN-38) and no key into the platform but `tenants`, or a named platform table) and the native-SQL guard (`NativeQueryTenantIntegrationTest`). Core's `LazyConnectionConfig` is left out. Rules: house-review `tenancy.md` (TEN-16…19, TEN-30…38) |
+| `session-version` | Optional, opt-in (default no), needs `sign-in`: the session version (step 0, question 4). `common/security` `SessionVersions` + `SessionVersionFilter` (after the bearer token's checks, in `SecurityConfig`'s `session-version` block: 401 `SESSION_VERSION_STALE`, a database outage 503), `config/SessionVersionOpenApiCustomizer` (the code on every signed-in endpoint's 401), `user/service/SessionVersionService` (Redis `sv:<id>`, SET NX fill, publish after commit, the database by primary key while Redis is down behind the circuit breaker `session-version-cache`), `SessionVersionProperties` (`app.session-version.cache-ttl`), `SessionVersionsRaised`; the `sv` claim in `TokenService`; `DELETE /users/me/sessions` (`AuthService.logoutEverywhere`, `TokenService.endAllSessions`: every refresh token revoked and the version raised in one transaction). Without tenancy the account's number (`users.session_version`, changeset 0021, `UserService.bumpSessionVersion`); with tenancy the membership's (`tenant_memberships.session_version`, changeset 0022, a platform changeset; tokens also carry `membership_id`, so a member removed and added again is a new key no older token names): `MembershipService` bumps on a role change, a removal (before the row goes) and a tenant's suspension (`TenantDeactivated`, one statement), and on signing out everywhere every membership of the person. The `sv` claim, the column, the filter step and the `app.session-version.*` and circuit-breaker keys exist only with the piece (`verify.sh` checks every copy without it). Tests: `SessionVersionIntegrationTest`, `SessionVersionServiceIntegrationTest` (the fill race, a rollback, Redis down), with tenancy `SessionVersionTenancyIntegrationTest` |
 | `tenant-registration` | Optional, with a tenancy piece: `POST /auth/tenant-registrations` (`TenantRegistrationService`: a PENDING tenant owned by a new or existing account; signup's rate limit and breached-password check; the same 202 whether or not the email has an account) and its test. Staff approve with `POST /platform/tenants/{id}/approve` (in the tenancy piece) |
 | `example` | The golden `todo` and `planning` modules (changesets 0002–0006 and 0011; 0010 with `media`), for study only; not copied into real projects |
 
@@ -164,8 +197,9 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   (plus 0007 without metadata and media, and 0015, staff accounts read-only for the app role),
   schema per tenant 0013 (`0013-tenant-schemas`), row mode 0013 (`0013-row-security`) and, with a
   piece that brings tenant tables, 0016 (their `tenant_id` defaults dropped: every insert names its
-  tenant); example with metadata 0014 (the fixed key's seed). A project's own changesets continue
-  after the highest copied number.
+  tenant); example with metadata 0014 (the fixed key's seed); session-version 0021 without tenancy (the
+  users column) or 0022 with it (the membership column, a platform changeset). A project's own
+  changesets continue after the highest copied number.
 - The answers of step 0: signup policy, external IdP (`SecurityConfig`), client-IP mode,
   `app.limits.*` values, pool and admission sizes (admission ≥ 2× pool, checked at startup).
 - `ErrorCode`: remove the sign-in codes if `sign-in` wasn't copied. Constraint mappings live in each
@@ -177,7 +211,9 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   With `sign-in` and an ADMIN role (metadata, media) and no tenancy, `docs/local-dev.md` step 4 and the
   runbook's *Operator tasks* say how the first admin is made (sign up, then the owner's `UPDATE users
   SET role = 'ADMIN'`, then sign in again); name it to the user in the closing summary, and add the
-  project's own role names when step 0 added roles.
+  project's own role names when step 0 added roles. With `session-version`, those statements also
+  raise `session_version` and the operator drops the Redis copy (`DEL sv:<id>`), which the copied
+  runbook says: an access change in SQL without the bump keeps the older tokens valid.
 - With `metadata` but without `example`, `MetadataKeys.byName`'s list of fixed keys is empty (its
   comment stays): the project's first fixed key goes there; per-context keys never do. Until then
   `GET/PUT /metadata/{key}` only answer `METADATA_KEY_UNKNOWN`: ask whether the project has a first

@@ -546,6 +546,18 @@ lowered limit never blocks correcting another field of an existing record (golde
 row 25f). No remote call inside a
 transaction (DATA-01). Never lock "the current X" by a mutable column (DATA-32).
 
+**An access-changing write with the session version** (`tokenRevocation: session-version`, the
+`session-version` piece): a generated write that changes what a person may do (a role or status field
+of an account or membership, a grant table, a lock) raises the session version **in its own
+transaction**, through the owner's bump (golden `MembershipService.changeRole` calling
+`bumpSessionVersion`; without tenancy `UserService.bumpSessionVersion`, `Propagation.MANDATORY`), after
+the checks that can still refuse it; where it takes access away, the same transaction revokes the
+refresh tokens the code doesn't already refuse. Redis is never written in the transaction (the bump
+publishes `SessionVersionsRaised`). The write still checks the caller's current role in the database
+(rung 3). Tests: the older token 401 `SESSION_VERSION_STALE` on the next request, the refresh carries
+the new access, a rolled-back write raises nothing (golden `SessionVersionTenancyIntegrationTest`,
+`SessionVersionServiceIntegrationTest`; house-review SEC-07).
+
 ### 4.9 API interface (OpenAPI)
 Golden `TodoApi`: `@Tag`; `@Operation` with text-block descriptions; an `@ApiResponse` for every
 status and errorCode the endpoint can return (except `API_VERSION_UNSUPPORTED`: a customizer adds it
@@ -627,5 +639,7 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] Asked, and recorded: each picked parent's dropdown (Step 1), whether a terminal status freezes
       the record (Step 3), a unique code's shape (Step 2).
 - [ ] A same-module parent's service changed (4.8): listed among the changed shared files.
+- [ ] With the session version: every generated write that changes access bumps it in its transaction
+      and has its 401-then-refresh test (4.8, SEC-07).
 - [ ] Build green, and one guard proven to fail (Step 7).
 - [ ] house-review clean (Step 8).

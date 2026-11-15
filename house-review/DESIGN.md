@@ -195,7 +195,12 @@ Decided:
   - `blacklist`: a jti blacklist with a TTL in any store. DynamicForm uses PostgreSQL behind
     Caffeine, because it accepts no vulnerable window at all;
   - `short-lived(<max minutes>)`: news-pulse uses `short-lived(15)`, accepting the 15-minute
-    window.
+    window;
+  - `session-version` (2026-11-15, the bootstrap piece of that name, opt-in): one number per account
+    (per membership with tenancy) in every token, compared per request through Redis, raised by every
+    access change in its transaction (SEC-07). No token is stored, so nothing in the store is a live
+    login; the blacklist's per-token rows and its missed-token race don't exist. Redis down: one
+    indexed database read per request behind a circuit breaker, never "accepted".
 
   The rule checks the code against the chosen mode.
 - **Passwords:** both checks: the composition `@Pattern` (upper, lower, digit, special) **and**

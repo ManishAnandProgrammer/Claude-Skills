@@ -158,7 +158,9 @@ properties must hold from day one, because each is expensive to add later:
 9. **Tenant status is checked when tokens are issued** (login, refresh, switch). So a suspension
    takes effect within one access-token lifetime (15 min). The rule file states that bound
    (REST-15). An unknown status is a refusal (SEC-06). A per-request cached check is for later,
-   when a project needs immediate suspension (owner decision O4).
+   when a project needs immediate suspension (owner decision O4). Built since as the opt-in
+   `session-version` piece (2026-11-15, below): per membership, and the suspension raises every
+   member's number there.
 
 ### Work off the request path
 
@@ -652,6 +654,41 @@ returned by nothing but the add and the previous change.
   `MemberView(userId, email, fullName)` lives in `user.api` beside it, as `TodoView` and `TenantView` do
   (an `api` package may not depend on `dto`). Other modules ask it about a person, never the membership
   or user repositories. Tests: `TenantMemberListIntegrationTest`, `MembersIntegrationTest`.
+
+## Built (2026-11-15): the session version per membership
+
+Owner decision (2026-11-15): an opt-in sign-in piece (`session-version`, default no), per user without
+tenancy and per membership with it; while Redis is down, one indexed read of the version column. The
+study note is news-pulse's `learnings/session-version-revocation.md` (rungs, risks of storing tokens,
+the details that bite).
+
+- **Per membership** (`tenant_memberships.session_version`, `0022-memberships-session-version`, a
+  platform changeset in both modes; the users column of 0021 is the no-tenancy piece's and isn't
+  copied with tenancy). A tenant token is for one membership, so it carries `sv` **and**
+  `membership_id`; the Redis key is `sv:<membershipId>` (the membership is the user + tenant pair), and
+  the database read is by primary key. Why the membership's id rather than `(tenant, user)`: a removal
+  deletes the membership row, and a member added again gets a new row that starts at 0 again, so a
+  `(tenant, user)` key would let a token from before the removal pass with its old role; a new
+  membership is a new key that no older token names (`aRemovalTakesEffectAtOnce`).
+- **What bumps** (in the change's own transaction, `MembershipService`): a role change; a removal
+  (raised before the row is deleted, so Redis gets a number no token carries and a late fill can't put
+  the old one back); a tenant leaving ACTIVE (`TenantService` publishes `TenantDeactivated` inside the
+  status change, `MembershipService` raises every member there in one statement); signing out
+  everywhere (every membership of the person, every refresh token revoked). A sign-in, refresh or
+  switch reads the number with the role and moves nothing.
+- **Refresh tokens:** a removed member's refresh already fails (no membership; one from before a
+  re-add stays refused), and a suspended tenant's is refused while it isn't ACTIVE and works again after
+  a reactivation (the existing contract, TEN-06): neither is revoked on top. Signing out everywhere
+  revokes them all.
+- **Impersonation tokens** carry the impersonated member's number: the member's role change ends the
+  impersonation too. Platform tokens (their own chain) carry none: no endpoint changes staff access.
+- **Rung 3 stays:** member changes still lock the tenant and check the caller's current role; with the
+  session version, an older token is refused before that check (401 instead of 403).
+- Tests: `SessionVersionTenancyIntegrationTest` (demotion, promotion, removal and re-add, suspension,
+  one tenant's change leaving another's token alone, signing out everywhere, impersonation),
+  `SessionVersionServiceIntegrationTest` (its tenancy version: the fill race, a rolled-back role
+  change, Redis down). Verified by `verify.sh` 2h (schema per tenant) and 2j (row mode); 2g and 2i
+  prove a copy without it has none of it.
 
 ## Later (rules and notes, not in the first setup)
 

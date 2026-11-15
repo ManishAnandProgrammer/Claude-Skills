@@ -198,7 +198,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     version a user sends back (measured: a membership at version 3 after three sign-ins, every ADMIN's
     role change 409) and two writers of the stamp conflict. `@OptimisticLock(excluded = true)` doesn't
     help: auditing still changes `updated_at`, which moves the version anyway. Reference:
-    `TenantMembershipRepository.markUsed`, tested by `TenantMemberIntegrationTest.tokenIssuesKeepTheVersion`;
+    `TenantMembershipRepository.markUsed`, tested by `TenantMemberIntegrationTest.tokenIssuesKeepTheVersion`.
+    The session version (SEC-07) is such a stamp too, with one more rule: its column is mapped read-only
+    (`insertable = false, updatable = false`), so its bulk bump needs no `clearAutomatically`: no
+    managed copy can write the older number back, and the caller's entities stay attached for the
+    response. Its new value is read back by a query (a scalar or a projection), never from an entity
+    loaded before the bump (reference: `TenantMembershipRepository.bumpSessionVersion`);
   - a conditional bulk update checks its row count and answers 409 on 0.
 - **Severity:** High.
 

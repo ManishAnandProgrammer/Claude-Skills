@@ -44,6 +44,16 @@ The list, with what each answer changes, is step 0 of
 policy, the breached-password check, token revocation, client-IP logging, the metrics scrape,
 multi-tenancy, packaging, configuration metadata and rate limiting.
 
+**Token revocation, the ladder.** A signed access token can't be taken back, only outlived. The pieces
+always give you rungs 1 to 3: 15-minute access tokens with rotated refresh tokens (1), a refresh that
+re-reads role, status and membership (2), and access-changing writes that check the caller's current
+role in the database, so a stale ADMIN token can't undo its own demotion (3). Rung 4, the
+**session version** (opt-in, default no), makes every access change take effect on the very next
+request, on every device, for one Redis read per request: say yes when even minutes of stale access
+are unacceptable (firing someone, a compromised account, "log out everywhere"). Storing tokens and
+blacklisting them is not offered: the store becomes a list of live logins and misses racing tokens.
+Details and costs: question 4 of the bootstrap reference.
+
 Bootstrap **asks before adding any dependency** (libraries-first rule) and shows the current
 version and its compatibility. The copy script prints what each piece needs: springdoc-openapi,
 Resilience4j, logstash-logback-encoder, Testcontainers, ArchUnit, the Hibernate metamodel

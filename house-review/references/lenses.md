@@ -81,6 +81,34 @@ is code-smells.md, java.md and architecture.md.
   `if (claim != null)`; a `catch` that lets the request through.
 - **Severity:** Critical when a refused caller gets in; otherwise High.
 
+### SEC-07 (profile-optional: `tokenRevocation: session-version`): Every access change bumps the session version
+- **Check:** with the session version on (the `session-version` piece, opt-in; golden
+  `SessionVersionService`), every write that changes what a person may do raises their session
+  version **in the same transaction** as the change: a role change, a removal from a tenant, a
+  suspension or disable of the account or of its tenant, a password change, signing out everywhere,
+  and any new one (a lock, a downgrade, a revoked grant). Per account without tenancy; per membership
+  with tenancy, so only the tenant that changed is touched (golden `MembershipService`). The bump is
+  the aggregate service's own write (its repository, `Propagation.MANDATORY`), published to Redis only
+  after the commit (`SessionVersionsRaised`, `AFTER_COMMIT`, a plain SET); a cache miss fills with
+  SET NX. Where the change takes access away, the same transaction also revokes the refresh tokens the
+  code doesn't already refuse (signing out everywhere revokes them all; a removed member's refresh
+  already fails on the missing membership, a suspended tenant's on its status). Every token carries
+  `sv` read from the same row as its role. The number only goes up and is compared with `==`. The
+  writes that check the caller's current role in the database (rung 3, `lockAsCurrentAdmin`) stay:
+  the session version is in addition, not instead.
+- **Detect:** a new write to a role, a status, a membership row, a password hash or the refresh tokens
+  without a bump in its transaction; a bump in another transaction (`REQUIRES_NEW`, `@Async`, a second
+  service call from a non-transactional caller); Redis written before the commit, or a miss filled
+  with a plain SET; a reset of the number; a token whose number is read apart from its role; an
+  operator's SQL change of access documented without the bump (runbook *Operator tasks*).
+- **Tests (TEST-01):** the older token is 401 `SESSION_VERSION_STALE` on the very next request and the
+  refresh returns the new access; a removed or suspended member's refresh fails; a rolled-back change
+  raises nothing and leaves Redis alone (golden `SessionVersionServiceIntegrationTest`,
+  `SessionVersionTenancyIntegrationTest`).
+- **Not a finding when:** one device signs out: it revokes that refresh token and lets the access token
+  run out (a bump would sign out every device).
+- **Severity:** High: a revoked person keeps access for up to one token lifetime.
+
 ---
 
 ## Lens 3: Performance (PERF)

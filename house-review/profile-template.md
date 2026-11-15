@@ -50,7 +50,7 @@ project doesn't have.
 | `offsetLists` | `none` | Bounded admin tables that need page numbers, as **entity class names** (`TodoList`), not prose |
 | `NotXss` | `none` | FQN of the anti-XSS validator, or `escape-on-output` with a link to the policy |
 | `noEmojiFields` | `none` | Fields where `@NoEmoji` applies (codes, identifiers) |
-| `tokenRevocation` | `short-lived(15)` | `blacklist` (jti blacklist with a TTL, any store, no DB connection on a cache hit) or `short-lived(<max minutes>)` |
+| `tokenRevocation` | `short-lived(15)` | `blacklist` (jti blacklist with a TTL, any store, no DB connection on a cache hit), `short-lived(<max minutes>)`, or `session-version` (the bootstrap piece: a version per account or membership in every token, checked per request through Redis; SEC-07) |
 | `edgeRateLimiter` | `none` | e.g. `nginx`: the edge proxy is the IP limiter in prod (REST-14) |
 | `metricsAuth` | `pending` | How the metrics scrape is secured (CFG-06); health stays unauthenticated |
 | `apiDocsLocation` | `controller/api/<Name>Api` | Where OpenAPI annotations live (REST-20) |

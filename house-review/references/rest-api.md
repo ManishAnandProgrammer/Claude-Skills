@@ -302,6 +302,11 @@ types.
     - `short-lived(<n>)`: the access token TTL is ≤ n minutes and the refresh token is revoked
       on logout; a token stays valid for TTL + the validator's clock skew (Spring's
       `JwtTimestampValidator` default: 60 s), so a stated bound includes the skew;
+    - `session-version` (the `session-version` piece, on top of `short-lived`): every token carries
+      `sv`, checked on every request against Redis (the database by primary key while Redis is down,
+      never "accepted"); every access change raises it in its own transaction (SEC-07), so revocation
+      is immediate. One device's logout still revokes only its refresh token. The stated bound for a
+      lost publish or an operator's SQL change is `app.session-version.cache-ttl`;
   - each cached security fact (revocation, account status, role) states its staleness bound, per
     instance, in the configuration and the API docs: a disabled account keeps access for that long;
   - a refresh token reused after rotation revokes its whole family (reuse detection): only a stolen

@@ -120,8 +120,10 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
 ### TEN-06: Tenant status is checked whenever tokens are issued
 - **Check:** login, refresh and switch-tenant call `Tenants.requireActive` (403 `TENANT_NOT_ACTIVE`
   with `tenantStatus`; an unknown tenant is refused the same way). A suspension takes effect within
-  one access-token lifetime (REST-15's bound, 15 minutes); a per-request check is a later option for
-  projects that need it at once. The check's refusal never dooms the caller's transaction
+  one access-token lifetime (REST-15's bound, 15 minutes); with the `session-version` piece at once:
+  the suspension raises every member's session version there in one statement, in its own transaction
+  (`TenantDeactivated`, SEC-07), and the session version is per membership, so the members' tokens for
+  other tenants stay valid. The check's refusal never dooms the caller's transaction
   (`noRollbackFor`), since a refresh commits its token's rotation.
 - **Detect:** token issue without the status check; a status mirrored from billing (billing decides
   when to call `suspend`); an unknown status treated as active (SEC-06).
