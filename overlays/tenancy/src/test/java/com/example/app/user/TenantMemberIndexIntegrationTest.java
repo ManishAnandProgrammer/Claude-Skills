@@ -1,29 +1,30 @@
 package com.example.app.user;
 
 import com.example.app.support.IntegrationTest;
+import com.example.app.support.ReadCost;
+import com.example.app.user.domain.Role;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The members list reads its intended index in each order and under the role filter: the index named in
- * the plan, the tenant in the index condition, no sort step. The statements have the shape of
- * {@code TenantMembershipRepositoryImpl}'s query (its select list and join). One tenant gets a few hundred
- * members among bigger tenants and the table is analysed; whole-table scans are switched off, because on
- * a test database's few rows they would win on cost and hide a missing index.
+ * Every cell of the members list has its index and reads at most its bound (crud-gen tests.md row 28), with
+ * the statements of {@code TenantMembershipRepositoryImpl} (its select list and join). One tenant's 300
+ * members, one in a hundred an ADMIN, sit among three tenants of 2,000.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TenantMemberIndexIntegrationTest extends IntegrationTest {
@@ -36,18 +37,24 @@ class TenantMemberIndexIntegrationTest extends IntegrationTest {
               from tenant_memberships m
               join users u on u.id = m.user_id""";
 
+    private static final int TWO_PAGES = 40;
+    private static final int TENANT_MEMBERS = 300;
+
     private UUID tenantId;
     private List<UUID> someMembers;
 
     @BeforeAll
     void seedOneTenantAmongBiggerOnes() throws Exception {
         tenantId = newTenant().id();
-        seedMembers(tenantId, 300);
+        seedMembers(tenantId, TENANT_MEMBERS);
         for (int other = 0; other < 3; other++) {
             seedMembers(newTenant().id(), 2000);
         }
         someMembers = jdbc.queryForList("select user_id from tenant_memberships where tenant_id = ? limit 3", UUID.class, tenantId);
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze tenant_memberships, users"));
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            jdbc.execute("set local default_statistics_target = 1000");
+            jdbc.execute("analyze tenant_memberships, users");
+        });
     }
 
     /** {@code count} accounts in the tenant, one in a hundred an ADMIN. */
@@ -69,60 +76,52 @@ class TenantMemberIndexIntegrationTest extends IntegrationTest {
                 """, tenant, marker);
     }
 
-    private String plan(String statement, MapSqlParameterSource parameters) {
-        List<String> planLines = new TransactionTemplate(transactionManager).execute(status -> {
-            jdbc.execute("set local enable_seqscan = off");
-            jdbc.execute("set local enable_bitmapscan = off");
-            return new NamedParameterJdbcTemplate(jdbc).queryForList("explain " + statement, parameters, String.class);
-        });
-        return String.join("\n", planLines);
+    private static Arguments cell(String name, String index, String statement, int bound) {
+        return Arguments.of(name, index, statement, bound);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = {"desc", "asc"})
-    @DisplayName("NEWEST and OLDEST walk idx_tenant_memberships_tenant_id_id in order, a later page too")
-    void ordersReadTheTenantIndex(String direction) {
-        MapSqlParameterSource parameters = new MapSqlParameterSource("tenant", tenantId);
-        for (String page : List.of("limit 20", "limit 20 offset 40")) {
-            String plan = plan(MEMBER_ROWS + " where m.tenant_id = :tenant order by m.id " + direction + " " + page, parameters);
-
-            assertThat(plan).as(plan).contains("idx_tenant_memberships_tenant_id_id").doesNotContain("Sort");
-            assertThat(plan).as(plan).containsPattern("Index Cond: [^\\n]*tenant_id = ");
+    /**
+     * Every order, a later page, every role value under every order, the search and the ids lookup. Each row
+     * is a membership and its account (probed by id), so a page reads twice its rows.
+     */
+    static Stream<Arguments> cells() {
+        List<Arguments> cells = new ArrayList<>();
+        for (String direction : List.of("desc", "asc")) {
+            String order = " order by m.id " + direction;
+            cells.add(cell("members, " + direction, "idx_tenant_memberships_tenant_id_id",
+                    MEMBER_ROWS + " where m.tenant_id = :tenant" + order + " limit 20", 2 * TWO_PAGES));
+            cells.add(cell("members, " + direction + ", a later page", "idx_tenant_memberships_tenant_id_id",
+                    MEMBER_ROWS + " where m.tenant_id = :tenant" + order + " limit 20 offset 40", 2 * (40 + TWO_PAGES)));
+            for (Role role : Role.values()) {
+                cells.add(cell("members " + role + ", " + direction, "idx_tenant_memberships_tenant_id_role_id",
+                        MEMBER_ROWS + " where m.tenant_id = :tenant and m.role = :role" + role + order + " limit 20", 2 * TWO_PAGES));
+            }
+            // query is a contains search on the email, no btree serves it: it reads the tenant's members (a team: the
+            // seeded ones and the tenant's owner), no more.
+            cells.add(cell("members matching a query, " + direction + " (the tenant's members at most)", "idx_tenant_memberships_tenant_id_id",
+                    MEMBER_ROWS + " where m.tenant_id = :tenant and strpos(lower(u.email), :query) > 0" + order + " limit 20",
+                    2 * (TENANT_MEMBERS + 1)));
         }
+        cells.add(cell("members by account ids", "uq_tenant_memberships_user_id_tenant_id",
+                MEMBER_ROWS + " where m.tenant_id = :tenant and m.user_id in (:ids) order by m.id desc limit 20", 2 * TWO_PAGES));
+        return cells.stream();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = {"desc", "asc"})
-    @DisplayName("The ADMIN filter walks idx_tenant_memberships_tenant_id_role_id in order, in both orders")
-    void theRoleFilterReadsTheRoleIndex(String direction) {
-        MapSqlParameterSource parameters = new MapSqlParameterSource("tenant", tenantId).addValue("role", "ADMIN");
+    @ParameterizedTest(name = "{0} ({1}): at most {3} rows")
+    @MethodSource("cells")
+    @DisplayName("Every cell of the members list has its index and reads at most its bound")
+    void everyCellReadsAtMostItsBound(String cell, String index, String statement, int bound) {
+        MapSqlParameterSource parameters = new MapSqlParameterSource("tenant", tenantId)
+                .addValue("ids", someMembers)
+                .addValue("query", "matches nothing");
+        // Every role bound as a parameter, as the repository binds it.
+        for (Role role : Role.values()) {
+            parameters.addValue("role" + role, role.name());
+        }
 
-        String plan = plan(MEMBER_ROWS + " where m.tenant_id = :tenant and m.role = :role order by m.id " + direction + " limit 20",
-                parameters);
+        ReadCost cost = ReadCost.of(jdbc, transactionManager, statement, parameters);
 
-        assertThat(plan).as(plan).contains("idx_tenant_memberships_tenant_id_role_id").doesNotContain("Sort");
-        assertThat(plan).as(plan).containsPattern("Index Cond: [^\\n]*role = ");
-    }
-
-    @Test
-    @DisplayName("The USER filter (most members) reads a tenant index in order, never a sort or the whole table")
-    void theCommonRoleStillReadsInOrder() {
-        MapSqlParameterSource parameters = new MapSqlParameterSource("tenant", tenantId).addValue("role", "USER");
-
-        String plan = plan(MEMBER_ROWS + " where m.tenant_id = :tenant and m.role = :role order by m.id desc limit 20", parameters);
-
-        assertThat(plan).as(plan).containsPattern("idx_tenant_memberships_tenant_id(_role)?_id").doesNotContain("Sort", "Seq Scan");
-    }
-
-    @Test
-    @DisplayName("The ids lookup probes the members by account id, never the tenant's whole list")
-    void theIdsLookupProbesByAccount() {
-        MapSqlParameterSource parameters = new MapSqlParameterSource("tenant", tenantId).addValue("ids", someMembers);
-
-        String plan = plan(MEMBER_ROWS + " where m.tenant_id = :tenant and m.user_id in (:ids) order by m.id desc limit 20",
-                parameters);
-
-        assertThat(plan).as(plan).contains("uq_tenant_memberships_user_id_tenant_id").doesNotContain("Seq Scan");
-        assertThat(plan).as(plan).containsPattern("Index Cond: [^\\n]*user_id = ");
+        assertThat(ReadCost.indexExists(jdbc, index)).as(index).isTrue();
+        assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(bound);
     }
 }

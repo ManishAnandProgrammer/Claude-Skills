@@ -363,7 +363,13 @@ filter doesn't implement `QueryFilter`.
 
 **Then the indexes** (DATA-10), now that the orders and filters are chosen: one per offered order
 and per scoping filter, ending with the id (none when the sort column is unique and not null), in a
-new changeset if the entity's own one is applied (Step 2), with test row 28 for each. An order index
+new changeset if the entity's own one is applied (Step 2). Write the list's **cell matrix** while you
+choose them (tests.md, *Index tests*): each order × each filter (each value of an enum filter), a later
+batch or page, the `ids` lookup, each second step, each delete-side key check, each naming the index
+that serves it and the most rows it may read; test row 28 runs it. A cell no index serves gets one or is
+not offered: **a range filter is offered under its own column's order only** (under another order it is a
+400 naming the rule, golden `TodoFilter.isDueOnOrBeforeSortedByDueDate`), unless a bounded scope holds it
+(one todo's time entries), recorded. An order index
 that leads with a foreign key column (`(author_id, id)`) also serves that key's checks: it
 **replaces** the key's own index from the pre-flight (`idx_books_author_id`), never sits beside it
 (golden `0003-todos.sql`'s comment). **A low-cardinality enum filter** (a status, a priority) is
@@ -723,8 +729,9 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] Asked, and recorded: each picked parent's dropdown (Step 1), whether a terminal status freezes
       the record (Step 3), a unique code's shape (Step 2).
 - [ ] A same-module parent's service changed (4.8): listed among the changed shared files.
-- [ ] Row 28: every offered order × every scoping filter listed in the index test, every status value
-      bound (4.1); row 18b: the `ids` filter's statement count.
+- [ ] Row 28: the list's cell matrix in its index test (every order × every filter, every enum value,
+      later batches, lookups), each cell's index existing and its read bound asserted (4.1); a range
+      filter offered under its own order only; row 18b: the `ids` filter's statement count.
 - [ ] A review-profile Conventions row only for a departure from a house rule, with the owner's reason;
       a choice no rule forbids goes in the javadoc or the changeset comment.
 - [ ] With the session version: every generated write that changes access bumps it in its transaction

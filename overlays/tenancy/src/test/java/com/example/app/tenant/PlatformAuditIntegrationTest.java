@@ -1,12 +1,12 @@
 package com.example.app.tenant;
 
 import com.example.app.support.IntegrationTest;
+import com.example.app.support.ReadCost;
 import com.example.app.support.WithoutTestTenant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -80,23 +80,37 @@ class PlatformAuditIntegrationTest extends IntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    /**
+     * The audit list's two batch shapes (crud-gen tests.md row 28): the index exists and a batch reads at most
+     * two pages, for a tenant's 500 entries beside another tenant's 10,000, interleaved in id order.
+     */
     @Test
-    @DisplayName("Both batch shapes read idx_platform_audit_tenant_id_id in order: no sort, the tenant in the index condition")
-    void batchesReadTheTenantIndex() {
+    @DisplayName("Both batch shapes have idx_platform_audit_tenant_id_id and read at most two pages")
+    void batchesReadAtMostTwoPages() throws Exception {
+        UUID tenant = newTenant().id();
+        UUID other = newTenant().id();
+        // The staff account the platform token signs in, an author every audit row needs.
+        platformToken();
+        UUID actor = jdbc.queryForObject("select id from platform_users order by id limit 1", UUID.class);
+        for (UUID seeded : List.of(tenant, other)) {
+            sql("""
+                    insert into platform_audit (id, actor_id, tenant_id, action, created_at, updated_at, version)
+                    select gen_random_uuid(), ?, ?, 'SEEDED', now(), now(), 0 from generate_series(1, ?)
+                    """, actor, seeded, seeded.equals(tenant) ? 500 : 10_000);
+        }
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze platform_audit"));
         MapSqlParameterSource parameters = new MapSqlParameterSource()
-                .addValue("tenant", UUID.randomUUID())
-                .addValue("after", UUID.randomUUID());
+                .addValue("tenant", tenant)
+                .addValue("after", jdbc.queryForObject(
+                        "select id from platform_audit where tenant_id = ? order by id desc offset 250 limit 1", UUID.class, tenant));
+
         for (String statement : List.of(
                 "select id from platform_audit where tenant_id = :tenant order by id desc limit 21",
                 "select id from platform_audit where tenant_id = :tenant and id < :after order by id desc limit 21")) {
-            List<String> planLines = new TransactionTemplate(transactionManager).execute(status -> {
-                jdbc.execute("set local enable_seqscan = off");
-                jdbc.execute("set local enable_bitmapscan = off");
-                return new NamedParameterJdbcTemplate(jdbc).queryForList("explain " + statement, parameters, String.class);
-            });
-            String plan = String.join("\n", planLines);
-            assertThat(plan).as(plan).contains("idx_platform_audit_tenant_id_id").doesNotContain("Sort");
-            assertThat(plan).as(plan).containsPattern("Index Cond: [^\\n]*tenant_id");
+            ReadCost cost = ReadCost.of(jdbc, transactionManager, statement, parameters);
+
+            assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
         }
+        assertThat(ReadCost.indexExists(jdbc, "idx_platform_audit_tenant_id_id")).isTrue();
     }
 }

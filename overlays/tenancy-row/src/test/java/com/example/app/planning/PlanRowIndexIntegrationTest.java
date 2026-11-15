@@ -1,6 +1,7 @@
 package com.example.app.planning;
 
 import com.example.app.support.IntegrationTest;
+import com.example.app.support.ReadCost;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -10,7 +11,6 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -22,18 +22,19 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Row mode: the owner's plan list reads its order's index with the table filled as production fills it
- * (crud-gen tests.md, index tests in row mode). The tested owner's 40 plans sit beside a bigger sibling
- * owner's 200 in the tenant, among four other tenants' 20,000, interleaved in id order (random ids). An
- * owner lives in one tenant, but without the dependency statistics of changeset 0023 the planner
- * multiplies the owner's share of the table by the tenant's, estimates one row, and reads the exclusion
- * constraint's GiST index (the same leading columns) plus a sort instead. Whole-table scans are switched
- * off: on a test database's few rows they would win on cost and hide a missing index. The seeded rows
- * are deleted afterwards, so the other index tests keep the table they seed for.
+ * Row mode: a page of the owner's plans reads at most two pages with the table filled as production fills
+ * it (crud-gen tests.md, index tests in row mode, row 28). The tested owner's 100 plans sit beside a bigger
+ * sibling owner's 200 in the tenant, among four other tenants' 20,000, interleaved in id order (random
+ * ids). An owner lives in one tenant, but without the dependency statistics of changeset 0023 the planner
+ * multiplies the owner's share of the table by the tenant's, estimates a row or two, and reads the
+ * exclusion constraint's GiST index (the same leading columns) plus a sort of all the owner's plans
+ * instead. The seeded rows are deleted afterwards, so the other index tests keep the table they seed for.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PlanRowIndexIntegrationTest extends IntegrationTest {
 
+    /** The tested owner's plans: more than two pages, so a sort of all of them reads past the bound. */
+    private static final int OWNER_PLANS = 100;
     private static final int OTHER_TENANTS = 4;
     private static final int OWNERS_PER_OTHER_TENANT = 10;
     private static final int PLANS_PER_OTHER_OWNER = 500;
@@ -55,7 +56,7 @@ class PlanRowIndexIntegrationTest extends IntegrationTest {
         tenantId = testTenant().id();
         ownerId = newUser().id();
         siblingId = newUser().id();
-        seedOwner(ownerId, 40);
+        seedOwner(ownerId, OWNER_PLANS);
         seedOwner(siblingId, 200);
         for (int other = 0; other < OTHER_TENANTS; other++) {
             TestTenant tenant = newTenant();
@@ -131,26 +132,26 @@ class PlanRowIndexIntegrationTest extends IntegrationTest {
 
     static Stream<Arguments> ownerOrders() {
         return Stream.of(
-                Arguments.of("the owner's plans, STARTS_ON", "order by starts_on, id", "idx_plans_owner_id_starts_on_id"),
-                Arguments.of("the owner's plans, NEWEST", "order by id desc", "idx_plans_owner_id_id"));
+                Arguments.of("the owner's plans, STARTS_ON", "idx_plans_owner_id_starts_on_id", "order by starts_on, id"),
+                Arguments.of("the owner's plans, NEWEST", "idx_plans_owner_id_id", "order by id desc"));
     }
 
-    @ParameterizedTest(name = "{0}: {2}")
+    /**
+     * A page reads at most two pages: without the dependency statistics the planner estimates the owner's
+     * plans at one row, reads the GiST index of the exclusion constraint and sorts all of them (OWNER_PLANS).
+     */
+    @ParameterizedTest(name = "{0} ({1})")
     @MethodSource("ownerOrders")
-    @DisplayName("Among bigger tenants, the owner's plans read the order's index in order, not the exclusion constraint's")
-    void theOwnersPlansReadTheOrdersIndex(String name, String orderBy, String index) {
+    @DisplayName("Among bigger tenants, a page of the owner's plans has its index and reads at most two pages")
+    void theOwnersPlansReadAtMostTwoPages(String name, String index, String orderBy) {
         MapSqlParameterSource parameters = new MapSqlParameterSource()
                 .addValue("owner", ownerId)
                 .addValue("tenant", tenantId);
 
-        List<String> planLines = new TransactionTemplate(transactionManager).execute(status -> {
-            jdbc.execute("set local enable_seqscan = off");
-            jdbc.execute("set local enable_bitmapscan = off");
-            return new NamedParameterJdbcTemplate(jdbc).queryForList("explain " + PLAN_ROW
-                    + " where owner_id = :owner and tenant_id = :tenant " + orderBy + " limit 21", parameters, String.class);
-        });
-        String plan = String.join("\n", planLines);
+        ReadCost cost = ReadCost.of(jdbc, transactionManager,
+                PLAN_ROW + " where owner_id = :owner and tenant_id = :tenant " + orderBy + " limit 21", parameters);
 
-        assertThat(plan).as(plan).contains("using " + index + " on").doesNotContain("Sort");
+        assertThat(ReadCost.indexExists(jdbc, index)).as(index).isTrue();
+        assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
     }
 }

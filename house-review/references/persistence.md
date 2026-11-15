@@ -339,10 +339,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     `MATERIALIZED` CTE, never `WHERE id IN (SELECT … LIMIT … FOR UPDATE SKIP LOCKED)`: the planner may
     put that subquery on the inner side of a join and run it again per outer row, each run skipping the
     rows the earlier ones locked and returning others, so one lease takes more than its batch (measured:
-    a batch of 2 leased 5) and "disjoint, bounded batches" rests on plan luck. The test explains the
-    statement the repository runs (a constant, not a copy) and asserts `InitPlan` and no `Semi Join`
-    (reference `MediaFileRepository.LEASE_*`, `MediaFileIndexIntegrationTest`); a behaviour test alone
-    passes on a near-empty table;
+    a batch of 2 leased 5) and "disjoint, bounded batches" rests on plan luck. The test takes the
+    statement the repository runs (a constant, not a copy), asserts its text (`= ANY (ARRAY(`, no
+    `IN (SELECT`: the guarantee is the shape, and the planner may run an `IN` once on the test's data)
+    and bounds what it reads to twice its batch on rows that all qualify (reference
+    `MediaFileRepository.LEASE_*`, `MediaFileIndexIntegrationTest`); a behaviour test alone passes on a
+    near-empty table;
   - `lock_timeout` bounds every wait.
 - **Detect:** `IN (SELECT … FOR UPDATE SKIP LOCKED)` or `IN (SELECT … LIMIT …)` in a writing statement;
   a lock whose javadoc names no rule, or only a nicer error code; `findForKeyShare…` /
@@ -487,15 +489,30 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     A configured maximum range length gives the bound: a range ending on or after `from` started no
     earlier than `from - (max - 1)`, so the query adds `starts_on >= from - (max - 1)` and the index
     range is bounded on both sides (golden `PlanRepositoryImpl.filterPredicates`, `plan.max-days`,
-    checked on create; `PlanIndexIntegrationTest.plannedDaysReadABoundedRange` asserts both bounds in the
-    Index Cond). Without a maximum, it is a recorded decision that the filter scans the scope's history;
+    checked on create; `PlanIndexIntegrationTest`'s planned-days cells read at most the maximum length
+    plus the range's days). Without a maximum, it is a recorded decision that the filter scans the scope's
+    history;
+  - **a range filter is offered under its own column's order** (a range of that order's index); under
+    another order no index serves it on an unbounded scope (newest first, filtered by a date, walks the
+    owner's history), so the filter refuses that sort with a 400 naming the rule (golden
+    `TodoFilter.isDueOnOrBeforeSortedByDueDate`), unless a bounded scope holds it (a todo's time entries),
+    recorded;
+  - **every list has its cell matrix in its index test** (crud-gen tests.md, *Index tests*): each order ×
+    each filter (each value of an enum), a later batch or page, the `ids` lookup, the second steps, the
+    delete-side key checks, the job leases, each naming the index meant to serve it and the most rows it
+    may read; the test asserts the index exists and the statement reads at most the bound
+    (`ReadCost`, `EXPLAIN ANALYZE` rows), on a seed where every unserved cell reads ten times more;
   - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).
 - **Detect:** a status filter on a list with no status index and no recorded reason per offered order
   (a "rarely listed" note is not one: the UI offers the value); an index test that binds one status
-  value, or only asserts the index name and no Sort for a filter applied while walking (an in-order walk
-  that filters away the table passes it: the bound is `Rows Removed by Filter` from `EXPLAIN ANALYZE`);
-  an overlap filter written as two comparisons with nothing bounding `starts_on` from
-  below (an index test that only finds `starts_on` in the Index Cond doesn't notice); an index on
+  value; **an index test that asserts a plan's shape** (an index name in the plan, no `Sort`, a column in
+  `Index Cond`) instead of the cell's read bound and its index's existence: the plan turns on the
+  statistics, so it passes alone and fails in a full run (or the reverse), and an in-order walk that
+  filters away the table passes "index by name, no Sort"; a list cell (an order × a filter) in no index
+  test, or with neither an index nor a recorded bound; a range filter offered under another column's order
+  on an unbounded scope; an index test seeded with the tested scope as most of its table, or not
+  interleaved in id order (a missing index then reads few rows); an overlap filter written as two
+  comparisons with nothing bounding `starts_on` from below; an index on
   `updated_at` or `version` (or on any column every update changes): every
   update then writes new index entries and is never a HOT update (measured 2026-11-14 on a
   todos-shaped table: 0% HOT with the index, about 72% without it at the default fillfactor, 97% at

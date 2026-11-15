@@ -1,6 +1,8 @@
 package com.example.app.todo;
 
+import com.example.app.common.dropdown.DropdownStatus;
 import com.example.app.support.IntegrationTest;
+import com.example.app.support.ReadCost;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.TestInstance;
@@ -9,10 +11,10 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -20,80 +22,104 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Every tag order (the page's and the dropdown's), under every filter that scopes it, reads its
- * intended index in order: that index named in the plan, the scope in the index condition and no
- * sort step. Scans that read whole tables are
- * switched off, because on the few rows of a test database they would win on cost and hide a
- * missing index.
+ * Every cell of the tag list and its dropdown (each order under each status value, a later page, the
+ * search, the ids lookup) has its index and reads at most its bound (crud-gen tests.md row 28). The owner's
+ * 500 tags, one in five inactive, sit beside a sibling owner's 10,000, interleaved in id order, so a cell
+ * its index doesn't serve reads at least ten times its bound.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TagIndexIntegrationTest extends IntegrationTest {
 
+    private static final String TAG_ROW = """
+            select id, name, color, active, owner_id, created_at, updated_at, created_by, updated_by, version
+              from tags""";
+    private static final String DROPDOWN_ITEM = "select id, name from tags";
+    private static final int PAGE = 20;
+    private static final int TWO_PAGES = 2 * PAGE;
+    private static final int OWNER_TAGS = 500;
+
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    private UUID ownerId;
+    private final MapSqlParameterSource parameters = new MapSqlParameterSource();
 
     @BeforeAll
-    void seedOneOwnerWithManyTags() throws Exception {
-        ownerId = newUser().id();
+    void seedAnOwnerBesideABiggerOne() throws Exception {
+        UUID ownerId = newUser().id();
+        seedTags(ownerId, OWNER_TAGS);
+        seedTags(newUser().id(), 10_000);
+        parameters.addValue("owner", ownerId)
+                .addValue("active", true)
+                .addValue("inactive", false)
+                .addValue("query", "matches nothing")
+                .addValue("ids", jdbc.queryForList("select id from tags where owner_id = ? limit 20", UUID.class, ownerId));
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            jdbc.execute("set local default_statistics_target = 1000");
+            jdbc.execute("analyze tags");
+        });
+    }
+
+    private void seedTags(UUID owner, int tags) {
         // tenancy-row:begin
         // // Row mode: every insert names its tenant (tenant_id has no default).
         // sql("""
         //         insert into tags (id, tenant_id, owner_id, name, active, created_at, updated_at, version)
-        //         select gen_random_uuid(), ?, ?, 'Seeded ' || n, n % 5 <> 0, now(), now(), 0 from generate_series(1, 500) n
-        //         """, testTenant().id(), ownerId);
+        //         select gen_random_uuid(), ?, ?, 'Seeded ' || n, n % 5 <> 0, now(), now(), 0 from generate_series(1, ?) n
+        //         """, testTenant().id(), owner, tags);
         // tenancy-row:else
         sql("""
                 insert into tags (id, owner_id, name, active, created_at, updated_at, version)
-                select gen_random_uuid(), ?, 'Seeded ' || n, n % 5 <> 0, now(), now(), 0 from generate_series(1, 500) n
-                """, ownerId);
+                select gen_random_uuid(), ?, 'Seeded ' || n, n % 5 <> 0, now(), now(), 0 from generate_series(1, ?) n
+                """, owner, tags);
         // tenancy-row:end
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze tags"));
     }
 
-    static Stream<Arguments> scopedOrders() {
-        return Stream.of(
-                Arguments.of("tags, NAME", "tags where owner_id = :owner order by name, id", List.of("owner_id"),
-                        "idx_tags_owner_id_name_id"),
-                Arguments.of("tags, NEWEST", "tags where owner_id = :owner order by id desc", List.of("owner_id"),
-                        "idx_tags_owner_id_id"),
-                Arguments.of("tags by status, NAME", "tags where owner_id = :owner and active = :active order by name, id",
-                        List.of("owner_id", "active"),
-                        "idx_tags_owner_id_active_name_id"),
-                Arguments.of("tag dropdown ALL, DESC", "tags where owner_id = :owner order by name desc, id desc",
-                        List.of("owner_id"),
-                        "idx_tags_owner_id_name_id"),
-                Arguments.of("tag dropdown ACTIVE, ASC", "tags where owner_id = :owner and active = :active order by name, id",
-                        List.of("owner_id", "active"),
-                        "idx_tags_owner_id_active_name_id"),
-                Arguments.of("tag dropdown ACTIVE, DESC",
-                        "tags where owner_id = :owner and active = :active order by name desc, id desc",
-                        List.of("owner_id", "active"),
-                        "idx_tags_owner_id_active_name_id"));
+    private static Arguments cell(String name, String index, String statement, int bound) {
+        return Arguments.of(name, index, statement, bound);
     }
 
-    @ParameterizedTest(name = "{0}: {3}")
-    @MethodSource("scopedOrders")
-    @DisplayName("Every offered tag order under every scoping filter reads its intended index in order")
-    void everyScopedOrderReadsAnIndexInOrder(String name, String fromWhereOrder, List<String> scope, String index) {
-        MapSqlParameterSource parameters = new MapSqlParameterSource()
-                .addValue("owner", ownerId)
-                .addValue("active", true);
-
-        List<String> planLines = new TransactionTemplate(transactionManager).execute(status -> {
-            jdbc.execute("set local enable_seqscan = off");
-            jdbc.execute("set local enable_bitmapscan = off");
-            return new NamedParameterJdbcTemplate(jdbc)
-                    .queryForList("explain select id from " + fromWhereOrder + " limit 21", parameters, String.class);
-        });
-        String plan = String.join("\n", planLines);
-
-        assertThat(plan).as(plan).contains("using " + index + " on").doesNotContain("Sort");
-        String indexCondition = plan.lines().filter(line -> line.contains("Index Cond:")).findFirst().orElse("");
-        // One column at a time: an unscoped order (a whole shared table) has none, and contains() refuses an empty list.
-        for (String column : scope) {
-            assertThat(indexCondition).as(plan).contains(column);
+    /** The page's and the dropdown's statements, every DropdownStatus value under every order. */
+    static Stream<Arguments> cells() {
+        List<Arguments> cells = new ArrayList<>();
+        cells.add(cell("tags, NAME", "idx_tags_owner_id_name_id",
+                TAG_ROW + " where owner_id = :owner order by name, id limit 20", TWO_PAGES));
+        cells.add(cell("tags, NAME, a later page", "idx_tags_owner_id_name_id",
+                TAG_ROW + " where owner_id = :owner order by name, id limit 20 offset 40", 40 + TWO_PAGES));
+        cells.add(cell("tags, NEWEST", "idx_tags_owner_id_id",
+                TAG_ROW + " where owner_id = :owner order by id desc limit 20", TWO_PAGES));
+        for (DropdownStatus status : List.of(DropdownStatus.ACTIVE, DropdownStatus.INACTIVE)) {
+            String flag = status == DropdownStatus.ACTIVE ? ":active" : ":inactive";
+            cells.add(cell("tags " + status + ", NAME", "idx_tags_owner_id_active_name_id",
+                    TAG_ROW + " where owner_id = :owner and active = " + flag + " order by name, id limit 20", TWO_PAGES));
+            cells.add(cell("tags " + status + ", NEWEST", "idx_tags_owner_id_active_id",
+                    TAG_ROW + " where owner_id = :owner and active = " + flag + " order by id desc limit 20", TWO_PAGES));
+            cells.add(cell("tag dropdown " + status + ", ASC", "idx_tags_owner_id_active_name_id",
+                    DROPDOWN_ITEM + " where owner_id = :owner and active = " + flag + " order by name, id limit 21", TWO_PAGES));
+            cells.add(cell("tag dropdown " + status + ", DESC", "idx_tags_owner_id_active_name_id",
+                    DROPDOWN_ITEM + " where owner_id = :owner and active = " + flag + " order by name desc, id desc limit 21",
+                    TWO_PAGES));
         }
+        cells.add(cell("tag dropdown ALL, ASC", "idx_tags_owner_id_name_id",
+                DROPDOWN_ITEM + " where owner_id = :owner order by name, id limit 21", TWO_PAGES));
+        cells.add(cell("tag dropdown ALL, DESC", "idx_tags_owner_id_name_id",
+                DROPDOWN_ITEM + " where owner_id = :owner order by name desc, id desc limit 21", TWO_PAGES));
+        // query is a contains search no btree serves (0004): it reads the owner's tags, never anyone else's.
+        cells.add(cell("tags matching a query, NAME (the owner's tags at most)", "idx_tags_owner_id_name_id",
+                TAG_ROW + " where owner_id = :owner and strpos(lower(name), :query) > 0 order by name, id limit 20", OWNER_TAGS));
+        cells.add(cell("tags matching a query, NEWEST (the owner's tags at most)", "idx_tags_owner_id_id",
+                TAG_ROW + " where owner_id = :owner and strpos(lower(name), :query) > 0 order by id desc limit 20", OWNER_TAGS));
+        cells.add(cell("tags by ids", "pk_tags", TAG_ROW + " where owner_id = :owner and id in (:ids) order by name, id limit 20",
+                TWO_PAGES));
+        return cells.stream();
+    }
+
+    @ParameterizedTest(name = "{0} ({1}): at most {3} rows")
+    @MethodSource("cells")
+    @DisplayName("Every cell of the tag list and dropdown has its index and reads at most its bound")
+    void everyCellReadsAtMostItsBound(String cell, String index, String statement, int bound) {
+        ReadCost cost = ReadCost.of(jdbc, transactionManager, statement, parameters);
+
+        assertThat(ReadCost.indexExists(jdbc, index)).as(index).isTrue();
+        assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(bound);
     }
 }

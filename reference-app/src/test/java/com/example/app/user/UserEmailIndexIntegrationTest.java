@@ -1,33 +1,30 @@
 package com.example.app.user;
 
 import com.example.app.support.IntegrationTest;
+import com.example.app.support.ReadCost;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
-
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Every login and signup looks an account up by email: that lookup must be able to use the index. */
+/** Every login and signup looks an account up by email: one row, through the unique key (crud-gen tests.md row 28). */
 class UserEmailIndexIntegrationTest extends IntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
 
     @Test
-    @DisplayName("A lookup by the stored email can use uq_users_email")
-    void emailLookupCanUseTheUniqueIndex() {
-        // A small test table makes a sequential scan the cheaper plan; switched off, the planner
-        // still picks one when no index serves "email = ?", which is the defect this guards against.
-        List<String> plan = new TransactionTemplate(transactionManager).execute(status -> {
-            jdbc.execute("SET LOCAL enable_seqscan = off");
-            return jdbc.queryForList("EXPLAIN SELECT id FROM users WHERE email = ?", String.class,
-                    uniqueEmail("indexed"));
-        });
+    @DisplayName("A lookup by the stored email has uq_users_email and reads at most the one account")
+    void emailLookupReadsOneRow() throws Exception {
+        String email = newUser().email();
 
-        assertThat(String.join("\n", plan)).contains("uq_users_email");
+        ReadCost cost = ReadCost.of(jdbc, transactionManager, "select id from users where email = :email",
+                new MapSqlParameterSource("email", email));
+
+        assertThat(ReadCost.indexExists(jdbc, "uq_users_email")).isTrue();
+        assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(1);
     }
 }

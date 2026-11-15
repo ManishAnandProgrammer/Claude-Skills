@@ -189,6 +189,7 @@ src/main/resources/db/changelog/changes/0005-time-entries.sql
 src/main/resources/db/changelog/changes/0006-todo-tags.sql
 src/main/java/$reference_path/planning
 src/main/resources/db/changelog/changes/0011-plans.sql
+src/main/resources/db/changelog/changes/0024-tags-status-newest.sql
 src/test/java/$reference_path/todo
 src/test/java/$reference_path/planning
 LIST

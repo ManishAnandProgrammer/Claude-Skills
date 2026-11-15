@@ -749,7 +749,7 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("dueOnOrBefore includes the day itself, not later or undated todos, under both sorts")
+    @DisplayName("dueOnOrBefore includes the day itself, not later or undated todos")
     void filterByDueOnOrBeforeReturnsOnlyMatching() throws Exception {
         TestUser user = newUser();
         String listId = createList(user, "Due");
@@ -760,8 +760,20 @@ class TodoIntegrationTest extends IntegrationTest {
 
         getAs(user.accessToken(), TODOS + "?dueOnOrBefore=2026-11-30")
                 .andExpect(jsonPath("$.response[*].title", contains("This week", "On the day")));
+    }
+
+    @Test
+    @DisplayName("dueOnOrBefore under sort NEWEST is 400 VALIDATION_FAILED naming the rule: no index serves that cell")
+    void dueOnOrBeforeNeedsTheDueDateOrder() throws Exception {
+        TestUser user = newUser();
+
         getAs(user.accessToken(), TODOS + "?dueOnOrBefore=2026-11-30&sort=NEWEST")
-                .andExpect(jsonPath("$.response[*].title", contains("On the day", "This week")));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[*].parameter", contains("dueOnOrBeforeSortedByDueDate")))
+                .andExpect(jsonPath("$.errors[0].detail").value("dueOnOrBefore needs sort DUE_DATE"));
+        getAs(user.accessToken(), TODOS + "?dueOnOrBefore=2026-11-30&sort=DUE_DATE")
+                .andExpect(status().isOk());
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.example.app.common.pagination.CursorFilter;
 import com.example.app.todo.domain.TodoPriority;
 import com.example.app.todo.domain.TodoStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -45,7 +46,7 @@ public class TodoFilter extends CursorFilter {
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     @EarliestDate("todo.due-date") @LatestDate("todo.due-date")
-    @Schema(description = "Only todos due on or before this date (yyyy-MM-dd)", example = "2026-12-31")
+    @Schema(description = "Only todos due on or before this date (yyyy-MM-dd), with sort DUE_DATE only", example = "2026-12-31")
     private LocalDate dueOnOrBefore;
 
     @MaxLength("search-query")
@@ -74,6 +75,15 @@ public class TodoFilter extends CursorFilter {
 
     public boolean requirePriorityPredicate() {
         return Objects.nonNull(priority);
+    }
+
+    /**
+     * A range filter comes with the order of its own column: under DUE_DATE it is a range of the due index,
+     * under NEWEST no index serves it (newest first, filtered by a date, walks the owner's whole history).
+     */
+    @AssertTrue(message = "{todo.due-filter-order}")
+    public boolean isDueOnOrBeforeSortedByDueDate() {
+        return Objects.isNull(dueOnOrBefore) || sort == TodoSort.DUE_DATE;
     }
 
     public boolean requireDueOnOrBeforePredicate() {

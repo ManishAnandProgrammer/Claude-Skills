@@ -2,6 +2,8 @@ package com.example.app.media;
 
 import com.example.app.media.repository.MediaFileRepository;
 import com.example.app.support.IntegrationTest;
+import com.example.app.support.ReadCost;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.TestInstance;
@@ -10,24 +12,23 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.util.List;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Each job's lease statement (MediaFileRepository's own constant, what the job runs) reads its own
- * partial index in order: that index named in the plan and no sort on the expiry column. Its batch is an
- * init plan, computed once: as the inner side of a semi-join it could run again and lease more rows than
- * the batch. Scans that read whole tables are switched off, because on the few rows of a test database
- * they would win on cost and hide a missing index.
+ * Each job's lease statement (MediaFileRepository's own constant, what the job runs) has its partial index
+ * and reads only its batch (crud-gen tests.md row 28): 1,000 files, a fifth in each status, every one past
+ * its expiry. MediaJobsIntegrationTest proves that a lease takes exactly its batch.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MediaFileIndexIntegrationTest extends IntegrationTest {
+
+    /** A batch well below each status's 200 seeded files. */
+    private static final int BATCH = 20;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -41,7 +42,7 @@ class MediaFileIndexIntegrationTest extends IntegrationTest {
         //                                  upload_expires_at, expires_at, created_at, updated_at, version)
         //         select gen_random_uuid(), ?, 'INDEX_TEST/' || gen_random_uuid(), 'INDEX_TEST', 'a.pdf', 'application/pdf', 1,
         //                (array['PENDING', 'IN_REVIEW', 'UPLOADED', 'MISSING', 'RELEASED'])[1 + n % 5], gen_random_uuid(),
-        //                now() + (n || ' seconds')::interval, now() + interval '1 hour' + (n || ' seconds')::interval,
+        //                now() - interval '1 day' + (n || ' seconds')::interval, now() - interval '1 day' + (n || ' seconds')::interval,
         //                now(), now(), 0
         //           from generate_series(1, 1000) n
         //         """, testTenant().id());
@@ -51,7 +52,7 @@ class MediaFileIndexIntegrationTest extends IntegrationTest {
                                          upload_expires_at, expires_at, created_at, updated_at, version)
                 select gen_random_uuid(), 'INDEX_TEST/' || gen_random_uuid(), 'INDEX_TEST', 'a.pdf', 'application/pdf', 1,
                        (array['PENDING', 'IN_REVIEW', 'UPLOADED', 'MISSING', 'RELEASED'])[1 + n % 5], gen_random_uuid(),
-                       now() + (n || ' seconds')::interval, now() + interval '1 hour' + (n || ' seconds')::interval,
+                       now() - interval '1 day' + (n || ' seconds')::interval, now() - interval '1 day' + (n || ' seconds')::interval,
                        now(), now(), 0
                   from generate_series(1, 1000) n
                 """);
@@ -59,32 +60,43 @@ class MediaFileIndexIntegrationTest extends IntegrationTest {
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze media_files"));
     }
 
-    static Stream<Arguments> jobQueries() {
-        return Stream.of(
-                Arguments.of("verification", MediaFileRepository.LEASE_FOR_VERIFICATION, "idx_media_files_in_review_upload_expires_at_id"),
-                Arguments.of("cleanup, released", MediaFileRepository.LEASE_RELEASED, "idx_media_files_released_upload_expires_at_id"),
-                Arguments.of("cleanup, expired pending", MediaFileRepository.LEASE_EXPIRED_PENDING, "idx_media_files_pending_expires_at_id"));
+    /** Every seeded file is past its expiry: left behind, the jobs other classes run would lease them. */
+    @AfterAll
+    void deleteTheSeededFiles() {
+        sql("delete from media_files where purpose = 'INDEX_TEST'");
     }
 
-    @ParameterizedTest(name = "{0}: {2}")
+    static Stream<Arguments> jobQueries() {
+        return Stream.of(
+                Arguments.of("verification", "idx_media_files_in_review_upload_expires_at_id", MediaFileRepository.LEASE_FOR_VERIFICATION),
+                Arguments.of("cleanup, released", "idx_media_files_released_upload_expires_at_id", MediaFileRepository.LEASE_RELEASED),
+                Arguments.of("cleanup, expired pending", "idx_media_files_pending_expires_at_id", MediaFileRepository.LEASE_EXPIRED_PENDING));
+    }
+
+    /**
+     * A lease reads its batch from its partial index and updates those rows by id: twice the batch in all;
+     * walked from another index it filters the other statuses' rows, far more than its bound, as every seeded
+     * file is past its expiry. Run and rolled back. The batch is {@code = ANY (ARRAY(...))}, an init plan
+     * computed once whatever the planner picks: as {@code IN (...)} it may become the inner side of a
+     * semi-join that runs again and leases more than the batch (house-review DATA-29). That is the
+     * statement's own text, so it is checked as text: on this seed the planner happens to run {@code IN}
+     * once too, and no bound tells the two apart.
+     */
+    @ParameterizedTest(name = "{0} ({1})")
     @MethodSource("jobQueries")
-    @DisplayName("Every job's lease reads its own partial index in order, its batch an init plan run once")
-    void everyJobQueryReadsItsIndex(String name, String statement, String index) {
+    @DisplayName("Every job's lease is an init plan, has its partial index and reads only its batch, twice")
+    void everyJobQueryReadsOnlyItsBatch(String name, String index, String statement) {
         MapSqlParameterSource parameters = new MapSqlParameterSource()
                 .addValue("leaseSeconds", 300L)
-                .addValue("batchSize", 200);
+                .addValue("batchSize", BATCH);
         // tenancy-row:begin
         // parameters.addValue("tenantId", testTenant().id());
         // tenancy-row:end
 
-        List<String> planLines = new TransactionTemplate(transactionManager).execute(status -> {
-            jdbc.execute("set local enable_seqscan = off");
-            jdbc.execute("set local enable_bitmapscan = off");
-            return new NamedParameterJdbcTemplate(jdbc).queryForList("explain " + statement, parameters, String.class);
-        });
-        String plan = String.join("\n", planLines);
+        ReadCost cost = ReadCost.of(jdbc, transactionManager, statement, parameters);
 
-        assertThat(plan).as(plan).contains("using " + index + " on").doesNotContainPattern("Sort Key: [^\\n]*expires_at");
-        assertThat(plan).as(plan).contains("InitPlan").doesNotContain("Semi Join");
+        assertThat(statement).contains("WHERE id = ANY (ARRAY(SELECT id").doesNotContain(" IN (SELECT");
+        assertThat(ReadCost.indexExists(jdbc, index)).as(index).isTrue();
+        assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(2L * 2 * BATCH);
     }
 }
