@@ -73,6 +73,8 @@ public interface AuthApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus): the tenant was suspended or closed; the refresh token stays usable",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "MEMBERSHIP_NOT_FOUND: the account was removed from the token's tenant; sign in again",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "429", description = "RATE_LIMITED; wait Retry-After seconds",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",

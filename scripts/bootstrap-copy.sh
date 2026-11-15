@@ -238,6 +238,10 @@ src/main/resources/db/changelog/changes/0010-todo-attachments.sql
 src/test/java/$reference_path/todo/TodoAttachmentsIntegrationTest.java
 LIST
             fi
+            # With tenancy, the jobs' loop over the tenants (the jobs themselves are replacements).
+            if tenancy_chosen; then
+                echo "overlays/tenancy/src/test/java/$reference_path/media/service/MediaJobsPerTenantTest.java"
+            fi
             # The policy admin API's role, unless the metadata piece already brings it.
             if chosen_piece sign-in && ! chosen_piece metadata; then
                 echo "src/main/resources/db/changelog/changes/0007-users-admin-role.sql"
@@ -260,6 +264,10 @@ LIST
             # The example's fixed metadata key in every new tenant (0014 seeds the existing ones).
             if chosen_piece metadata && chosen_piece example; then
                 echo "$ROW/src/main/java/$reference_path/todo/service/TodoListDefaultsSeed.java"
+            fi
+            # The tenant tables' column defaults, dropped: only with a piece that brings tenant tables.
+            if chosen_piece example || chosen_piece metadata || chosen_piece media; then
+                echo "$ROW/src/main/resources/db/changelog/changes/0016-tenant-id-no-default.sql"
             fi
             if chosen_piece media; then
                 echo "$ROW/src/main/java/$reference_path/media/api/UploadLimits.java"
@@ -314,9 +322,10 @@ for optional in sign-in example metadata media admin tenancy tenancy-schema tena
     fi
 done
 # $1: "reference" for a reference-app file, "layer" for an overlay's.
+# A blank line on each side of a dropped block would leave two in a row: the second is left out.
 piece_filter() {
     KEPT="$kept_markers" SOURCE="$1" perl -ne '
-        BEGIN { @open = (); }
+        BEGIN { @open = (); $last_blank = 0; $dropped = 0; }
         if (/\b(sign-in|example|metadata|media|admin|tenancy-schema|tenancy-row|tenancy|tenant-registration):(begin|else|end)\b/) {
             my ($piece, $marker) = ($1, $2);
             my $kept = index($ENV{KEPT}, ",$piece,") >= 0;
@@ -326,12 +335,16 @@ piece_filter() {
             else { pop @open; }
             next;
         }
-        next if grep { $_ eq "drop" } @open;
+        if (grep { $_ eq "drop" } @open) { $dropped = 1; next; }
         if (grep { $_ eq "uncomment" } @open) {
             s{^(\s*)<!-- ?(.*?) ?-->[ \t]*$}{$1$2} or s{^(\s*)(?://|#|--) ?}{$1};
             # A bare "//" (a blank line in a commented block) leaves only its indent: no trailing spaces.
             s{^[ \t]+$}{};
         }
+        my $blank = /^\s*$/;
+        next if $blank && $last_blank && $dropped;
+        $last_blank = $blank ? 1 : 0;
+        $dropped = 0 unless $blank;
         print;
     '
 }
@@ -446,7 +459,7 @@ done
 # rewritten here to list exactly the copied changesets, the platform's in the first, every other in
 # the second. Row mode has one master with the platform's changesets first: every tenant table
 # references tenants, and the app role's default privileges (0013) then cover each tenant table.
-platform_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql"
+platform_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql"
 # $1: platform, tenant or all; the copied changesets of that kind, in order.
 changesets_of() {
     local want="$1" changeset name

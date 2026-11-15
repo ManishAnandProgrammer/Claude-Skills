@@ -39,6 +39,17 @@ class TimeEntryIndexIntegrationTest extends IntegrationTest {
     void seedOneOwnerWithManyEntries() throws Exception {
         ownerId = newUser().id();
         UUID listId = UUID.randomUUID();
+        // tenancy-row:begin
+        // // Row mode: every insert names its tenant (tenant_id has no default).
+        // sql("""
+        //         insert into todo_lists (id, tenant_id, owner_id, name, created_at, updated_at, version)
+        //         values (?, ?, ?, 'Seeded time', now(), now(), 0)
+        //         """, listId, testTenant().id(), ownerId);
+        // sql("""
+        //         insert into todos (id, tenant_id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
+        //         select gen_random_uuid(), ?, ?, ?, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0 from generate_series(1, 50) n
+        //         """, testTenant().id(), listId, ownerId);
+        // tenancy-row:else
         sql("""
                 insert into todo_lists (id, owner_id, name, created_at, updated_at, version)
                 values (?, ?, 'Seeded time', now(), now(), 0)
@@ -47,6 +58,16 @@ class TimeEntryIndexIntegrationTest extends IntegrationTest {
                 insert into todos (id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
                 select gen_random_uuid(), ?, ?, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0 from generate_series(1, 50) n
                 """, listId, ownerId);
+        // tenancy-row:end
+        // tenancy-row:begin
+        // sql("""
+        //         insert into time_entries (id, tenant_id, todo_id, owner_id, minutes, spent_on, billable, created_at, updated_at, version)
+        //         select gen_random_uuid(), todo.tenant_id, todo.id, todo.owner_id, 1 + n % 600, date '2026-01-01' + n, n % 2 = 0,
+        //                now(), now(), 0
+        //         from todos todo cross join generate_series(1, 100) n
+        //         where todo.owner_id = ?
+        //         """, ownerId);
+        // tenancy-row:else
         sql("""
                 insert into time_entries (id, todo_id, owner_id, minutes, spent_on, billable, created_at, updated_at, version)
                 select gen_random_uuid(), todo.id, todo.owner_id, 1 + n % 600, date '2026-01-01' + n, n % 2 = 0,
@@ -54,6 +75,7 @@ class TimeEntryIndexIntegrationTest extends IntegrationTest {
                 from todos todo cross join generate_series(1, 100) n
                 where todo.owner_id = ?
                 """, ownerId);
+        // tenancy-row:end
         todoId = jdbc.queryForObject("select id from todos where owner_id = ? limit 1", UUID.class, ownerId);
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze todos, time_entries"));
     }

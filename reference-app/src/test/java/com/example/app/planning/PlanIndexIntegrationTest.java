@@ -8,6 +8,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -41,17 +42,43 @@ class PlanIndexIntegrationTest extends IntegrationTest {
     @BeforeAll
     void seedOneOwnerWithManyPlans() throws Exception {
         ownerId = newUser().id();
+        // tenancy-row:begin
+        // // Row mode: every insert names its tenant (tenant_id has no default).
+        // sql("""
+        //         insert into todo_lists (id, tenant_id, owner_id, name, created_at, updated_at, version)
+        //         values (gen_random_uuid(), ?, ?, 'Seeded', now(), now(), 0)
+        //         """, testTenant().id(), ownerId);
+        // tenancy-row:else
         sql("""
                 insert into todo_lists (id, owner_id, name, created_at, updated_at, version)
                 values (gen_random_uuid(), ?, 'Seeded', now(), now(), 0)
                 """, ownerId);
+        // tenancy-row:end
+        // tenancy-row:begin
+        // sql("""
+        //         insert into todos (id, tenant_id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
+        //         select gen_random_uuid(), list.tenant_id, list.id, list.owner_id, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0
+        //         from todo_lists list cross join generate_series(1, 50) n
+        //         where list.owner_id = ?
+        //         """, ownerId);
+        // tenancy-row:else
         sql("""
                 insert into todos (id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
                 select gen_random_uuid(), list.id, list.owner_id, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0
                 from todo_lists list cross join generate_series(1, 50) n
                 where list.owner_id = ?
                 """, ownerId);
+        // tenancy-row:end
         // One plan a day, each todo every 50th day: one owner's plans never share a day.
+        // tenancy-row:begin
+        // sql("""
+        //         insert into plans (id, tenant_id, todo_id, owner_id, starts_on, ends_on, created_at, updated_at, version)
+        //         select gen_random_uuid(), todo.tenant_id, todo.id, todo.owner_id, date '2020-01-01' + (n * 50 + todo.rank),
+        //                date '2020-01-01' + (n * 50 + todo.rank), now(), now(), 0
+        //         from (select id, tenant_id, owner_id, (row_number() over (order by id) - 1)::integer as rank from todos where owner_id = ?) todo
+        //         cross join generate_series(0, 39) n
+        //         """, ownerId);
+        // tenancy-row:else
         sql("""
                 insert into plans (id, todo_id, owner_id, starts_on, ends_on, created_at, updated_at, version)
                 select gen_random_uuid(), todo.id, todo.owner_id, date '2020-01-01' + (n * 50 + todo.rank),
@@ -59,6 +86,7 @@ class PlanIndexIntegrationTest extends IntegrationTest {
                 from (select id, owner_id, (row_number() over (order by id) - 1)::integer as rank from todos where owner_id = ?) todo
                 cross join generate_series(0, 39) n
                 """, ownerId);
+        // tenancy-row:end
         todoId = jdbc.queryForObject("select todo_id from plans where owner_id = ? limit 1", UUID.class, ownerId);
         planIds = jdbc.queryForList("select id from plans where owner_id = ? limit 21", UUID.class, ownerId);
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze todos, plans"));
@@ -125,6 +153,27 @@ class PlanIndexIntegrationTest extends IntegrationTest {
         assertThat(plan).as(plan).containsPattern("using " + index + " on").doesNotContain("Seq Scan");
     }
 
+    /**
+     * The planned-days filter as PlanRepositoryImpl writes it, with its select list: {@code ends_on >= from}
+     * has no index, so the derived {@code starts_on >= from - (max-days - 1)} must reach the index condition
+     * beside {@code starts_on <= to}. Without that lower bound the scan reads the owner's whole history
+     * before {@code to} and filters it.
+     */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"order by starts_on, id", "order by id desc"})
+    @DisplayName("The planned-days filter bounds its index range on both sides, in both orders")
+    void plannedDaysReadABoundedRange(String order) {
+        String plan = explain("""
+                select id, todo_id, owner_id, starts_on, ends_on, created_at, updated_at, created_by, updated_by, version
+                  from plans
+                 where owner_id = :owner and ends_on >= :from and starts_on >= :earliestStart and starts_on <= :to
+                """ + order + " limit 21");
+
+        String indexCondition = plan.lines().filter(line -> line.contains("Index Cond:")).findFirst().orElse("");
+        assertThat(plan).as(plan).contains("using idx_plans_owner_id_starts_on_id on");
+        assertThat(indexCondition).as(plan).contains("owner_id", "starts_on >=", "starts_on <=");
+    }
+
     /** At most a batch of ids: probed by id (the primary key or {@code (owner_id, id)}), then sorted. */
     @Test
     @DisplayName("The ids lookup probes an index by id, never the whole table")
@@ -142,7 +191,11 @@ class PlanIndexIntegrationTest extends IntegrationTest {
                 .addValue("todo", todoId)
                 .addValue("ids", planIds)
                 .addValue("id", planIds.getFirst())
-                .addValue("day", LocalDate.of(2021, 6, 1));
+                .addValue("day", LocalDate.of(2021, 6, 1))
+                // A week of the seeded plans; a plan spans at most plan.max-days (31) days.
+                .addValue("from", LocalDate.of(2021, 6, 1))
+                .addValue("earliestStart", LocalDate.of(2021, 6, 1).minusDays(30))
+                .addValue("to", LocalDate.of(2021, 6, 7));
         List<String> planLines = new TransactionTemplate(transactionManager).execute(status -> {
             jdbc.execute("set local enable_seqscan = off");
             jdbc.execute("set local enable_bitmapscan = off");

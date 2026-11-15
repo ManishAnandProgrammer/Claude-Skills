@@ -12,7 +12,7 @@ superuser, once per database:
 ```sql
 CREATE ROLE <app>_owner LOGIN PASSWORD '...';   -- DB_OWNER_USER: owns every table, runs Liquibase
 CREATE ROLE <app>_app LOGIN PASSWORD '...';     -- DB_USER: the pool's role; reads and writes, owns nothing
-GRANT CREATE ON DATABASE <db> TO <app>_owner;   -- tenant schemas are created by provisioning
+GRANT CREATE ON DATABASE "<db>" TO <app>_owner;   -- tenant schemas are created by provisioning (quoted: a DB_NAME may hold a dash)
 CREATE SCHEMA platform AUTHORIZATION <app>_owner;
 -- Connections start in the platform schema: a tenant's tables exist only inside its transactions.
 ALTER ROLE <app>_app IN DATABASE <db> SET search_path = platform;
@@ -25,7 +25,12 @@ Locally, `docker compose up -d` does exactly this on a new database
 `DB_OWNER_PASSWORD` from `.env`). It runs only when the data directory is new: on an existing local
 volume, `docker compose down -v` first (that deletes the local data).
 
-Changeset `0013` grants the app role its rights (and default privileges for every later table).
+Changeset `0013` grants the app role its rights (and default privileges for every later table);
+`0015` takes the write rights on `platform_users` back (staff accounts are the owner's to write,
+section 2). The app role must never own a table or be a superuser, itself or through a role it is a
+member of: never `GRANT <app>_owner TO <app>_app` to fix a missing grant (it could then change any
+schema), grant the missing table right instead. The application checks this at startup
+(`PoolRoleCheck`) and stops naming what is wrong.
 
 ## 2. Platform staff
 

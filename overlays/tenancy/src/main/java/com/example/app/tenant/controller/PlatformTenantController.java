@@ -11,6 +11,7 @@ import com.example.app.tenant.dto.request.TenantStatusRequest;
 import com.example.app.tenant.dto.response.PlatformAuditResponse;
 import com.example.app.tenant.dto.response.TenantResponse;
 import com.example.app.tenant.service.PlatformAuditService;
+import com.example.app.tenant.service.StaffTenantService;
 import com.example.app.tenant.service.TenantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ import java.util.UUID;
 class PlatformTenantController implements PlatformTenantApi {
 
     private final TenantService service;
+    private final StaffTenantService staffTenants;
     private final PlatformAuditService audit;
 
     @Override
@@ -51,14 +53,14 @@ class PlatformTenantController implements PlatformTenantApi {
     @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
     public ObjectWrapper<TenantResponse> create(@RequestBody @Valid TenantCreateRequest request) {
-        return service.create(request);
+        return staffTenants.create(request);
     }
 
     @Override
     @PostMapping(path = "/{id}/approve", version = "v1+")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public ObjectWrapper<TenantResponse> approve(@PathVariable UUID id) {
-        return service.approveByStaff(id);
+        return staffTenants.approve(id);
     }
 
     @Override

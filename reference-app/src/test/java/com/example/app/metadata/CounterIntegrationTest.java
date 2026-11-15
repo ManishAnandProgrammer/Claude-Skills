@@ -159,12 +159,22 @@ class CounterIntegrationTest extends IntegrationTest {
         assertThat(nextCommitted(name)).isEqualTo(1L);
 
         for (String other : List.of("INVOICE_NUMBER_" + storeId.toString().toUpperCase(), "invoice_number", "INVOICE-NUMBER")) {
+            // tenancy-row:begin
+            // // Row mode: every insert names its tenant (tenant_id has no default).
+            // assertThatThrownBy(() -> sql("""
+            //         insert into counters (id, tenant_id, key, last_value, created_at, updated_at, version)
+            //         values (uuidv7(), ?, ?, 0, now(), now(), 0)
+            //         """, testTenant().id(), other))
+            //         .isInstanceOf(DataIntegrityViolationException.class)
+            //         .hasMessageContaining("ck_counters_key");
+            // tenancy-row:else
             assertThatThrownBy(() -> sql("""
                     insert into counters (id, key, last_value, created_at, updated_at, version)
                     values (uuidv7(), ?, 0, now(), now(), 0)
                     """, other))
                     .isInstanceOf(DataIntegrityViolationException.class)
                     .hasMessageContaining("ck_counters_key");
+            // tenancy-row:end
         }
         assertThatThrownBy(() -> Counters.perContext("INVOICE_NUMBER", null)).isInstanceOf(NullPointerException.class);
     }

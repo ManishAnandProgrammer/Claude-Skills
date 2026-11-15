@@ -14,8 +14,10 @@ import org.springframework.http.ProblemDetail;
 import java.util.UUID;
 
 @Tag(name = "Platform: impersonation", description = """
-        Platform staff acting as a member of a tenant, for support. Every request is recorded in the \
-        platform audit trail, with its reason.""")
+        Platform staff acting as a member of a tenant, for support. Every request that reaches the \
+        support-access policy is recorded in the platform audit trail with its reason, refused ones \
+        included; one refused before it (an invalid body, a tenant that isn't ACTIVE, no such member) \
+        is not.""")
 public interface PlatformImpersonationApi {
 
     @Operation(summary = "Act as a tenant's member", description = """

@@ -48,9 +48,11 @@ public interface PlatformTenantApi {
 
     @Operation(summary = "Create a tenant", description = """
             Created PENDING and approved at once, with the owner (an existing account) as its ADMIN. It \
-            becomes ACTIVE once its tables exist (provisioning runs in the background, usually within \
-            seconds); until then its members' login answers 403 TENANT_NOT_ACTIVE.""")
-    @ApiResponse(responseCode = "201", description = "Created, PENDING")
+            becomes ACTIVE once it is provisioned: in row mode right after the creating transaction commits, \
+            before this answer is written; with a schema per tenant by the provisioning job, once its tables \
+            exist (usually within seconds). Until then its members' login answers 403 TENANT_NOT_ACTIVE. The \
+            answer is the tenant as it is then, with the version a status change sends back.""")
+    @ApiResponse(responseCode = "201", description = "Created: ACTIVE when already provisioned, else PENDING")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
@@ -62,11 +64,12 @@ public interface PlatformTenantApi {
     ObjectWrapper<TenantResponse> create(TenantCreateRequest request);
 
     @Operation(summary = "Approve a registered tenant", description = """
-            Starts its provisioning. The answer shows the tenant as approved: PENDING. Row mode has \
-            provisioned it by the time the answer arrives (a GET shows ACTIVE); with a schema per tenant it \
-            stays PENDING until its tables exist, usually seconds. Approving a tenant that is no longer \
-            PENDING is 409. A billing module's payment webhook would approve the same way.""")
-    @ApiResponse(responseCode = "202", description = "Approved; provisioning follows")
+            Starts its provisioning. The answer is the tenant as it is then, with its current version: row \
+            mode has provisioned it before the answer (ACTIVE, unless provisioning failed and it stays PENDING \
+            until approved again); with a schema per tenant it stays PENDING until its tables exist, usually \
+            seconds. Approving a tenant that is no longer PENDING is 409. A billing module's payment webhook \
+            would approve the same way.""")
+    @ApiResponse(responseCode = "202", description = "Approved: ACTIVE when already provisioned, else PENDING until provisioning follows")
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TENANT_NOT_FOUND",

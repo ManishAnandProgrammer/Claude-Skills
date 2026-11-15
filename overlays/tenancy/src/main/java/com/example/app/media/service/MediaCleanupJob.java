@@ -28,8 +28,9 @@ import java.util.function.BiFunction;
  * a row pointing at nothing) or follow it (a failure leaves an orphan).
  *
  * <p>Each batch: leased in a short transaction, deleted from the store outside any transaction, its
- * rows deleted in a second short one. A store that doesn't answer ends the run; the leased rows return
- * to the next run when their lease ends. Settings: {@code app.jobs.media-cleanup.*}.</p>
+ * rows deleted in a second short one. A store that doesn't answer ends the tenant's run; the leased rows
+ * return to the next run when their lease ends. A tenant that fails is logged and the run goes on with
+ * the next. Settings: {@code app.jobs.media-cleanup.*}.</p>
  */
 @Slf4j
 @Component
@@ -47,15 +48,22 @@ class MediaCleanupJob {
             delete the same file; a crashed instance's batch returns when its lease ends, and S3 deletes are \
             idempotent, so deleting an object twice is harmless""")
     void cleanUp() {
-        for (UUID tenantId : tenants.activeIds()) {
-            TenantScope.runAs(tenantId, this::cleanUpAll);
+        // Suspended and closed tenants too: their removed and expired uploads cost storage all the same.
+        for (UUID tenantId : tenants.idsHoldingData()) {
+            try {
+                TenantScope.runAs(tenantId, () -> cleanUpAll(tenantId));
+            } catch (RuntimeException failure) {
+                // One tenant's failure must not skip every tenant after it, run after run: its leased rows
+                // return when the lease ends, and the next run retries.
+                log.error("Media cleanup failed for tenant {}", tenantId, failure);
+            }
         }
     }
 
-    private void cleanUpAll() {
+    private void cleanUpAll(UUID tenantId) {
         int released = clean(mediaFiles::leaseReleased);
         int expired = clean(mediaFiles::leaseExpiredPending);
-        log.info("Media cleanup: released={}, expiredPending={}", released, expired);
+        log.info("Media cleanup: tenant={}, released={}, expiredPending={}", tenantId, released, expired);
     }
 
     /** Batch after batch of one kind until a batch comes back short or the store stops answering. */

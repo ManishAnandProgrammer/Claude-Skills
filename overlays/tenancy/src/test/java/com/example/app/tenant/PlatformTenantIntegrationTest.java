@@ -47,8 +47,8 @@ class PlatformTenantIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Staff create a tenant PENDING, its owner becomes its ADMIN, and the creation is recorded with its source")
-    void createIsPendingWithTheOwnerAsAdmin() throws Exception {
+    @DisplayName("Staff create a tenant, approved at once and answered as provisioning left it; its owner becomes its ADMIN, and the creation is recorded with its source")
+    void createIsApprovedWithTheOwnerAsAdmin() throws Exception {
         String staff = platformToken();
         String ownerEmail = uniqueEmail("owner");
         String ownerId = read(rawSignup(ownerEmail, PASSWORD).andExpect(status().isCreated()), "$.response.id");
@@ -56,10 +56,19 @@ class PlatformTenantIntegrationTest extends IntegrationTest {
         ResultActions created = postAs(staff, TENANTS, createPayload("  Acme Ltd ", ownerEmail))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.response.name").value("Acme Ltd"))
-                .andExpect(jsonPath("$.response.status").value("PENDING"))
-                .andExpect(jsonPath("$.response.version").value(0))
+                // Row mode provisions right after the creating transaction commits, before the answer.
+                // tenancy-row:begin
+                .andExpect(jsonPath("$.response.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.response.version").value(1))
+                // tenancy-row:else
+                // .andExpect(jsonPath("$.response.status").value("PENDING"))
+                // .andExpect(jsonPath("$.response.version").value(0))
+                // tenancy-row:end
                 .andExpect(jsonPath("$.response.createdBy").isNotEmpty());
         UUID tenantId = UUID.fromString(read(created, "$.response.id"));
+        Integer answeredVersion = read(created, "$.response.version");
+        // The version a client sends back on its next change is the current one.
+        getAs(staff, TENANTS + "/" + tenantId).andExpect(jsonPath("$.response.version").value(answeredVersion));
 
         String role = jdbc.queryForObject("select role from tenant_memberships where tenant_id = ? and user_id = ?::uuid",
                 String.class, tenantId, ownerId);

@@ -3,6 +3,9 @@ package com.example.app.media.service;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.security.CurrentUser;
+// tenancy-row:begin
+// import com.example.app.common.tenancy.TenantContext;
+// tenancy-row:end
 import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.media.api.FileCountRange;
 // tenancy-row:begin
@@ -93,7 +96,11 @@ public class MediaFileService implements Uploads {
         if (keys.isEmpty()) {
             return List.of();
         }
+        // tenancy-row:begin
+        // List<UUID> claimed = repository.claim(TenantContext.id(), keys, purpose.name(), currentUser.id());
+        // tenancy-row:else
         List<UUID> claimed = repository.claim(keys, purpose.name(), currentUser.id());
+        // tenancy-row:end
         if (claimed.size() != keys.size()) {
             throw AppException.of(ErrorCode.UPLOAD_NOT_AVAILABLE);
         }
@@ -108,7 +115,11 @@ public class MediaFileService implements Uploads {
         if (ids.isEmpty()) {
             return;
         }
+        // tenancy-row:begin
+        // int released = repository.release(TenantContext.id(), ids, currentUser.findId().orElse(null));
+        // tenancy-row:else
         int released = repository.release(ids, currentUser.findId().orElse(null));
+        // tenancy-row:end
         if (released != ids.size()) {
             throw new IllegalStateException("Released %d of %d attached files".formatted(released, ids.size()));
         }
@@ -139,7 +150,11 @@ public class MediaFileService implements Uploads {
     /** The verification job's batch: leased in one short transaction, so no other instance takes it. */
     @Transactional
     public List<MediaFileKey> leaseForVerification(int batchSize, Duration lease) {
+        // tenancy-row:begin
+        // return keysOf(repository.leaseForVerification(TenantContext.id(), batchSize, lease.toSeconds()));
+        // tenancy-row:else
         return keysOf(repository.leaseForVerification(batchSize, lease.toSeconds()));
+        // tenancy-row:end
     }
 
     /**
@@ -151,24 +166,40 @@ public class MediaFileService implements Uploads {
     @Transactional
     public int recordVerification(Collection<UUID> present, Collection<UUID> absent) {
         if (!present.isEmpty()) {
+            // tenancy-row:begin
+            // repository.recordVerification(TenantContext.id(), present, MediaFileStatus.UPLOADED.name());
+            // tenancy-row:else
             repository.recordVerification(present, MediaFileStatus.UPLOADED.name());
+            // tenancy-row:end
         }
         if (absent.isEmpty()) {
             return 0;
         }
+        // tenancy-row:begin
+        // return repository.recordVerification(TenantContext.id(), absent, MediaFileStatus.MISSING.name());
+        // tenancy-row:else
         return repository.recordVerification(absent, MediaFileStatus.MISSING.name());
+        // tenancy-row:end
     }
 
     /** The cleanup job's batch of removed files. */
     @Transactional
     public List<MediaFileKey> leaseReleased(int batchSize, Duration lease) {
+        // tenancy-row:begin
+        // return keysOf(repository.leaseReleased(TenantContext.id(), batchSize, lease.toSeconds()));
+        // tenancy-row:else
         return keysOf(repository.leaseReleased(batchSize, lease.toSeconds()));
+        // tenancy-row:end
     }
 
     /** The cleanup job's batch of files never attached in time. */
     @Transactional
     public List<MediaFileKey> leaseExpiredPending(int batchSize, Duration lease) {
+        // tenancy-row:begin
+        // return keysOf(repository.leaseExpiredPending(TenantContext.id(), batchSize, lease.toSeconds()));
+        // tenancy-row:else
         return keysOf(repository.leaseExpiredPending(batchSize, lease.toSeconds()));
+        // tenancy-row:end
     }
 
     /** The rows of files deleted from the store; anything attached meanwhile is never among them. */
@@ -177,7 +208,11 @@ public class MediaFileService implements Uploads {
         if (mediaFileIds.isEmpty()) {
             return 0;
         }
+        // tenancy-row:begin
+        // return repository.deleteRemoved(TenantContext.id(), mediaFileIds);
+        // tenancy-row:else
         return repository.deleteRemoved(mediaFileIds);
+        // tenancy-row:end
     }
 
     private List<MediaFileKey> keysOf(List<UUID> ids) {

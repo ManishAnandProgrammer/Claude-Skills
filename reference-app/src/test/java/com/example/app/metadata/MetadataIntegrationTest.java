@@ -93,10 +93,18 @@ class MetadataIntegrationTest extends IntegrationTest {
 
     /** A configuration stored as raw JSON, as an older or newer instance could have written it. */
     private void storeRaw(MetadataKey<?> key, String json) {
+        // tenancy-row:begin
+        // // Row mode: every insert names its tenant (tenant_id has no default).
+        // assertThat(sql("""
+        //         insert into configuration_metadata (id, tenant_id, key, value, created_at, updated_at, version)
+        //         values (uuidv7(), ?, ?, ?::jsonb, now(), now(), 0)
+        //         """, testTenant().id(), key.name(), json)).isEqualTo(1);
+        // tenancy-row:else
         assertThat(sql("""
                 insert into configuration_metadata (id, key, value, created_at, updated_at, version)
                 values (uuidv7(), ?, ?::jsonb, now(), now(), 0)
                 """, key.name(), json)).isEqualTo(1);
+        // tenancy-row:end
     }
 
     private long storedVersion(MetadataKey<?> key) {

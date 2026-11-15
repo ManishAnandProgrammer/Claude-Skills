@@ -174,12 +174,19 @@ class RowIsolationIntegrationTest extends IntegrationTest {
 
         assertThat(tenants).isPositive();
         assertThat(probes).isZero();
-        // The column's default is NULL without a tenant: the policy's check refuses it before NOT NULL would.
-        assertThatThrownBy(() -> transaction.executeWithoutResult(status ->
-                appJdbc.update("insert into tenancy_probe (id, label, created_at, updated_at, version) values (?, 'none', now(), now(), 0)", UUID.randomUUID())))
-                .rootCause().hasMessageContaining("new row violates row-level security policy");
         assertThatThrownBy(() -> transaction.executeWithoutResult(status -> insertAs(first.id(), UUID.randomUUID())))
                 .rootCause().hasMessageContaining("row-level security policy");
+    }
+
+    @Test
+    @DisplayName("An insert that names no tenant fails at once, even inside a tenant's transaction: tenant_id has no default")
+    void anInsertNamesItsTenant() {
+        // Its tenant_id is NULL: the policy's check refuses that before NOT NULL would.
+        assertThatThrownBy(() -> inTransactionOf(first.id(), () -> appJdbc.update(
+                "insert into tenancy_probe (id, label, created_at, updated_at, version) values (?, 'unnamed', now(), now(), 0)",
+                UUID.randomUUID())))
+                .rootCause().hasMessageContaining("new row violates row-level security policy");
+        assertThat(countIn(first, true)).isEqualTo(2);
     }
 
     @Test
@@ -188,7 +195,7 @@ class RowIsolationIntegrationTest extends IntegrationTest {
         assertThatThrownBy(() -> inTransactionOf(first.id(), () -> insertAs(second.id(), UUID.randomUUID())))
                 .rootCause().hasMessageContaining("new row violates row-level security policy");
         assertThatThrownBy(() -> inTransactionOf(first.id(), () -> appJdbc.update(
-                "insert into tenancy_probe_notes (id, probe_id) values (?, ?)", UUID.randomUUID(), secondsProbe)))
+                "insert into tenancy_probe_notes (id, tenant_id, probe_id) values (?, ?, ?)", UUID.randomUUID(), first.id(), secondsProbe)))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .rootCause().hasMessageContaining("fk_tenancy_probe_notes_probe_id");
         assertThat(countIn(second, true)).isEqualTo(3);
@@ -277,8 +284,7 @@ class RowIsolationIntegrationTest extends IntegrationTest {
         assertThat(activeWithoutSql).isZero();
         assertThat(flag).isEqualTo("on");
         assertThatThrownBy(() -> TenantScope.runAs(first.id(), () -> readOnly.executeWithoutResult(status ->
-                appJdbc.update("insert into tenancy_probe (id, label, created_at, updated_at, version) values (?, 'read-only', now(), now(), 0)",
-                        UUID.randomUUID()))))
+                insertAs(first.id(), UUID.randomUUID()))))
                 .hasMessageContaining("read-only transaction");
         assertThat(countIn(first, true)).isEqualTo(2);
     }

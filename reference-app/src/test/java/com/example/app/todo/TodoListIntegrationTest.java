@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -476,8 +477,11 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A page index over the configured maximum is 400 VALIDATION_FAILED naming page")
+    @DisplayName("The configured maximum page index is accepted (an empty page); one more is 400 VALIDATION_FAILED naming page")
     void pageIndexIsBounded() throws Exception {
+        getAs(newUser().accessToken(), LISTS + "?page=100000")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response", empty()));
         getAs(newUser().accessToken(), LISTS + "?page=100001")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))

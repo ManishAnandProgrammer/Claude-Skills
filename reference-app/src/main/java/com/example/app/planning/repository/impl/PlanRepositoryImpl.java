@@ -1,5 +1,6 @@
 package com.example.app.planning.repository.impl;
 
+import com.example.app.common.limits.Limits;
 import com.example.app.common.pagination.Cursor;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Seek;
@@ -26,9 +27,11 @@ import java.util.UUID;
 class PlanRepositoryImpl implements CustomPlanRepository {
 
     private final EntityManager entityManager;
+    private final Limits limits;
 
-    PlanRepositoryImpl(EntityManager entityManager) {
+    PlanRepositoryImpl(EntityManager entityManager, Limits limits) {
         this.entityManager = entityManager;
+        this.limits = limits;
     }
 
     /**
@@ -44,7 +47,7 @@ class PlanRepositoryImpl implements CustomPlanRepository {
         CriteriaQuery<PlanRow> query = builder.createQuery(PlanRow.class);
         Root<Plan> root = query.from(Plan.class);
         query.select(rowOf(builder, root));
-        List<Predicate> predicates = filterPredicates(builder, root, filter);
+        List<Predicate> predicates = filterPredicates(builder, root, filter, limits.get("plan.max-days"));
         predicates.add(builder.equal(root.get(Plan_.ownerId), ownerId));
         if (cursor.isPresent()) {
             predicates.add(seekAfter(builder, root, filter.getSort(), cursor));
@@ -67,14 +70,28 @@ class PlanRepositoryImpl implements CustomPlanRepository {
                 root.get(Plan_.version));
     }
 
-    /** The predicates of the filters the request sets; the caller adds the owner scope and the seek. */
-    private static List<Predicate> filterPredicates(CriteriaBuilder builder, Root<Plan> root, PlanFilter filter) {
+    /**
+     * The predicates of the filters the request sets; the caller adds the owner scope and the seek. The
+     * planned days are an overlap: a plan ends on or after plannedFrom and starts on or before plannedTo.
+     * {@code ends_on >= plannedFrom} alone has no index (every index orders by {@code starts_on}), so the
+     * scope's whole history before plannedTo would be read and filtered; a plan spans at most
+     * {@code maxDays} days, so one ending on or after plannedFrom started no earlier than
+     * {@code plannedFrom - (maxDays - 1)}, and that bound gives the {@code starts_on} index its lower end.
+     */
+    private static List<Predicate> filterPredicates(CriteriaBuilder builder, Root<Plan> root, PlanFilter filter, int maxDays) {
         List<Predicate> predicates = new ArrayList<>();
         if (filter.requireIdsPredicate()) {
             predicates.add(root.get(Plan_.id).in(filter.getIds()));
         }
         if (filter.requireTodoIdPredicate()) {
             predicates.add(builder.equal(root.get(Plan_.todoId), filter.getTodoId()));
+        }
+        if (filter.requirePlannedFromPredicate()) {
+            predicates.add(builder.greaterThanOrEqualTo(root.get(Plan_.endsOn), filter.getPlannedFrom()));
+            predicates.add(builder.greaterThanOrEqualTo(root.get(Plan_.startsOn), filter.getPlannedFrom().minusDays(maxDays - 1)));
+        }
+        if (filter.requirePlannedToPredicate()) {
+            predicates.add(builder.lessThanOrEqualTo(root.get(Plan_.startsOn), filter.getPlannedTo()));
         }
         return predicates;
     }

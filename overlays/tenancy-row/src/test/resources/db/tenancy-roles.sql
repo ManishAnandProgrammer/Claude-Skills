@@ -4,7 +4,7 @@
 -- nothing about isolation.
 CREATE ROLE test_owner LOGIN PASSWORD 'test-owner';
 CREATE ROLE test_app LOGIN PASSWORD 'test-app' NOSUPERUSER NOBYPASSRLS;
--- The btree_gist extension (changeset 0011), and the tables.
+-- The extensions a changeset creates (btree_gist, with an exclusion constraint), and the tables.
 GRANT CREATE ON DATABASE test TO test_owner;
 GRANT CREATE ON SCHEMA public TO test_owner;
 -- The index tests ANALYZE their tables before EXPLAIN; production's app role never needs this.

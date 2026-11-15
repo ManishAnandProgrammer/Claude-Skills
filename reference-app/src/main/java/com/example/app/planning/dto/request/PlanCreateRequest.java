@@ -1,5 +1,6 @@
 package com.example.app.planning.dto.request;
 
+import com.example.app.common.limits.ConfiguredMax;
 import com.example.app.common.limits.EarliestDate;
 import com.example.app.common.limits.LatestDate;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -7,6 +8,7 @@ import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -22,7 +24,9 @@ public record PlanCreateRequest(
         @NotNull @EarliestDate("plan.dates") @LatestDate("plan.dates")
         LocalDate startsOn,
 
-        @Schema(description = "The last day, inclusive: a one-day plan starts and ends on the same day", example = "2026-11-22")
+        @Schema(description = """
+                The last day, inclusive: a one-day plan starts and ends on the same day. A plan spans at most a \
+                configured number of days.""", example = "2026-11-22")
         @NotNull @EarliestDate("plan.dates") @LatestDate("plan.dates")
         LocalDate endsOn) {
 
@@ -31,5 +35,19 @@ public record PlanCreateRequest(
     @Schema(hidden = true)
     public boolean isDateRangeOrdered() {
         return Objects.isNull(startsOn) || Objects.isNull(endsOn) || !endsOn.isBefore(startsOn);
+    }
+
+    /**
+     * The days the plan spans, both ends counted: bounded so the list's plannedFrom filter has a lower
+     * bound to read back to (PlanRepositoryImpl). Null when a date is missing or the range inverted, which
+     * their own checks report.
+     */
+    @ConfiguredMax("plan.max-days")
+    @Schema(hidden = true)
+    public Long getLengthInDays() {
+        if (Objects.isNull(startsOn) || Objects.isNull(endsOn) || endsOn.isBefore(startsOn)) {
+            return null;
+        }
+        return ChronoUnit.DAYS.between(startsOn, endsOn) + 1;
     }
 }

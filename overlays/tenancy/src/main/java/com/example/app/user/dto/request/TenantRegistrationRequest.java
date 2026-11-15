@@ -17,7 +17,7 @@ public record TenantRegistrationRequest(
         @Schema(description = "The owner's email address (ASCII only); an existing account's, or a new one's",
                 example = "asha@example.com")
         @NotBlank @Email @MaxLength("user.email")
-        @Pattern(regexp = "\\p{ASCII}+", message = "must contain only ASCII characters")
+        @Pattern(regexp = "\\p{ASCII}*", message = "must contain only ASCII characters")
         String email,
 
         @Schema(description = "The owner's name, for a new account", example = "Asha Kaur")

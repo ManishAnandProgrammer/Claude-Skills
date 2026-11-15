@@ -37,10 +37,18 @@ class TagIndexIntegrationTest extends IntegrationTest {
     @BeforeAll
     void seedOneOwnerWithManyTags() throws Exception {
         ownerId = newUser().id();
+        // tenancy-row:begin
+        // // Row mode: every insert names its tenant (tenant_id has no default).
+        // sql("""
+        //         insert into tags (id, tenant_id, owner_id, name, active, created_at, updated_at, version)
+        //         select gen_random_uuid(), ?, ?, 'Seeded ' || n, n % 5 <> 0, now(), now(), 0 from generate_series(1, 500) n
+        //         """, testTenant().id(), ownerId);
+        // tenancy-row:else
         sql("""
                 insert into tags (id, owner_id, name, active, created_at, updated_at, version)
                 select gen_random_uuid(), ?, 'Seeded ' || n, n % 5 <> 0, now(), now(), 0 from generate_series(1, 500) n
                 """, ownerId);
+        // tenancy-row:end
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze tags"));
     }
 

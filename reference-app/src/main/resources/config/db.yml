@@ -29,9 +29,13 @@ spring:
       max-lifetime: 1800000
       leak-detection-threshold: 30000
       transaction-isolation: TRANSACTION_READ_COMMITTED
-      # Together with provider_disables_autocommit and config/LazyConnectionConfig (with tenancy, the
-      # connection hook instead): a connection is borrowed at the first statement, not when the
-      # transaction begins (read-only ones included).
+      # tenancy:begin
+      # # Together with provider_disables_autocommit and the tenancy connection hook: a connection is
+      # # borrowed at the first statement, not when the transaction begins (read-only ones included).
+      # tenancy:else
+      # Together with provider_disables_autocommit and config/LazyConnectionConfig: a connection is
+      # borrowed at the first statement, not when the transaction begins (read-only ones included).
+      # tenancy:end
       auto-commit: false
       data-source-properties:
         # Server-side limits for the app pool only (Liquibase opens its own connection).

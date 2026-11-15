@@ -12,7 +12,7 @@ import jakarta.validation.constraints.Size;
 public record SignupRequest(
         @Schema(description = "Email address (ASCII only); stored lower-case", example = "asha@example.com")
         @NotBlank @Email @MaxLength("user.email")
-        @Pattern(regexp = "\\p{ASCII}+", message = "must contain only ASCII characters")
+        @Pattern(regexp = "\\p{ASCII}*", message = "must contain only ASCII characters")
         String email,
 
         @Schema(description = "Name shown in the app", example = "Asha Kaur")

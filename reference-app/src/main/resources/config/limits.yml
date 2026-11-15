@@ -72,6 +72,11 @@ app:
     todo-list-settings:
       # How long before a todo is due its reminder can go out, in minutes (TodoListSettings, configuration metadata).
       max-reminder-minutes: 1440
+    plan:
+      # Days one plan may span, both ends counted. The plannedFrom filter reads back this far before its
+      # day (an overlap needs a bound below, or it walks the owner's whole history): raise it any time,
+      # lower it only once no stored plan is longer, or the filter misses the longer ones.
+      max-days: 31
     # example:end
     # Latest dates the API accepts, by field (@LatestDate("…") on request records and filters). The
     # first one starts the section:

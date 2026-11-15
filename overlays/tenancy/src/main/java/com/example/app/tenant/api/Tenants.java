@@ -17,6 +17,12 @@ public interface Tenants {
     List<UUID> activeIds();
 
     /**
+     * The ids of every tenant that holds data, ACTIVE, SUSPENDED or CLOSED, oldest first: for housekeeping
+     * that must reach a suspended or closed tenant's rows too (expired uploads still cost storage).
+     */
+    List<UUID> idsHoldingData();
+
+    /**
      * The one way in: a PENDING tenant may be provisioned ({@link TenantApproved}), and becomes ACTIVE once
      * its tables exist. Staff call it now, a billing module's payment webhook later. 409
      * {@code TENANT_STATUS_CHANGE_INVALID} unless the tenant is PENDING.

@@ -62,10 +62,29 @@ class TodoIndexIntegrationTest extends IntegrationTest {
     @BeforeAll
     void seedOneOwnerWithManyTodos() throws Exception {
         ownerId = newUser().id();
+        // tenancy-row:begin
+        // // Row mode: every insert names its tenant (tenant_id has no default).
+        // sql("""
+        //         insert into todo_lists (id, tenant_id, owner_id, name, created_at, updated_at, version)
+        //         select gen_random_uuid(), ?, ?, 'Seeded ' || n, now(), now(), 0 from generate_series(1, 50) n
+        //         """, testTenant().id(), ownerId);
+        // tenancy-row:else
         sql("""
                 insert into todo_lists (id, owner_id, name, created_at, updated_at, version)
                 select gen_random_uuid(), ?, 'Seeded ' || n, now(), now(), 0 from generate_series(1, 50) n
                 """, ownerId);
+        // tenancy-row:end
+        // tenancy-row:begin
+        // sql("""
+        //         insert into todos (id, tenant_id, todo_list_id, owner_id, title, status, priority, due_date, completed_at,
+        //                            created_at, updated_at, version)
+        //         select gen_random_uuid(), list.tenant_id, list.id, list.owner_id, 'Seeded',
+        //                case when n % 20 = 0 then 'OPEN' else 'DONE' end, 'LOW', date '2026-01-01' + n,
+        //                case when n % 20 = 0 then null else now() end, now(), now(), 0
+        //         from todo_lists list cross join generate_series(1, 100) n
+        //         where list.owner_id = ?
+        //         """, ownerId);
+        // tenancy-row:else
         sql("""
                 insert into todos (id, todo_list_id, owner_id, title, status, priority, due_date, completed_at,
                                    created_at, updated_at, version)
@@ -75,19 +94,43 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                 from todo_lists list cross join generate_series(1, 100) n
                 where list.owner_id = ?
                 """, ownerId);
+        // tenancy-row:end
         listId = jdbc.queryForObject("select id from todo_lists where owner_id = ? limit 1", UUID.class, ownerId);
         seekPosition = jdbc.queryForObject("select id from todos where owner_id = ? order by id desc limit 1", UUID.class, ownerId);
         // Other owners' lists, as in production: without them the owner holds most of the table, and
         // walking the primary key backwards with a filter can look as cheap as the owner's index.
+        // tenancy-row:begin
+        // sql("""
+        //         insert into todo_lists (id, tenant_id, owner_id, name, created_at, updated_at, version)
+        //         select gen_random_uuid(), ?, ?, 'Someone else ' || n, now(), now(), 0 from generate_series(1, 2000) n
+        //         """, testTenant().id(), newUser().id());
+        // tenancy-row:else
         sql("""
                 insert into todo_lists (id, owner_id, name, created_at, updated_at, version)
                 select gen_random_uuid(), ?, 'Someone else ' || n, now(), now(), 0 from generate_series(1, 2000) n
                 """, newUser().id());
+        // tenancy-row:end
         // Ten tags, each on one todo in ten.
+        // tenancy-row:begin
+        // sql("""
+        //         insert into tags (id, tenant_id, owner_id, name, active, created_at, updated_at, version)
+        //         select gen_random_uuid(), ?, ?, 'Seeded ' || n, true, now(), now(), 0 from generate_series(0, 9) n
+        //         """, testTenant().id(), ownerId);
+        // tenancy-row:else
         sql("""
                 insert into tags (id, owner_id, name, active, created_at, updated_at, version)
                 select gen_random_uuid(), ?, 'Seeded ' || n, true, now(), now(), 0 from generate_series(0, 9) n
                 """, ownerId);
+        // tenancy-row:end
+        // tenancy-row:begin
+        // sql("""
+        //         insert into todo_tags (id, tenant_id, todo_id, tag_id, owner_id, created_at, updated_at, version)
+        //         select gen_random_uuid(), todo.tenant_id, todo.id, tag.id, todo.owner_id, now(), now(), 0
+        //         from todos todo join tags tag
+        //           on tag.owner_id = todo.owner_id and tag.name = 'Seeded ' || ((todo.due_date - date '2026-01-01') % 10)
+        //         where todo.owner_id = ?
+        //         """, ownerId);
+        // tenancy-row:else
         sql("""
                 insert into todo_tags (id, todo_id, tag_id, owner_id, created_at, updated_at, version)
                 select gen_random_uuid(), todo.id, tag.id, todo.owner_id, now(), now(), 0
@@ -95,6 +138,7 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                   on tag.owner_id = todo.owner_id and tag.name = 'Seeded ' || ((todo.due_date - date '2026-01-01') % 10)
                 where todo.owner_id = ?
                 """, ownerId);
+        // tenancy-row:end
         tagId = jdbc.queryForObject("select id from tags where owner_id = ? and name = 'Seeded 0'", UUID.class, ownerId);
         taggedTodos = jdbc.queryForList("select todo_id from todo_tags where tag_id = ? limit 21", UUID.class, tagId);
         new TransactionTemplate(transactionManager)

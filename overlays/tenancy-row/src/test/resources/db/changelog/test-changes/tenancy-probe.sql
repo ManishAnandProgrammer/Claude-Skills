@@ -5,7 +5,8 @@
 -- tests' TenancyProbe entity, and a child whose composite foreign key keeps it in its parent's tenant.
 CREATE TABLE tenancy_probe (
     id         uuid        NOT NULL,
-    tenant_id  uuid        NOT NULL DEFAULT nullif(current_setting('app.tenant_id', true), '')::uuid,
+    -- No default: every insert names its tenant, so a forgotten one fails at once (house-review TEN-30).
+    tenant_id  uuid        NOT NULL,
     label      text        NOT NULL,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
@@ -26,7 +27,7 @@ CREATE POLICY tenant_isolation ON tenancy_probe
 
 CREATE TABLE tenancy_probe_notes (
     id        uuid NOT NULL,
-    tenant_id uuid NOT NULL DEFAULT nullif(current_setting('app.tenant_id', true), '')::uuid,
+    tenant_id uuid NOT NULL,
     probe_id  uuid NOT NULL,
     CONSTRAINT pk_tenancy_probe_notes PRIMARY KEY (id),
     CONSTRAINT fk_tenancy_probe_notes_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenants (id),

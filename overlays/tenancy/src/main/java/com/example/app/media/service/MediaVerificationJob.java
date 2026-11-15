@@ -27,8 +27,9 @@ import java.util.UUID;
  * the record's own write replaces it.
  *
  * <p>Each batch: leased in a short transaction, checked with HEAD outside any transaction, its results
- * written in a second short one. A store that doesn't answer ends the run; the leased rows return to
- * the next run when their lease ends. Settings: {@code app.jobs.media-verification.*}.</p>
+ * written in a second short one. A store that doesn't answer ends the tenant's run; the leased rows
+ * return to the next run when their lease ends. A tenant that fails is logged and the run goes on with
+ * the next. Settings: {@code app.jobs.media-verification.*}.</p>
  */
 @Slf4j
 @Component
@@ -55,13 +56,20 @@ class MediaVerificationJob {
             check the same file; a crashed instance's batch returns when its lease ends, and every result is \
             written only while the file is still IN_REVIEW""")
     void verify() {
-        // Each tenant's files in that tenant's own scope and transactions, so one big tenant can't starve the rest.
+        // Each tenant's files in that tenant's own scope and transactions, so one big tenant can't starve the
+        // rest. A suspended or closed tenant's files wait: nothing reads them until it is ACTIVE again.
         for (UUID tenantId : tenants.activeIds()) {
-            TenantScope.runAs(tenantId, this::verifyAll);
+            try {
+                TenantScope.runAs(tenantId, () -> verifyAll(tenantId));
+            } catch (RuntimeException failure) {
+                // One tenant's failure (a query timeout in a big tenant) must not skip every tenant after
+                // it, run after run: its leased rows return when the lease ends, and the next run retries.
+                log.error("Media verification failed for tenant {}", tenantId, failure);
+            }
         }
     }
 
-    private void verifyAll() {
+    private void verifyAll(UUID tenantId) {
         int uploaded = 0;
         int missing = 0;
         List<MediaFileKey> batch;
@@ -78,7 +86,7 @@ class MediaVerificationJob {
                 break;
             }
         } while (batch.size() == settings.batchSize());
-        log.info("Media verification: uploaded={}, missing={}", uploaded, missing);
+        log.info("Media verification: tenant={}, uploaded={}, missing={}", tenantId, uploaded, missing);
     }
 
     /** Sorts the batch into present and absent; false when the store stopped answering (the rest stays leased). */

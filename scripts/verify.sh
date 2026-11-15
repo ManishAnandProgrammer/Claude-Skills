@@ -77,7 +77,8 @@ docker info > /dev/null 2>&1 || {
 
 echo "[0/3] overlays: replacements pinned to the reference's files"
 "$REPO/scripts/overlay-replacements.sh" --check
-grep -rqlE "TenantContext|TenantScope|tenant_memberships" "$REFERENCE/src/main/java" \
+# A commented line may name them: a tenancy block's own lines are comments in the reference.
+grep -rnE "TenantContext|TenantScope|tenant_memberships" "$REFERENCE/src/main/java" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' \
     && { echo "FAILED: tenancy code in the reference outside a commented tenancy block (it belongs in overlays/)" >&2; exit 1; }
 
 echo "[1/3] reference-app: build and tests"

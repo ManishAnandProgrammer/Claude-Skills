@@ -34,8 +34,8 @@ class PoolExhaustionIntegrationTest extends IntegrationTest {
         HikariDataSource pool = dataSource.unwrap(HikariDataSource.class);
         List<Connection> held = new ArrayList<>();
         try {
-            // From the pool itself: the DataSource bean hands out lazy handles that borrow nothing
-            // until a statement runs (LazyConnectionConfig).
+            // From the pool itself: the DataSource bean may hand out lazy handles that borrow nothing
+            // until a statement runs.
             for (int taken = 0; taken < pool.getMaximumPoolSize(); taken++) {
                 held.add(pool.getConnection());
             }

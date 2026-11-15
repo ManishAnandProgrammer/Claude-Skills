@@ -5,7 +5,8 @@ import java.util.List;
 /**
  * What an upload is for, and who may upload for it. A new purpose is a constant here (something in
  * code attaches its files) plus its {@code upload_policies} row in a changeset (row-mode tenancy: the
- * module's {@code TenantProvisioned} listener seeds each tenant's); its limits are data.
+ * module's {@code TenantProvisioned} listener seeds each new tenant's, and the changeset's row-mode block
+ * seeds the tenants that exist when it ships, as the todo's 0010 does); its limits are data.
  *
  * <p>The role is checked when a URL is issued ({@code POST /upload-urls}), because the purpose comes
  * in the request body: no annotation can name it. The owning record's write checks its own rules

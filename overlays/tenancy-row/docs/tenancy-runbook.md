@@ -13,16 +13,21 @@ superuser, once per database:
 ```sql
 CREATE ROLE <app>_owner LOGIN PASSWORD '...';                          -- DB_OWNER_USER: owns every table, runs Liquibase
 CREATE ROLE <app>_app LOGIN PASSWORD '...' NOSUPERUSER NOBYPASSRLS;    -- DB_USER: the pool's role; reads and writes, owns nothing
-GRANT CREATE ON DATABASE <db> TO <app>_owner;   -- the btree_gist extension, when a changeset needs it
+GRANT CREATE ON DATABASE "<db>" TO <app>_owner;   -- the btree_gist extension, when a changeset needs it (quoted: a DB_NAME may hold a dash)
 GRANT CREATE ON SCHEMA public TO <app>_owner;
 ```
 
-The app role must never be a superuser, own a table or have `BYPASSRLS`: any of the three switches
-every policy off for it. `RowSecurityCatalogIntegrationTest` checks this in the tests; check a real
+The app role must never be a superuser, own a table or have `BYPASSRLS`, itself or through a role it
+is a member of: any of these switches every policy off for it. So never `GRANT <app>_owner TO <app>_app`
+to fix a missing grant (it hands over the owner's power to lift `FORCE` or drop a policy); grant the
+missing table right instead. The application checks all of it at startup (`PoolRoleCheck`, which also
+refuses a pool role that can write `platform_users`) and stops naming what is wrong. Check a real
 database with:
 
 ```sql
-SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname IN ('<app>_owner', '<app>_app');
+SELECT r.rolname, r.rolsuper, r.rolbypassrls,
+       array(SELECT m.rolname FROM pg_roles m WHERE pg_has_role(r.oid, m.oid, 'MEMBER') AND m.oid <> r.oid) AS member_of
+  FROM pg_roles r WHERE r.rolname IN ('<app>_owner', '<app>_app');
 ```
 
 Locally, `docker compose up -d` does exactly this on a new database
@@ -30,8 +35,9 @@ Locally, `docker compose up -d` does exactly this on a new database
 `DB_OWNER_PASSWORD` from `.env`). It runs only when the data directory is new: on an existing local
 volume, `docker compose down -v` first (that deletes the local data).
 
-Changeset `0013` grants the app role its rights (and default privileges for every later table). Each
-tenant table's changeset enables and forces RLS with its policy.
+Changeset `0013` grants the app role its rights (and default privileges for every later table);
+`0015` takes the write rights on `platform_users` back (staff accounts are the owner's to write,
+section 2). Each tenant table's changeset enables and forces RLS with its policy.
 
 ## 2. Platform staff
 

@@ -1,6 +1,9 @@
 package com.example.app.metadata.service;
 
 import com.example.app.common.security.CurrentUser;
+// tenancy-row:begin
+// import com.example.app.common.tenancy.TenantContext;
+// tenancy-row:end
 import com.example.app.metadata.api.Counters;
 import com.example.app.metadata.domain.Counter;
 import com.example.app.metadata.repository.CounterRepository;
@@ -34,7 +37,11 @@ public class CounterService implements Counters {
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public long next(String name) {
+        // tenancy-row:begin
+        // return repository.increment(TenantContext.id(), name, clock.instant(), currentUser.findId().orElse(null))
+        // tenancy-row:else
         return repository.increment(name, clock.instant(), currentUser.findId().orElse(null))
+        // tenancy-row:end
                 .orElseThrow(() -> new IllegalStateException("No counter %s: create it when its context is created".formatted(name)));
     }
 

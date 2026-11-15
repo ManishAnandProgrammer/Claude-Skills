@@ -4,7 +4,6 @@ import com.example.app.TestcontainersConfiguration;
 import com.example.app.common.tenancy.TenantScope;
 import com.example.app.tenant.api.TenantStatus;
 import com.example.app.tenant.dto.request.TenantCreateRequest;
-import com.example.app.tenant.dto.response.TenantResponse;
 import com.example.app.tenant.service.TenantService;
 // media:begin
 import com.example.app.media.api.UploadPurpose;
@@ -18,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.liquibase.autoconfigure.LiquibaseDataSource;
 import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -157,8 +157,20 @@ public abstract class IntegrationTest {
     @RegisterExtension
     final TestTenantScope testTenantScope = new TestTenantScope(() -> testTenant().id());
 
+    /** The pool, for {@link #sqlIn}'s fixture connections in another tenant. */
+    private DataSource dataSource;
+
+    /**
+     * Liquibase's connection, as the owner role: for the rows the pool's role may not write (staff
+     * accounts). Unpooled, and auto-commit: each statement commits on its own.
+     */
+    @Autowired
+    @LiquibaseDataSource
+    private DataSource ownerDataSource;
+
     @Autowired
     void fixtureJdbc(DataSource dataSource) {
+        this.dataSource = dataSource;
         jdbc = new JdbcTemplate(new TenantFixtureDataSource(dataSource, () -> testTenant().id()));
     }
 
@@ -172,6 +184,17 @@ public abstract class IntegrationTest {
         // after-commit provisioning (row mode) would never run, and it would stay PENDING.
         testTenant();
         Integer rows = new TransactionTemplate(transactionManager).execute(status -> jdbc.update(statement, args));
+        return rows;
+    }
+
+    /**
+     * {@link #sql} in another tenant than the test tenant: a fixture row of a second tenant, written in its
+     * own committed transaction on a connection told that tenant (so its policy accepts the row, or its
+     * schema holds the table). A row-mode insert still names its tenant itself ({@code tenant.id()}).
+     */
+    protected int sqlIn(TestTenant tenant, String statement, Object... args) {
+        JdbcTemplate inTenant = new JdbcTemplate(new TenantFixtureDataSource(dataSource, tenant::id));
+        Integer rows = new TransactionTemplate(transactionManager).execute(status -> inTenant.update(statement, args));
         return rows;
     }
 
@@ -402,12 +425,22 @@ public abstract class IntegrationTest {
     }
 
     private void storeMetadataRow(String key, String json, long version) {
+        // tenancy-row:begin
+        // Row mode: every insert names its tenant (tenant_id has no default).
         assertThat(sql("""
-                insert into configuration_metadata (id, key, value, created_at, updated_at, version)
-                values (uuidv7(), ?, ?::jsonb, now(), now(), ?)
+                insert into configuration_metadata (id, tenant_id, key, value, created_at, updated_at, version)
+                values (uuidv7(), ?, ?, ?::jsonb, now(), now(), ?)
                 on conflict on constraint uq_configuration_metadata_key
                 do update set value = excluded.value, version = excluded.version, updated_at = now()
-                """, key, json, version)).isEqualTo(1);
+                """, testTenant().id(), key, json, version)).isEqualTo(1);
+        // tenancy-row:else
+        // assertThat(sql("""
+        //         insert into configuration_metadata (id, key, value, created_at, updated_at, version)
+        //         values (uuidv7(), ?, ?::jsonb, now(), now(), ?)
+        //         on conflict on constraint uq_configuration_metadata_key
+        //         do update set value = excluded.value, version = excluded.version, updated_at = now()
+        //         """, key, json, version)).isEqualTo(1);
+        // tenancy-row:end
     }
     // metadata:end
     /**
@@ -479,7 +512,10 @@ public abstract class IntegrationTest {
                 """, tenant.id(), userId, role)).isEqualTo(1);
     }
 
-    /** Provisioning at once, instead of waiting for the job's schedule; ACTIVE afterwards. */
+    /**
+     * Finishes the approved tenants' provisioning now: with schema per tenant the job runs at once instead
+     * of on its schedule; in row mode the approval already did it. ACTIVE afterwards.
+     */
     protected void provisionApprovedTenants() {
         provisioning.provisionNow();
     }
@@ -510,17 +546,17 @@ public abstract class IntegrationTest {
 
     /** Created as staff would, then provisioned at once. */
     private TestTenant createTenant(String ownerEmail) {
-        TenantResponse created = tenantService.create(new TenantCreateRequest("Tenant " + UUID.randomUUID(), ownerEmail))
-                .getResponse();
+        UUID created = tenantService.create(new TenantCreateRequest("Tenant " + UUID.randomUUID(), ownerEmail));
         provisionApprovedTenants();
-        assertThat(tenantService.getTenant(created.id()).getStatus()).as("the new tenant's status").isEqualTo(TenantStatus.ACTIVE);
-        return new TestTenant(created.id());
+        assertThat(tenantService.getTenant(created).getStatus()).as("the new tenant's status").isEqualTo(TenantStatus.ACTIVE);
+        return new TestTenant(created);
     }
 
     private String platformLogin() throws Exception {
         Integer existing = jdbc.queryForObject("select count(*) from platform_users where email = ?", Integer.class, STAFF_EMAIL);
         if (existing == 0) {
-            sql("""
+            // As the owner role, as the runbook does: the pool's role only reads staff accounts (0015).
+            new JdbcTemplate(ownerDataSource).update("""
                     insert into platform_users (id, email, full_name, password_hash, role, created_at, updated_at, version)
                     values (gen_random_uuid(), ?, 'Test Staff', ?, 'STAFF', now(), now(), 0)
                     on conflict (email) do nothing

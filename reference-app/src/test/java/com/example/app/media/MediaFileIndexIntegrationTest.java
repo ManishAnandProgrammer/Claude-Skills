@@ -33,6 +33,18 @@ class MediaFileIndexIntegrationTest extends IntegrationTest {
 
     @BeforeAll
     void seedFilesInEveryStatus() {
+        // tenancy-row:begin
+        // // Row mode: every insert names its tenant (tenant_id has no default).
+        // sql("""
+        //         insert into media_files (id, tenant_id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
+        //                                  upload_expires_at, expires_at, created_at, updated_at, version)
+        //         select gen_random_uuid(), ?, 'INDEX_TEST/' || gen_random_uuid(), 'INDEX_TEST', 'a.pdf', 'application/pdf', 1,
+        //                (array['PENDING', 'IN_REVIEW', 'UPLOADED', 'MISSING', 'RELEASED'])[1 + n % 5], gen_random_uuid(),
+        //                now() + (n || ' seconds')::interval, now() + interval '1 hour' + (n || ' seconds')::interval,
+        //                now(), now(), 0
+        //           from generate_series(1, 1000) n
+        //         """, testTenant().id());
+        // tenancy-row:else
         sql("""
                 insert into media_files (id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
                                          upload_expires_at, expires_at, created_at, updated_at, version)
@@ -42,6 +54,7 @@ class MediaFileIndexIntegrationTest extends IntegrationTest {
                        now(), now(), 0
                   from generate_series(1, 1000) n
                 """);
+        // tenancy-row:end
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze media_files"));
     }
 

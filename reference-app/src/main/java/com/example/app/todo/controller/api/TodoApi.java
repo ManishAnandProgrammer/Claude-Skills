@@ -75,22 +75,32 @@ public interface TodoApi {
             Created OPEN, in one of your lists, carrying the tags in tagIds (your own tags, up to a \
             configured number; none when absent).""")
     @ApiResponse(responseCode = "201", description = "Created")
+    // media:begin
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (see failed; tagIds over the maximum or holding null), REQUEST_UNREADABLE \
-            (a malformed id)"""
-            // media:begin
-            + "; UPLOAD_FILE_COUNT_OUT_OF_RANGE (attachmentKeys outside the purpose's minFiles and maxFiles)"
-            // media:end
-            ,
+            (a malformed id); UPLOAD_FILE_COUNT_OUT_OF_RANGE (attachmentKeys outside the purpose's minFiles \
+            and maxFiles)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:else
+    // @ApiResponse(responseCode = "400", description = """
+    //         VALIDATION_FAILED (see failed; tagIds over the maximum or holding null), REQUEST_UNREADABLE \
+    //         (a malformed id)""",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_GONE, TAG_GONE (deleted while the todo was being saved)"
-            // media:begin
-            + "; UPLOAD_POLICY_NOT_FOUND (no upload policy for the todos' attachments: an operator's setup is missing)"
-            // media:end
-            ,
+    // media:begin
+    @ApiResponse(responseCode = "404", description = """
+            TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_GONE, \
+            TAG_GONE (deleted while the todo was being saved); UPLOAD_POLICY_NOT_FOUND (no upload policy for \
+            the todos' attachments: an operator's setup is missing)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:else
+    // @ApiResponse(responseCode = "404", description = """
+    //         TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_GONE, \
+    //         TAG_GONE (deleted while the todo was being saved)""",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
     // media:begin
     @ApiResponse(responseCode = "409", description = """
             UPLOAD_NOT_AVAILABLE (an attachment key is unknown, another user's or purpose's, already attached \
@@ -106,36 +116,52 @@ public interface TodoApi {
     // media:end
     ObjectWrapper<TodoResponse> create(TodoCreateRequest request);
 
+    // media:begin
     @Operation(summary = "Edit a todo", description = """
             Replaces title, notes, priority, due date and list (a different list moves it). The \
             status changes only through PATCH .../status, the tags only through PUT .../tags. Send the \
-            version you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT."""
-            // media:begin
-            + " Files are added (addAttachmentKeys) and removed (removeAttachmentIds) here; a change of its files alone also increments the version."
-            // media:end
-            )
+            version you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT. Files are added \
+            (addAttachmentKeys) and removed (removeAttachmentIds) here; a change of its files alone also \
+            increments the version.""")
+    // media:else
+    // @Operation(summary = "Edit a todo", description = """
+    //         Replaces title, notes, priority, due date and list (a different list moves it). The \
+    //         status changes only through PATCH .../status, the tags only through PUT .../tags. Send the \
+    //         version you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT.""")
+    // media:end
     @ApiResponse(responseCode = "200", description = "Updated; the version increments when something changed")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID"
-            // media:begin
-            + "; UPLOAD_FILE_COUNT_OUT_OF_RANGE (its files would end outside the purpose's minFiles and maxFiles)"
-            // media:end
-            ,
+    // media:begin
+    @ApiResponse(responseCode = "400", description = """
+            VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID; \
+            UPLOAD_FILE_COUNT_OUT_OF_RANGE (its files would end outside the purpose's minFiles and maxFiles)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:else
+    // @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_GONE (the new list deleted while the todo was being saved)"
-            // media:begin
-            + ", TODO_ATTACHMENT_NOT_FOUND (a removeAttachmentIds entry is not one of its files)"
-            + "; UPLOAD_POLICY_NOT_FOUND (no upload policy for the todos' attachments: an operator's setup is missing)"
-            // media:end
-            ,
+    // media:begin
+    @ApiResponse(responseCode = "404", description = """
+            TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_GONE (the new list deleted while the todo was being \
+            saved), TODO_ATTACHMENT_NOT_FOUND (a removeAttachmentIds entry is not one of its files); \
+            UPLOAD_POLICY_NOT_FOUND (no upload policy for the todos' attachments: an operator's setup is missing)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT"
-            // media:begin
-            + ", UPLOAD_NOT_AVAILABLE (an addAttachmentKeys entry can't be attached: upload the file again)"
-            // media:end
-            ,
+    // media:else
+    // @ApiResponse(responseCode = "404", description = """
+    //         TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_GONE (the new list deleted while the todo was being \
+    //         saved)""",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
+    // media:begin
+    @ApiResponse(responseCode = "409", description = """
+            OPTIMISTIC_LOCK_CONFLICT, UPLOAD_NOT_AVAILABLE (an addAttachmentKeys entry can't be attached: upload \
+            the file again)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:else
+    // @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:end
     // media:begin
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY, MEDIA_STORAGE_UNAVAILABLE (the files' read URLs)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

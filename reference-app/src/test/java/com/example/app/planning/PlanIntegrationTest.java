@@ -27,6 +27,7 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -39,6 +40,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PlanIntegrationTest extends IntegrationTest {
 
     private static final String PLANS = "/api/v1/plans";
+    /** {@code plan.max-days} in config/limits.yml. */
+    private static final int MAX_DAYS = 31;
     private static final String TODOS = "/api/v1/todos";
 
     @Autowired
@@ -211,13 +214,29 @@ class PlanIntegrationTest extends IntegrationTest {
         create(user, todoId, "-300000-01-01", "2026-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("startsOn: must be on or after 1900-01-01")));
+                .andExpect(jsonPath("$.failed", containsInAnyOrder(
+                        "startsOn: must be on or after 1900-01-01", "lengthInDays: must be at most " + MAX_DAYS)));
         create(user, todoId, "-300000-01-01", "-300000-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.failed", containsInAnyOrder(
                         "startsOn: must be on or after 1900-01-01", "endsOn: must be on or after 1900-01-01")));
         assertThat(plansOf(user)).isOne();
+    }
+
+    @Test
+    @DisplayName("A plan of the configured maximum length is accepted; one day longer is 400 naming lengthInDays, nothing stored")
+    void lengthIsBounded() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Long");
+        LocalDate first = LocalDate.parse("2026-05-01");
+
+        create(user, todoId, first.toString(), first.plusDays(MAX_DAYS).toString())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("lengthInDays: must be at most " + MAX_DAYS)));
+        assertThat(plansOf(user)).isZero();
+        create(user, todoId, first.toString(), first.plusDays(MAX_DAYS - 1).toString()).andExpect(status().isCreated());
     }
 
     @Test
@@ -533,15 +552,31 @@ class PlanIntegrationTest extends IntegrationTest {
         }
     }
 
-    /** Plans on consecutive days, as {@code user}, across two todos; returns their ids in calendar order. */
+    /**
+     * Plans on consecutive days, as {@code user}, across two todos; returns their ids in calendar order.
+     * The last day is created first, so calendar order and creation (id) order differ: a STARTS_ON walk
+     * that ignored its sort would fail (TEST-10). Newest first is then the other days backwards, then the
+     * last day ({@link #newestFirst}).
+     */
     private List<String> planDays(TestUser user, LocalDate firstDay, int days) throws Exception {
         List<String> todoIds = List.of(createTodo(user, "Even days"), createTodo(user, "Odd days"));
-        List<String> ids = new ArrayList<>();
-        for (int day = 0; day < days; day++) {
+        String[] ids = new String[days];
+        int last = days - 1;
+        String lastDate = firstDay.plusDays(last).toString();
+        ids[last] = createPlan(user, todoIds.get(last % 2), lastDate, lastDate);
+        for (int day = 0; day < last; day++) {
             String date = firstDay.plusDays(day).toString();
-            ids.add(createPlan(user, todoIds.get(day % 2), date, date));
+            ids[day] = createPlan(user, todoIds.get(day % 2), date, date);
         }
-        return ids;
+        return List.of(ids);
+    }
+
+    /** {@link #planDays}' ids in creation order, newest first: the days before the last backwards, then the last. */
+    private static List<String> newestFirst(List<String> calendarOrder) {
+        List<String> newest = new ArrayList<>(calendarOrder.subList(0, calendarOrder.size() - 1));
+        Collections.reverse(newest);
+        newest.add(calendarOrder.getLast());
+        return newest;
     }
 
     /**
@@ -590,8 +625,7 @@ class PlanIntegrationTest extends IntegrationTest {
     @DisplayName("NEWEST walks your plans newest first, every plan once")
     void newestWalksNewestFirst() throws Exception {
         TestUser user = newUser();
-        List<String> ids = new ArrayList<>(planDays(user, LocalDate.parse("2026-04-01"), 5));
-        Collections.reverse(ids);
+        List<String> ids = newestFirst(planDays(user, LocalDate.parse("2026-04-01"), 5));
 
         assertThat(flatten(walk(user, PLANS + "?sort=NEWEST&size=2"))).containsExactlyElementsOf(ids);
     }
@@ -614,6 +648,54 @@ class PlanIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), PLANS + "?todoId=" + strangersTodo)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response", empty()));
+    }
+
+    @Test
+    @DisplayName("plannedFrom..plannedTo returns every plan sharing a day with the range, in calendar order: the ones crossing either end too")
+    void plannedDaysFindEveryPlanSharingADay() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Planned");
+        String crossingTheEnd = createPlan(user, todoId, "2026-03-18", "2026-03-20");
+        createPlan(user, todoId, "2026-03-01", "2026-03-05");
+        String crossingTheStart = createPlan(user, todoId, "2026-03-08", "2026-03-11");
+        String inside = createPlan(user, todoId, "2026-03-14", "2026-03-14");
+        createPlan(user, todoId, "2026-03-21", "2026-03-21");
+        TestUser stranger = newUser();
+        createPlan(stranger, createTodo(stranger, "Theirs"), "2026-03-14", "2026-03-14");
+
+        getAs(user.accessToken(), PLANS + "?plannedFrom=2026-03-10&plannedTo=2026-03-19")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].id", contains(crossingTheStart, inside, crossingTheEnd)));
+        getAs(user.accessToken(), PLANS + "?plannedFrom=2026-03-20")
+                .andExpect(jsonPath("$.response[*].id", hasSize(2)));
+        getAs(user.accessToken(), PLANS + "?plannedTo=2026-03-09")
+                .andExpect(jsonPath("$.response[*].id", hasSize(2)));
+    }
+
+    @Test
+    @DisplayName("A plan of the maximum length is found on its last day, the bound plannedFrom reads back to; not a day later")
+    void theLongestPlanIsFoundOnItsLastDay() throws Exception {
+        TestUser user = newUser();
+        LocalDate first = LocalDate.parse("2026-05-01");
+        LocalDate last = first.plusDays(MAX_DAYS - 1);
+        String longest = createPlan(user, createTodo(user, "Longest"), first.toString(), last.toString());
+
+        getAs(user.accessToken(), PLANS + "?plannedFrom=" + last)
+                .andExpect(jsonPath("$.response[*].id", contains(longest)));
+        getAs(user.accessToken(), PLANS + "?plannedFrom=" + last.plusDays(1))
+                .andExpect(jsonPath("$.response", empty()));
+    }
+
+    @Test
+    @DisplayName("plannedFrom after plannedTo is 400 naming plannedRangeOrdered; one day for both is a range")
+    void plannedRangeMustBeOrdered() throws Exception {
+        TestUser user = newUser();
+
+        getAs(user.accessToken(), PLANS + "?plannedFrom=2026-03-11&plannedTo=2026-03-10")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("plannedRangeOrdered: plannedFrom must not be after plannedTo")));
+        getAs(user.accessToken(), PLANS + "?plannedFrom=2026-03-10&plannedTo=2026-03-10").andExpect(status().isOk());
     }
 
     @Test
@@ -671,7 +753,7 @@ class PlanIntegrationTest extends IntegrationTest {
     void unconvertibleFilterValuesAre400() throws Exception {
         TestUser user = newUser();
 
-        for (String query : List.of("?todoId=nope", "?sort=OLDEST")) {
+        for (String query : List.of("?todoId=nope", "?sort=OLDEST", "?plannedFrom=10-03-2026")) {
             String body = getAs(user.accessToken(), PLANS + query)
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))

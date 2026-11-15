@@ -35,6 +35,7 @@ import java.util.concurrent.Future;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
@@ -182,6 +183,15 @@ class AuthIntegrationTest extends IntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.failed[0]").value(containsString("password")));
+    }
+
+    @Test
+    @DisplayName("Signup with an empty email is 400 with the one message that says so, not also an ASCII one")
+    void signupWithAnEmptyEmailNamesOnlyTheBlank() throws Exception {
+        signup("", PASSWORD)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.failed", contains("email: must not be blank")));
     }
 
     @Test

@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,6 +18,10 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID>, CustomTen
     /** Ids only, oldest first (UUIDv7): the jobs' loop over the tenants. */
     @Query("select t.id from Tenant t where t.status = :status order by t.id")
     List<UUID> findIdsByStatus(TenantStatus status);
+
+    /** Like {@link #findIdsByStatus}, for several statuses. */
+    @Query("select t.id from Tenant t where t.status in :statuses order by t.id")
+    List<UUID> findIdsByStatusIn(Collection<TenantStatus> statuses);
 
     /**
      * Locked for two rules over the tenant's members that no constraint holds (DATA-29): only a current

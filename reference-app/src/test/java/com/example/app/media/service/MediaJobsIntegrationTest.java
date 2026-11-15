@@ -63,11 +63,20 @@ class MediaJobsIntegrationTest extends IntegrationTest {
     private TestFile insertFile(String status, String uploadExpiresAt, String expiresAt) {
         UUID id = UUID.randomUUID();
         String key = "JOB_TEST/" + UUID.randomUUID();
+        // tenancy-row:begin
+        // // Row mode: every insert names its tenant (tenant_id has no default).
+        // sql("""
+        //         insert into media_files (id, tenant_id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
+        //                                  upload_expires_at, expires_at, created_at, updated_at, version)
+        //         values (?, ?, ?, 'JOB_TEST', 'a.pdf', 'application/pdf', 1, ?, ?, %s, %s, now(), now(), 0)
+        //         """.formatted(uploadExpiresAt, expiresAt), id, testTenant().id(), key, status, UUID.randomUUID());
+        // tenancy-row:else
         sql("""
                 insert into media_files (id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
                                          upload_expires_at, expires_at, created_at, updated_at, version)
                 values (?, ?, 'JOB_TEST', 'a.pdf', 'application/pdf', 1, ?, ?, %s, %s, now(), now(), 0)
                 """.formatted(uploadExpiresAt, expiresAt), id, key, status, UUID.randomUUID());
+        // tenancy-row:end
         return new TestFile(id, key);
     }
 

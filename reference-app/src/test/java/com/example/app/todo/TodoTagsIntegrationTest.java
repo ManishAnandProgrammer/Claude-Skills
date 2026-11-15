@@ -631,6 +631,22 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         String ownTag = createTag(owner, "Own");
         TestUser stranger = newUser();
         String foreignTag = createTag(stranger, "Foreign");
+        // tenancy-row:begin
+        // // Row mode: every insert names its tenant (tenant_id has no default).
+        // UUID tenantId = testTenant().id();
+        // String insert = """
+        //         insert into todo_tags (id, tenant_id, todo_id, tag_id, owner_id, created_at, updated_at, version)
+        //         values (gen_random_uuid(), ?, ?::uuid, ?::uuid, ?, now(), now(), 0)
+        //         """;
+        //
+        // assertThat(sql(insert, tenantId, todo, ownTag, owner.id())).isEqualTo(1);
+        // assertThatThrownBy(() -> sql(insert, tenantId, todo, foreignTag, owner.id()))
+        //         .isInstanceOf(DataIntegrityViolationException.class)
+        //         .hasMessageContaining("fk_todo_tags_tag_id_owner_id");
+        // assertThatThrownBy(() -> sql(insert, tenantId, todo, foreignTag, stranger.id()))
+        //         .isInstanceOf(DataIntegrityViolationException.class)
+        //         .hasMessageContaining("fk_todo_tags_todo_id_owner_id");
+        // tenancy-row:else
         String insert = """
                 insert into todo_tags (id, todo_id, tag_id, owner_id, created_at, updated_at, version)
                 values (gen_random_uuid(), ?::uuid, ?::uuid, ?, now(), now(), 0)
@@ -643,6 +659,7 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         assertThatThrownBy(() -> sql(insert, todo, foreignTag, stranger.id()))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("fk_todo_tags_todo_id_owner_id");
+        // tenancy-row:end
         assertThat(tagRows("todo_id", todo)).isEqualTo(1);
     }
 

@@ -55,9 +55,15 @@ class TenantRegistrationIntegrationTest extends IntegrationTest {
         provisionApprovedTenants();
         login(email, PASSWORD).andExpect(status().isForbidden());
 
+        // The answer is the tenant as provisioning left it: row mode activated it before the answer.
         postAs(platformToken(), "/api/v1/platform/tenants/" + tenantId + "/approve", "")
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.response.status").value("PENDING"));
+                // tenancy-row:begin
+                .andExpect(jsonPath("$.response.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.response.version").value(1));
+                // tenancy-row:else
+                // .andExpect(jsonPath("$.response.status").value("PENDING"));
+                // tenancy-row:end
         provisionApprovedTenants();
 
         ResultActions signedIn = login(email, PASSWORD).andExpect(status().isOk());

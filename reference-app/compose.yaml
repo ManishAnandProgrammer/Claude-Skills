@@ -9,16 +9,17 @@ services:
       POSTGRES_DB: ${DB_NAME:?set DB_NAME in .env (see .env.example)}
       # tenancy:begin
       # # The cluster's superuser runs the init script only. The application connects as DB_USER and
-      # # migrates as DB_OWNER_USER: the roles the script creates, as docs/tenancy-runbook.md does.
+      # # migrates as DB_OWNER_USER: the roles the script creates, as docs/tenancy-runbook.md does. Each
+      # # is required: an empty one would leave a new volume half set up.
       # POSTGRES_USER: postgres
       # POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD:-postgres}
-      # DB_USER: ${DB_USER}
-      # DB_PASSWORD: ${DB_PASSWORD}
-      # DB_OWNER_USER: ${DB_OWNER_USER}
-      # DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD}
+      # DB_USER: ${DB_USER:?set DB_USER in .env (see .env.example)}
+      # DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env (see .env.example)}
+      # DB_OWNER_USER: ${DB_OWNER_USER:?set DB_OWNER_USER in .env (see .env.example)}
+      # DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:?set DB_OWNER_PASSWORD in .env (see .env.example)}
       # tenancy:else
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USER:?set DB_USER in .env (see .env.example)}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env (see .env.example)}
       # tenancy:end
     ports:
       - "127.0.0.1:${DB_PORT:-5432}:5432"

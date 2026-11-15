@@ -175,6 +175,26 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
                 .contains("filename*=UTF-8''Bericht%20M%C3%A4rz.pdf");
     }
 
+    /** A PENDING upload of another purpose, which no endpoint here creates. */
+    private void insertOtherPurposeFile(String key, UUID uploadedBy) {
+        // tenancy-row:begin
+        // // Row mode: every insert names its tenant (tenant_id has no default).
+        // sql("""
+        //         insert into media_files (id, tenant_id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
+        //                                  upload_expires_at, expires_at, created_at, updated_at, version)
+        //         values (gen_random_uuid(), ?, ?, 'OTHER_PURPOSE', 'a.pdf', 'application/pdf', 10, 'PENDING', ?,
+        //                 now() + interval '5 minutes', now() + interval '1 hour', now(), now(), 0)
+        //         """, testTenant().id(), key, uploadedBy);
+        // tenancy-row:else
+        sql("""
+                insert into media_files (id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
+                                         upload_expires_at, expires_at, created_at, updated_at, version)
+                values (gen_random_uuid(), ?, 'OTHER_PURPOSE', 'a.pdf', 'application/pdf', 10, 'PENDING', ?,
+                        now() + interval '5 minutes', now() + interval '1 hour', now(), now(), 0)
+                """, key, uploadedBy);
+        // tenancy-row:end
+    }
+
     /** Sends {@code refusedKey} beside a good one: 409, no todo, and the good one is still claimable. */
     private void assertClaimRefused(TestUser user, String refusedKey) throws Exception {
         String listId = createList(user);
@@ -226,12 +246,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
     void otherPurposeOrUnknownKeyIs409() throws Exception {
         TestUser user = newUser();
         String otherPurposeKey = "OTHER_PURPOSE/" + UUID.randomUUID();
-        sql("""
-                insert into media_files (id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
-                                         upload_expires_at, expires_at, created_at, updated_at, version)
-                values (gen_random_uuid(), ?, 'OTHER_PURPOSE', 'a.pdf', 'application/pdf', 10, 'PENDING', ?,
-                        now() + interval '5 minutes', now() + interval '1 hour', now(), now(), 0)
-                """, otherPurposeKey, user.id());
+        insertOtherPurposeFile(otherPurposeKey, user.id());
 
         assertClaimRefused(user, otherPurposeKey);
         assertClaimRefused(user, PURPOSE + "/" + UUID.randomUUID());
@@ -280,12 +295,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         assertThat(sql("update media_files set upload_expires_at = now() - interval '2 hours', expires_at = now() - interval '1 minute' where key = ?",
                 expired)).isEqualTo(1);
         String otherPurposeKey = "OTHER_PURPOSE/" + UUID.randomUUID();
-        sql("""
-                insert into media_files (id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
-                                         upload_expires_at, expires_at, created_at, updated_at, version)
-                values (gen_random_uuid(), ?, 'OTHER_PURPOSE', 'a.pdf', 'application/pdf', 10, 'PENDING', ?,
-                        now() + interval '5 minutes', now() + interval '1 hour', now(), now(), 0)
-                """, otherPurposeKey, user.id());
+        insertOtherPurposeFile(otherPurposeKey, user.id());
 
         for (String refused : List.of(attached, expired, otherPurposeKey, PURPOSE + "/" + UUID.randomUUID())) {
             assertUpdateClaimRefused(user, refused);
@@ -415,6 +425,36 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.attachments", hasSize(2)));
         assertThat(statusOf(missing)).isEqualTo("RELEASED");
+    }
+
+    @Test
+    @DisplayName("Adding a key this same todo already holds is 409 UPLOAD_NOT_AVAILABLE: the todo keeps its one file and its version")
+    void reAddingThisTodosOwnKeyIsRefused() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user);
+        String key = upload(user);
+        String todoId = createTodo(user, listId, List.of(key));
+
+        update(user, listId, todoId, 0, "With files", List.of(key), List.of())
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_NOT_AVAILABLE"));
+        assertThat(attachmentIds(user, todoId)).hasSize(1);
+        assertThat(jdbc.queryForObject("select version from todos where id = ?::uuid", Long.class, todoId)).isZero();
+    }
+
+    @Test
+    @DisplayName("A malformed removeAttachmentIds entry is 400 REQUEST_UNREADABLE, and the todo keeps its file")
+    void malformedRemoveIdIs400() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user);
+        String todoId = createTodo(user, listId, uploads(user, 1));
+
+        String body = update(user, listId, todoId, 0, "With files", List.of(), List.of("not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
+                .andReturn().getResponse().getContentAsString();
+        assertNoInternals(body);
+        assertThat(attachmentIds(user, todoId)).hasSize(1);
     }
 
     @Test

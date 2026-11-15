@@ -305,6 +305,29 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("A member of two tenants is changed and removed in the caller's tenant only: the other membership stays as it was")
+    void changesStayInTheCallersTenant() throws Exception {
+        TestTenant mine = newTenant();
+        TestTenant theirs = newTenant();
+        TestUser owner = soleAdminOf(mine);
+        TestUser both = newUserIn(theirs, "USER");
+        addMember(mine, both.id(), "USER");
+        long theirVersion = versionOf(theirs, both.id());
+
+        putAs(owner.accessToken(), MEMBERS + "/" + both.id(), rolePayload("ADMIN", versionOf(mine, both.id())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.role").value("ADMIN"));
+        assertThat(roleOf(theirs, both.id())).isEqualTo("USER");
+        deleteAs(owner.accessToken(), MEMBERS + "/" + both.id()).andExpect(status().isNoContent());
+
+        Integer leftInMine = jdbc.queryForObject("select count(*) from tenant_memberships where tenant_id = ? and user_id = ?",
+                Integer.class, mine.id(), both.id());
+        assertThat(leftInMine).isZero();
+        assertThat(roleOf(theirs, both.id())).isEqualTo("USER");
+        assertThat(versionOf(theirs, both.id())).isEqualTo(theirVersion);
+    }
+
+    @Test
     @DisplayName("A USER member is 403 ACCESS_DENIED on every call, with valid bodies; without a token 401")
     void onlyAdminsManageMembers() throws Exception {
         TestTenant tenant = newTenant();

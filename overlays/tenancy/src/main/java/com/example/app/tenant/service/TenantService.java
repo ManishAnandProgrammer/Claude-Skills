@@ -57,13 +57,14 @@ public class TenantService implements Tenants {
 
     /**
      * Staff's tenant: PENDING and approved at once, with its owner's membership ({@link TenantCreated},
-     * same transaction: an owner without an account rolls it back). ACTIVE once provisioned.
+     * same transaction: an owner without an account rolls it back). ACTIVE once provisioned. The id only:
+     * {@link StaffTenantService} reads the tenant after this transaction, as provisioning left it.
      */
     @Transactional
-    public ObjectWrapper<TenantResponse> create(TenantCreateRequest request) {
+    public UUID create(TenantCreateRequest request) {
         Tenant tenant = createPending(request.name(), request.ownerEmail(), TenantChangeSource.STAFF);
         events.publishEvent(new TenantApproved(tenant.getId()));
-        return ObjectWrapper.withObject(mapper.toResponse(tenant));
+        return tenant.getId();
     }
 
     @Override
@@ -83,13 +84,6 @@ public class TenantService implements Tenants {
     @Override
     public List<TenantView> findAllById(Collection<UUID> ids) {
         return repository.findAllById(ids).stream().map(mapper::toView).toList();
-    }
-
-    /** Staff approving a registration: {@link #approve}, answered with the tenant (still PENDING until provisioned). */
-    @Transactional
-    public ObjectWrapper<TenantResponse> approveByStaff(UUID id) {
-        approve(id, TenantChangeSource.STAFF);
-        return ObjectWrapper.withObject(mapper.toResponse(getTenant(id)));
     }
 
     @Override
@@ -148,6 +142,11 @@ public class TenantService implements Tenants {
     @Override
     public List<UUID> activeIds() {
         return repository.findIdsByStatus(TenantStatus.ACTIVE);
+    }
+
+    @Override
+    public List<UUID> idsHoldingData() {
+        return repository.findIdsByStatusIn(List.of(TenantStatus.ACTIVE, TenantStatus.SUSPENDED, TenantStatus.CLOSED));
     }
 
     @Override

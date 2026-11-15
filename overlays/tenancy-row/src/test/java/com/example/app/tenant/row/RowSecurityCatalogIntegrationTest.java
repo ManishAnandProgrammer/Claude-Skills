@@ -92,7 +92,10 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
                and not (c.relname = any (?))
              order by c.relname""";
 
-    /** A tenant table's tenant_id must be NOT NULL and reference the register. */
+    /**
+     * A tenant table's tenant_id must be NOT NULL, reference the register and have no default: every insert
+     * names its tenant, so a forgotten one fails at once instead of taking whatever the session was told.
+     */
     private static final String TENANT_IDS_UNCHECKED = """
             select c.relname
               from pg_class c
@@ -102,6 +105,7 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
                and c.relkind in ('r', 'p')
                and not (c.relname = any (?))
                and not (a.attnotnull
+                        and not a.atthasdef
                         and exists (select 1 from pg_constraint f
                                      where f.conrelid = c.oid and f.contype = 'f'
                                        and f.conkey = array[a.attnum] and f.confrelid = 'tenants'::regclass))
@@ -159,10 +163,14 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
         assertThat(jdbc.queryForList(TABLES_NEITHER_TENANT_NOR_PLATFORM, String.class, (Object) platformTables())).isEmpty();
     }
 
+    private static List<String> tenantIdsUnchecked(JdbcTemplate catalog) {
+        return catalog.queryForList(TENANT_IDS_UNCHECKED, String.class, (Object) platformTables());
+    }
+
     @Test
-    @DisplayName("Every tenant table's tenant_id is NOT NULL and references tenants")
+    @DisplayName("Every tenant table's tenant_id is NOT NULL, references tenants and has no default")
     void everyTenantIdIsChecked() {
-        assertThat(jdbc.queryForList(TENANT_IDS_UNCHECKED, String.class, (Object) platformTables())).isEmpty();
+        assertThat(tenantIdsUnchecked(jdbc)).isEmpty();
     }
 
     @Test
@@ -199,7 +207,7 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The guard catches a tenant table without its policy, and one whose security is enabled but not forced")
+    @DisplayName("The guard catches a tenant table without its policy, one whose security is enabled but not forced, and a tenant_id with a default")
     void theGuardCatchesAMissingPolicy() throws SQLException {
         String jdbcUrl = dataSource.unwrap(HikariDataSource.class).getJdbcUrl();
         try (Connection owner = DriverManager.getConnection(jdbcUrl, ownerUser, ownerPassword)) {
@@ -217,9 +225,15 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
                 asOwner.execute("alter table guard_probe force row level security");
                 List<String> complete = tenantTablesWithoutTheirPolicy(asOwner);
 
+                List<String> withoutDefault = tenantIdsUnchecked(asOwner);
+                asOwner.execute("alter table guard_probe alter column tenant_id set default nullif(current_setting('app.tenant_id', true), '')::uuid");
+                List<String> withDefault = tenantIdsUnchecked(asOwner);
+
                 assertThat(withoutPolicy).contains("guard_probe");
                 assertThat(notForced).contains("guard_probe");
                 assertThat(complete).doesNotContain("guard_probe");
+                assertThat(withoutDefault).doesNotContain("guard_probe");
+                assertThat(withDefault).contains("guard_probe");
             } finally {
                 owner.rollback();
             }
