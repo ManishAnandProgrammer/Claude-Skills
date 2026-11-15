@@ -34,8 +34,9 @@ schema), grant the missing table right instead. The application checks this at s
 
 ## 2. Platform staff
 
-Staff are rows, not an endpoint. As the owner role (`DB_OWNER_USER`), insert one with a bcrypt hash of
-its password (strength 12). The hash needs nothing but Docker (Apache's `htpasswd` writes `$2y$`, which
+Staff are rows, not an endpoint. **After the application's first start** (Liquibase creates
+`platform_users` then; before it the insert fails with "relation does not exist"), as the owner role
+(`DB_OWNER_USER`), insert one with a bcrypt hash of its password (strength 12). The hash needs nothing but Docker (Apache's `htpasswd` writes `$2y$`, which
 the application's encoder reads):
 
 ```bash

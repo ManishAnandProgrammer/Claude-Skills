@@ -17,8 +17,9 @@
    metrics on `MANAGEMENT_PORT` (8081); the `dev` profile serves the OpenAPI UI at `/swagger-ui.html`.
 <!-- tenancy:begin -->
 <!-- 4. With tenancy, `compose.yaml` creates the two database roles on a new data directory. Platform -->
-<!--    staff are rows: `docs/tenancy-runbook.md`, section 2, has the command that hashes a password and -->
-<!--    inserts one (it needs only this stack and Docker). Staff then create or approve tenants. -->
+<!--    staff are rows: after the app's first start (Liquibase creates the table), `docs/tenancy-runbook.md`, -->
+<!--    section 2, has the command that hashes a password and inserts one (it needs only this stack and -->
+<!--    Docker). Staff then create or approve tenants. -->
 <!-- tenancy:else -->
 <!-- sign-in:begin -->
 <!-- admin:begin -->

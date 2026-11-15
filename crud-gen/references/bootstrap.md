@@ -126,7 +126,10 @@ With **AskUserQuestion** (several per call):
 Write `.claude/crud-profile.md` and `.claude/review-profile.md` from their templates. The review
 profile's `mainBranch` is the repository's base branch, read from git (`git symbolic-ref --short
 refs/remotes/origin/HEAD`, else `git branch --show-current` on a new repository), never the
-template's `main` unchecked: a `diff` review against a branch that doesn't exist fails.
+template's `main` unchecked: a `diff` review against a branch that doesn't exist fails. With a
+tenancy piece, the review profile's list keys name the piece's own lists too (REST-08 checks them):
+`TenantMembership` (`/tenant-members`) and `Tenant` (`/platform/tenants`) under `offsetLists`,
+`PlatformAuditEntry` under `cursorLists`.
 
 ## 1. Copy the pieces
 **No project yet?** Start it from the reference rather than Initializr (same Boot version, the
@@ -197,9 +200,15 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   (plus 0007 without metadata and media, and 0015, staff accounts read-only for the app role),
   schema per tenant 0013 (`0013-tenant-schemas`), row mode 0013 (`0013-row-security`) and, with a
   piece that brings tenant tables, 0016 (their `tenant_id` defaults dropped: every insert names its
-  tenant); example with metadata 0014 (the fixed key's seed); session-version 0021 without tenancy (the
-  users column) or 0022 with it (the membership column, a platform changeset). A project's own
-  changesets continue after the highest copied number.
+  tenant); example with metadata 0014 (the fixed key's seed); tenancy 0017 (the tenant's `members`),
+  0018 with the example (its owners reference members), row mode 0019 (replica identities, with a
+  piece that brings tenant tables), 0020 (the members list's index), row mode with the example 0023
+  (the owners' dependency statistics); session-version 0021 without tenancy (the users column) or 0022
+  with it (the membership column, a platform changeset). A project's own changesets start after the
+  highest number **any** piece reserves (0023 today: the first is **0024**), not after the highest copied one: a piece
+  turned on later (the session version, the ladder's next rung) then brings its own numbers without
+  two files sharing one. When a project already used a reserved number, the late piece's changesets
+  are copied under the next free numbers instead (rename the file and its changeset id together).
 - The answers of step 0: signup policy, external IdP (`SecurityConfig`), client-IP mode,
   `app.limits.*` values, pool and admission sizes (admission ≥ 2× pool, checked at startup).
 - `ErrorCode`: remove the sign-in codes if `sign-in` wasn't copied. Constraint mappings live in each
@@ -273,8 +282,11 @@ image `versity/versitygw` (the version the reference pins) for the S3-compatible
 2. The project-wide tests exist once: `lockedRowAnswers503` (a write against a row another
    transaction locked: 503 `DATABASE_CONTENTION` + `Retry-After`, row unchanged; ERR-03) and
    `apiDocsShowTheConfiguredLimits` (the configured `maxLength` in the OpenAPI schema; REST-09).
-   The reference has them in `TodoIntegrationTest` and `LimitsIntegrationTest`; without the
-   `example` piece, write them for the project's first entity (grep for the names first). With
+   The reference has them in `TodoIntegrationTest` and `LimitsIntegrationTest`. The sign-in piece's
+   copied `LimitsIntegrationTest` already has an `apiDocsShowTheConfiguredLimits` (the paging limits),
+   so a grep finds the name: the project's first entity still adds its own, the entity-level one of
+   golden `TodoListIntegrationTest` (its `maxLength`, a 401 and a 409 code). Without the `example`
+   piece, write `lockedRowAnswers503` for the project's first entity (grep for it first). With
    `media` and no purpose yet, Surefire reports the media endpoint tests as skipped: expected.
 3. Review only what step 2 adapted (the application class, the changed configuration, `ErrorCode`,
    `SecurityConfig` for an external IdP, the runbook): `/house-review <those files>`. The unmodified

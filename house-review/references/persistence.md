@@ -155,7 +155,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     expects the second step to miss a row deleted (or moved, its old parent deleted) in between: the
     batch leaves that row out, the single read answers the record's own 404, never a null mapped into
     a 500 or the parent's not-found code (reference: `PlanService.withTodos`, `findById`, tested by
-    gating the second statement: `PlanIntegrationTest.listLeavesOutAPlanWhoseTodoVanishedBetweenTheReads`).
+    gating the second statement: `PlanIntegrationTest.listLeavesOutAPlanWhoseTodoVanishedBetweenTheReads`);
+  - a same-module parent on a detail is read with the record in one statement (an entity graph or a
+    fetch join of the to-one), and a write's response maps its parents like the single read.
+- **Detect:** a detail or a write's response that reads a `@ManyToOne(fetch = LAZY)` parent after the
+  record's own statement, justified by a row lock: a write that changes nothing flushes no `UPDATE` and
+  holds no lock, so the parent can be deleted in between and Hibernate's proxy throws (a 500).
 - **Severity:** Medium (High without the retry).
 
 ### DATA-22: Propagation pitfalls
@@ -367,7 +372,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Unique text:** case and surrounding spaces must not make a different value
   ("Groceries" vs " groceries", two accounts for one email). Two correct shapes:
   - the code **stores the normalised form** (enforced by `CHECK (col = lower(trim(col)))`) and the
-    column gets a **plain unique constraint**, which every `col = ?` lookup uses (emails, codes);
+    column gets a **plain unique constraint**, which every `col = ?` lookup uses (emails, codes). A
+    pattern-validated value checks its **format** instead (`CHECK (code ~ '^[A-Z0-9-]{1,20}$')`, in the
+    stored case): it implies the normalisation, while the case-only check lets a fixture or an import
+    store a value no request can send back;
   - the stored text **keeps its case** (a display name) and gets a unique **index on
     `lower(trim(col))`**. PostgreSQL uses an expression index **only for a query naming the same
     expression**: a lookup `WHERE col = ?` beside it is a sequential scan (measured 2026-11-13:
@@ -493,7 +501,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - no `findAll()` behind an endpoint;
   - count queries are skipped when the page isn't full; cursor lists never count;
   - **list pages and dropdowns are projections** (`construct(Row.class, …)` of only the columns they
-    show), never entities: measured 22 ms against 7 ms per page (2026-11-13);
+    show), never entities: measured 22 ms against 7 ms per page (2026-11-13). That includes a page's
+    second step (the parents' names for the batch): a constructor projection of the view's columns
+    (reference `TodoRepository.findViewsByIdInAndOwnerId`), not the parents' whole rows;
   - **growing lists are keyset-paged** (`after` cursor); OFFSET reads every skipped row (20,020 rows
     for row 20,000, against 20 with keyset);
   - **outliers:** every list or loop over one owner's rows (a user's todos, a tenant's orders) that
@@ -516,8 +526,11 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     auditing reads that clock (`JpaAuditingConfig`'s `DateTimeProvider`), so every `clock.instant()`
     and audit field already fits; elsewhere `truncatedTo(ChronoUnit.MICROS)`. Detect `Clock.systemUTC()`
     as the bean, or `@EnableJpaAuditing` without a `dateTimeProviderRef`;
-  - text keys that are sorted or compared like Java does (keyset cursors, codes) use
-    `COLLATE "C"`: a locale collation orders them differently and can change with the OS.
+  - **codes and identifiers** (a course code, an SKU, a key compared with Java's `equals` or
+    `compareTo`) use `COLLATE "C"`: a locale collation orders them differently and can change with the
+    OS. **Names keep the locale collation** (titles, full names: people expect their language's order),
+    keyset cursor or not: the order and the seek both run in the database with the same collation, so
+    the walk stays consistent.
 - **Severity:** Medium for a `varchar(n)` column or a length constant on the entity.
 
 ### DATA-13: Migrations

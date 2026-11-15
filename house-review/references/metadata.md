@@ -82,7 +82,12 @@ only when the project has that piece.
   canonical UUID form, as for metadata keys), never assembled by hand. The module that numbers
   declares the prefix (the billing module owns `INVOICE`), unless the dependency direction forbids
   it (ARCH-02: the store module seeds the counter, and billing depends on stores); then the
-  context's owner declares it.
+  context's owner declares it. With tenancy the tenant is not a context: `counters` is tenant data, so
+  a tenant's display number is a fixed name (TEN-18).
+- **Seeding:** a seed that may meet the row created another way first (row mode's `TenantProvisioned`
+  seed beside a backfill; a create that numbers where the seed never ran) uses `Counters.createIfAbsent`
+  (one `INSERT … ON CONFLICT DO NOTHING`), never `create` (409 on the second, which dooms the caller's
+  transaction).
 - **Severity:** High.
 
 ### META-09: Tenancy

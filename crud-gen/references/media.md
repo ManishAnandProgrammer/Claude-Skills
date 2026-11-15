@@ -132,7 +132,8 @@ its `errorCode` (TEST-08):
   re-adds a key this same record already holds;
 - a remove id that isn't this record's file is refused; another user's record is 404 (TEST-02). **A
   shared root** (no owner, tests.md *Shared tables*): the refused-create checks count the caller's
-  rows by `created_by` instead of `owner_id` (golden `todosOf`), and the other-user 404 has no
+  rows by `created_by` instead of `owner_id` (the golden `todosOf` counts an owned root's by
+  `owner_id`), and the other-user 404 has no
   counterpart: with tenancy the `TenantIsolationIntegrationTest` covers who reaches the record. On a
   shared record, one member removes a file another member attached (its row RELEASED); a malformed
   remove id is 400 `REQUEST_UNREADABLE`, the record keeping its files (golden

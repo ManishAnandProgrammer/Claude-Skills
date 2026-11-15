@@ -75,7 +75,9 @@ steps are the same; these rules come first:
 
 Look for `.claude/crud-profile.md` at the project root. If it exists, read it: its values and
 *Deviations* take precedence. Also read `.claude/review-profile.md` if it exists; its conventions
-apply to generated code too.
+apply to generated code too. When this skill says "record it in the profiles", a review-profile
+**Conventions** row is only for a departure from a house rule, with the owner's reason (it reads as an
+override); a choice no rule forbids is recorded in the javadoc or the changeset comment instead.
 
 If it doesn't exist, build it before generating anything:
 1. Copy `~/.claude/skills/crud-gen/profile-template.md`.
@@ -167,7 +169,9 @@ each scoped like the parent's own reads:
   ids simply absent (4.3: a row whose parent it misses is left out).
 
 **A parent the child's create picks** (every FK in a create request: an enrollment's student and
-course): ask, per parent, whether its screen picks it from a dropdown. A parent without
+course): ask, per parent, whether its screen picks it from a dropdown, and whether the update may
+change it (a ticket moved to another customer: the update request carries the id, the move is tested
+with its race, tests.md row 23; or the column is `updatable = false`). A parent without
 `{{dropdownAnnotation}}` then gets one, generated for that parent in update mode (4.11); the answer
 "the list's `query` is the picker" is recorded in the profiles' conventions. Never leave it unasked:
 the picker is the first screen that needs it. Whichever it is, check that the picker can be used by
@@ -206,10 +210,10 @@ Check before generating:
 | No soft-delete flag; statuses are enums with a check constraint | DATA-07 |
 | A changeset with `--rollback`; FKs named `fk_<table>_<column>` | DATA-13 |
 | Unique text ignores case and surrounding spaces (one of the two shapes; partial when nullable). A column whose `CHECK` admits one spelling only (an ISBN of exactly 13 digits: no case, no spaces) takes a plain `UNIQUE`, and its `@Schema` says "unique" without "ignoring case" | DATA-05 |
-| A unique **code or identifier** (a course code, an SKU): **ask** "store it normalised (`CS101` upper-cased on write), or keep what was typed?". Normalised is DATA-05's first shape: the mapper upper- or lower-cases it, a `CHECK` with the same expression, one plain `UNIQUE` that serves uniqueness, every `code = ?` lookup and the CODE order. Kept as typed is the second: a unique index on `lower(trim(code))`, an order on the code needs its own `(code, id)` index, and a lookup must name the same expression, never `WHERE code = ?` (a sequential scan). Prefer normalised for codes; record the answer | DATA-05 |
+| A unique **code or identifier** (a course code, an SKU): **ask** "store it normalised (`CS101` upper-cased on write), or keep what was typed?". Normalised is DATA-05's first shape: the mapper upper- or lower-cases it, a `CHECK`, one plain `UNIQUE` that serves uniqueness, every `code = ?` lookup and the CODE order. The `CHECK` is the format when the request has a `@Pattern` (`CHECK (code ~ '^[A-Z0-9-]{1,20}$')`, upper-cased: it implies the normalisation; `code = upper(trim(code))` alone checks the case and lets a fixture or an import store a code no PUT can send back), else the normalising expression. The column is `text COLLATE "C"` (DATA-12: a code compares and sorts byte for byte, as Java does; names keep the locale's collation). Kept as typed is the second: a unique index on `lower(trim(code))`, an order on the code needs its own `(code, id)` index, and a lookup must name the same expression, never `WHERE code = ?` (a sequential scan). Prefer normalised for codes; record the answer | DATA-05 |
 | An **email** field: stored lower-cased (the first shape, golden `users`: `ck_<table>_email_normalized`, plain unique); the request shape is 4.1's *Email* | DATA-05 |
 | A value the mapper normalises (an email lower-cased and trimmed) has a `CHECK` with the same expression (`email = lower(trim(email))`, golden `users`) | DATA-05 |
-| A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one. When the entity also has a **date range**, ask the follow-up: "does a finished record (past its `endsOn`, still `<LIVE>`) still block a new one?" (a student who completed a course retaking it). If not, the rule is either no overlapping live ranges, DATA-35's exclusion constraint `WHERE (status = '<LIVE>')`, or a decided terminal status (`COMPLETED`, set by a person or a job), never "live" read from the dates (DATA-37) | DATA-05, DATA-35, DATA-37 |
+| A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one. Its "taken on update" test (tests.md row 11) means the writes that move a row **into** the live status or change the pair; when none does (the pair fixed at the create, no move back to live), the create's test is the whole duty: say so. When the entity also has a **date range**, ask the follow-up: "does a finished record (past its `endsOn`, still `<LIVE>`) still block a new one?" (a student who completed a course retaking it). If not, the rule is either no overlapping live ranges, DATA-35's exclusion constraint `WHERE (status = '<LIVE>')`, or a decided terminal status (`COMPLETED`, set by a person or a job), never "live" read from the dates (DATA-37) | DATA-05, DATA-35, DATA-37 |
 | Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is not applied**, ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
 | A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column | DATA-33 |
 | `Instant` for moments, `LocalDate` for picked dates, no time zones | JAVA-25 |
@@ -319,13 +323,18 @@ ARCH-15's shape)): follow the house-review rules and ask; don't invent a shape. 
 (several states, only some moves allowed) copies the tenant lifecycle with tenancy, or its shape
 without it: the moves as one `canBecome(target)` switch on the status enum (`TenantStatus`), the
 entity's change method refusing the rest with 409 `<ENTITY>_STATUS_CHANGE_INVALID` naming both
-states, and a test per allowed and per refused move. A target that no state may move to (a status
+states, and a test per allowed and per refused move. A move to the record's **current** status is
+refused like any move the switch doesn't list (409, tested), unless the owner decides it is a no-op
+(golden `Todo`'s status is a flag, not a workflow: there it is a no-op); say which in the API text. A
+workflow's refusals are 409s through the change method, so its unit test (tests.md row 26) asserts
+those, not an `IllegalStateException`. A target that no state may move to (a status
 only the create sets, `ACTIVE` for an enrollment, `PENDING` for a tenant) is refused the same way, 409
 with that code: the move is valid in itself, the lifecycle refuses it (ERR-05). **Ask about the
 terminal statuses** (WITHDRAWN, CANCELLED, CLOSED): may a record in one still be edited (PUT, the
-member and file writes) or deleted? When it is frozen, the entity's edit method guards it after the
-version check: 409 `<ENTITY>_<STATUS>` (`ENROLLMENT_WITHDRAWN`, ERR-04's names), documented on each
-refused write, with tests.md row 26b; when only the delete stays open, say so in the API text. Their tests take each
+member and file writes) or deleted? When it is frozen, the entity's edit method guards it **first
+after the version check**, before any other rule (a configured maximum, a parent's state): 409
+`<ENTITY>_<STATUS>` (`ENROLLMENT_WITHDRAWN`, ERR-04's names), documented on each refused write, with
+tests.md row 26b (whose write would also break another rule, so the order is tested); when only the delete stays open, say so in the API text. Their tests take each
 party × each action, and for a Manager each aggregate's refusal rolling both back.
 
 ---
@@ -348,7 +357,9 @@ Cursor: `extends {{CursorFilter}}` (golden `TodoFilter`). Offset: `extends {{Pag
 a default; `requireXPredicate()` per optional field (the repository builds predicates only from
 these). A filter whose `query` predicate is shared with the entity's dropdown implements
 `QueryFilter` (golden `TodoListFilter`, `TagFilter`), so one helper serves both; a list without a
-dropdown needs no interface (golden `TodoFilter`).
+dropdown needs no interface (golden `TodoFilter`). The dropdown's `query` searches its label only;
+when the list's `query` searches more (a name **or** an email), the two predicates differ, and the
+filter doesn't implement `QueryFilter`.
 
 **Then the indexes** (DATA-10), now that the orders and filters are chosen: one per offered order
 and per scoping filter, ending with the id (none when the sort column is unique and not null), in a
@@ -392,7 +403,9 @@ description and its 400 response name it.
   (golden `TagColor`: `(#[0-9A-Fa-f]{6})?`; `@Pattern` matches the whole value). Never `\s*` or `.*` around it to tolerate
   spaces: surrounding spaces of a format-validated value are a 400 (and test row 11 tests case
   only); if spaces must be accepted, add `@MaxLength` too (REST-09). Normalised in the mapper (case),
-  backed by a database `CHECK`.
+  backed by a database `CHECK`. The message names the **exact** character classes and length, never a
+  looser word: `[A-Za-z0-9-]{1,20}` is "1 to 20 ASCII letters (A-Z, a-z), digits or hyphens", not
+  "letters" (`ÄB1` is a letter and is refused).
 - **Ranges in a body** (a plan's `startsOn`/`endsOn`): one `@AssertTrue @Schema(hidden = true)
   boolean is<X>RangeOrdered()` on the request record, like a range filter, backed by a `CHECK`
   (golden `PlanCreateRequest`); the API text says whether the ends are inclusive. An updatable range
@@ -400,7 +413,11 @@ description and its 400 response name it.
   `IllegalStateException` on an inverted range; no golden code: `Plan` is immutable), never a setter
   per end. When the range's scope column (the exclusion constraint's `owner_id WITH =`, a shift's
   member) is updatable too, it changes through an action of its own (`handOverTo(member)`), not a
-  third parameter of `reschedule`: each guards its own rule and is tested on its own.
+  third parameter of `reschedule`: each guards its own rule and is tested on its own. Its API is a
+  `PATCH /<entities>/{id}/<scope>` (`PATCH /on-call-shifts/{id}/member`) with a
+  `<Entity><Scope>Request {<scope>Id, version}`; a person is checked through `Members` (404
+  `TENANT_MEMBER_NOT_FOUND` for a removed one), and moving to the current value is a no-op answering
+  200 with the version unchanged.
 - **A filter for "what is on during [from, to]"** is an overlap, not the range `&&` operator (not
   leakproof under row-level security, TEN-36). Two comparisons alone (`endsOn >= :from AND startsOn
   <= :to`) give the index **no lower bound**: every index orders by the start, so `endsOn >= :from`
@@ -424,7 +441,15 @@ description and its 400 response name it.
   length bound both sides with an address `@Email` accepts (64 characters before the `@`, domain
   labels of at most 63: `"a".repeat(64) + "@" + "b".repeat(63) + "." + "c".repeat(63) + "." +
   "d".repeat(58) + ".io"` is 254); surrounding spaces 400 (row 11 tests the case only); a case-only
-  duplicate 409 `<ENTITY>_EMAIL_TAKEN`, on create and update.
+  duplicate 409 `<ENTITY>_EMAIL_TAKEN`, on create and update. **That is the platform's `users` shape.** On
+  a **tenant table** (row mode) the key is `uq_<table>_email UNIQUE (tenant_id, email)` (also its
+  replica identity, TEN-38), the `@Schema` says "unique in your organisation", and a cross-tenant test
+  proves the same address is accepted in another tenant (schema mode: the plain key, per schema, and the
+  same test).
+- **Phone numbers:** ask the shape and record it: a format (`@Pattern` of E.164, `^\+[1-9][0-9]{6,14}$`,
+  stored as sent, a `CHECK` with the same expression and the message naming it), or "as typed" (free
+  text with `@MaxLength`, no uniqueness, the decision recorded). Never a phone as a key without the
+  format.
 - **"None" is null:** optional text and pattern fields store blank as `null`; the `@Schema` says
   "null, absent or blank for none (returned as null)".
 - **Calendar dates:** every date that reaches a column or a query, filters included, carries
@@ -503,7 +528,7 @@ entity's; `ErrorCodeContractTest.everyErrorCodeHasAStatus` catches a missing one
 `{{messagesFile}}`; the handler's
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
 `*_IN_USE` for the parent's delete, and `ERROR_PREFIX_GONE`, a 404 without placeholders, for a
-child's insert or update after it: `byForeignKeyOnWrite`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02). A state
+child's insert or update after it: `byForeignKeyOnWrite`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02), except a key that can't trip once the service checked its target first: a person's key to `members` (checked through `Members`, whose row is never deleted) stays unmapped, with that reason in the module's `ConstraintErrorCodes` javadoc. A state
 conflict is 409, a wrong value 400 (ERR-05). A child's foreign key adds the parent's `*_IN_USE` to
 **the parent's** delete docs (`@ApiResponse(409)`) in the same change, asserted in **the child's**
 test class (with the parent's `deleteWhileReferencedIs409`): the parent's existing tests stay unchanged
@@ -586,8 +611,10 @@ owned lookup (`getOwned<Parent>`, not locked, unless the write checks the parent
 module** is reached through its service, public once a child needs it: `getOwned<Parent>(id)` returns
 the entity (golden `TodoListService.getOwnedTodoList`); a batch lookup for a write needs every id
 (`getOwned<Parent>s(ids)`, 404 naming a missing one, golden `TagService.getOwnedTags`), one for a
-list page's names returns those found (absent ids simply absent, as `Todos.getOwnedTodoViews`); both
-answer `List.of()` for no ids without a statement. These methods change **the parent's generated
+list page's names returns those found, under its own name (`findOwned<Parent>Views(ids)`: absent ids
+simply absent) and as a constructor projection of the view's columns, never whole entities (DATA-11;
+golden `Todos.getOwnedTodoViews` over `TodoRepository.findViewsByIdInAndOwnerId`); both answer
+`List.of()` for no ids without a statement. These methods change **the parent's generated
 service**: its private `get<Parent>` becomes public (with a javadoc saying who calls it), and the
 batch lookup is added beside it. Name both in the report's changed shared files, and review that
 service with the child (Step 8). No golden module has a same-module parent shown on a list: follow
@@ -596,7 +623,9 @@ service with the child (Step 8). No golden module has a same-module parent shown
 length, an upload policy's file count) on an update runs only when the fields it reads change, so a
 lowered limit never blocks correcting another field of an existing record (golden
 `TodoService.changeAttachments`: the file count is checked only when the files change; tests.md
-row 25f). No remote call inside a
+row 25f). The exception is a range's configured maximum length (`@ConfiguredMax` on the update's
+`getLengthInDays()`, 4.1): it is checked on every update, which is safe because the maximum may only
+ever be lowered once no stored range is longer (its `limits.yml` comment says so). No remote call inside a
 transaction (DATA-01). Never lock "the current X" by a mutable column (DATA-32).
 
 **An access-changing write with the session version** (`tokenRevocation: session-version`, the
@@ -694,6 +723,10 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] Asked, and recorded: each picked parent's dropdown (Step 1), whether a terminal status freezes
       the record (Step 3), a unique code's shape (Step 2).
 - [ ] A same-module parent's service changed (4.8): listed among the changed shared files.
+- [ ] Row 28: every offered order × every scoping filter listed in the index test, every status value
+      bound (4.1); row 18b: the `ids` filter's statement count.
+- [ ] A review-profile Conventions row only for a departure from a house rule, with the owner's reason;
+      a choice no rule forbids goes in the javadoc or the changeset comment.
 - [ ] With the session version: every generated write that changes access bumps it in its transaction
       and has its 401-then-refresh test (4.8, SEC-07).
 - [ ] Build green, and one guard proven to fail (Step 7).

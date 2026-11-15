@@ -237,6 +237,10 @@ For every Critical and High finding (yours and the reviewers'):
 - Look for the finding's twins: the single and batch endpoints, user and admin variants, copies of
   the same logic. Report each one that shares the defect.
 
+For every **Medium** finding: verify it the same way when a probe is cheap (one test or one SQL
+statement); otherwise label it "possible" with what would confirm it. An unverified Medium sends the
+fixer (or a generator) after a non-problem.
+
 Also check any number you report (counts of endpoints, tests, files) by recomputing it.
 
 - **A framework claim needs proof:** cite the framework source or javadoc from `~/.m2`, or a small
@@ -272,8 +276,9 @@ Also check any number you report (counts of endpoints, tests, files) by recomput
 **Diff and uncommitted:** print the report in the terminal; when the call says it reviews one
 entity's generation (crud-gen Step 8), also write it as `<reportDir>/<yyyy-mm-dd>-<entity>.md`.
 
-**Commit:** write `<reportDir>/<yyyy-mm-dd>-<short sha or range>.md` and print a short summary with
-the path: a commit is reviewed after the fact, and its report is the record.
+**Commit:** write `<reportDir>/<yyyy-mm-dd>-<short sha or range>.md` (a crud-gen entity's review:
+`<yyyy-mm-dd>-<entity>.md`, crud-gen Step 8) and print a short summary with the path: a commit is
+reviewed after the fact, and its report is the record.
 
 **Path and all:** write `<reportDir>/<yyyy-mm-dd>-<scope>.md` (`reportDir` from the profile,
 default `docs/reviews`) and print a short summary with the path.
