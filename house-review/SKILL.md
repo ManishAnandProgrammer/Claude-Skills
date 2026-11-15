@@ -1,7 +1,7 @@
 ---
 name: house-review
-description: Review Java / Spring Boot code against the house engineering standards (REST guidelines, code smells, Effective Java, persistence pitfalls, the eight lenses incl. required tests). Works on a branch diff, uncommitted changes, a path or module, or the whole codebase. Builds and runs the tests, verifies every serious finding, handles deliberate deviations (accept + mark, or fix), reports, then offers to fix. Project conventions come from .claude/review-profile.md, built from the codebase on first use.
-argument-hint: "[diff | uncommitted | all | <path>]"
+description: Review Java / Spring Boot code against the house engineering standards (REST guidelines, code smells, Effective Java, persistence pitfalls, the eight lenses incl. required tests). Works on a branch diff, a commit, uncommitted changes, a path or module, or the whole codebase. Builds and runs the tests, verifies every serious finding, handles deliberate deviations (accept + mark, or fix), reports, then offers to fix. Project conventions come from .claude/review-profile.md, built from the codebase on first use.
+argument-hint: "[diff | commit <sha> | uncommitted | all | <path>]"
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
@@ -76,6 +76,8 @@ Parse `$ARGUMENTS`:
 |---|---|---|
 | `diff` | Branch diff | `git diff --name-only <mainBranch>...HEAD` (merge base) |
 | `diff <base>` | Branch diff against another base | `git diff --name-only <base>...HEAD`: for a branch stacked on another feature branch, so only its own commits are reviewed |
+| `commit <sha>` | One commit | `git diff --name-only <sha>~1 <sha>`: what one commit changed (crud-gen's commit of one entity); a file a later commit changed again is read as that commit has it (`git show <sha>:<path>`), and its findings say whether HEAD still has them |
+| `commit <a>..<b>` | A range of commits | `git diff --name-only <a> <b>`: the commits after `<a>` up to `<b>` |
 | `uncommitted` | Uncommitted changes | `git diff --name-only HEAD` plus untracked files (`git ls-files --others --exclude-standard`) |
 | `all` | Whole codebase | Every source, test, resource and migration file |
 | a path | Path or module | Every file under the path |
@@ -89,12 +91,12 @@ Then add the **related files** the rules need even when unchanged:
 - `.claude/review-profile.md` and the deviation markers in scope (Step 4).
 
 Lenses per mode (the lenses are in lenses.md):
-- **diff and uncommitted:** lenses 1, 2, 6 and 7, plus lens 8 when the change touches locks,
+- **diff, commit and uncommitted:** lenses 1, 2, 6 and 7, plus lens 8 when the change touches locks,
   versions, schedulers, uniqueness or shared state;
 - **path and all:** all eight.
 
 Architecture:
-- **diff and uncommitted:** check the changed files' imports for other modules' `repository`,
+- **diff, commit and uncommitted:** check the changed files' imports for other modules' `repository`,
   `domain`, `dto.request|response` and `mapper` packages (ARCH-02/04/06/11);
 - **path and all:** the full architecture pass (Step 3a).
 
@@ -267,7 +269,11 @@ Also check any number you report (counts of endpoints, tests, files) by recomput
 
 ## Step 6: Report
 
-**Diff and uncommitted:** print the report in the terminal.
+**Diff and uncommitted:** print the report in the terminal; when the call says it reviews one
+entity's generation (crud-gen Step 8), also write it as `<reportDir>/<yyyy-mm-dd>-<entity>.md`.
+
+**Commit:** write `<reportDir>/<yyyy-mm-dd>-<short sha or range>.md` and print a short summary with
+the path: a commit is reviewed after the fact, and its report is the record.
 
 **Path and all:** write `<reportDir>/<yyyy-mm-dd>-<scope>.md` (`reportDir` from the profile,
 default `docs/reviews`) and print a short summary with the path.

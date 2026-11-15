@@ -135,7 +135,10 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
   of 409 (run 6: 40 × 503 in 48 racers, until the lock was added). With the lock the second writer
   queues at the first statement and gets 409. The reference proves the order directly
   (`TodoAttachmentsIntegrationTest.updateLocksTheTodoFirst`), because `todos` has no unique column
-  and its replacement race passes even without the lock.
+  and its replacement race passes even without the lock. An owner **with** a unique column gets a
+  race that can fail: each racer changes that column to its own new value (a project's student
+  photo race went red, `[503, 200, 503, 503, 503, 503]`, with the lock removed, while a race keeping
+  the email passed); a race that keeps every column proves nothing there.
 - **Rules of the record on the count** (more than N days of leave needs a document) are the owner's
   code, never a narrowed `FileCountRange`: their own 400 code (`<ENTITY>_<X>_REQUIRED`, the
   threshold in the message), on the final count (`current − removed + added`), checked when their

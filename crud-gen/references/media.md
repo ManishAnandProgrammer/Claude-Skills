@@ -36,7 +36,12 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
      row). Generate both, and their test. Ask the user for the limits; never SVG,
    HTML or XML. With the **project's first purpose**, the media piece's own endpoint tests
    (`UploadUrlIntegrationTest`, `UploadPolicyIntegrationTest`, `PresignedUploadIntegrationTest`)
-   stop being skipped: they run against `UploadPurpose.values()[0]` with its role; run them.
+   stop being skipped: they run against `UploadPurpose.values()[0]` with its role; run them. When that
+   purpose names **every** role (`STUDENT_PHOTO("USER", "ADMIN")`), `newNonUploader` has no role to
+   pick, and the two "a role the purpose doesn't name is 403" tests stay skipped: the upload's role
+   check (MEDIA-04) is then untested. Say so in the report as an open test duty, to close with the
+   first purpose limited to fewer roles (a 403 test of `POST /upload-urls` for that purpose, in its
+   owner's attachments class).
 2. **Link entity and changeset.** `<Entity><X>` (golden `TodoAttachment`): the owner as a
    `@ManyToOne(fetch = LAZY)` relation (same module), the media file as a plain `UUID mediaFileId`
    column (the media module's: an id with a database foreign key, ARCH-04), audit columns, inserted
@@ -92,7 +97,9 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
    `read-url-expiry`. On lists, include the files only when the golden list does (it doesn't).
 6. **ErrorCodes and messages:** `<ENTITY>_<X>_NOT_FOUND`, plus the record's own count rule and gate
    codes when it has them; the media piece owns `UPLOAD_*` and `MEDIA_STORAGE_UNAVAILABLE`. The API
-   interface documents 400, 404, 409 and 503 on create and update.
+   interface documents 400, 404, 409 and 503 on create and update; their 404 names
+   `UPLOAD_POLICY_NOT_FOUND` (the tenant or deployment without the purpose's policy row: step 1),
+   on create and on update (golden `TodoApi`, asserted by the attachments docs test; REST-20).
 
 ## Tests (a class of their own)
 `<Entity><X>sIntegrationTest` (golden `TodoAttachmentsIntegrationTest`), next to the entity's class,
@@ -115,16 +122,23 @@ its `errorCode` (TEST-08):
 - claim refusals, 409 `UPLOAD_NOT_AVAILABLE`: a key already attached (here or to another record),
   another user's key, another purpose's key, an expired key, an unknown key; on create **and** on
   update (`add<X>Keys`); the record unchanged after each;
-- a remove id that isn't this record's file is refused; another user's record is 404 (TEST-02);
+- a remove id that isn't this record's file is refused; another user's record is 404 (TEST-02). **A
+  shared root** (no owner, tests.md *Shared tables*): the refused-create checks count the caller's
+  rows by `created_by` instead of `owner_id` (golden `todosOf`), and the other-user 404 has no
+  counterpart: with tenancy the `TenantIsolationIntegrationTest` covers who reaches the record;
 - remove: the file leaves the response and its row is RELEASED; delete releases every file;
 - update with a stale version is 409 and attaches nothing; concurrent removals with one version
   apply once (the RELEASED count exact); **concurrent replacements** (remove the same file, add each
   its own) with one version: one 200, the rest 409 and never 503, the version moved once, the
-  winner's key IN_REVIEW and the losers' still PENDING (TEST-05);
+  winner's key IN_REVIEW and the losers' still PENDING (TEST-05). When the owner has a **unique
+  column** (an email, a code), each racer also changes it to its own new value: that is the shape
+  that deadlocks without the owner lock (MEDIA-07), so the race guards the lock too; keeping the
+  column, it passes without it;
 - **the owner lock comes first** (golden `updateLocksTheTodoFirst`): with the owner row held by the
   test, the waiting update holds no lock on the parents, `media_files` or the link table; removing
   the lock turns it red, which the race alone may not (TEST-09);
 - the response's statement count is the same with 1 and many files (TEST-06);
 - a rule of the record on its files: both sides of its threshold, its inputs changing alone;
   an approval gate: IN_REVIEW refused, MISSING refused, all UPLOADED accepted, no files passes;
-- the API docs list the attachment fields and their codes.
+- the API docs list the attachment fields and their codes, `UPLOAD_POLICY_NOT_FOUND` on create and
+  update included.

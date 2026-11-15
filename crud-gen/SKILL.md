@@ -148,6 +148,12 @@ each scoped like the parent's own reads:
   `PlanService.findById`). **`get<Parent>Views(ids)`** for a list page, one statement per batch, absent
   ids simply absent (4.3: a row whose parent it misses is left out).
 
+**A parent the child's create picks** (every FK in a create request: an enrollment's student and
+course): ask, per parent, whether its screen picks it from a dropdown. A parent without
+`{{dropdownAnnotation}}` then gets one, generated for that parent in update mode (4.11); the answer
+"the list's `query` is the picker" is recorded in the profiles' conventions. Never leave it unasked:
+the picker is the first screen that needs it.
+
 A module without a facade (the sign-in piece's `user`) gets one in the same change: an interface in
 `<module>.api` that its service implements, with its view record. With tenancy, a lookup of a
 **member** is scoped by `TenantContext.current()` and answers the tenancy piece's
@@ -172,9 +178,11 @@ Check before generating:
 | No soft-delete flag; statuses are enums with a check constraint | DATA-07 |
 | A changeset with `--rollback`; FKs named `fk_<table>_<column>` | DATA-13 |
 | Unique text ignores case and surrounding spaces (one of the two shapes; partial when nullable). A column whose `CHECK` admits one spelling only (an ISBN of exactly 13 digits: no case, no spaces) takes a plain `UNIQUE`, and its `@Schema` says "unique" without "ignoring case" | DATA-05 |
+| A unique **code or identifier** (a course code, an SKU): **ask** "store it normalised (`CS101` upper-cased on write), or keep what was typed?". Normalised is DATA-05's first shape: the mapper upper- or lower-cases it, a `CHECK` with the same expression, one plain `UNIQUE` that serves uniqueness, every `code = ?` lookup and the CODE order. Kept as typed is the second: a unique index on `lower(trim(code))`, an order on the code needs its own `(code, id)` index, and a lookup must name the same expression, never `WHERE code = ?` (a sequential scan). Prefer normalised for codes; record the answer | DATA-05 |
+| An **email** field: stored lower-cased (the first shape, golden `users`: `ck_<table>_email_normalized`, plain unique); the request shape is 4.1's *Email* | DATA-05 |
 | A value the mapper normalises (an email lower-cased and trimmed) has a `CHECK` with the same expression (`email = lower(trim(email))`, golden `users`) | DATA-05 |
-| A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one | DATA-05 |
-| Indexes: every FK (the list orders and filters are checked after 4.1, once they are chosen); keyset sort keys non-null (a generated column for a nullable one) | DATA-10 |
+| A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one. When the entity also has a **date range**, ask the follow-up: "does a finished record (past its `endsOn`, still `<LIVE>`) still block a new one?" (a student who completed a course retaking it). If not, the rule is either no overlapping live ranges, DATA-35's exclusion constraint `WHERE (status = '<LIVE>')`, or a decided terminal status (`COMPLETED`, set by a person or a job), never "live" read from the dates (DATA-37) | DATA-05, DATA-35, DATA-37 |
+| Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is not applied**, ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
 | A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column | DATA-33 |
 | `Instant` for moments, `LocalDate` for picked dates, no time zones | JAVA-25 |
 | The sequence exists for a display number | DATA-14 |
@@ -182,8 +190,10 @@ Check before generating:
 Golden examples: `~/.claude/skills-reference/src/main/resources/db/changelog/changes/000{2,3,4,5}-*.sql`.
 **Applied** means the changeset has run on any database that outlives a test run (a teammate's, a
 shared dev or staging one, production) or has been pushed, where someone else may run it; a changeset
-that only ever ran on Testcontainers is still yours to edit. When unsure, it is applied: write a new
-changeset. Changesets use `--changeset {{changesetAuthor}}:NNNN-…` (the golden files say `dev`: a placeholder).
+that only ever ran on Testcontainers is still yours to edit. Committed alone isn't applied; a run of
+the app is: look for the changeset's id in `databasechangelog` of the local database (with
+`{{tenancy}}` = `schema`, of the template and every tenant schema) when a local stack has started
+since it was written. When unsure, it is applied: write a new changeset. Changesets use `--changeset {{changesetAuthor}}:NNNN-…` (the golden files say `dev`: a placeholder).
 
 List **every** failure, of every entity in the run, in **one table** (check, what is wrong, the fix:
 the entity change and a **new** changeset; never edit an applied one), then ask **once** with
@@ -274,7 +284,13 @@ ARCH-15's shape)): follow the house-review rules and ask; don't invent a shape. 
 (several states, only some moves allowed) copies the tenant lifecycle with tenancy, or its shape
 without it: the moves as one `canBecome(target)` switch on the status enum (`TenantStatus`), the
 entity's change method refusing the rest with 409 `<ENTITY>_STATUS_CHANGE_INVALID` naming both
-states, and a test per allowed and per refused move. Their tests take each
+states, and a test per allowed and per refused move. A target that no state may move to (a status
+only the create sets, `ACTIVE` for an enrollment, `PENDING` for a tenant) is refused the same way, 409
+with that code: the move is valid in itself, the lifecycle refuses it (ERR-05). **Ask about the
+terminal statuses** (WITHDRAWN, CANCELLED, CLOSED): may a record in one still be edited (PUT, the
+member and file writes) or deleted? When it is frozen, the entity's edit method guards it after the
+version check: 409 `<ENTITY>_<STATUS>` (`ENROLLMENT_WITHDRAWN`, ERR-04's names), documented on each
+refused write, with tests.md row 26b; when only the delete stays open, say so in the API text. Their tests take each
 party × each action, and for a Manager each aggregate's refusal rolling both back.
 
 ---
@@ -334,6 +350,17 @@ description and its 400 response name it.
   per end. A filter for "what is on during [from, to]" is an overlap, written as two comparisons
   (`startsOn <= :to AND endsOn >= :from`, both inclusive), not the range `&&` operator (not leakproof
   under row-level security, TEN-36).
+- **Email** (golden: the sign-in piece's `SignupRequest.email`, `User.normalizeEmail`):
+  `@NotBlank @Email @MaxLength("<entity>.email") @Pattern(regexp = "\\p{ASCII}+", message = "must
+  contain only ASCII characters")` (254 in `limits.yml`), `@Schema` "Email address (ASCII only);
+  stored lower-case; unique ignoring case". The mapper stores `email.strip().toLowerCase(Locale.ROOT)`
+  (another module can't call `User.normalizeEmail`: the two lines are repeated), backed by
+  `CONSTRAINT ck_<table>_email_normalized CHECK (email = lower(trim(email)))` and a plain
+  `UNIQUE (email)`, which a lookup by email uses (DATA-05). Tests: a malformed address 400; the
+  length bound both sides with an address `@Email` accepts (64 characters before the `@`, domain
+  labels of at most 63: `"a".repeat(64) + "@" + "b".repeat(63) + "." + "c".repeat(63) + "." +
+  "d".repeat(58) + ".io"` is 254); surrounding spaces 400 (row 11 tests the case only); a case-only
+  duplicate 409 `<ENTITY>_EMAIL_TAKEN`, on create and update.
 - **"None" is null:** optional text and pattern fields store blank as `null`; the `@Schema` says
   "null, absent or blank for none (returned as null)".
 - **Calendar dates:** every date that reaches a column or a query, filters included, carries
@@ -368,7 +395,10 @@ value is a 400 on the cursor the server handed out (tests.md rows 16, 24).
 
 ### 4.3 Responses (records)
 `<Entity>Response` (every field, FKs as ids, ending with `{{auditFields}}`; a reference to another
-aggregate that clients display is `{id, name}`, a list of them for a many-to-many) for the detail; for list
+aggregate that clients display is `{id, <the parent's display field under its own name>}`, golden
+`PlanTodoResponse {id, title}`: a student's `{id, fullName}`, a course's `{id, title}`, never a
+field renamed to a literal `name`; one record per referenced aggregate (`<Entity><Parent>Response`),
+a list of them for a many-to-many) for the detail; for list
 rows a `<Entity>SummaryResponse` without heavy columns (long text), still ending with the audit
 fields. Golden: `TodoResponse`, `TodoSummaryResponse`. A list row's displayed parent name comes in
 **two steps**, in the same module as across modules: the batch, then one lookup of the batch's parent
@@ -383,7 +413,11 @@ single read of the child, then its parent, answers the child's own 404 when the 
 
 ### 4.4 ErrorCodes and messages (error-contract.md)
 `ERROR_PREFIX_NOT_FOUND`, `ERROR_PREFIX_<FIELD>_TAKEN` per unique field, `ERROR_PREFIX_IN_USE` when
-referenced; **a status per code in `ErrorCodeHttpStatusMapper`** (the error contract's mapper, not the
+referenced; a unique rule over **several columns** is named after the rule, not a field:
+`ERROR_PREFIX_EXISTS` for a pair unique over every row (golden `TENANT_MEMBER_EXISTS`,
+`uq_tenant_memberships_user_id_tenant_id`), `ERROR_PREFIX_ALREADY_<STATUS>` for one partial on a live
+status (`ENROLLMENT_ALREADY_ACTIVE`: the student is enrolled in that course already), each with a
+message that says it in words (error-contract ERR-04's names); **a status per code in `ErrorCodeHttpStatusMapper`** (the error contract's mapper, not the
 entity's; `ErrorCodeContractTest.everyErrorCodeHasAStatus` catches a missing one); a message in every
 `{{messagesFile}}`; the handler's
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
@@ -472,7 +506,12 @@ module** is reached through its service, public once a child needs it: `getOwned
 the entity (golden `TodoListService.getOwnedTodoList`); a batch lookup for a write needs every id
 (`getOwned<Parent>s(ids)`, 404 naming a missing one, golden `TagService.getOwnedTags`), one for a
 list page's names returns those found (absent ids simply absent, as `Todos.getOwnedTodoViews`); both
-answer `List.of()` for no ids without a statement. **A rule from configuration** (a maximum loan
+answer `List.of()` for no ids without a statement. These methods change **the parent's generated
+service**: its private `get<Parent>` becomes public (with a javadoc saying who calls it), and the
+batch lookup is added beside it. Name both in the report's changed shared files, and review that
+service with the child (Step 8). No golden module has a same-module parent shown on a list: follow
+`TodoListService.getOwnedTodoList` and `TagService.getOwnedTags` (a shared root: `get<Parent>` /
+`get<Parent>s`, without the owner). **A rule from configuration** (a maximum loan
 length, an upload policy's file count) on an update runs only when the fields it reads change, so a
 lowered limit never blocks correcting another field of an existing record (golden
 `TodoService.changeAttachments`: the file count is checked only when the files change; tests.md
@@ -526,8 +565,9 @@ Golden: the todo attachments (`TodoAttachment`, `TodoService`). Without the piec
 Read `references/tests.md` and follow the golden test classes. With `{{tenancy}}` not `none`, also
 generate `EntityNameTenantIsolationIntegrationTest` (golden: the skills repo's
 `overlays/tenancy/src/test/java/com/example/app/todo/TodoTenantIsolationIntegrationTest.java`):
-another tenant's member (`newUserIn(newTenant())`) gets 404 with the code on GET, PUT, actions and
-DELETE of the record, which stays unchanged, and that tenant's lists never show it (TEN-13). With
+another tenant's member holding the role that writes the record (`newUserIn(newTenant())`, or
+`newUserIn(newTenant(), "ADMIN")` for an `@AdminOnly` root: row 15b) gets 404 with the code on GET,
+PUT, actions and DELETE of the record, which stays unchanged, and that tenant's lists never show it (TEN-13). With
 `{{tenancy}}` = `row`, also tests.md row 15c (a native query of the entity, and the catalogue guard run
 with the new table).
 
@@ -536,7 +576,10 @@ Run `{{buildCommand}}`. Fix every compile error or test failure in the generated
 done on a red build. Then prove one guard can fail (tests.md).
 
 ## Step 8: Self-review (house-review)
-Run house-review on the generated and changed files. **The goal is zero findings.** A finding in
+Run house-review on the generated and changed files: `/house-review uncommitted` before the commit,
+or `/house-review commit <sha>` for a commit the run made (a range `<a>..<b>` for several). Either
+way the report is written to `reportDir` as `<date>-<entity>.md` (house-review Step 6), so every
+entity of a run leaves one. **The goal is zero findings.** A finding in
 code that follows the golden files means the reference or this skill is wrong: fix the generated
 file, then offer to fix `~/Documents/claude-skills` (reference-app and skill text together, verified
 with `scripts/verify.sh`). **A run of several entities** reviews each entity as soon as it is
@@ -553,5 +596,8 @@ checklist's review item stays open until that reviewer's report is clean.
       (grep them). A role that now writes a shared root names it in `Role`'s javadoc (Step 1).
 - [ ] A text key a cursor carries: `app.limits.text.cursor` holds it and its key is in
       `LimitsIntegrationTest.CURSOR_TEXT_KEYS` (4.2).
+- [ ] Asked, and recorded: each picked parent's dropdown (Step 1), whether a terminal status freezes
+      the record (Step 3), a unique code's shape (Step 2).
+- [ ] A same-module parent's service changed (4.8): listed among the changed shared files.
 - [ ] Build green, and one guard proven to fail (Step 7).
 - [ ] house-review clean (Step 8).

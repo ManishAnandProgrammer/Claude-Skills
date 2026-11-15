@@ -77,7 +77,11 @@ With **AskUserQuestion** (several per call):
    locally `compose.yaml` creates them). Record `tenancy` in both profiles.
 
    Say what tenancy brings and what it doesn't yet. It brings tenant ADMINs managing their members
-   (`/tenant-members`: add an existing account by email, change a role, remove; the last ADMIN stays),
+   (`/tenant-members`: add an existing account by email, change a role, remove; the last ADMIN stays.
+   The caller must be an ADMIN at the moment of the call, whatever the token says, so a removed or
+   demoted ADMIN's older token is 403 there at once. A role change takes the `version` the add or the
+   previous change answered; sign-ins don't move it, but with no members list yet another ADMIN can't
+   read it),
    switch-tenant, impersonation (a reason required) with an audit row that staff read at
    `GET /platform/tenants/{id}/audit`, and a tenant's owner as its ADMIN. Roles don't
    include each other: a record that members and the owner both write names both roles where a role

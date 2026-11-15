@@ -41,7 +41,8 @@ but no `@DropdownCandidate`, ask whether to add one.
 - `query` matches part of the label ignoring case (searchable), or is 400 (not searchable).
 - Batches: walk `size=2` with `after` to the end (`hasMore` false, no `nextCursor`).
 - A cursor from the other direction, and a tampered cursor: 400 `REQUEST_PARAMETER_INVALID`.
-- `size` over the configured maximum: 400 naming `size`.
+- `size` at the configured maximum accepted, one more 400 naming `size` with the configured number
+  (golden `dropdownSizeFollowsTheConfiguredMaximum`; tests.md row 9).
 - `status`: with an active flag, `ACTIVE`/`INACTIVE`/`ALL` behave as above; without one, a 400 for
   each constant but `ACTIVE`; an unknown value (`ARCHIVED`) is 400 `REQUEST_PARAMETER_INVALID` either
   way (golden `dropdownUnknownStatusIs400`, in both `TagIntegrationTest` and `TodoListIntegrationTest`).

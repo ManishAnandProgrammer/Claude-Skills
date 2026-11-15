@@ -192,6 +192,13 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     precondition the Java path checks, not only the one that selects the rows: a scheduled bulk
     activation re-checked only the due time, so records went live without what activation
     requires;
+  - the one exception, **a machine-written stamp** (last used, last seen, last synced) on a record users
+    edit with a version: it is written by a bulk update that sets the stamp alone, neither `version`
+    nor `updated_at`, and the entity has no setter for it. Written through the entity, it moves the
+    version a user sends back (measured: a membership at version 3 after three sign-ins, every ADMIN's
+    role change 409) and two writers of the stamp conflict. `@OptimisticLock(excluded = true)` doesn't
+    help: auditing still changes `updated_at`, which moves the version anyway. Reference:
+    `TenantMembershipRepository.markUsed`, tested by `TenantMemberIntegrationTest.tokenIssuesKeepTheVersion`;
   - a conditional bulk update checks its row count and answers 409 on 0.
 - **Severity:** High.
 
@@ -301,6 +308,11 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     (`pg_advisory_xact_lock`) with a 64-bit key. Session-level locks leak on pooled connections.
     Detect `hashtext(`: it is 32-bit, so unrelated keys collide and wait on each other; use
     `hashtextextended(key, 0)`;
+  - a blocking `pg_advisory_lock` wait honours the connection's `lock_timeout` like any lock wait
+    (`55P03`). A wait that must outlast it (instances queued for a startup migration behind each other)
+    lifts it on its own connection first (`set lock_timeout = 0`), and only on a connection that ends
+    with the work: on a pooled one the setting stays for the next borrower. Reference:
+    `TenantSchemaMigrator.waitForLock`, tested by `TenantTemplateMigrationIntegrationTest`;
   - multi-row locks are taken in a consistent order (`ORDER BY id`, `order_updates=true`);
   - **member rows another aggregate's delete removes by cascade** (a tag's delete takes its
     `todo_tags` rows with it) are outside the root's lock: the root's delete removes them with one
@@ -371,7 +383,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 ### DATA-06: Optimistic locking
 - **Check:**
   - entities carry `@Version`;
-  - bulk updates bump `version` and `updatedAt` (DATA-24);
+  - bulk updates bump `version` and `updatedAt` (DATA-24), except a machine-written stamp, which
+    moves neither (DATA-24): the version is what a user saw, and a stamp is no edit they could have seen;
   - user actions on reviewed records take the version the user saw (409 when stale);
   - user 409s are **not** retried server-side; only machine writers that re-read state may retry;
   - background writers re-check status under a lock.

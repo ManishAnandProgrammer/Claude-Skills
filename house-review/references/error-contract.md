@@ -103,6 +103,15 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
 - An error message echoes back only bounded input: names and values from the request are
   truncated and their count capped, or a large body full of unknown fields comes back whole in the
   error.
+- **Names** say the failure in the module's prefix, so a client can act on the code alone. The house
+  patterns: `<X>_NOT_FOUND`; `<X>_<FIELD>_TAKEN` (one unique field); `<X>_EXISTS` (a unique pair or
+  tuple over every row: `TENANT_MEMBER_EXISTS`); `<X>_ALREADY_<STATUS>` (a unique rule partial on a
+  live status: `ENROLLMENT_ALREADY_ACTIVE`); `<X>_IN_USE` (a parent's delete while referenced);
+  `<PARENT>_GONE` (a child's write after its parent's delete, DATA-33); `<X>_OVERLAPS`;
+  `<X>_STATUS_CHANGE_INVALID`; `<X>_<STATUS>` (a write refused because the record is in a final
+  status: `ENROLLMENT_WITHDRAWN`). Each message explains the failure in words a user understands
+  without the code (`STUDENT_GONE`: "This student no longer exists."), without placeholders when a
+  constraint answers it (ERR-06).
 - A new `ErrorCode` needs, in the same change:
   - a mapper entry;
   - a message in every `message_*.properties`;
@@ -118,6 +127,10 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
   date range, a format, a bound)? Then 400.
 - **Detect:** a `…_NOT_ACTIVE`, `…_ALREADY_…`, `…_ENDED`, `…_IN_USE` code mapped to 400; a range or
   format check mapped to 409.
+- **Not a finding when:** a status move is refused with 409 `<X>_STATUS_CHANGE_INVALID` although no
+  state may ever move to that target (a status only the create sets: an enrollment's `ACTIVE`, a
+  tenant's `PENDING`). The value is a valid status; the lifecycle refuses the move, so one code and
+  one status cover every refused move, and a client handles them alike.
 - **Severity:** Medium (the client can't tell "fix your input" from "reload and retry").
 
 ## ERR-06: Messages survive MessageFormat

@@ -124,8 +124,20 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   holds the role, so one person is ADMIN here and USER there. An access token is for one membership;
   login picks the most recently used, switch-tenant issues tokens for another. A refresh token
   remembers its tenant.
-- **Detect:** `users.tenant_id`; the role read from `users.role` into a tenant token.
-- **Severity:** Medium.
+- **Check:** a change to memberships or roles (add, promote, demote, remove) authorises on the caller's
+  membership **read under the lock that serialises those changes** (the tenant's row), never on the
+  token's role alone. The token's role is up to one lifetime old, and a stale ADMIN token that adds its
+  own account back, or promotes one of its accounts, makes the change permanent: the documented
+  15-minute bound becomes forever. Reference: `MembershipService.lockAsCurrentAdmin` (403
+  `ACCESS_DENIED`), tested by `TenantMemberIntegrationTest.aDemotedAdminsTokenManagesNoMore` and
+  `aRemovedAdminCantComeBack`. A last-ADMIN count is no substitute: an add or a promotion never consults
+  it.
+- **Check:** a member removed and added again starts with new sessions: a refresh token issued before
+  the current membership is refused (reference: `TokenService.refresh`).
+- **Detect:** `users.tenant_id`; the role read from `users.role` into a tenant token;
+  `@PreAuthorize`/`@AdminOnly` as the only check on an endpoint that grants or keeps roles; a members
+  service that takes no caller id.
+- **Severity:** Medium; High for the role check of member changes (a removed ADMIN keeps control).
 
 ### TEN-09: One way in, one lifecycle
 - **Check:** `PENDING → ACTIVE ⇄ SUSPENDED → CLOSED`, `PENDING → REJECTED`, as text with a check
