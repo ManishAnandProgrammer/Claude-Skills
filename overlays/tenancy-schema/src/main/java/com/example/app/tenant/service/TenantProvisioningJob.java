@@ -2,9 +2,10 @@ package com.example.app.tenant.service;
 
 import com.example.app.common.scheduling.MultiInstanceSafe;
 import com.example.app.common.tenancy.TenantScope;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,17 +18,31 @@ import java.util.UUID;
  * Provisions the approved tenants: creates the schema, runs its first migration (the only place that
  * does: two migrators racing on a new schema fail), then seeds and activates the tenant under its own
  * scope. A tenant rejected after its approval gets no schema. Each step is idempotent, so a failed
- * tenant is retried from the start by the next run.
+ * tenant is retried from the start by the next run; every failure is logged at WARN, recorded on its
+ * {@code tenant_migrations} row and counted on {@value #FAILED_METRIC} (an alert's signal: a tenant
+ * that fails on every run stays PENDING).
  * Settings: {@code app.jobs.tenant-provisioning.*}.
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class TenantProvisioningJob {
+
+    static final String FAILED_METRIC = "tenant.provisioning.failed";
 
     private final TenantSchemaMigrator migrator;
     private final TenantMigrationService migrations;
     private final Settings settings;
+    private final Counter failures;
+
+    TenantProvisioningJob(TenantSchemaMigrator migrator, TenantMigrationService migrations, Settings settings,
+                          MeterRegistry meterRegistry) {
+        this.migrator = migrator;
+        this.migrations = migrations;
+        this.settings = settings;
+        this.failures = Counter.builder(FAILED_METRIC)
+                .description("Provisioning attempts that failed; the next run retries the tenant")
+                .register(meterRegistry);
+    }
 
     @Scheduled(cron = "${app.jobs.tenant-provisioning.cron}")
     @MultiInstanceSafe("""
@@ -57,6 +72,7 @@ public class TenantProvisioningJob {
             TenantScope.runAs(tenantId, () -> migrations.completeProvisioning(tenantId, lastChangeset));
             log.info("Tenant provisioned: tenantId={}, changeset={}", tenantId, lastChangeset);
         } catch (RuntimeException failure) {
+            failures.increment();
             log.warn("Tenant provisioning failed, retried by the next run: tenantId={}", tenantId, failure);
             migrations.recordFailure(tenantId, TenantSchemaMigrator.describe(failure));
         }

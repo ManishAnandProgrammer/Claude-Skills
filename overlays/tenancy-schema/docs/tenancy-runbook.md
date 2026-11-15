@@ -85,7 +85,8 @@ One tenant alone: `pg_dump -n t_<tenant id without dashes>` and restore that sch
   what is missing. The other tenants were migrated meanwhile; only that tenant's new features wait.
 - A schema stuck in Liquibase's lock (an instance was killed mid-run):
   `UPDATE t_<id>.databasechangeloglock SET locked = false, lockgranted = NULL, lockedby = NULL WHERE id = 1;`.
-- A tenant stuck `PENDING` after approval: `SELECT * FROM platform.tenant_migrations WHERE status = 'PROVISIONING';`
+- A tenant stuck `PENDING` after approval: the counter `tenant.provisioning.failed` rises with every failed
+  attempt (alert on a steady increase); `SELECT * FROM platform.tenant_migrations WHERE status = 'PROVISIONING';`
   shows the provisioning error; the job retries every run (`app.jobs.tenant-provisioning.cron`).
 - **Approvals during a rolling deploy.** A tenant an old instance provisions after the last new instance
   started has the old release's schema until a migration run reaches it: run one (restart an instance)

@@ -27,7 +27,7 @@ public interface Tenants {
      * its tables exist. Staff call it now, a billing module's payment webhook later. 409
      * {@code TENANT_STATUS_CHANGE_INVALID} unless the tenant is PENDING.
      */
-    void approve(UUID tenantId, TenantChangeSource source);
+    void approve(UUID tenantId);
 
     /**
      * Self-registration's tenant: PENDING, with {@code ownerEmail}'s account as its ADMIN

@@ -1,7 +1,6 @@
 package com.example.app.tenant.service;
 
 import com.example.app.common.wrapper.ObjectWrapper;
-import com.example.app.tenant.api.TenantChangeSource;
 import com.example.app.tenant.dto.request.TenantCreateRequest;
 import com.example.app.tenant.dto.response.TenantResponse;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +30,7 @@ public class StaffTenantService {
     }
 
     public ObjectWrapper<TenantResponse> approve(UUID tenantId) {
-        tenants.approve(tenantId, TenantChangeSource.STAFF);
+        tenants.approve(tenantId);
         return tenants.findById(tenantId);
     }
 }

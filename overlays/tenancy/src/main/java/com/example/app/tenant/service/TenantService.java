@@ -91,7 +91,7 @@ public class TenantService implements Tenants {
 
     @Override
     @Transactional
-    public void approve(UUID tenantId, TenantChangeSource source) {
+    public void approve(UUID tenantId) {
         Tenant tenant = getTenant(tenantId);
         if (tenant.getStatus() != TenantStatus.PENDING) {
             throw AppException.of(ErrorCode.TENANT_STATUS_CHANGE_INVALID, tenant.getStatus(), TenantStatus.ACTIVE);

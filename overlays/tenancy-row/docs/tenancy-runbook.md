@@ -70,7 +70,8 @@ sign in at `POST /api/v1/platform/auth/login`.
   PENDING and waits for staff: `POST /api/v1/platform/tenants/{id}/approve` approves it (activated at
   once), `PATCH .../{id}/status` with status `REJECTED` rejects it. The owner's login answers 403
   `TENANT_NOT_ACTIVE` with `tenantStatus: PENDING` meanwhile.
-- **A tenant still PENDING after its approval**: the log has `Tenant provisioning failed` with the
+- **A tenant still PENDING after its approval**: the counter `tenant.provisioning.failed` rose (alert on
+  any increase: the approval itself answered 202), and the log has `Tenant provisioning failed` with the
   cause (a module's seeding). Fix it, then approve the tenant again: provisioning runs again.
 
 ## 4. Data fixes and seeds as the owner
