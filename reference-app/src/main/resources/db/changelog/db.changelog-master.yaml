@@ -32,7 +32,7 @@ databaseChangeLog:
   - include:
       file: changes/0011-plans.sql
       relativeToChangelogFile: true
-  # 0012, 0013, 0015 and 0016 are the tenancy overlays' (overlays/tenancy, tenancy-schema, tenancy-row).
+  # 0012, 0013 and 0015 to 0019 are the tenancy overlays' (overlays/tenancy, tenancy-schema, tenancy-row).
   - include:
       file: changes/0014-todo-list-defaults.sql
       relativeToChangelogFile: true

@@ -28,10 +28,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The row mode's guard on the schema itself (house-review TEN-30..TEN-33), read from PostgreSQL's
- * catalogue: every table is either a tenant table, with its forced policy and tenant-carrying keys, or a
- * platform table named below with its reason. A new table that is neither, a policy left out, or a
- * foreign key that could point into another tenant fails the build.
+ * The row mode's guard on the schema itself (house-review TEN-16, TEN-30..TEN-33, TEN-38), read from
+ * PostgreSQL's catalogue: every table is either a tenant table, with its forced policy, tenant-carrying keys
+ * and a replica identity with tenant_id, or a platform table named below with its reason. A new table that
+ * is neither, a policy left out, a foreign key that could point into another tenant or into the platform,
+ * or an identity that row-filtered replication can't use fails the build.
  */
 @WithoutTestTenant
 class RowSecurityCatalogIntegrationTest extends IntegrationTest {
@@ -131,6 +132,60 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
                                 where pair.child_column = child_tenant.attnum and pair.parent_column = parent_tenant.attnum)
              order by f.conname""";
 
+    /**
+     * Tenant tables whose replica identity isn't a unique index holding tenant_id. One tenant's rows leave
+     * through a publication filtered by tenant_id, and PostgreSQL refuses UPDATE and DELETE on a table whose
+     * row filter names a column outside the replica identity (TEN-38).
+     */
+    private static final String TENANT_TABLES_WITHOUT_A_TENANT_REPLICA_IDENTITY = """
+            select c.relname
+              from pg_class c
+              join pg_namespace n on n.oid = c.relnamespace
+              join pg_attribute a on a.attrelid = c.oid and a.attname = 'tenant_id' and not a.attisdropped
+             where n.nspname = current_schema()
+               and c.relkind in ('r', 'p')
+               and not (c.relname = any (?))
+               and not (c.relreplident = 'i'
+                        and exists (select 1 from pg_index i
+                                     where i.indrelid = c.oid and i.indisreplident
+                                       and a.attnum = any (i.indkey::int2[])))
+             order by c.relname""";
+
+    /**
+     * Foreign keys from a tenant table into the platform, the register aside: a tenant's rows must form a
+     * closed graph, to move to a database of their own. A person is a row of the tenant's members (TEN-16).
+     */
+    private static final String FOREIGN_KEYS_INTO_THE_PLATFORM = """
+            select f.conname
+              from pg_constraint f
+              join pg_class child on child.oid = f.conrelid
+              join pg_class parent on parent.oid = f.confrelid
+              join pg_namespace n on n.oid = child.relnamespace
+             where n.nspname = current_schema()
+               and f.contype = 'f'
+               and exists (select 1 from pg_attribute a
+                            where a.attrelid = child.oid and a.attname = 'tenant_id' and not a.attisdropped)
+               and not (child.relname = any (?))
+               and parent.relname = any (?)
+               and parent.relname <> 'tenants'
+             order by f.conname""";
+
+    /**
+     * Sequences: none. One sequence serves every tenant in row mode, so numbers drawn from it for tenant data
+     * interleave across tenants and leak their volume; a tenant's display numbers are its own counters
+     * (TEN-18). A platform sequence a project needs is named here with its reason.
+     */
+    private static final Map<String, String> PLATFORM_SEQUENCES = Map.of();
+
+    private static final String SEQUENCES_NOT_NAMED = """
+            select c.relname
+              from pg_class c
+              join pg_namespace n on n.oid = c.relnamespace
+             where n.nspname = current_schema()
+               and c.relkind = 'S'
+               and not (c.relname = any (?))
+             order by c.relname""";
+
     @Autowired
     private DataSource dataSource;
 
@@ -177,6 +232,33 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
     @DisplayName("Every foreign key between tenant tables carries tenant_id on both sides")
     void foreignKeysStayInTheirTenant() {
         assertThat(jdbc.queryForList(FOREIGN_KEYS_ACROSS_TENANTS, String.class, platformTables(), platformTables())).isEmpty();
+    }
+
+    private static List<String> tenantTablesWithoutATenantReplicaIdentity(JdbcTemplate catalog) {
+        return catalog.queryForList(TENANT_TABLES_WITHOUT_A_TENANT_REPLICA_IDENTITY, String.class, (Object) platformTables());
+    }
+
+    private static List<String> foreignKeysIntoThePlatform(JdbcTemplate catalog) {
+        return catalog.queryForList(FOREIGN_KEYS_INTO_THE_PLATFORM, String.class, platformTables(), platformTables());
+    }
+
+    @Test
+    @DisplayName("Every tenant table's replica identity is a unique index that includes tenant_id")
+    void everyReplicaIdentityCarriesTheTenant() {
+        assertThat(tenantTablesWithoutATenantReplicaIdentity(jdbc)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("No tenant table references a platform table but tenants: people are the tenant's own members")
+    void tenantDataReferencesNoPlatformTable() {
+        assertThat(foreignKeysIntoThePlatform(jdbc)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("No sequence numbers tenant data: a tenant's display numbers are its own counters")
+    void noSequenceIsSharedByTheTenants() {
+        assertThat(jdbc.queryForList(SEQUENCES_NOT_NAMED, String.class, (Object) PLATFORM_SEQUENCES.keySet().toArray(String[]::new)))
+                .isEmpty();
     }
 
     @Test
@@ -238,6 +320,77 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
                 owner.rollback();
             }
         }
+    }
+
+    @Test
+    @DisplayName("The guards catch a tenant table without a replica identity holding tenant_id, and a key to users")
+    void theExtractionGuardsCatchTheirCases() throws SQLException {
+        try (Connection owner = ownerConnection()) {
+            JdbcTemplate asOwner = new JdbcTemplate(new SingleConnectionDataSource(owner, true));
+            try {
+                asOwner.execute("""
+                        create table guard_probe (id uuid primary key, tenant_id uuid not null references tenants (id),
+                                                  owner_id uuid not null constraint fk_guard_probe_owner_id references users (id))""");
+                List<String> withThePrimaryKey = tenantTablesWithoutATenantReplicaIdentity(asOwner);
+                List<String> withAKeyToUsers = foreignKeysIntoThePlatform(asOwner);
+                asOwner.execute("create unique index uq_guard_probe_id_tenant_id on guard_probe (id, tenant_id)");
+                asOwner.execute("alter table guard_probe replica identity using index uq_guard_probe_id_tenant_id");
+                asOwner.execute("alter table guard_probe drop constraint fk_guard_probe_owner_id");
+
+                assertThat(withThePrimaryKey).contains("guard_probe");
+                assertThat(withAKeyToUsers).contains("fk_guard_probe_owner_id");
+                assertThat(tenantTablesWithoutATenantReplicaIdentity(asOwner)).doesNotContain("guard_probe");
+                assertThat(foreignKeysIntoThePlatform(asOwner)).doesNotContain("fk_guard_probe_owner_id");
+            } finally {
+                owner.rollback();
+            }
+        }
+    }
+
+    /**
+     * The extraction itself, short of a subscriber: a publication filtered to one tenant accepts UPDATE and
+     * DELETE on a table whose replica identity holds tenant_id, and refuses both on one whose identity is
+     * the primary key alone. Publications don't need wal_level=logical to exist, and the check runs anyway.
+     */
+    @Test
+    @DisplayName("A publication filtered by tenant_id: UPDATE and DELETE pass with the tenant in the replica identity, and fail without it")
+    void aTenantFilteredPublicationAcceptsUpdatesAndDeletes() throws SQLException {
+        UUID tenantId = testTenant().id();
+        try (Connection owner = ownerConnection()) {
+            JdbcTemplate asOwner = new JdbcTemplate(new SingleConnectionDataSource(owner, true));
+            try {
+                // The owner is bound by the forced policy too: it names the tenant, as the runbook's fixes do.
+                asOwner.queryForObject("select set_config('app.tenant_id', ?, true)", String.class, tenantId.toString());
+                asOwner.execute("create publication extract_probe for table tenancy_probe where (tenant_id = '%s')".formatted(tenantId));
+                UUID probe = UUID.randomUUID();
+                asOwner.update("""
+                        insert into tenancy_probe (id, tenant_id, label, created_at, updated_at, version)
+                        values (?, ?, 'extracted', now(), now(), 0)""", probe, tenantId);
+
+                assertThat(asOwner.update("update tenancy_probe set label = 'moved' where id = ?", probe)).isEqualTo(1);
+                assertThat(asOwner.update("delete from tenancy_probe where id = ?", probe)).isEqualTo(1);
+
+                asOwner.execute("create table guard_probe (id uuid primary key, tenant_id uuid not null)");
+                asOwner.execute("alter publication extract_probe add table guard_probe where (tenant_id = '%s')".formatted(tenantId));
+                asOwner.update("insert into guard_probe (id, tenant_id) values (?, ?)", probe, tenantId);
+                asOwner.execute("savepoint before_update");
+                assertThatThrownBy(() -> asOwner.update("update guard_probe set tenant_id = tenant_id where id = ?", probe))
+                        .rootCause().hasMessageContaining("not part of the replica identity");
+                asOwner.execute("rollback to savepoint before_update");
+                assertThatThrownBy(() -> asOwner.update("delete from guard_probe where id = ?", probe))
+                        .rootCause().hasMessageContaining("not part of the replica identity");
+            } finally {
+                owner.rollback();
+            }
+        }
+    }
+
+    /** The owner role, in a transaction the test rolls back: DDL and publications leave nothing behind. */
+    private Connection ownerConnection() throws SQLException {
+        String jdbcUrl = dataSource.unwrap(HikariDataSource.class).getJdbcUrl();
+        Connection owner = DriverManager.getConnection(jdbcUrl, ownerUser, ownerPassword);
+        owner.setAutoCommit(false);
+        return owner;
     }
 
     @Test

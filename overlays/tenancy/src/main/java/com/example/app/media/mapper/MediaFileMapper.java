@@ -16,8 +16,11 @@ import java.util.UUID;
 @Component
 public class MediaFileMapper {
 
-    /** {@code PURPOSE/uuid}: no personal data in a key (keys appear in logs, URLs and audit trails), nothing to escape. */
-    /** {tenantId}/{purpose}/{uuid}: one tenant's files are one prefix, to export or delete. */
+    /**
+     * {@code tenantId/PURPOSE/uuid}: one tenant's files are one prefix, to copy to another store or delete
+     * with the tenant (house-review TEN-19); no personal data in a key (keys appear in logs, URLs and audit
+     * trails), nothing to escape.
+     */
     public String newKey(UploadPurpose purpose) {
         return TenantContext.id() + "/" + purpose.name() + "/" + UUID.randomUUID();
     }

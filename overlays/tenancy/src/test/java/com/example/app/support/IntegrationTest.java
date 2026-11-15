@@ -5,6 +5,8 @@ import com.example.app.common.tenancy.TenantScope;
 import com.example.app.tenant.api.TenantStatus;
 import com.example.app.tenant.dto.request.TenantCreateRequest;
 import com.example.app.tenant.service.TenantService;
+import com.example.app.user.domain.Member;
+import com.example.app.user.repository.MemberRepository;
 // media:begin
 import com.example.app.media.api.UploadPurpose;
 import com.example.app.user.domain.Role;
@@ -49,9 +51,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 // media:end
 import java.util.List;
-// media:begin
 import java.util.Map;
-// media:end
 import java.util.Objects;
 // media:begin
 import java.util.Optional;
@@ -142,6 +142,9 @@ public abstract class IntegrationTest {
     private TenantProvisioningForTests provisioning;
 
     @Autowired
+    private MemberRepository members;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     /** The one test tenant of the run, created by the first test that needs it. */
@@ -196,6 +199,12 @@ public abstract class IntegrationTest {
         JdbcTemplate inTenant = new JdbcTemplate(new TenantFixtureDataSource(dataSource, tenant::id));
         Integer rows = new TransactionTemplate(transactionManager).execute(status -> inTenant.update(statement, args));
         return rows;
+    }
+
+    /** A fixture read in another tenant than the test tenant, on a connection told that tenant, as {@link #sqlIn} writes. */
+    protected List<Map<String, Object>> queryIn(TestTenant tenant, String query, Object... args) {
+        JdbcTemplate inTenant = new JdbcTemplate(new TenantFixtureDataSource(dataSource, tenant::id));
+        return new TransactionTemplate(transactionManager).execute(status -> inTenant.queryForList(query, args));
     }
 
     @Autowired
@@ -504,12 +513,18 @@ public abstract class IntegrationTest {
         }
     }
 
-    /** A membership as a fixture row (the members API, POST /tenant-members, needs an ADMIN token). */
+    /**
+     * A membership as fixture rows (the members API, POST /tenant-members, needs an ADMIN token): the
+     * platform's, and the person's row in the tenant's own data, which the tenant's tables reference
+     * (house-review TEN-17), as {@code MembershipService} writes both.
+     */
     protected void addMember(TestTenant tenant, UUID userId, String role) {
         assertThat(sql("""
                 insert into tenant_memberships (id, tenant_id, user_id, role, created_at, updated_at, version)
                 values (gen_random_uuid(), ?, ?, ?, now(), now(), 0)
                 """, tenant.id(), userId, role)).isEqualTo(1);
+        TenantScope.runAs(tenant.id(), () -> new TransactionTemplate(transactionManager)
+                .executeWithoutResult(status -> members.save(Member.of(userId))));
     }
 
     /**

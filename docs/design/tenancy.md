@@ -589,7 +589,57 @@ registrations; parallel tenant migrations; impersonating a suspended tenant; bre
 system pool (decision 10); per-tenant reads of `tenant_memberships` are the services' predicates, not
 RLS.
 
+## Built (2026-11-15): extraction readiness
+
+Owner decision (2026-11-15, items 4, 5, 6 and 9): a tenant's data is a closed graph from the first
+table, so a tenant that outgrows the shared database can later move to one of its own without
+rewriting its data. Row mode extracts by logical replication filtered by `tenant_id`; schema per tenant by
+`pg_dump -n <schema>`. Rules TEN-16 to TEN-19 (both modes) and TEN-38 (row) in house-review `tenancy.md`.
+
+- **No key into the platform but `tenants` (TEN-16).** Tenant tables referenced `users (id)` for their
+  owner (schema mode: `platform.users`). A per-tenant `members` table (TEN-17) replaces it as the
+  target: row mode `(owner_id, tenant_id) → members (user_id, tenant_id)`, schema mode `owner_id →
+  members (user_id)` inside the schema. The applied changesets 0002–0011 stay as they are; each mode's
+  `0017-members` creates the table (with a backfill from the memberships of the tenants that exist), and
+  `0018-owners-reference-members` (with the example) backfills the owners who left before and swaps the
+  keys under their old names. Without tenancy the reference keeps `owner_id → users`. Guards: the row
+  catalogue test and schema mode's `SchemaCatalogIntegrationTest`.
+- **Members (TEN-17).** One row per person who is or was a member, no personal data; written by
+  `MembershipService` in the transaction of the platform membership, marked `left_at` on removal (never
+  deleted: the records still reference it), the same row back on a re-add. The owner's row comes from
+  the `TenantProvisioned` listener: the owner's membership is created with the tenant, before schema mode
+  has a schema and while row mode has no tenant to write under. Memberships stay a platform table and
+  the authority on roles (decision of 2026-11-15).
+- **Display numbers per tenant (TEN-18).** Already so: `counters` is a tenant table in both modes, and
+  there is no sequence. `CounterTenantIntegrationTest` proves it; row mode's catalogue test fails on a
+  sequence not named as the platform's.
+- **Replica identity (TEN-38, row).** A publication's row filter on UPDATE and DELETE may use replica
+  identity columns only, and the default identity (the primary key `id`) lacks `tenant_id`: the
+  application's writes would fail once the publication exists. `0019-replica-identity` sets each tenant
+  table's identity to a unique key with `tenant_id` (an existing one; `(id, tenant_id)` for `time_entries`
+  and `plans`); `members` gets its own in `0017`. The catalogue test checks it and proves the real thing
+  in a rolled-back transaction: a publication filtered by one tenant, then UPDATE and DELETE pass, and
+  fail on a table whose identity is the primary key.
+- **Files under the tenant's prefix (TEN-19).** Already so in both modes (`<tenantId>/<PURPOSE>/<uuid>`);
+  `MediaKeysPerTenantTest` keeps it, and media.md MEDIA-08 states it as an extraction rule.
+
+Not built (backfills): the backfills in `0017` and `0018` run on every new database with nothing to copy;
+no golden test starts from a database with data from before them.
+
 ## Later (rules and notes, not in the first setup)
+
+- **Moving a tenant out (after the extraction readiness above):**
+  - a **tenant directory** that says which cell (database, and its application deployment) serves each
+    tenant, read at sign-in and by routing;
+  - a **`MIGRATING` tenant status**: writes paused (or the tenant read-only) during the cut-over, token
+    issue refused or routed;
+  - an **extraction runbook**: row mode, a publication `FOR TABLE … WHERE (tenant_id = '<id>')` per
+    tenant table, the subscriber's schema from the same changelog, the initial copy, catch-up, the
+    cut-over in the directory, then the source rows deleted; schema mode, `pg_dump -n` and restore, the
+    platform rows (tenant, memberships, the users the members name) copied with it.
+  - the **JWT key pair**: RS256 or ES256 with a JWKS endpoint and `kid` rotation instead of the shared
+    HS256 secret, and each cell checking that the token's tenant is served there. To build when a second
+    deployable checks tokens; HS256 stays the default.
 
 - **Support impersonation and break-glass access** (decision 11).
 - **The `BYPASSRLS` system pool** (decision 10).

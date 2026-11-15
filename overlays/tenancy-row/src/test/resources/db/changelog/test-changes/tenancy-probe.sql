@@ -1,7 +1,7 @@
 --liquibase formatted sql
 
 --changeset test:tenancy-probe
--- Tenant tables shaped as every generated one is (house-review TEN-30..TEN-33): a parent mapped by the
+-- Tenant tables shaped as every generated one is (house-review TEN-30..TEN-33, TEN-38): a parent mapped by the
 -- tests' TenancyProbe entity, and a child whose composite foreign key keeps it in its parent's tenant.
 CREATE TABLE tenancy_probe (
     id         uuid        NOT NULL,
@@ -19,6 +19,8 @@ CREATE TABLE tenancy_probe (
     CONSTRAINT uq_tenancy_probe_id_tenant_id UNIQUE (id, tenant_id)
 );
 CREATE INDEX idx_tenancy_probe_tenant_id_label_id ON tenancy_probe (tenant_id, label, id);
+-- Row-filtered replication by tenant_id needs it in the replica identity (TEN-38).
+ALTER TABLE tenancy_probe REPLICA IDENTITY USING INDEX uq_tenancy_probe_id_tenant_id;
 ALTER TABLE tenancy_probe ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tenancy_probe FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON tenancy_probe
@@ -31,9 +33,11 @@ CREATE TABLE tenancy_probe_notes (
     probe_id  uuid NOT NULL,
     CONSTRAINT pk_tenancy_probe_notes PRIMARY KEY (id),
     CONSTRAINT fk_tenancy_probe_notes_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenants (id),
-    CONSTRAINT fk_tenancy_probe_notes_probe_id FOREIGN KEY (probe_id, tenant_id) REFERENCES tenancy_probe (id, tenant_id)
+    CONSTRAINT fk_tenancy_probe_notes_probe_id FOREIGN KEY (probe_id, tenant_id) REFERENCES tenancy_probe (id, tenant_id),
+    CONSTRAINT uq_tenancy_probe_notes_id_tenant_id UNIQUE (id, tenant_id)
 );
 CREATE INDEX idx_tenancy_probe_notes_probe_id ON tenancy_probe_notes (probe_id, tenant_id);
+ALTER TABLE tenancy_probe_notes REPLICA IDENTITY USING INDEX uq_tenancy_probe_notes_id_tenant_id;
 ALTER TABLE tenancy_probe_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tenancy_probe_notes FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON tenancy_probe_notes

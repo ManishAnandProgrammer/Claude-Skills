@@ -159,8 +159,12 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
 - **Check:** object keys hold no file names, user ids or other personal data (keys appear in logs,
   URLs and CloudTrail). The file name is a column, and reaches the browser only through the signed
   `Content-Disposition: attachment; filename*=UTF-8''…` (RFC 5987), stored on the object at upload.
+- **Extraction rule (with tenancy):** the key starts with the tenant's id, `{tenantId}/{purpose}/{uuid}`
+  (the tenancy overlay's `MediaFileMapper.newKey`, from the current tenant only), so one tenant's files
+  are one prefix: copied to another bucket or deleted with the tenant, while the keys stored in its rows
+  stay valid (tenancy.md TEN-19; test `MediaKeysPerTenantTest`).
 - **Detect:** a key built from `fileName`, an email or a user id; a file name concatenated into a
-  header without RFC 5987 encoding.
+  header without RFC 5987 encoding; with tenancy, a key without the tenant prefix first.
 - **Severity:** Medium.
 
 ### MEDIA-09: Content types are exact, from a code allow-list; never active content

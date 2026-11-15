@@ -24,13 +24,19 @@ approval), changeset `0013-row-security` (the app role's grants), `0016-tenant-i
 their tenant), with `metadata` `metadata/repository/CounterRepository`, with `example`
 `todo/service/TodoAttachmentPolicySeed` (a tenant's defaults on `TenantProvisioned`),
 `docs/tenancy-runbook.md`, `docker/postgres-init/`; the tenant tables' `tenant_id`, keys and policies
-are `tenancy-row` blocks in the reference's own changesets `0002`–`0011` and entities. Both modes:
-changeset `0015-platform-users-read-only`, `config/PoolRoleCheck`, `tenant/service/StaffTenantService`.
+are `tenancy-row` blocks in the reference's own changesets `0002`–`0011` and entities, `0017-members`,
+with `example` `0018-owners-reference-members`, with a piece that brings tenant tables
+`0019-replica-identity`. Both modes: changeset `0015-platform-users-read-only`, `config/PoolRoleCheck`,
+`tenant/service/StaffTenantService`, `user/domain/Member` with `MemberRepository` (the tenant's own
+members, TEN-17) and each mode's `0017-members` (schema mode's `0018-owners-reference-members` with
+`example`).
 Tests: `tenant/**`, `archunit/TenancyArchTest`, `todo/TodoTenantIsolationIntegrationTest`,
 `support/IntegrationTest` (the test tenant, `@WithoutTestTenant`); row mode's
 `tenant/row/RowIsolationIntegrationTest`, `tenant/row/RowSecurityCatalogIntegrationTest` (the guard
-on the schema) and `tenant/row/NativeQueryTenantIntegrationTest` (the guard on native SQL); both modes'
-`config/PoolRoleCheckIntegrationTest` and `media/service/MediaJobsPerTenantTest`. In a bootstrapped project these sit at the same paths under
+on the schema, the extraction guards included) and `tenant/row/NativeQueryTenantIntegrationTest` (the
+guard on native SQL); schema mode's `tenant/schema/SchemaCatalogIntegrationTest` (no key leaves a tenant
+schema); both modes' `config/PoolRoleCheckIntegrationTest`, `media/service/MediaJobsPerTenantTest`,
+`media/mapper/MediaKeysPerTenantTest` and `metadata/CounterTenantIntegrationTest`. In a bootstrapped project these sit at the same paths under
 its own package. The design and its experiments: the skills repo's `docs/design/tenancy.md`.
 
 The flow: JWT (`tenant_id`) → `TenantContext` → Hibernate's resolver → the connection hook runs one
@@ -267,6 +273,66 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   password check for an existing account; an approval that bypasses `approve`.
 - **Severity:** High (account enumeration, a tenant attached to a foreign account).
 
+## A tenant can leave: its data is a closed graph
+
+A tenant that outgrows the shared database moves to one of its own: row mode by logical replication
+filtered by its `tenant_id`, schema per tenant by `pg_dump -n <schema>`. Both work only when the tenant's
+data references nothing outside itself but the register. These rules keep it so from the first table, so
+an extraction is an operation, not a migration project (the tooling itself is "Later" in the design doc).
+
+### TEN-16: No foreign key from tenant data into the platform, but the register
+- **Check:** a tenant table references, outside its own tenant's tables, only `tenants (id)` (row mode's
+  `tenant_id`). A person is a row of the tenant's own `members` (TEN-17): `(owner_id, tenant_id) →
+  members (user_id, tenant_id)` in row mode, `owner_id → members (user_id)` inside the schema in schema
+  mode; never `users (id)` or `tenant_memberships`. The changesets `0002`–`0011` were applied with keys to
+  `users`; the overlays' `0018-owners-reference-members` replaces them under the same names (a new table
+  never has one). Without tenancy the reference keeps `owner_id → users`. Guards:
+  `RowSecurityCatalogIntegrationTest.tenantDataReferencesNoPlatformTable` and
+  `SchemaCatalogIntegrationTest.tenantSchemasReferenceNoPlatformTable` (each proven to catch a key to
+  `users`).
+- **Detect:** `REFERENCES users`, `REFERENCES tenant_memberships`, `REFERENCES platform_users` or
+  `REFERENCES platform.` in a tenant changeset; a `@ManyToOne User` on a tenant entity; a new table
+  missing from the catalogue guards' reach (a schema-mode table outside `tenant.yaml`).
+- **Severity:** High (the tenant can no longer be extracted without rewriting its data).
+
+### TEN-17: Members: the tenant's own copy of its memberships
+- **Check:** the tenancy pieces' `members` table (row mode a tenant table with `tenant_id`, RLS and the
+  key `(user_id, tenant_id)`; schema mode in every tenant schema, key `(user_id)`) holds one row per
+  person who is or was a member, and no personal data (no email, no name: those stay on the platform).
+  `MembershipService` writes it in the transaction that creates the platform membership (`addMember`),
+  marks it left (`left_at`) when the membership is removed, never deletes it (the person's records still
+  reference it), and clears the mark on the same row when the person is added again. The owner's row
+  comes from the `TenantProvisioned` listener (`addOwnerToTenantData`): the owner's membership is created
+  with the tenant, before schema mode has a schema and while row mode has no tenant to write under.
+  `tenant_memberships` stays the authority on who belongs and with which role. Test fixtures that add a
+  membership add the row too (`IntegrationTest.addMember`). Tests:
+  `TenantMemberIntegrationTest.theTenantsMembersFollowTheMemberships`, `provisioningAddsTheOwnersRow`.
+- **Detect:** a membership created or removed without its `members` row in the same transaction; a
+  `DELETE FROM members`; a role, email or name copied into `members`; a tenant record that references
+  `tenant_memberships` (the platform's row is deleted on removal).
+- **Severity:** High (a membership without its row makes the member's first write fail; a deleted row
+  orphans their records).
+
+### TEN-18: Display numbers count per tenant
+- **Check:** a number a tenant's users see (an invoice or order number) comes from the metadata piece's
+  `Counters`, a row of the tenant's own data (`counters`, unique `(tenant_id, key)` in row mode, per
+  schema in schema mode), never from a PostgreSQL sequence or identity column of a shared table: one
+  sequence serves every tenant in row mode, so the numbers interleave, reveal another tenant's volume and
+  don't move with the tenant. Tests: `CounterTenantIntegrationTest` (one name, two tenants, each from 1);
+  row mode's catalogue test fails on any sequence not named in `PLATFORM_SEQUENCES`.
+- **Detect:** `GENERATED … AS IDENTITY`, `serial`, `CREATE SEQUENCE` or `nextval` for tenant data in row
+  mode; a display number derived from a global id.
+- **Severity:** Medium (High when the number is a legal sequence, such as an invoice number).
+
+### TEN-19: Stored files sit under their tenant's prefix
+- **Check:** every object key starts with the tenant's id: `<tenantId>/<PURPOSE>/<uuid>` (the tenancy
+  overlay's `MediaFileMapper.newKey`), so one tenant's files are one prefix in the bucket, to copy to
+  another store or delete with the tenant, and the keys stored in its rows stay valid after a move.
+  Test: `MediaKeysPerTenantTest`. See media.md MEDIA-08.
+- **Detect:** a key without the tenant prefix, or with it in another position; files of several tenants
+  under one prefix; a key built from anything but the current tenant (a body field, a path segment).
+- **Severity:** Medium.
+
 ## Schema per tenant
 
 ### TEN-20: [schema] Only the hook writes `search_path`; schema names are derived
@@ -409,7 +475,8 @@ E1–E3 and the row tests named below, which run as the real application role.
     without the pair). With `tenant_id` first, the parent key `(tenant_id, id)` walked "newest first"
     ahead of the list's own index on the test data (`TodoIndexIntegrationTest`): last, it serves the key
     and no order;
-  - a reference to a platform table (`users`, `tenants`) stays a plain key.
+  - the one reference to a platform table is `tenant_id → tenants`, a plain key; a person is the
+    tenant's own member, `(owner_id, tenant_id) → members (user_id, tenant_id)` (TEN-16).
 - **Not a finding (DATA-10):** the `tenant_id → tenants` key of an owner-scoped table has no index
   leading with `tenant_id`: tenants are closed, never deleted, so the key is never checked from the
   parent side. Tenant deletion (later) adds the indexes it needs.
@@ -489,6 +556,24 @@ E1–E3 and the row tests named below, which run as the real application role.
 - **Severity:** High (the policy still holds; Critical when combined with a policy gap or a bypass
   role).
 
+### TEN-38: [row] Every tenant table's replica identity holds `tenant_id`
+- **Check:** each tenant table has a unique index that includes `tenant_id` (on NOT NULL columns, not
+  partial, no expression) set as its replica identity: `ALTER TABLE <t> REPLICA IDENTITY USING INDEX
+  <uq_…>`, in the changeset that creates the table. A tenant leaves by logical replication through a
+  publication filtered by its id (`CREATE PUBLICATION … FOR TABLE <t> WHERE (tenant_id = '<id>')`), and
+  PostgreSQL refuses every UPDATE and DELETE on a published table whose row filter names a column outside
+  the replica identity; the default identity, the primary key `(id)`, lacks `tenant_id`, so the
+  application's writes would fail the moment the publication exists. Use a unique key the table already
+  has with `tenant_id` (the parent key of its composite references, `(tenant_id, key)`); a table without
+  one gets `uq_<table>_id_tenant_id (id, tenant_id)`. The reference's tables got theirs in the row
+  overlay's `0019-replica-identity` (applied changesets are never edited). Guards:
+  `RowSecurityCatalogIntegrationTest.everyReplicaIdentityCarriesTheTenant` (proven to catch a table on
+  its primary key) and `aTenantFilteredPublicationAcceptsUpdatesAndDeletes` (UPDATE and DELETE pass under
+  a tenant-filtered publication, and fail on a table without the identity).
+- **Detect:** a tenant table's changeset without `REPLICA IDENTITY USING INDEX`; `REPLICA IDENTITY
+  FULL` (it works, but logs every column of every old row); an identity index without `tenant_id`.
+- **Severity:** Medium (the tenant can't be extracted while the application keeps writing).
+
 ## Not built yet (phase 2)
 
 Invitations (a membership for an email without an account; today staff and registration only add
@@ -496,4 +581,6 @@ existing or new owners); email verification of registrations and signups (no mai
 pieces); deleting registrations left PENDING past `app.tenancy.pending-lifetime`; parallel tenant
 migrations (one JVM runs Liquibase one schema at a time); impersonating a suspended tenant (refused
 today, as every token issue for it); break-glass access and a support-access log the tenant reads;
-per-tenant rate limits and quotas; a role per tenant schema.
+per-tenant rate limits and quotas; a role per tenant schema; moving a tenant out (a tenant directory
+with its cell, a `MIGRATING` status, the extraction runbook) and a JWT key pair for a second deployable
+that checks tokens (the design doc's "Later": the rules above only keep a tenant extractable).

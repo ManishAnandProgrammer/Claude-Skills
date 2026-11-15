@@ -6,9 +6,11 @@ import com.example.app.common.tenancy.TenantContext;
 import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.tenant.api.TenantCreated;
+import com.example.app.tenant.api.TenantProvisioned;
 import com.example.app.tenant.api.TenantStatus;
 import com.example.app.tenant.api.TenantView;
 import com.example.app.tenant.api.Tenants;
+import com.example.app.user.domain.Member;
 import com.example.app.user.domain.Role;
 import com.example.app.user.domain.TenantMembership;
 import com.example.app.user.domain.User;
@@ -17,12 +19,14 @@ import com.example.app.user.dto.request.TenantMemberUpdateRequest;
 import com.example.app.user.dto.response.MembershipResponse;
 import com.example.app.user.dto.response.TenantMemberResponse;
 import com.example.app.user.mapper.MembershipMapper;
+import com.example.app.user.repository.MemberRepository;
 import com.example.app.user.repository.TenantMembershipRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -33,16 +37,22 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/** Who belongs to which tenant, with which role. Tokens are issued for one membership at a time. */
+/**
+ * Who belongs to which tenant, with which role. Tokens are issued for one membership at a time. Every
+ * membership has its person in the tenant's own {@code members} table, written in the same transaction
+ * (house-review TEN-17): the tenant's tables reference that row, never the platform's users.
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class MembershipService {
 
     private final TenantMembershipRepository repository;
+    private final MemberRepository members;
     private final UserService users;
     private final Tenants tenants;
     private final MembershipMapper mapper;
+    private final Clock clock;
 
     /**
      * The signed-in user's tenants, most recently used first: what a tenant picker shows, and the ids
@@ -69,6 +79,7 @@ public class MembershipService {
         User user = users.findByEmail(request.email())
                 .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_ACCOUNT_NOT_FOUND));
         TenantMembership membership = repository.saveAndFlush(TenantMembership.of(user, tenantId, request.role()));
+        joinTenantData(user.getId());
         return ObjectWrapper.withObject(mapper.toMemberResponse(membership));
     }
 
@@ -85,7 +96,10 @@ public class MembershipService {
         return ObjectWrapper.withObject(mapper.toMemberResponse(membership));
     }
 
-    /** A tenant ADMIN removes another member; the account stays, the tenant keeps at least one ADMIN. */
+    /**
+     * A tenant ADMIN removes another member; the account stays, the tenant keeps at least one ADMIN. The
+     * person's row in the tenant's data stays, marked left: their records still reference it.
+     */
     @Transactional
     public void removeMember(UUID callerId, UUID userId) {
         TenantMembership membership = otherMemberUnderTenantLock(callerId, userId);
@@ -93,6 +107,7 @@ public class MembershipService {
             requireAnotherAdmin(membership.getTenantId());
         }
         repository.delete(membership);
+        members.findByUserId(userId).ifPresent(member -> member.leave(clock.instant()));
         repository.flush();
     }
 
@@ -148,6 +163,31 @@ public class MembershipService {
         User owner = users.findByEmail(created.ownerEmail())
                 .orElseThrow(AppException.supply(ErrorCode.TENANT_OWNER_NOT_FOUND));
         repository.save(TenantMembership.of(owner, created.tenantId(), Role.ADMIN));
+    }
+
+    /**
+     * The owner's row in the new tenant's data, once its tables exist: the membership was created with
+     * the tenant, before schema per tenant had a schema to write it to (and row mode, without a tenant,
+     * may not write a tenant row). In the activating transaction, under the tenant's scope; approving
+     * again finds the row and adds none.
+     */
+    @EventListener
+    @Transactional
+    public void addOwnerToTenantData(TenantProvisioned provisioned) {
+        TenantMembership owner = repository.findFirstByTenantIdAndRoleOrderById(provisioned.tenantId(), Role.ADMIN)
+                .orElseThrow(() -> new IllegalStateException("A provisioned tenant without its owner: " + provisioned.tenantId()));
+        joinTenantData(owner.getUser().getId());
+    }
+
+    /** The person's row in the current tenant's data: a new one, or theirs from before, no longer marked left. */
+    private void joinTenantData(UUID userId) {
+        Optional<Member> earlier = members.findByUserId(userId);
+        if (earlier.isPresent()) {
+            earlier.get().rejoin();
+        } else {
+            members.save(Member.of(userId));
+        }
+        members.flush();
     }
 
     /**

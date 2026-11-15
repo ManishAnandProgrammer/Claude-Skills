@@ -12,8 +12,8 @@ import java.util.function.Supplier;
 /**
  * The tests' fixture JDBC in the row mode. Plain JDBC never passes the application's connection hook
  * (that runs for Hibernate's sessions), so each connection handed out here first gets the test tenant
- * on its transaction's {@code app.tenant_id}: the policies then show and accept that tenant's rows, and
- * the {@code tenant_id} column's default fills a fixture insert. Inside a transaction the test opened it
+ * on its transaction's {@code app.tenant_id}: the policies then show and accept that tenant's rows (a
+ * fixture insert still names its {@code tenant_id}: the column has no default). Inside a transaction the test opened it
  * is that transaction's connection (a lock the test holds stays held), outside one a pooled connection
  * of its own, as for a plain {@code JdbcTemplate}. Transaction-local either way: the pool gets its
  * connections back clean.

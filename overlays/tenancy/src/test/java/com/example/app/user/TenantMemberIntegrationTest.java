@@ -8,6 +8,7 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -53,6 +54,13 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     private long versionOf(TestTenant tenant, UUID userId) {
         return jdbc.queryForObject("select version from tenant_memberships where tenant_id = ? and user_id = ?",
                 Long.class, tenant.id(), userId);
+    }
+
+    /** The person's one row in the tenant's own members (TEN-17), read in that tenant. */
+    private Map<String, Object> memberRowOf(TestTenant tenant, UUID userId) {
+        List<Map<String, Object>> rows = queryIn(tenant, "select * from members where user_id = ?", userId);
+        assertThat(rows).hasSize(1);
+        return rows.getFirst();
     }
 
     private int adminsOf(TestTenant tenant) {
@@ -135,6 +143,40 @@ class TenantMemberIntegrationTest extends IntegrationTest {
                 """.formatted(member.refreshToken()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("MEMBERSHIP_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("""
+            A member's row in the tenant's own data comes with the membership, without personal data; a removed \
+            member's row stays, marked left, and adding them again clears the mark on the same row""")
+    void theTenantsMembersFollowTheMemberships() throws Exception {
+        TestTenant tenant = newTenant();
+        TestUser owner = soleAdminOf(tenant);
+        String email = uniqueEmail("colleague");
+        UUID colleague = UUID.fromString(read(rawSignup(email, PASSWORD).andExpect(status().isCreated()), "$.response.id"));
+
+        postAs(owner.accessToken(), MEMBERS, addPayload(email, "USER")).andExpect(status().isCreated());
+        Map<String, Object> added = memberRowOf(tenant, colleague);
+        deleteAs(owner.accessToken(), MEMBERS + "/" + colleague).andExpect(status().isNoContent());
+        Map<String, Object> removed = memberRowOf(tenant, colleague);
+        postAs(owner.accessToken(), MEMBERS, addPayload(email, "USER")).andExpect(status().isCreated());
+        Map<String, Object> back = memberRowOf(tenant, colleague);
+
+        assertThat(added).doesNotContainKeys("email", "full_name").containsEntry("left_at", null);
+        assertThat(removed.get("id")).isEqualTo(added.get("id"));
+        assertThat(removed.get("left_at")).isNotNull();
+        assertThat(back.get("id")).isEqualTo(added.get("id"));
+        assertThat(back.get("left_at")).isNull();
+    }
+
+    @Test
+    @DisplayName("Provisioning gives a new tenant's owner their row in the tenant's own members")
+    void provisioningAddsTheOwnersRow() throws Exception {
+        TestTenant tenant = newTenant();
+        UUID ownerId = jdbc.queryForObject("select user_id from tenant_memberships where tenant_id = ? and role = 'ADMIN'",
+                UUID.class, tenant.id());
+
+        assertThat(memberRowOf(tenant, ownerId).get("left_at")).isNull();
     }
 
     @Test

@@ -16,14 +16,14 @@
 #          attachment, upload and policy tests run against TODO_ATTACHMENT; the rest is 2b's and 1's),
 #          and the dependency lists the script prints cover the reference pom;
 #      2g. core + sign-in + tenancy-schema: schema per tenant alone, staff-only registration (no tenant
-#          table but the tests' probe), with real database roles; every test runs;
+#          table but the tenant's members and the tests' probe), with real database roles; every test runs;
 #      2h. every piece: core + sign-in + example + metadata + media + tenancy-schema +
 #          tenant-registration. The todo, plan, metadata and media tables in the tenant changelog, the
 #          media keys per tenant, the cross-tenant tests, self-registration; every test runs, the
 #          reference's own tests inside the test tenant;
 #      2i. core + sign-in + tenancy-row: row mode alone, staff-only registration (no tenant table but
-#          the tests' probe), with real database roles (the app role NOBYPASSRLS): the hook, the
-#          policies' guard, the isolation tests; every test runs;
+#          the tenant's members and the tests' probe), with real database roles (the app role
+#          NOBYPASSRLS): the hook, the policies' guard, the isolation tests; every test runs;
 #      2j. every piece with row mode: core + sign-in + example + metadata + media + tenancy-row +
 #          tenant-registration. Every reference table a tenant table under its forced policy (the
 #          catalogue guard), composite keys, seeds on TenantProvisioned, the cross-tenant tests; every
@@ -213,7 +213,9 @@ grep -rqE "(example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tena
 [ -f "$tenancy/src/main/resources/db/changelog/db.changelog-master.yaml" ] && { echo "FAILED: a single master in a schema-per-tenant copy" >&2; exit 1; }
 [ -f "$tenancy/src/main/java/com/acme/tenancy/user/controller/TenantRegistrationController.java" ] \
     && { echo "FAILED: the public registration endpoint in a copy without tenant-registration" >&2; exit 1; }
-grep -q "0012-tenancy.sql" "$tenancy/src/main/resources/db/changelog/platform.yaml" && grep -q "databaseChangeLog: \[\]" "$tenancy/src/main/resources/db/changelog/tenant.yaml" \
+grep -q "0012-tenancy.sql" "$tenancy/src/main/resources/db/changelog/platform.yaml" \
+    && [ "$(grep -c "file:" "$tenancy/src/main/resources/db/changelog/tenant.yaml")" = 1 ] \
+    && grep -q "changes/0017-members.sql" "$tenancy/src/main/resources/db/changelog/tenant.yaml" \
     || { echo "FAILED: the tenancy copy's masters don't list its changesets as platform and tenant ones" >&2; exit 1; }
 mvn_verify "$tenancy" "$WORK/tenancy.log"
 

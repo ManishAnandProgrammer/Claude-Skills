@@ -89,7 +89,9 @@ only when the project has that piece.
 - **Rules:** the tenancy rules themselves are `tenancy.md` (TEN-xx); this rule is what they mean for
   the metadata tables. Schema per tenant lists `0008` in `db/changelog/tenant.yaml`; row mode keeps one master.
 - **Check:** schema-per-tenant: the table in every tenant schema, unique `key`. Row mode: both
-  tables are tenant tables (TEN-30), unique `(tenant_id, key)`, both entities `TenantOwnedEntity`.
+  tables are tenant tables (TEN-30), unique `(tenant_id, key)`, both entities `TenantOwnedEntity`, each
+  key the table's replica identity (TEN-38). Counters are a tenant's own numbers in both modes (TEN-18,
+  `CounterTenantIntegrationTest`).
 - **Severity:** Critical when a row-mode query can read or write another tenant's row.
 - **Adapting the piece** (the reference is single-tenant; bootstrap picks the model, the code is
   otherwise the same):

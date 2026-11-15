@@ -29,3 +29,9 @@ databaseChangeLog:
   - include:
       file: changes/0014-todo-list-defaults.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/0017-members.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0018-owners-reference-members.sql
+      relativeToChangelogFile: true
