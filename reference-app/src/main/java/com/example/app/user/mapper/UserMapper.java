@@ -12,7 +12,10 @@ public class UserMapper {
                 user.getId(),
                 user.getEmail(),
                 user.getFullName(),
+                // tenancy:begin
+                // tenancy:else
                 user.getRole(),
+                // tenancy:end
                 user.getCreatedAt(),
                 user.getUpdatedAt(),
                 user.getCreatedBy(),

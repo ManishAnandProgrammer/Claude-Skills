@@ -178,7 +178,8 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
 - **Detect:** grep every caller of the token service's issue methods and of the refresh-token lookup
   (`usableToken`): each one reads the membership and the tenant status itself, and each path that takes a
   refresh token checks it was issued after the token's own membership; a path that takes the role or the
-  tenant from the presented token; `users.tenant_id`; the role read from `users.role` into a tenant token;
+  tenant from the presented token; `users.tenant_id`; the role read from `users.role` into a tenant token or
+  any response (`/users/me` carries no role with tenancy: the membership's is in `GET /users/me/tenants`);
   `@PreAuthorize`/`@AdminOnly` as the only check on an endpoint that grants or keeps roles; a members
   service that takes no caller id; a membership lookup by user or by id alone on a tenant-plane path
   (it reaches the person's membership in another tenant).

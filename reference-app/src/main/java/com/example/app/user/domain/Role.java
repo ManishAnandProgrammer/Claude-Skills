@@ -3,8 +3,8 @@ package com.example.app.user.domain;
 /**
  * A user's role, sent in the access token's {@code roles} claim.
  *   <!-- tenancy:begin -->
- * With tenancy it is the person's role in one tenant, their membership's: the account's own
- * {@code users.role} is not what a tenant endpoint sees. A tenant's owner becomes its first ADMIN; after
+ * With tenancy it is the person's role in one tenant, their membership's ({@code GET /users/me/tenants}
+ * lists them; {@code /users/me} has none). A tenant's owner becomes its first ADMIN; after
  * that a tenant ADMIN adds members with a role ({@code POST /tenant-members}) and changes it
  * ({@code PUT /tenant-members/{userId}}). A change reaches the member's next sign-in or refresh at the
  * latest.

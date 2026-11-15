@@ -131,7 +131,12 @@ class AuthIntegrationTest extends IntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(header().string(HttpHeaders.LOCATION, "/api/v1/users/me"))
                 .andExpect(jsonPath("$.response.email").value(email.toLowerCase()))
+                // tenancy:begin
+                // // A role is per tenant, the membership's: the account carries none.
+                // .andExpect(jsonPath("$.response.role").doesNotExist())
+                // tenancy:else
                 .andExpect(jsonPath("$.response.role").value("USER"))
+                // tenancy:end
                 .andExpect(jsonPath("$.response.version").value(0))
                 .andExpect(jsonPath("$.response.createdAt").isNotEmpty())
                 .andExpect(jsonPath("$.response.passwordHash").doesNotExist());

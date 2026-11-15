@@ -16,7 +16,7 @@ class MembershipIntegrationTest extends IntegrationTest {
     private static final String MY_TENANTS = "/api/v1/users/me/tenants";
 
     @Test
-    @DisplayName("Lists every tenant the user belongs to with the role there, the token's own marked current")
+    @DisplayName("Lists every tenant the user belongs to with the role there, the token's own marked current; /users/me has no role")
     void listsTheUsersTenants() throws Exception {
         TestTenant first = newTenant();
         TestTenant second = newTenant();
@@ -34,6 +34,10 @@ class MembershipIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response[1].role").value("ADMIN"))
                 .andExpect(jsonPath("$.response[1].current").value(false))
                 .andExpect(jsonPath("$.response[1].tenantStatus").value("ACTIVE"));
+        getAs(user.accessToken(), "/api/v1/users/me")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.id").value(user.id().toString()))
+                .andExpect(jsonPath("$.response.role").doesNotExist());
     }
 
     @Test
