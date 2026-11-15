@@ -14,11 +14,10 @@ Lines are counted without blank or comment lines.
   summary endpoints); a derived value (days between two dates, the days left of a balance)
   computed both in the entity and in a list projection's constructor: one static method of the
   entity, called by both.
-- **Not a finding (until the owner decides a shared constraint):** the house email shape's
-  `@Pattern(regexp = "\\p{ASCII}*", message = "must contain only ASCII characters")` and the mapper's
-  `strip().toLowerCase(Locale.ROOT)`, repeated per request and per entity as crud-gen 4.1 *Email*
-  prescribes (another module can't call `User.normalizeEmail`). Report it once per review as a Low
-  "repeated house shape", not per copy.
+- **Email (owner decision 2026-11-15):** one normaliser, core's `common.validation.Emails.normalize`, for
+  every write and lookup by email, and one constraint, `@AsciiOnly`; a hand-written
+  `strip().toLowerCase(…)` of an email, or an ASCII `@Pattern` on one, is a finding (Medium: a lookup that
+  normalises differently from the write misses the account).
 - **Severity:** Medium; Low for 2 copies of a trivial line.
 - **Fix:** one helper, constant or value type. Prefer a library method (JAVA-12).
 

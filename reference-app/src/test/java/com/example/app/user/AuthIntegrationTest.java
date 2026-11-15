@@ -28,11 +28,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-// session-version:begin
-// tenancy:begin
-// import java.util.UUID;
-// tenancy:end
-// session-version:end
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -139,6 +135,38 @@ class AuthIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.version").value(0))
                 .andExpect(jsonPath("$.response.createdAt").isNotEmpty())
                 .andExpect(jsonPath("$.response.passwordHash").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("""
+            An email is one account whatever its case: signup stores it lower-case, login finds it in any case and \
+            with surrounding spaces; signup refuses the spaces (400 naming email)""")
+    void anEmailIsOneAccountWhateverItsCase() throws Exception {
+        String email = uniqueEmail("Mixed.Case");
+
+        signup(email.toUpperCase(), PASSWORD)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.response.email").value(email.toLowerCase()));
+        login("  " + email.toLowerCase() + " ", PASSWORD).andExpect(status().isOk());
+        signup(" " + uniqueEmail("spaced") + " ", PASSWORD)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/email")));
+    }
+
+    @Test
+    @DisplayName("A 254-character address, the longest allowed, signs up and signs in; one more character is 400")
+    void theLongestAddressWorks() throws Exception {
+        String unique = UUID.randomUUID().toString().replace("-", "");
+        String longest = "a".repeat(64) + "@" + unique + "B".repeat(31) + "." + "c".repeat(63) + "." + "d".repeat(58) + ".io";
+        assertThat(longest).hasSize(254);
+
+        signup(longest, PASSWORD)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.response.email").value(longest.toLowerCase()));
+        login(longest.toUpperCase(), PASSWORD).andExpect(status().isOk());
+        signup("e" + longest, PASSWORD)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/email")));
     }
 
     @Test

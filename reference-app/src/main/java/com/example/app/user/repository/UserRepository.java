@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /**
  * Emails are stored normalised ({@code ck_users_email_normalized}): look them up with
- * {@code User.normalizeEmail}, so a lookup matches the stored form and uses {@code uq_users_email}.
+ * {@code Emails.normalize}, so a lookup matches the stored form and uses {@code uq_users_email}.
  */
 public interface UserRepository extends JpaRepository<User, UUID> {
 

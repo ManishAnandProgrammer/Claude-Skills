@@ -3,7 +3,7 @@ package com.example.app.user.service;
 import com.example.app.common.ratelimit.RateLimitProperties;
 import com.example.app.common.ratelimit.RedisRateLimiter;
 import com.example.app.common.security.PersonalDataHasher;
-import com.example.app.user.domain.User;
+import com.example.app.common.validation.Emails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -23,7 +23,7 @@ class AuthRateLimits {
     void login(String clientIp, String email) {
         if (limiterProperties.enabled()) {
             limiter.acquire("login:ip:" + hasher.hash(clientIp), limits.loginPerIp());
-            limiter.acquire("login:account:" + hasher.hash(User.normalizeEmail(email)), limits.loginPerAccount());
+            limiter.acquire("login:account:" + hasher.hash(Emails.normalize(email)), limits.loginPerAccount());
         }
     }
 

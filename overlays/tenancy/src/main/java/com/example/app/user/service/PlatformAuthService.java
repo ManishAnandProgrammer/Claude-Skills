@@ -2,9 +2,9 @@ package com.example.app.user.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.validation.Emails;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.domain.PlatformUser;
-import com.example.app.user.domain.User;
 import com.example.app.user.dto.request.LoginRequest;
 import com.example.app.user.dto.response.TokenResponse;
 import com.example.app.user.repository.PlatformUserRepository;
@@ -44,7 +44,7 @@ public class PlatformAuthService {
 
     public ObjectWrapper<TokenResponse> login(LoginRequest request, String clientIp) {
         rateLimits.login(clientIp, request.email());
-        Optional<PlatformUser> found = repository.findByEmail(User.normalizeEmail(request.email()));
+        Optional<PlatformUser> found = repository.findByEmail(Emails.normalize(request.email()));
         boolean passwordMatches = passwordEncoder.matches(request.password(),
                 found.map(PlatformUser::getPasswordHash).orElse(unknownUserHash));
         PlatformUser staff = found.filter(account -> passwordMatches).orElseThrow(this::invalidCredentials);

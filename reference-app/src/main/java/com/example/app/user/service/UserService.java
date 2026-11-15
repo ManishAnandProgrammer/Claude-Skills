@@ -2,6 +2,7 @@ package com.example.app.user.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.validation.Emails;
 import com.example.app.common.wrapper.ObjectWrapper;
 // tenancy:begin
 // tenancy:else
@@ -66,7 +67,7 @@ public class UserService implements Users {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ObjectWrapper<UserResponse> signup(SignupRequest request, String clientIp) {
         rateLimits.signup(clientIp);
-        String email = User.normalizeEmail(request.email());
+        String email = Emails.normalize(request.email());
         if (repository.existsByEmail(email)) {
             throw AppException.of(ErrorCode.USER_EMAIL_TAKEN);
         }
@@ -93,7 +94,7 @@ public class UserService implements Users {
 
     // tenancy:end
     Optional<User> findByEmail(String email) {
-        return repository.findByEmail(User.normalizeEmail(email));
+        return repository.findByEmail(Emails.normalize(email));
     }
     // session-version:begin
     // tenancy:begin

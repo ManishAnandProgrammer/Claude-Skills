@@ -1,5 +1,6 @@
 package com.example.app.user.dto.request;
 
+import com.example.app.common.validation.AsciiOnly;
 import com.example.app.common.validation.MaxUtf8Bytes;
 import io.swagger.v3.oas.annotations.media.Schema;
 import com.example.app.common.limits.MaxLength;
@@ -11,8 +12,7 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "A new account")
 public record SignupRequest(
         @Schema(description = "Email address (ASCII only); stored lower-case", example = "asha@example.com")
-        @NotBlank @Email @MaxLength("user.email")
-        @Pattern(regexp = "\\p{ASCII}*", message = "must contain only ASCII characters")
+        @NotBlank @Email @MaxLength("user.email") @AsciiOnly
         String email,
 
         @Schema(description = "Name shown in the app", example = "Asha Kaur")

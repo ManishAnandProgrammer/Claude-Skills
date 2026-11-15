@@ -1,6 +1,7 @@
 package com.example.app.user.domain;
 
 import com.example.app.common.persistence.AuditableEntity;
+import com.example.app.common.validation.Emails;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,9 +12,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-import java.util.Locale;
-
-/** An account. The email is stored normalised (trimmed, lower-case), so it is unique as people read it. */
+/** An account. The email is stored normalised ({@link Emails}), so it is unique as people read it. */
 @Entity
 @Table(name = "users")
 @Getter
@@ -50,14 +49,10 @@ public class User extends AuditableEntity {
     /** A new self-registered account. The caller hashes the password. */
     public static User register(String email, String fullName, String passwordHash) {
         return User.builder()
-                .email(normalizeEmail(email))
+                .email(Emails.normalize(email))
                 .fullName(fullName.strip())
                 .passwordHash(passwordHash)
                 .role(Role.USER)
                 .build();
-    }
-
-    public static String normalizeEmail(String email) {
-        return email.strip().toLowerCase(Locale.ROOT);
     }
 }

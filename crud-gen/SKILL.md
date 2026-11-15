@@ -215,7 +215,7 @@ Check before generating:
 | A changeset with `--rollback`; FKs named `fk_<table>_<column>` | DATA-13 |
 | Unique text ignores case and surrounding spaces (one of the two shapes; partial when nullable). A column whose `CHECK` admits one spelling only (an ISBN of exactly 13 digits: no case, no spaces) takes a plain `UNIQUE`, and its `@Schema` says "unique" without "ignoring case" | DATA-05 |
 | A unique **code or identifier** (a course code, an SKU): **ask** "store it normalised (`CS101` upper-cased on write), or keep what was typed?". Normalised is DATA-05's first shape: the mapper upper- or lower-cases it, a `CHECK`, one plain `UNIQUE` that serves uniqueness, every `code = ?` lookup and the CODE order. The `CHECK` is the format when the request has a `@Pattern` (`CHECK (code ~ '^[A-Z0-9-]{1,20}$')`, upper-cased: it implies the normalisation; `code = upper(trim(code))` alone checks the case and lets a fixture or an import store a code no PUT can send back), else the normalising expression. The column is `text COLLATE "C"` (DATA-12: a code compares and sorts byte for byte, as Java does; names keep the locale's collation). Kept as typed is the second: a unique index on `lower(trim(code))`, an order on the code needs its own `(code, id)` index, and a lookup must name the same expression, never `WHERE code = ?` (a sequential scan). Prefer normalised for codes; record the answer | DATA-05 |
-| An **email** field: stored lower-cased (the first shape, golden `users`: `ck_<table>_email_normalized`, plain unique); the request shape is 4.1's *Email* | DATA-05 |
+| An **email** field: stored as `Emails.normalize` gives it (the first shape, golden `users`: `ck_<table>_email_normalized`, plain unique); the request shape is 4.1's *Email* | DATA-05 |
 | A value the mapper normalises (an email lower-cased and trimmed) has a `CHECK` with the same expression (`email = lower(trim(email))`, golden `users`) | DATA-05 |
 | A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one. Its "taken on update" test (tests.md row 11) means the writes that move a row **into** the live status or change the pair; when none does (the pair fixed at the create, no move back to live), the create's test is the whole duty: say so. When the entity also has a **date range**, ask the follow-up: "does a finished record (past its `endsOn`, still `<LIVE>`) still block a new one?" (a student who completed a course retaking it). If not, the rule is either no overlapping live ranges, DATA-35's exclusion constraint `WHERE (status = '<LIVE>')`, or a decided terminal status (`COMPLETED`, set by a person or a job), never "live" read from the dates (DATA-37) | DATA-05, DATA-35, DATA-37 |
 | Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is not applied**, ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
@@ -449,12 +449,13 @@ description and its 400 response name it.
   `PlanFilter.plannedFrom`/`plannedTo`, `PlanRepositoryImpl.filterPredicates`). Without a maximum
   (open-ended ranges), record the decision that the filter scans the scope's history. Tests: tests.md
   rows 25b and 28.
-- **Email** (golden: the sign-in piece's `SignupRequest.email`, `User.normalizeEmail`):
-  `@NotBlank @Email @MaxLength("<entity>.email") @Pattern(regexp = "\\p{ASCII}*", message = "must
-  contain only ASCII characters")` (254 in `limits.yml`; `*`, not `+`: an empty value gets only "must not
-  be blank"), `@Schema` "Email address (ASCII only);
-  stored lower-case; unique ignoring case". The mapper stores `email.strip().toLowerCase(Locale.ROOT)`
-  (another module can't call `User.normalizeEmail`: the two lines are repeated), backed by
+- **Email** (golden: the sign-in piece's `SignupRequest.email`, core's `common.validation.Emails`):
+  `@NotBlank @Email @MaxLength("<entity>.email") @AsciiOnly` (254 in `limits.yml`; `@AsciiOnly` passes an
+  empty value, so it gets only "must not be blank"), `@Schema` "Email address (ASCII only);
+  stored lower-case; unique ignoring case". The mapper stores `Emails.normalize(email)` and every lookup by
+  email (an exists check, a find by email, a rate-limit key) normalises with the same method, never its own
+  `strip().toLowerCase(…)` (no Unicode normalisation: every stored address is ASCII, `Emails`' javadoc says
+  why), backed by
   `CONSTRAINT ck_<table>_email_normalized CHECK (email = lower(trim(email)))` and a plain
   `UNIQUE (email)`, which a lookup by email uses (DATA-05). Tests: a malformed address 400; the
   length bound both sides with an address `@Email` accepts (64 characters before the `@`, domain

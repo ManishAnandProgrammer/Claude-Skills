@@ -1,6 +1,7 @@
 package com.example.app.user.dto.request;
 
 import com.example.app.common.limits.MaxLength;
+import com.example.app.common.validation.AsciiOnly;
 import com.example.app.common.validation.MaxUtf8Bytes;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
@@ -16,8 +17,7 @@ public record TenantRegistrationRequest(
 
         @Schema(description = "The owner's email address (ASCII only); an existing account's, or a new one's",
                 example = "asha@example.com")
-        @NotBlank @Email @MaxLength("user.email")
-        @Pattern(regexp = "\\p{ASCII}*", message = "must contain only ASCII characters")
+        @NotBlank @Email @MaxLength("user.email") @AsciiOnly
         String email,
 
         @Schema(description = "The owner's name, for a new account", example = "Asha Kaur")
