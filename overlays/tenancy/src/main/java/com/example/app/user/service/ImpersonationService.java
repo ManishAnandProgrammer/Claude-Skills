@@ -3,6 +3,7 @@ package com.example.app.user.service;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.security.CurrentUser;
+import com.example.app.common.security.StaffAccounts;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.tenant.api.PlatformAudit;
 import com.example.app.tenant.api.SupportAccessPolicy;
@@ -40,12 +41,21 @@ public class ImpersonationService {
     private final SupportAccessPolicy policy;
     private final PlatformAudit audit;
     private final CurrentUser currentUser;
+    private final StaffAccounts staffAccounts;
 
-    /** 403 {@code TENANT_NOT_ACTIVE}, 404 {@code MEMBERSHIP_NOT_FOUND}, 403 {@code SUPPORT_ACCESS_DENIED}. */
+    /**
+     * 401 {@code AUTHENTICATION_REQUIRED} for a staff member deactivated since their token's check, 403
+     * {@code TENANT_NOT_ACTIVE}, 404 {@code MEMBERSHIP_NOT_FOUND}, 403 {@code SUPPORT_ACCESS_DENIED}, 403
+     * {@code AUTH_ACCOUNT_SUSPENDED} (the member's account).
+     */
     public ObjectWrapper<TokenResponse> impersonate(UUID tenantId, ImpersonationRequest request) {
+        UUID staffId = currentUser.id();
+        // Read again at the issue, like every other token path: the request's filter read it a moment ago.
+        if (!staffAccounts.isActive(staffId)) {
+            throw AppException.of(ErrorCode.AUTHENTICATION_REQUIRED);
+        }
         tenants.requireActive(tenantId);
         TenantMembership membership = memberships.forImpersonation(tenantId, request.userId());
-        UUID staffId = currentUser.id();
         UUID userId = membership.getUser().getId();
         audit.record(tenantId, AUDIT_ACTION, "userId=%s, reason=%s".formatted(userId, request.reason()));
         if (!policy.allows(new SupportAccessRequest(staffId, tenantId, userId, request.reason()))) {

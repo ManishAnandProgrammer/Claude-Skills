@@ -99,6 +99,16 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("0027 and 0028 left every seeded account ACTIVE and the seeded staff member active: both sign in")
+    void theSeededAccountsAndStaffAreActive() throws Exception {
+        assertThat(jdbc.queryForObject("select count(*) from users where email like 'upgrade-%' and status <> 'ACTIVE'", Integer.class))
+                .isZero();
+        assertThat(jdbc.queryForObject("select count(*) from platform_users where email = 'upgrade-staff@example.com' and deactivated_at is null",
+                Integer.class)).isEqualTo(1);
+        tokenOf("upgrade-heavy@example.com");
+    }
+
+    @Test
     @DisplayName("A page of the seeded owner's OPEN todos, the rare status, still reads at most two pages")
     void theIndexBoundsHoldOnTheSeededRows() {
         ReadCost cost = TenantScope.callAs(ALPHA, () -> ReadCost.of(jdbc, transactionManager, """

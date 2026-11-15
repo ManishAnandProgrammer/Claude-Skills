@@ -528,6 +528,30 @@ public abstract class IntegrationTest {
         }
     }
 
+    /** A platform staff member of a test's own, with an access token: for a test that deactivates one. */
+    protected record TestStaff(UUID id, String email, String accessToken) {
+    }
+
+    /** A new staff member, written as the owner role as the runbook does (the pool's role only reads them), signed in. */
+    protected TestStaff newStaff() throws Exception {
+        String email = uniqueEmail("staff");
+        new JdbcTemplate(ownerDataSource).update("""
+                insert into platform_users (id, email, full_name, password_hash, role, created_at, updated_at, version)
+                values (gen_random_uuid(), ?, 'Test Staff', ?, 'STAFF', now(), now(), 0)
+                """, email, passwordEncoder.encode(PASSWORD));
+        UUID id = jdbc.queryForObject("select id from platform_users where email = ?", UUID.class, email);
+        ResultActions login = postAs(null, "/api/v1/platform/auth/login", """
+                {"email": "%s", "password": "%s"}
+                """.formatted(email, PASSWORD)).andExpect(status().isOk());
+        return new TestStaff(id, email, read(login, "$.response.accessToken"));
+    }
+
+    /** Deactivates a staff member as the runbook does: SQL as the owner role. */
+    protected void deactivateStaff(UUID staffId) {
+        assertThat(new JdbcTemplate(ownerDataSource).update("update platform_users set deactivated_at = now() where id = ?", staffId))
+                .isEqualTo(1);
+    }
+
     /**
      * A membership as fixture rows (the members API, POST /tenant-members, needs an ADMIN token): the
      * platform's, and the person's row in the tenant's own data, which the tenant's tables reference

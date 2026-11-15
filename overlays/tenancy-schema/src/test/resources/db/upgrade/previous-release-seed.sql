@@ -29,6 +29,9 @@ INSERT INTO platform.users (id, email, full_name, password_hash, role, created_a
     ('01890000-0000-7000-8000-000000000007', 'upgrade-pi@example.com', 'Pi Upgrader', 'not-a-hash', 'USER', now(), now(), 0),
     ('01890000-0000-7000-8000-000000000008', 'upgrade-rho@example.com', 'Rho Upgrader', 'not-a-hash', 'USER', now(), now(), 0),
     ('01890000-0000-7000-8000-000000000009', 'upgrade-chi@example.com', 'Chi Upgrader', 'not-a-hash', 'USER', now(), now(), 0);
+-- A staff member, from before 0028 added their deactivation.
+INSERT INTO platform.platform_users (id, email, full_name, password_hash, role, created_at, updated_at, version) VALUES
+    ('01890000-0000-7000-8200-000000000001', 'upgrade-staff@example.com', 'Staff Upgrader', 'not-a-hash', 'STAFF', now(), now(), 0);
 INSERT INTO platform.tenant_memberships (id, tenant_id, user_id, role, created_at, updated_at, version)
 SELECT gen_random_uuid(), membership.tenant_id::uuid, membership.user_id::uuid, membership.role, now() - interval '100 days', now(), 0
   FROM (VALUES ('01890000-0000-7000-8100-00000000000a', '01890000-0000-7000-8000-000000000001', 'ADMIN'),

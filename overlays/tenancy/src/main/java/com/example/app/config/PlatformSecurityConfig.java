@@ -1,8 +1,11 @@
 package com.example.app.config;
 
 import com.example.app.common.logging.UserLogContextFilter;
+import com.example.app.common.security.ActiveStaffFilter;
 import com.example.app.common.security.CurrentUser;
+import com.example.app.common.security.StaffAccounts;
 import com.example.app.common.tenancy.TenantContext;
+import com.example.app.common.web.ProblemResponses;
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -34,7 +37,9 @@ import java.util.Objects;
  * Tenancy's two worlds: {@code /api/*}{@code /platform/**} has a chain of its own that accepts only
  * platform tokens ({@code aud=platform}), and {@link SecurityConfig}'s main chain accepts only tenant
  * tokens ({@code aud=tenant}, {@link #tenantTokensOnly}). A token of one plane is a 401 in the other,
- * so a staff token can't reach tenant data by mistake, nor a tenant's token the tenant register.
+ * so a staff token can't reach tenant data by mistake, nor a tenant's token the tenant register. A verified
+ * platform token passes only while its staff member is active ({@link ActiveStaffFilter}, one read by primary
+ * key per platform request): a deactivated member's tokens die at their next request.
  */
 @Configuration
 class PlatformSecurityConfig {
@@ -50,6 +55,8 @@ class PlatformSecurityConfig {
                                                     JwtAuthenticationConverter jwtAuthenticationConverter,
                                                     AuthenticationEntryPoint authenticationEntryPoint,
                                                     AccessDeniedHandler accessDeniedHandler,
+                                                    StaffAccounts staffAccounts,
+                                                    ProblemResponses problemResponses,
                                                     CurrentUser currentUser) throws Exception {
         http
                 .securityMatcher(PLATFORM_PATHS)
@@ -69,7 +76,9 @@ class PlatformSecurityConfig {
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
-                .addFilterAfter(new UserLogContextFilter(currentUser), BearerTokenAuthenticationFilter.class);
+                .addFilterAfter(new UserLogContextFilter(currentUser), BearerTokenAuthenticationFilter.class)
+                // Behind the log context, so a refusal's log line names the staff member.
+                .addFilterAfter(new ActiveStaffFilter(staffAccounts, problemResponses), UserLogContextFilter.class);
         return http.build();
     }
 

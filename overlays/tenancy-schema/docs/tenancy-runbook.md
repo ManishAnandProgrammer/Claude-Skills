@@ -54,6 +54,18 @@ SQL
 the local stack, run the same `insert` with the operator's own `psql` connection as the owner role. They
 sign in at `POST /api/v1/platform/auth/login`.
 
+**A staff member who leaves** is deactivated, never deleted (their audit history references the row), as
+the owner role: `update platform_users set deactivated_at = now() where email = lower(trim('<email>'));`
+(`UPDATE 1`). Their login is refused from then on, and the tokens they hold are refused at their next
+request (every platform request re-reads the row); no restart, no cache. Reactivating is the same
+statement with `deactivated_at = null`.
+
+**An account** (a person, global across tenants) is suspended or reactivated by staff through
+`PATCH /api/v1/platform/users/{id}/status` (`{"status": "SUSPENDED", "version": n}`), never by SQL: the
+endpoint also revokes every refresh token and, with the session version, ends the access tokens at once.
+The last active ADMIN of an open tenant is refused (409): make another member ADMIN first, or suspend the
+tenant.
+
 ## 3. Tenants
 
 - **Staff create a tenant** (`POST /api/v1/platform/tenants`) for an owner who already has an account:
