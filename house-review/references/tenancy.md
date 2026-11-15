@@ -113,14 +113,20 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   tokens, and the main chain accepts only tenant tokens (`aud=tenant`). A platform token on a tenant
   endpoint is 401, and the reverse. Staff are never modelled as a tenant or a "super admin" role in a
   tenant.
-- **Extension point (staff deactivation):** the piece has no removal or disable for staff, so a platform
-  token is trusted for its lifetime. A project that needs it adds `platform_users.disabled_at` (a new
-  changeset; the audit key keeps a removed staff member's history), refuses a disabled one at platform
-  login and at every impersonation issue (the token-path table, docs/design/tenancy.md), generates its
-  endpoint with crud-gen and reviews it with house-review like any other code; this review then applies
-  TEN-08 to the new paths.
+- **Check (staff deactivation):** a staff member leaves by `platform_users.deactivated_at` (the operator's
+  SQL, as staff rows are; the audit key keeps their history, so the row is never deleted). Platform login
+  refuses a deactivated member (401 `AUTH_INVALID_CREDENTIALS`, as an unknown email), the platform chain
+  re-reads the row on every request (`ActiveStaffFilter`, one primary-key read: 401 `AUTHENTICATION_REQUIRED`
+  from the next request on), and the impersonation issue re-reads it again. A platform token is never trusted
+  for its lifetime. Tests: `StaffDeactivationIntegrationTest`.
+- **Check (accounts):** with tenancy accounts are global, so only platform staff suspend or reactivate one
+  (`PATCH /platform/users/{id}/status`, `AccountStatusService`, kept off the tenant plane by `TenancyArchTest`);
+  never a tenant ADMIN. A suspension keeps every open tenant's last ACTIVE ADMIN (409
+  `TENANT_MEMBER_LAST_ADMIN`, the tenant locked as a member change locks it). SEC-07 and TEN-08 for the rest.
 - **Detect:** one decoder for both audiences; a `ROLE_SUPER_ADMIN` that bypasses tenant checks;
-  operator endpoints behind a shared secret header; `isPlatform` branches in tenant-plane code.
+  operator endpoints behind a shared secret header; `isPlatform` branches in tenant-plane code; a platform
+  chain without the staff re-read, or a staff "disable" checked only at login; an account suspension
+  endpoint on the tenant plane.
 - **Severity:** Critical.
 
 ### TEN-06: Tenant status is checked whenever tokens are issued
@@ -162,14 +168,17 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   `TenantMemberIntegrationTest.addsAreLimitedPerAdmin`. Invitations (later) replace the direct add.
 - **Check:** **every path that issues a token** (login, refresh, switch-tenant, impersonation, and any
   later one: an invitation, a tenant-picker sign-in) re-reads at the issue what the token stands for:
-  the membership (still there), its role and session version, the tenant ACTIVE; nothing comes from the
-  presented token beyond its own validity. A member removed and added again starts with new sessions: a
+  the account (share-locked and ACTIVE, first: `UserService.activeForTokenIssue`), the membership (still
+  there), its role and session version, the tenant ACTIVE; for an impersonation the staff row too; nothing
+  comes from the presented token beyond its own validity. A member removed and added again starts with new sessions: a
   refresh token issued before the current membership is refused by every path that issues from it,
   refresh **and** switch-tenant (the token's own membership checked before the target's; reference
   `TokenService.requireIssuedForThisMembership`, tested by `TenantMemberIntegrationTest
   .aReAddedMembersOldSessionStaysEnded` and `aRemovedMembersOldSessionDoesNotSwitch`). The paths, their
-  checks and tests are one table in the tenancy design note (*Every path that issues a token*); a new
-  path adds its row and its test.
+  checks and tests are one table in the tenancy design note (*Every path that issues a token*), with the
+  matrix *Every state × every token path* (removed member, demoted member, suspended account, deactivated
+  staff, suspended tenant × login, refresh, switch-tenant, impersonation, each request): a new path or
+  state adds its row or column and a test per cell.
 - **Check:** `tenant_memberships` is a platform table (TEN-35), so no policy narrows it: every query for
   one tenant's members names the tenant itself (`findByUserIdAndTenantId(userId, tenantId)`,
   `countByTenantIdAndRole`, the members list's `TenantMembershipRepositoryImpl.findByFilter(filter,

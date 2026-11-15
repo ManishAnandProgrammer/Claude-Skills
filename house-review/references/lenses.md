@@ -102,8 +102,22 @@ is code-smells.md, java.md and architecture.md.
   `sv` read from the same row as its role. The number only goes up and is compared with `==`. The
   writes that check the caller's current role in the database (rung 3, `lockAsCurrentAdmin`) stay:
   the session version is in addition, not instead.
+- **Check (every token path, with or without the piece):** the sign-in piece's account lifecycle is
+  golden: a password change (`POST /users/me/password`: the current password, 400 `USER_PASSWORD_INCORRECT`,
+  rate limited as the account's login; every refresh token revoked `PASSWORD_CHANGED`, the session version
+  raised, new tokens for the calling device), an account suspension (`AccountStatusService`: the row
+  updated first, every refresh token revoked `SUSPENDED`, the session version raised; a reactivation revives
+  nothing) and, with tenancy, staff deactivation (TEN-05). Every path that issues a token (login, refresh,
+  a password change; with tenancy switch-tenant and impersonation) starts with the account's row
+  share-locked and ACTIVE (`UserService.activeForTokenIssue`, 403 `AUTH_ACCOUNT_SUSPENDED`), before any
+  refresh token or membership: a change of access racing an issue then leaves no token valid. Without the
+  piece the access tokens already out live out their lifetime (REST-15's bound) and issue nothing. The
+  table of states × paths with a test per cell is in the tenancy design note (*Every state × every token
+  path*; without tenancy its suspended-account row).
 - **Detect:** a new write to a role, a status, a membership row, a password hash or the refresh tokens
-  without a bump in its transaction; a bump in another transaction (`REQUIRES_NEW`, `@Async`, a second
+  without a bump in its transaction; a token issue that reads the account without its share lock, or
+  after it spent the refresh token (a suspension racing it leaves a token); a status check on some paths
+  only; a bump in another transaction (`REQUIRES_NEW`, `@Async`, a second
   service call from a non-transactional caller); Redis written before the commit, or a miss filled
   with a plain SET; a reset of the number; a token whose number is read apart from its role; an
   operator's SQL change of access documented without the bump (runbook *Operator tasks*).

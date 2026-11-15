@@ -686,7 +686,8 @@ the details that bite).
   a reactivation (the existing contract, TEN-06): neither is revoked on top. Signing out everywhere
   revokes them all.
 - **Impersonation tokens** carry the impersonated member's number: the member's role change ends the
-  impersonation too. Platform tokens (their own chain) carry none: no endpoint changes staff access.
+  impersonation too. Platform tokens (their own chain) carry none: a staff deactivation is an operator's
+  SQL, which no publish follows, so the platform chain re-reads the staff row instead (account lifecycle, below).
 - **Rung 3 stays:** member changes still lock the tenant and check the caller's current role; with the
   session version, an older token is refused before that check (401 instead of 403).
 - Tests: `SessionVersionTenancyIntegrationTest` (demotion, promotion, removal and re-add, suspension,
@@ -705,19 +706,39 @@ beyond its own validity. A new path joins this table, with its test, in the chan
 
 | Path | What it reads and checks at the issue | Tests |
 |---|---|---|
-| Login (`AuthService.login` → `TokenService.issue`) | the password against the account's row; the person's memberships (`forLogin`: the most recently used one whose tenant is ACTIVE; none: 403 `TENANT_MEMBERSHIP_REQUIRED`); the tenant ACTIVE (403 `TENANT_NOT_ACTIVE`); role and session version from that membership row | `TenantPlanesIntegrationTest.accountWithoutMembershipIsRefused`, `suspendedTenantGetsNoTokens`, `suspendedTenantDoesNotLockOutTheOthers`, `tokensCarryTheTenant`; reference `AuthIntegrationTest.loginRefusalsLookTheSame` |
-| Refresh (`TokenService.refresh`) | the refresh token's row (revoked, expired, reused: 401 `AUTH_INVALID_REFRESH_TOKEN`, a reuse revokes every session); the membership of the token's tenant (gone: 404 `MEMBERSHIP_NOT_FOUND`); the token issued after that membership was created (a removal and re-add: 401); the tenant ACTIVE; role and session version read again after the rotation | `TenantMemberIntegrationTest.adminRemovesAMember`, `aReAddedMembersOldSessionStaysEnded`; `TenantPlanesIntegrationTest.suspendedTenantGetsNoTokens`, `tokenIssuesReadTheCurrentRole`; `SessionVersionTenancyIntegrationTest.aDemotionTakesEffectAtOnce`, `aPromotionRefreshesIntoTheHigherRole`; reference `AuthIntegrationTest.reusingARefreshTokenRevokesEverySession`, `expiredRefreshTokenIsRefused` |
-| Switch tenant (`TokenService.switchTenant`) | the refresh token's row, as for a refresh; the membership of the token's **own** tenant still there and created before the token (else 401 `AUTH_INVALID_REFRESH_TOKEN`: a removed member's old session switches nowhere, re-added or not); the target membership (404 `MEMBERSHIP_NOT_FOUND`) and its tenant ACTIVE (403); role and session version from the target membership row | `TenantMemberIntegrationTest.aRemovedMembersOldSessionDoesNotSwitch` (new, red before the fix); `TenantPlanesIntegrationTest.switchTenantMovesToAnotherMembership`, `switchToAForeignTenantIs404`, `suspendedTenantDoesNotLockOutTheOthers`, `tokenIssuesReadTheCurrentRole` |
-| Impersonation start (`ImpersonationService.impersonate` → `TokenService.issueImpersonation`) | the tenant ACTIVE; the impersonated membership read now (404 `MEMBERSHIP_NOT_FOUND`), its role and session version; the support policy (403 `SUPPORT_ACCESS_DENIED`), audited before it is asked. The staff member is the platform token's subject (see below) | `ImpersonationIntegrationTest.impersonationTokenWorksOnTheTenantPlane`, `impersonateANamedMember`, `refusingPolicyBlocksIssuance`; `SessionVersionTenancyIntegrationTest.anImpersonationEndsWithTheMembersRoleChange` |
+| Login (`AuthService.login` → `TokenService.issue`) | the password against the account's row; the account share-locked and ACTIVE (403 `AUTH_ACCOUNT_SUSPENDED`, after a matching password only); the person's memberships (`forLogin`: the most recently used one whose tenant is ACTIVE; none: 403 `TENANT_MEMBERSHIP_REQUIRED`); the tenant ACTIVE (403 `TENANT_NOT_ACTIVE`); role and session version from that membership row | `TenantPlanesIntegrationTest.accountWithoutMembershipIsRefused`, `suspendedTenantGetsNoTokens`, `suspendedTenantDoesNotLockOutTheOthers`, `tokensCarryTheTenant`; reference `AuthIntegrationTest.loginRefusalsLookTheSame` |
+| Refresh (`TokenService.refresh`) | the refresh token's row (revoked, expired, reused: 401 `AUTH_INVALID_REFRESH_TOKEN`, a reuse revokes every session); the account share-locked and ACTIVE before the token is spent (403 `AUTH_ACCOUNT_SUSPENDED`); the membership of the token's tenant (gone: 404 `MEMBERSHIP_NOT_FOUND`); the token issued after that membership was created (a removal and re-add: 401); the tenant ACTIVE; role and session version read again after the rotation | `TenantMemberIntegrationTest.adminRemovesAMember`, `aReAddedMembersOldSessionStaysEnded`; `TenantPlanesIntegrationTest.suspendedTenantGetsNoTokens`, `tokenIssuesReadTheCurrentRole`; `SessionVersionTenancyIntegrationTest.aDemotionTakesEffectAtOnce`, `aPromotionRefreshesIntoTheHigherRole`; reference `AuthIntegrationTest.reusingARefreshTokenRevokesEverySession`, `expiredRefreshTokenIsRefused` |
+| Switch tenant (`TokenService.switchTenant`) | the refresh token's row, as for a refresh; the account share-locked and ACTIVE (403 `AUTH_ACCOUNT_SUSPENDED`); the membership of the token's **own** tenant still there and created before the token (else 401 `AUTH_INVALID_REFRESH_TOKEN`: a removed member's old session switches nowhere, re-added or not); the target membership (404 `MEMBERSHIP_NOT_FOUND`) and its tenant ACTIVE (403); role and session version from the target membership row | `TenantMemberIntegrationTest.aRemovedMembersOldSessionDoesNotSwitch` (new, red before the fix); `TenantPlanesIntegrationTest.switchTenantMovesToAnotherMembership`, `switchToAForeignTenantIs404`, `suspendedTenantDoesNotLockOutTheOthers`, `tokenIssuesReadTheCurrentRole` |
+| Impersonation start (`ImpersonationService.impersonate` → `TokenService.issueImpersonation`) | the staff row re-read (deactivated: 401 `AUTHENTICATION_REQUIRED`); the tenant ACTIVE; the impersonated membership read now (404 `MEMBERSHIP_NOT_FOUND`), its role and session version; the support policy (403 `SUPPORT_ACCESS_DENIED`), audited before it is asked; the member's account share-locked and ACTIVE (403 `AUTH_ACCOUNT_SUSPENDED`) | `ImpersonationIntegrationTest.impersonationTokenWorksOnTheTenantPlane`, `impersonateANamedMember`, `refusingPolicyBlocksIssuance`; `SessionVersionTenancyIntegrationTest.anImpersonationEndsWithTheMembersRoleChange`; `PlatformUserStatusIntegrationTest.aSuspendedMemberIsNotImpersonated`; `StaffDeactivationIntegrationTest.aDeactivatedStaffMemberImpersonatesNobody` |
 | Impersonation stop | no endpoint: the token is short-lived (`app.impersonation.token-ttl`) and has no refresh token; with the session version the member's access change ends it at once | as above |
-| Platform login (`PlatformAuthService.login` → `TokenService.issuePlatform`) | the password against the staff row; the role from that row; no refresh token, so staff sign in again after one lifetime | `PlatformTenantIntegrationTest.platformLoginIsForStaffOnly` |
+| Platform login (`PlatformAuthService.login` → `TokenService.issuePlatform`) | the password against the staff row; the row active (deactivated: 401 `AUTH_INVALID_CREDENTIALS`, as an unknown email); the role from that row; no refresh token, so staff sign in again after one lifetime | `PlatformTenantIntegrationTest.platformLoginIsForStaffOnly`; `StaffDeactivationIntegrationTest.aDeactivatedStaffMembersTokenDiesAtTheNextRequest` |
+| Each platform request (`ActiveStaffFilter`, the platform chain) | the staff row by primary key, whatever the session-version piece: a deactivated member's token is 401 `AUTHENTICATION_REQUIRED` from their next request on | `StaffDeactivationIntegrationTest.aDeactivatedStaffMembersTokenDiesAtTheNextRequest` |
+| Password change (`AuthService.changePassword` → `TokenService.replacePassword`) | the current password against the account's row (400 `USER_PASSWORD_INCORRECT`, rate limited as the account's login); an impersonation token refused (403 `ACCESS_DENIED`); then, in one transaction, the hash written (the account's row first), every refresh token revoked (`PASSWORD_CHANGED`), every membership's session version raised, the account read again ACTIVE, and tokens for the token's **own** tenant (not login's most recently used) | reference `AccountLifecycleIntegrationTest.aPasswordChangeEndsEverySession`, `aWrongCurrentPasswordChangesNothing`, `wrongCurrentPasswordsAreLimitedLikeLogins`; `PlatformUserStatusIntegrationTest.aPasswordChangeStaysInTheDevicesTenant`, `anImpersonationChangesNoPassword` |
+| Account suspension, reactivation (`AccountStatusService.changeStatus`, staff: `PATCH /platform/users/{id}/status`) | issue nothing: the suspension updates the account's row first, then revokes every refresh token (`SUSPENDED`) and raises every membership's session version, in one transaction; the last ACTIVE ADMIN of an open tenant is refused (409 `TENANT_MEMBER_LAST_ADMIN`, the tenant locked as a member change locks it). A reactivation revives nothing | reference `AccountLifecycleIntegrationTest.aSuspensionRefusesEveryTokenPath`, `aReactivationRevivesNoSession`, `aSuspensionRacingARefreshLeavesNoToken`, `aSuspensionRacingALoginLeavesNoToken`; `PlatformUserStatusIntegrationTest.aTenantKeepsAnActiveAdmin`, `onlyStaffChangeAnAccountsStatus` |
 | Tenant registration, approval, activation | issue no token: registration answers 202 without one, the owner signs in afterwards through login (which checks the tenant ACTIVE) | `TenantRegistrationIntegrationTest.registrationWaitsForApproval` (the owner's login is 403 `TENANT_NOT_ACTIVE` until approved) |
 | Sign out everywhere (session-version piece) | issues nothing: revokes every refresh token and raises every membership's version in one transaction | `SessionVersionTenancyIntegrationTest.signingOutEverywhereEndsEveryTenant` |
 
-Known limit, not closed here: staff have no removal or disable (they are rows an operator writes, and
-one with audit history can't be deleted: `fk_platform_audit_actor_id`), so a platform token is trusted
-for its lifetime (the extension point: house-review TEN-05). When staff deactivation is built (a feature, parked), impersonation must re-read the
-staff row at the issue like every other path above.
+Staff deactivation is built (2026-11-15 evening, below): staff are rows an operator writes, and one with
+audit history can't be deleted (`fk_platform_audit_actor_id`), so an operator sets `deactivated_at`; the
+platform login, every platform request and every impersonation issue re-read the row, so a platform token
+is never trusted for its lifetime.
+
+### Every state × every token path
+
+What each change of access does to each path, with tenancy (the reference, without tenancy, has the
+suspended-account row alone, with its login, refresh and request cells). "SV" is the session-version piece;
+without it an access token already out lives out its lifetime (15 minutes, REST-15), and every write that
+grants or keeps access re-checks the caller in the database (rung 3).
+
+| State | Login | Refresh | Switch tenant | Impersonation | Each request |
+|---|---|---|---|---|---|
+| Removed member | that tenant isn't picked; none left: 403 `TENANT_MEMBERSHIP_REQUIRED` (`TenantPlanesIntegrationTest.accountWithoutMembershipIsRefused`) | 404 `MEMBERSHIP_NOT_FOUND`; re-added, 401 (`TenantMemberIntegrationTest.adminRemovesAMember`, `aReAddedMembersOldSessionStaysEnded`) | 401 from the old session, re-added or not (`aRemovedMembersOldSessionDoesNotSwitch`) | 404 `MEMBERSHIP_NOT_FOUND` (`forImpersonation`) | SV: 401 `SESSION_VERSION_STALE` (`SessionVersionTenancyIntegrationTest.aRemovalTakesEffectAtOnce`); else until expiry, member changes 403 (`aRemovedAdminCantComeBack`) |
+| Demoted member | the new role (`tokenIssuesReadTheCurrentRole`) | the new role (`tokenIssuesReadTheCurrentRole`) | the target's role read now | the member's role read now (`anImpersonationEndsWithTheMembersRoleChange`) | SV: 401 (`aDemotionTakesEffectAtOnce`); else the old role until expiry, member changes 403 (`aDemotedAdminsTokenManagesNoMore`) |
+| Suspended account | 403 `AUTH_ACCOUNT_SUSPENDED` after a matching password (`AccountLifecycleIntegrationTest.aSuspensionRefusesEveryTokenPath`; racing: `aSuspensionRacingALoginLeavesNoToken`) | 401 (revoked); one not revoked, 403 (`aSuspendedAccountsLiveRefreshTokenIsRefused`; racing: `aSuspensionRacingARefreshLeavesNoToken`) | 401 (revoked); one not revoked, 403 (`PlatformUserStatusIntegrationTest.aSuspendedMemberSwitchesNowhere`) | 403 `AUTH_ACCOUNT_SUSPENDED` (`aSuspendedMemberIsNotImpersonated`) | SV: 401 (`aSuspensionRefusesEveryTokenPath`); else until expiry, and it issues nothing (a password change 403) |
+| Deactivated staff | platform login 401 `AUTH_INVALID_CREDENTIALS` (`StaffDeactivationIntegrationTest.aDeactivatedStaffMembersTokenDiesAtTheNextRequest`) | none: platform tokens have no refresh token | none: staff have no tenant | 401 (`aDeactivatedStaffMemberImpersonatesNobody`) | every platform request 401, with or without SV (`aDeactivatedStaffMembersTokenDiesAtTheNextRequest`) |
+| Suspended tenant | another ACTIVE tenant; none: 403 `TENANT_NOT_ACTIVE` (`TenantPlanesIntegrationTest.suspendedTenantGetsNoTokens`, `suspendedTenantDoesNotLockOutTheOthers`) | 403 `TENANT_NOT_ACTIVE`, the token kept for a reactivation (`suspendedTenantGetsNoTokens`) | into it 403, out of it allowed (`suspendedTenantDoesNotLockOutTheOthers`) | 403 `TENANT_NOT_ACTIVE` (`ImpersonationService`, first check) | SV: 401 for every member there (`aSuspensionEndsEveryMembersTokens`); else until expiry |
+
+A new state or path adds its row or column, with a test per cell, in the change that adds it (TEN-08).
 
 ## Tenant lifecycle × seeding (2026-11-15, pre-round-4 pass)
 
@@ -772,6 +793,45 @@ mode's rolling-deploy cell had no line in its runbook; it has now.
 
 The token-issuing paths (above) were checked again after these changes: the display number, the
 requester and the upgrade path add no path that issues a token.
+
+## Built (2026-11-15 evening): the account lifecycle (sign-in piece)
+
+Owner decision (overnight run): build the parked password change, user suspension and staff deactivation
+as groundwork. Golden code in the reference (no tenancy) and the tenancy overlay; tests per path above.
+
+- **One serialisation point: the account's row.** Every token issue starts with `UserService.activeForTokenIssue`
+  (the row `FOR SHARE`, ACTIVE or 403 `AUTH_ACCOUNT_SUSPENDED`) before it touches a refresh token or a
+  membership; every change of the account's access (a suspension, a password change) updates that row
+  first. So an issue either commits before the change starts (and the change, a later statement, revokes
+  the refresh token it issued and raises the session version over its access token) or waits and reads the
+  change. Without the lock a refresh read the account ACTIVE, waited at the token, and got a 200 for a
+  suspended account (`aSuspensionRacingARefreshLeavesNoToken` red). Same order everywhere (account, then
+  tokens, then memberships): no deadlock with the member changes, which lock the tenant, then memberships.
+- **Password change** (`POST /users/me/password`, `PasswordChangeRequest {currentPassword, newPassword}`):
+  the current password checked outside a transaction (400 `USER_PASSWORD_INCORRECT` at `#/currentPassword`:
+  the request's own value is wrong, REST-05; 401 would make a client refresh), rate limited by the
+  account's login bucket (a stolen access token can't guess the password here faster than at login); the
+  new one through signup's `@PasswordPolicy` and the breached-password check; then one transaction:
+  hash, revoke every refresh token (`PASSWORD_CHANGED`), raise the session version(s), tokens for the
+  calling device (with tenancy: the token's own tenant). An impersonation token is refused (403).
+- **Suspension and reactivation** (`users.status` ACTIVE / SUSPENDED, `0027-users-status`, with the two new
+  revocation reasons): without tenancy an application ADMIN (`PATCH /users/{id}/status`, `@AdminOnly`),
+  never their own account (403 `USER_OWN_STATUS_CHANGE`), and only while an ACTIVE ADMIN now: the caller and
+  the target are locked together in id order and the caller re-read, so the last ADMIN can't be suspended
+  (only another active ADMIN suspends one) and of two ADMINs suspending each other the second is refused
+  (`twoAdminsSuspendingEachOtherLeaveOne`). With tenancy accounts are global and staff do it
+  (`PATCH /platform/users/{id}/status`, `PlatformUserController`; ArchUnit keeps `AccountStatusService` off the
+  tenant plane); a tenant keeps an ACTIVE ADMIN (409 `TENANT_MEMBER_LAST_ADMIN`; a CLOSED or REJECTED
+  tenant needs none). The ADMIN role now comes with sign-in itself (`0007`, `newAdmin()`): suspension is its
+  first admin endpoint.
+- **Staff deactivation** (`platform_users.deactivated_at`, `0028-platform-users-deactivation`, written by the
+  operator as staff rows are: the app role only reads them, 0015): platform login refuses (as an unknown
+  email), `ActiveStaffFilter` re-reads the row on every platform request (one primary-key read; the
+  session-version piece would need a staff number the operator's SQL can't publish, and platform calls are
+  few), and the impersonation issue re-reads it too.
+- **Without the session-version piece** a suspended account's or a changed password's access tokens live
+  out their lifetime (they issue nothing: every issue re-reads the account), the same documented bound as a
+  tenant's suspension.
 
 ## Later (rules and notes, not in the first setup)
 
