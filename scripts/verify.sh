@@ -111,6 +111,7 @@ mvn_verify() {
     return 1
 }
 
+
 docker info > /dev/null 2>&1 || {
     echo "Docker is not reachable: the tests need it (Testcontainers). Start Docker, or run this as 'sg docker -c $0'." >&2
     exit 1
@@ -253,6 +254,8 @@ if wants 2f; then
     grep -rqE "membership_id|MEMBERSHIP_CLAIM|TenantDeactivated|MembershipService" "$files/src" && { echo "FAILED: the session version's tenancy parts in a copy without tenancy" >&2; exit 1; }
     grep -q "SESSION_VERSION_STALE" "$files/src/main/java/com/acme/files/user/domain/Role.java" \
         || { echo "FAILED: the Role javadoc doesn't say a role change reaches the next request with the session version" >&2; exit 1; }
+    # The display number comes with the metadata piece (Counters): not in this copy.
+    [ -f "$files/src/main/resources/db/changelog/changes/0026-todo-numbers.sql" ] && { echo "FAILED: the todo numbers in a copy without the metadata piece" >&2; exit 1; }
     for attachment in main/java/com/acme/files/todo/domain/TodoAttachment.java test/java/com/acme/files/todo/TodoAttachmentsIntegrationTest.java \
                       main/resources/db/changelog/changes/0010-todo-attachments.sql; do
         [ -f "$files/src/$attachment" ] || { echo "FAILED: $attachment is missing from the example and media copy" >&2; exit 1; }
@@ -319,6 +322,10 @@ if wants 2h; then
         && [ ! -f "$tenants/src/main/resources/db/changelog/changes/0021-users-session-version.sql" ] \
         && ! grep -q "session_version" "$tenants/src/main/java/com/acme/tenants/user/domain/User.java" \
         || { echo "FAILED: the session version isn't per membership in the schema-per-tenant copy" >&2; exit 1; }
+    grep -q "0026-todo-numbers.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" \
+        || { echo "FAILED: the todo numbers are missing from the schema-per-tenant copy's tenant changelog" >&2; exit 1; }
+    [ -f "$tenants/src/main/java/com/acme/tenants/user/api/Users.java" ] \
+        && { echo "FAILED: the accounts' facade in a tenancy copy (a person in a tenant is a member: Members)" >&2; exit 1; }
     mvn_verify "$tenants" "$WORK/tenants.log"
 fi
 
@@ -375,6 +382,10 @@ if wants 2j; then
     grep -q "docker-entrypoint-initdb.d" "$rowtenants/compose.yaml" && [ -x "$rowtenants/docker/postgres-init/10-tenancy-roles.sh" ] \
         && ! grep -q "search_path" "$rowtenants/docker/postgres-init/10-tenancy-roles.sh" \
         || { echo "FAILED: compose.yaml doesn't create the row-mode roles in the copy" >&2; exit 1; }
+    grep -q "0026-todo-numbers.sql" "$rowmaster" && [ -f "$rowtenants/src/main/java/com/acme/rowtenants/todo/service/TodoNumberSeed.java" ] \
+        || { echo "FAILED: the todo numbers' changeset or their seed listener is missing from the row-mode copy" >&2; exit 1; }
+    [ -f "$rowtenants/src/main/java/com/acme/rowtenants/user/api/Users.java" ] \
+        && { echo "FAILED: the accounts' facade in a tenancy copy (a person in a tenant is a member: Members)" >&2; exit 1; }
     mvn_verify "$rowtenants" "$WORK/rowtenants.log"
 fi
 

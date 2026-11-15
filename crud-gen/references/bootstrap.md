@@ -204,8 +204,10 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   0018 with the example (its owners reference members), row mode 0019 (replica identities, with a
   piece that brings tenant tables), 0020 (the members list's index), row mode with the example 0023
   (the owners' dependency statistics); session-version 0021 without tenancy (the users column) or 0022
-  with it (the membership column, a platform changeset). A project's own changesets start after the
-  highest number **any** piece reserves (0023 today: the first is **0024**), not after the highest copied one: a piece
+  with it (the membership column, a platform changeset); example 0024 (tags by status, newest first) and
+  0025 (a todo's requester), with metadata 0026 (the todos' display numbers). A project's own changesets
+  start after the highest number **any** piece reserves (0026 today: the first is **0027**), not after the
+  highest copied one: a piece
   turned on later (the session version, the ladder's next rung) then brings its own numbers without
   two files sharing one. When a project already used a reserved number, the late piece's changesets
   are copied under the next free numbers instead (rename the file and its changeset id together).

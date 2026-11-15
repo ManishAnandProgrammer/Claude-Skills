@@ -26,12 +26,15 @@ import java.util.UUID;
 @Tag(name = "Todos", description = """
         The signed-in user's todos, the time logged on them (/todos/{todoId}/time-entries) and the tags \
         they carry (/todos/{id}/tags). Another user's todo, list or tag answers 404.""")
-// media:begin
-// The media codes are appended with "+" because a piece marker can't sit inside a text block, and
-// this file is copied with and without the media piece. Generated code knows whether a project has
-// media and writes each description as one text block.
-// media:end
 public interface TodoApi {
+
+    // A piece marker can't sit inside a text block, so the create's 404 text starts with this constant:
+    // generated code knows whether a project has tenancy and writes the description as one text block.
+    // tenancy:begin
+    // String REQUESTER_NOT_FOUND = "TENANT_MEMBER_NOT_FOUND (requesterId is no member of your organisation, or has left it); ";
+    // tenancy:else
+    String REQUESTER_NOT_FOUND = "USER_NOT_FOUND (requesterId is no account); ";
+    // tenancy:end
 
     @Operation(summary = "Your todos, in batches", description = """
             Cursor-paged: the first call returns a batch and pageInfo.nextCursor; send it as after to \
@@ -54,7 +57,7 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     CursorWrapper<TodoSummaryResponse> all(@ParameterObject TodoFilter filter);
 
-    @Operation(summary = "One of your todos")
+    @Operation(summary = "One of your todos", description = "With its list's name and who asked for it.")
     @ApiResponse(responseCode = "200", description = "The todo")
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -73,7 +76,8 @@ public interface TodoApi {
 
     @Operation(summary = "Create a todo", description = """
             Created OPEN, in one of your lists, carrying the tags in tagIds (your own tags, up to a \
-            configured number; none when absent).""")
+            configured number; none when absent), with requesterId (who asked for it; optional, fixed once \
+            created). Its response shows the list by name.""")
     @ApiResponse(responseCode = "201", description = "Created")
     // media:begin
     @ApiResponse(responseCode = "400", description = """
@@ -90,13 +94,13 @@ public interface TodoApi {
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:begin
-    @ApiResponse(responseCode = "404", description = """
+    @ApiResponse(responseCode = "404", description = REQUESTER_NOT_FOUND + """
             TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_GONE, \
             TAG_GONE (deleted while the todo was being saved); UPLOAD_POLICY_NOT_FOUND (no upload policy for \
             the todos' attachments: an operator's setup is missing)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:else
-    // @ApiResponse(responseCode = "404", description = """
+    // @ApiResponse(responseCode = "404", description = REQUESTER_NOT_FOUND + """
     //         TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_GONE, \
     //         TAG_GONE (deleted while the todo was being saved)""",
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

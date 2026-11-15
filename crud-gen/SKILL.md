@@ -36,6 +36,7 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
 | `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
 | `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@AssertTrue boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
+| `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getOwnedTodoWithItsList`, `toResponse`), `TodoRepository.findWithTodoListByIdAndOwnerId`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`; the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` at the create; shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) |
 | `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`) of a **configured maximum length** (`getLengthInDays`, `plan.max-days`), an **overlap filter with a lower index bound** (`plannedFrom`/`plannedTo`: `ends_on >= from`, `starts_on <= to` and the derived `starts_on >= from - (max - 1)`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 
 The rules behind the shape are the house-review references, which are the source of truth:
@@ -178,11 +179,14 @@ the picker is the first screen that needs it. Whichever it is, check that the pi
 **every role that writes the child** and searches the **label the screen shows**: a list behind
 `@AdminOnly` (the tenancy piece's `GET /tenant-members`, which searches emails) is no picker for a rota
 every member writes. For a person reference with tenancy, a `Members`-backed members dropdown readable
-by every member is the fitting picker; it is not in the tenancy piece yet, so a project that needs one
-records it as an open item (or the owner accepts typing the person's id, recorded).
+by every member is the fitting picker. It is a use case, not in the tenancy piece: a project that needs
+one generates it with this skill as a dropdown of the user module (`GET /tenant-members/dropdown`, label
+the full name, `query` on it, over `Members`, references/dropdown.md) and reviews it with house-review
+like any other code; until then it records the open item (or the owner accepts typing the person's id,
+recorded).
 
-A module without a facade (the sign-in piece's `user`) gets one in the same change: an interface in
-`<module>.api` that its service implements, with its view record. **With tenancy, other modules ask
+A module without a facade gets one in the same change: an interface in `<module>.api` that its service
+implements, with its view record (golden: the sign-in piece's `user.api.Users`, without tenancy). **With tenancy, other modules ask
 `Members`** (the tenancy overlay's `user.api.Members` + `MemberView`, implemented by
 `MembershipService`): `isMember(userId)`, `getMemberView(userId)` and `getMemberViews(userIds)` (one
 statement, absent ids simply absent), each scoped by `TenantContext.current()`, answering
@@ -217,7 +221,7 @@ Check before generating:
 | Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is not applied**, ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
 | A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column | DATA-33 |
 | `Instant` for moments, `LocalDate` for picked dates, no time zones | JAVA-25 |
-| The sequence exists for a display number (single-tenant only; with tenancy a display number is a per-tenant counter, the TEN-18 row below, never a sequence) | DATA-14 |
+| A display number comes from the metadata piece's gapless `Counters` (golden `Todo.number`: a fixed counter seeded by its changeset, after the highest number of the rows already there; with tenancy one per tenant, the TEN-18 row below), or without that piece from a sequence; a fixture inserting rows splices in a number (tests.md) | DATA-14 |
 
 Golden examples: `~/.claude/skills-reference/src/main/resources/db/changelog/changes/000{2,3,4,5}-*.sql`.
 **Applied** means the changeset has run on any database that outlives a test run (a teammate's, a
@@ -262,7 +266,7 @@ names as such; it joins `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES` with
 | Every unique constraint, exclusion constraint (`tenant_id WITH =`) and list index has `tenant_id` among its leading equality columns: the owner (or a parent column) first when the table has one (`(owner_id, tenant_id, sort…, id)`, `(customer_id, tenant_id, id)`: it also serves the key's check), `tenant_id` first when it has none or a list filters by the tenant alone (`(tenant_id, sort…, id)`); names as in single-tenant. A scope column that determines the tenant (an owner, a member) gets `CREATE STATISTICS st_<table>_<column>_tenant_id (dependencies) ON <column>, tenant_id` in the same changeset (golden row overlay `0023-owner-tenant-statistics.sql`): without it the planner estimates a person's rows at one once other tenants fill the table | TEN-33, DATA-10 |
 | A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually applied by then; the key exists for the child). A reference to a person (an owner, an assignee) is to the tenant's own members, never to `users` or `tenant_memberships` (platform tables): `(owner_id, tenant_id) → members (user_id, tenant_id)` as `fk_<table>_<column>` (golden: the row overlay's `0018-owners-reference-members`); a person the request names (an assignee) is checked through `Members` (Step 1) before the write, since the key also accepts a member who left. A member's row is never deleted (a removal marks it left), so the key never blocks a removal and the record keeps its owner; a project whose records must be reassigned before a removal says so (an open item: the members API has no such check) | TEN-33, TEN-16, TEN-17 |
 | The replica identity: `ALTER TABLE <t> REPLICA IDENTITY USING INDEX <uq_…>` **in the changeset that creates the table**, on a unique key that includes `tenant_id` (the parent key `(id, …, tenant_id)` of its composite references, or `(tenant_id, key)`); a table without one gets `uq_<table>_id_tenant_id (id, tenant_id)` | TEN-38 |
-| A display number (an invoice or order number) is a per-tenant counter (the metadata piece's `Counters`), never an identity column or a sequence: one sequence serves every tenant. `counters` is tenant data, so it is a **fixed** name (`TICKET_NUMBER`), not `perContext` with the tenant id; it needs the TEN-34 seed pair (a listener with `Counters.createIfAbsent(name, 0)` plus a backfill changeset), and the create calls `createIfAbsent` before `next` too (a tenant activated by an instance without the listener, during a rolling deploy, still numbers from 1). A `uq_<table>_number (tenant_id, number)` backs it up. Tests: rows 27b–27d | TEN-18, TEN-34 |
+| A display number (an invoice or order number) is a per-tenant counter (the metadata piece's `Counters`), never an identity column or a sequence: one sequence serves every tenant. `counters` is tenant data, so it is a **fixed** name (`TICKET_NUMBER`), not `perContext` with the tenant id; it needs the TEN-34 seed pair (a listener with `Counters.createIfAbsent(name, 0)` plus a backfill changeset for every tenant whatever its status, after its highest number), and the create calls `createIfAbsent` before `next` too (a tenant activated by an instance without the listener, during a rolling deploy, still numbers from 1). A `uq_<table>_number (tenant_id, number)` backs it up. Golden: `Todo.number`, `0026-todo-numbers.sql`'s row block, `TodoNumberSeed`. Tests: rows 27b–27d | TEN-18, TEN-34 |
 | A changeset already applied gets no new comment (its checksum changes): a later note (a TEN-36 search warning) goes in the runbook or the entity's javadoc | DATA-13 |
 | No seed rows in the entity's changeset: a new tenant's starting rows come from a `TenantProvisioned` listener in the module (golden `TodoAttachmentPolicySeed`, `TodoListDefaultsSeed`), the existing tenants' from a backfill changeset that lifts `FORCE` for its own transaction (golden `0010`'s and `0014`'s `…-existing-tenants`). The backfill also reaches a tenant still PENDING, so **the listener creates its row only when missing** (`Uploads.definePolicy`, `Metadata.createIfAbsent`, `Counters.createIfAbsent`): a plain insert fails the approval on the unique key, on every retry, and the tenant can never be activated. Tests (golden `TodoSeedsBackfillIntegrationTest`): the backfill for a tenant without the row, and a PENDING tenant approved after the backfill (ACTIVE, one row, its owner signs in) | TEN-34 |
 | A native query on a tenant table names its tenant: `AND tenant_id = :tenantId` once per tenant table it reads or writes (a subquery's too), a `UUID tenantId` first parameter, the service passing `TenantContext.id()` (a job's batch runs under `TenantScope.runAs`, so it gets the tenant the job runs for); an insert lists `tenant_id`. The policy is the fallback, not the filter (golden: the row overlay's `MediaFileRepository`, guarded by `NativeQueryTenantIntegrationTest`). A search on `jsonb @>`, `LIKE`/`ILIKE` or range `&&` is flagged as a filter over the tenant's rows | TEN-37, TEN-36 |
@@ -505,23 +509,24 @@ batch, never mapped with a null parent into a 500; the cursor still continues af
 row (golden `PlanService.withTodos`, test `listLeavesOutAPlanWhoseTodoVanishedBetweenTheReads`). A
 single read of the child, then its parent, answers the child's own 404 when the parent is gone (Step 1's
 `find<Parent>View`; golden `PlanService.findById`). That two-read rule is for **another module's**
-parent (an id column and a facade). Three more shapes:
-- **a same-module parent on the detail** (a `@ManyToOne(fetch = LAZY)`, golden `Todo.todoList`) is read
-  **with the child in one statement**: an `@EntityGraph(attributePaths = "<parent>")` finder or a fetch
-  join of the to-one. A lazy second read is the proxy's initialisation, and a parent deleted between the
-  statements surfaces as `EntityNotFoundException`, a 500 (tests.md row 28f). List rows keep the batch
-  lookup above;
-- **a write's response** (an update, a status action) maps its parents exactly like the single read,
-  never through an unlocked lazy relation or a bare facade call: a write that changes nothing flushes no
-  `UPDATE` and so holds no row lock, and the parent can go between its statements as for a GET (the
-  child's own 404, tests.md row 28f);
-- **a person reference** (an owner, an assignee, a member on a rota) never "vanishes": a removal deletes
-  the membership, which `Members` reads, while the tenant's `members` row stays, marked left. Left out or
-  404 would hide a removed person's records for good (their coming shifts gone from the rota, a GET 404
-  while PUT and DELETE still find the record). Ask how a former member's records show, and record it:
-  the person by id with a `null` name (the default), or a `left` flag on the view; every row shown, the
-  GET answers, and a create or hand-over **to** a removed member is 404 `TENANT_MEMBER_NOT_FOUND`
-  (tests.md row 28g).
+parent (an id column and a facade). Three more shapes, golden on `Todo` (tests.md rows 27b-27d, 28f,
+28g):
+- **a same-module parent on the detail** (a `@ManyToOne(fetch = LAZY)`): `todoList {id, name}` read with
+  the child in one statement (`TodoRepository.findWithTodoListByIdAndOwnerId`, an `@EntityGraph`), also
+  for a write that may hold no row lock (a status change to the status it has); the writes that lock the
+  child read the parent afterwards (`TodoService`'s javadoc says why that is safe). List rows keep the
+  batch lookup above;
+- **a reference to a person** (an owner, an assignee, who asked): an id with a foreign key (to `users`;
+  with tenancy to the tenant's `members`, which a removal marks left and never deletes), checked through
+  the person's module at the write that names them (`TodoService.requireRequester`: `Users`, with tenancy
+  `Members.isMember`, 404 `TENANT_MEMBER_NOT_FOUND`). With tenancy the detail shows `{id, fullName}` while
+  they are a member and the id alone once they left (every record still listed and editable); without
+  tenancy the id alone, as every internet account is a USER and a name is personal data (Step 1). Ask
+  how a former member's records show if the owner wants more than the default (a `left` flag), and record
+  it;
+- **a display number**: SKILL.md Step 2's TEN-18 row; the golden `Todo.number`, `0026-todo-numbers.sql`
+  (the rows already there numbered in id order, the counter after the highest; row mode per tenant, for
+  every tenant whatever its status), `TodoNumberSeed`, the create's `createIfAbsent` in row mode.
 
 ### 4.4 ErrorCodes and messages (error-contract.md)
 `ERROR_PREFIX_NOT_FOUND`, `ERROR_PREFIX_<FIELD>_TAKEN` per unique field, `ERROR_PREFIX_IN_USE` when

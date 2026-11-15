@@ -12,6 +12,9 @@ import com.example.app.media.api.MediaFileView;
 import com.example.app.media.api.UploadPurpose;
 import com.example.app.media.api.Uploads;
 // media:end
+// metadata:begin
+import com.example.app.metadata.api.Counters;
+// metadata:end
 import com.example.app.todo.api.TodoView;
 import com.example.app.todo.api.Todos;
 import com.example.app.todo.domain.Tag;
@@ -27,6 +30,9 @@ import com.example.app.todo.dto.request.TodoStatusRequest;
 import com.example.app.todo.dto.request.TodoTagsRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
 import com.example.app.todo.dto.response.TimeEntryResponse;
+// tenancy:begin
+// import com.example.app.todo.dto.response.TodoRequesterResponse;
+// tenancy:end
 import com.example.app.todo.dto.response.TodoResponse;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import com.example.app.todo.mapper.TimeEntryMapper;
@@ -37,6 +43,12 @@ import com.example.app.todo.repository.TodoAttachmentRepository;
 // media:end
 import com.example.app.todo.repository.TodoRepository;
 import com.example.app.todo.repository.TodoTagRepository;
+// tenancy:begin
+// import com.example.app.user.api.MemberView;
+// import com.example.app.user.api.Members;
+// tenancy:else
+import com.example.app.user.api.Users;
+// tenancy:end
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -56,12 +68,24 @@ import java.util.UUID;
  * carries): they are read and written only here, always through their todo. The tags themselves are
  * another aggregate's, reached through {@link TagService}. Other modules reach a todo only through
  * {@link Todos}, which this service implements.
+ *
+ * <p>A response shows the todo's list by name, so it is read with the todo in one statement where the
+ * todo isn't locked (the detail, a status change that may change nothing); a locked todo's list can't go
+ * while the lock is held (the list's delete is refused while it has todos, and the todo's delete waits),
+ * so the writes that lock it read the list afterwards. The requester is another module's person: an id,
+ * checked through that module's facade at the create, and (with tenancy) shown by name while they are a
+ * member.</p>
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class TodoService implements Todos {
 
+    // metadata:begin
+    /** The display numbers' counter (Counters): one for the application, or one per tenant with tenancy. */
+    static final String NUMBER_COUNTER = "TODO_NUMBER";
+
+    // metadata:end
     private final TodoRepository repository;
     private final TodoMapper mapper;
     private final TimeEntryRepository timeEntryRepository;
@@ -72,6 +96,14 @@ public class TodoService implements Todos {
     private final CurrentUser currentUser;
     private final Clock clock;
     private final Paging paging;
+    // tenancy:begin
+    // private final Members members;
+    // tenancy:else
+    private final Users users;
+    // tenancy:end
+    // metadata:begin
+    private final Counters counters;
+    // metadata:end
     // media:begin
     private final TodoAttachmentRepository attachmentRepository;
     private final Uploads uploads;
@@ -82,18 +114,29 @@ public class TodoService implements Todos {
         UUID ownerId = currentUser.id();
         TodoList todoList = todoListService.getOwnedTodoList(request.todoListId(), ownerId);
         List<Tag> tags = tagService.getOwnedTags(Objects.requireNonNullElse(request.tagIds(), Set.of()), ownerId);
+        if (Objects.nonNull(request.requesterId())) {
+            requireRequester(request.requesterId());
+        }
         Todo todo = mapper.toEntity(request, todoList, tags, ownerId);
         // media:begin
         Set<String> attachmentKeys = Objects.requireNonNullElse(request.attachmentKeys(), Set.of());
         uploads.fileCountRange(UploadPurpose.TODO_ATTACHMENT).requireWithin(attachmentKeys.size());
         todo.attach(uploads.claim(UploadPurpose.TODO_ATTACHMENT, attachmentKeys));
         // media:end
+        // metadata:begin
+        // tenancy-row:begin
+        // // A tenant activated by an instance without TodoNumberSeed (a rolling deploy) numbers from 1 too.
+        // counters.createIfAbsent(NUMBER_COUNTER, 0);
+        // tenancy-row:end
+        // Last, after every check: the counter's row stays locked until the commit.
+        todo.assignNumber(counters.next(NUMBER_COUNTER));
+        // metadata:end
         Todo saved = repository.saveAndFlush(todo);
         return ObjectWrapper.withObject(toResponse(saved));
     }
 
     public ObjectWrapper<TodoResponse> findById(UUID id) {
-        return ObjectWrapper.withObject(toResponse(getOwnedTodo(id, currentUser.id())));
+        return ObjectWrapper.withObject(toResponse(getOwnedTodoWithItsList(id, currentUser.id())));
     }
 
     public CursorWrapper<TodoSummaryResponse> findByFilter(TodoFilter filter) {
@@ -266,8 +309,25 @@ public class TodoService implements Todos {
                 // media:begin
                 attachmentsOf(todo),
                 // media:end
+                // tenancy:begin
+                // requesterOf(todo),
+                // tenancy:end
                 todoTagRepository.findTagsOfTodo(todo.getId()));
     }
+    // tenancy:begin
+
+    // /** By name while they are a member; a former member by id alone (their todos stay as they were). */
+    // private TodoRequesterResponse requesterOf(Todo todo) {
+    //     if (Objects.isNull(todo.getRequesterId())) {
+    //         return null;
+    //     }
+    //     String fullName = members.getMemberViews(List.of(todo.getRequesterId())).stream()
+    //             .map(MemberView::fullName)
+    //             .findFirst()
+    //             .orElse(null);
+    //     return new TodoRequesterResponse(todo.getRequesterId(), fullName);
+    // }
+    // tenancy:end
     // media:begin
 
     private List<MediaFileView> attachmentsOf(Todo todo) {
@@ -284,8 +344,9 @@ public class TodoService implements Todos {
         return mapper.withTags(rows, todoTagRepository.findTagRowsOfTodos(ids));
     }
 
+    /** With its list: a status it already has changes nothing, so no row lock keeps its list there. */
     private Todo getEditableTodo(UUID id, UUID ownerId, Long expectedVersion) {
-        Todo todo = getOwnedTodo(id, ownerId);
+        Todo todo = getOwnedTodoWithItsList(id, ownerId);
         todo.checkVersion(expectedVersion);
         return todo;
     }
@@ -296,6 +357,24 @@ public class TodoService implements Todos {
 
     private Todo getOwnedTodo(UUID id, UUID ownerId) {
         return repository.findByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+    }
+
+    private Todo getOwnedTodoWithItsList(UUID id, UUID ownerId) {
+        return repository.findWithTodoListByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+    }
+
+    /**
+     * A person the create names: an account (with tenancy, a member now: 404 {@code TENANT_MEMBER_NOT_FOUND}
+     * for a removed one, whose row in {@code members} the foreign key would still accept).
+     */
+    private void requireRequester(UUID requesterId) {
+        // tenancy:begin
+        // if (!members.isMember(requesterId)) {
+        //     throw AppException.of(ErrorCode.TENANT_MEMBER_NOT_FOUND, requesterId);
+        // }
+        // tenancy:else
+        users.requireUser(requesterId);
+        // tenancy:end
     }
 
     /** The todo first, so an unknown or foreign todo answers TODO_NOT_FOUND, and an entry of another todo is not found. */

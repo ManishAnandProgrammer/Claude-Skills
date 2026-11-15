@@ -159,30 +159,30 @@ class TodoIndexIntegrationTest extends IntegrationTest {
     private void seedTodos(UUID owner, int lists, int perList) {
         // tenancy-row:begin
         // sql("""
-        //         insert into todos (id, tenant_id, todo_list_id, owner_id, title, status, priority, due_date, completed_at,
+        //         insert into todos (id, %stenant_id, todo_list_id, owner_id, title, status, priority, due_date, completed_at,
         //                            created_at, updated_at, version)
-        //         select gen_random_uuid(), list.tenant_id, list.id, list.owner_id, 'Seeded',
+        //         select gen_random_uuid(), %slist.tenant_id, list.id, list.owner_id, 'Seeded',
         //                case when n > ? * 0.95 then 'OPEN' else 'DONE' end,
-        //                case (n + list.rank) % 10 when 0 then 'HIGH' when 1 then 'MEDIUM' when 2 then 'MEDIUM' when 3 then 'MEDIUM'
+        //                case (n + list.rank) %% 10 when 0 then 'HIGH' when 1 then 'MEDIUM' when 2 then 'MEDIUM' when 3 then 'MEDIUM'
         //                     else 'LOW' end,
-        //                date '2026-01-01' + (n % 365), case when n > ? * 0.95 then null else now() end, now(), now(), 0
+        //                date '2026-01-01' + (n %% 365), case when n > ? * 0.95 then null else now() end, now(), now(), 0
         //         from (select id, tenant_id, owner_id, row_number() over (order by id) as rank
         //                 from todo_lists where owner_id = ? order by id limit ?) list
         //         cross join generate_series(1, ?) n
-        //         """, perList, perList, owner, lists, perList);
+        //         """.formatted(TODO_NUMBER_COLUMN, TODO_NUMBER), perList, perList, owner, lists, perList);
         // tenancy-row:else
         sql("""
-                insert into todos (id, todo_list_id, owner_id, title, status, priority, due_date, completed_at,
+                insert into todos (id, %stodo_list_id, owner_id, title, status, priority, due_date, completed_at,
                                    created_at, updated_at, version)
-                select gen_random_uuid(), list.id, list.owner_id, 'Seeded',
+                select gen_random_uuid(), %slist.id, list.owner_id, 'Seeded',
                        case when n > ? * 0.95 then 'OPEN' else 'DONE' end,
-                       case (n + list.rank) % 10 when 0 then 'HIGH' when 1 then 'MEDIUM' when 2 then 'MEDIUM' when 3 then 'MEDIUM'
+                       case (n + list.rank) %% 10 when 0 then 'HIGH' when 1 then 'MEDIUM' when 2 then 'MEDIUM' when 3 then 'MEDIUM'
                             else 'LOW' end,
-                       date '2026-01-01' + (n % 365), case when n > ? * 0.95 then null else now() end, now(), now(), 0
+                       date '2026-01-01' + (n %% 365), case when n > ? * 0.95 then null else now() end, now(), now(), 0
                 from (select id, owner_id, row_number() over (order by id) as rank
                         from todo_lists where owner_id = ? order by id limit ?) list
                 cross join generate_series(1, ?) n
-                """, perList, perList, owner, lists, perList);
+                """.formatted(TODO_NUMBER_COLUMN, TODO_NUMBER), perList, perList, owner, lists, perList);
         // tenancy-row:end
     }
 

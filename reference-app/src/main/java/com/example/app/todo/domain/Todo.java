@@ -30,6 +30,7 @@ import java.util.Collection;
 // media:end
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -57,6 +58,22 @@ public class Todo extends AuditableEntity {
 
     @Column(name = "owner_id", nullable = false, updatable = false)
     private UUID ownerId;
+    // metadata:begin
+
+    /**
+     * Its display number (#1, #2, ...), given once by the create from the counter {@code TODO_NUMBER}
+     * ({@link #assignNumber}); with tenancy the counter is the tenant's, so each tenant numbers from 1.
+     */
+    @Column(updatable = false)
+    private Long number;
+    // metadata:end
+
+    /**
+     * Who asked for it: an account (with tenancy, a member of the tenant), chosen at the create and never
+     * changed. Another module's person, so an id with a foreign key, checked through that module's facade.
+     */
+    @Column(name = "requester_id", updatable = false)
+    private UUID requesterId;
 
     @Setter
     @Column(nullable = false)
@@ -110,6 +127,16 @@ public class Todo extends AuditableEntity {
     private Set<TodoAttachment> attachmentLinks = new HashSet<>();
     // media:end
 
+    // metadata:begin
+    /** The create numbers it last, after every check: the counter's row stays locked until the commit. */
+    public void assignNumber(long next) {
+        if (Objects.nonNull(number)) {
+            throw new IllegalStateException("Todo %s is numbered already".formatted(getId()));
+        }
+        number = next;
+    }
+
+    // metadata:end
     public void moveTo(TodoList target) {
         if (!target.getOwnerId().equals(ownerId)) {
             throw new IllegalStateException("Todo %s can't move to list %s of another owner".formatted(getId(), target.getId()));

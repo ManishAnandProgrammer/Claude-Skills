@@ -42,3 +42,12 @@ databaseChangeLog:
   - include:
       file: changes/0024-tags-status-newest.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/0024-tags-status-newest.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0025-todos-requester.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/0026-todo-numbers.sql
+      relativeToChangelogFile: true

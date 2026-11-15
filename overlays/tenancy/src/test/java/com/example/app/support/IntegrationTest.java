@@ -120,6 +120,21 @@ public abstract class IntegrationTest {
     /** How long a test waits for a latch or for a request it started, so a broken gate fails instead of hanging. */
     private static final Duration WAIT_DEADLINE = Duration.ofSeconds(10);
 
+    // example:begin
+    // metadata:begin
+    /**
+     * A todo inserted as a fixture needs a display number (NOT NULL, unique): a random one, far above any the
+     * counter hands out. Insert statements splice these two in ({@code "insert into todos (id, %stitle ..."}),
+     * so a fixture reads the same with and without the metadata piece, which brings the numbers.
+     */
+    protected static final String TODO_NUMBER_COLUMN = "number, ";
+    protected static final String TODO_NUMBER = "1000000000 + (random() * 1e15)::bigint, ";
+    // metadata:else
+    // protected static final String TODO_NUMBER_COLUMN = "";
+    // protected static final String TODO_NUMBER = "";
+    // metadata:end
+    // example:end
+
     @Autowired
     protected MockMvc mvc;
 

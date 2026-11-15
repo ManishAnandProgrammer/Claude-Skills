@@ -123,6 +123,9 @@ shared_tenancy_files() {
     # The cross-tenant tests of the example's entities (crud-gen generates one per entity).
     if chosen_piece example; then
         echo "$SHARED/src/test/java/$reference_path/todo/TodoTenantIsolationIntegrationTest.java"
+        # The todo's requester is a member: its name comes from user.api.Members.
+        echo "$SHARED/src/main/java/$reference_path/todo/dto/response/TodoRequesterResponse.java"
+        echo "$SHARED/src/test/java/$reference_path/todo/TodoRequesterTenancyIntegrationTest.java"
     fi
     # Staff editing a tenant's configuration directly: the golden cross-tenant edit.
     if chosen_piece metadata; then cat <<LIST
@@ -190,6 +193,7 @@ src/main/resources/db/changelog/changes/0006-todo-tags.sql
 src/main/java/$reference_path/planning
 src/main/resources/db/changelog/changes/0011-plans.sql
 src/main/resources/db/changelog/changes/0024-tags-status-newest.sql
+src/main/resources/db/changelog/changes/0025-todos-requester.sql
 src/test/java/$reference_path/todo
 src/test/java/$reference_path/planning
 LIST
@@ -197,6 +201,7 @@ LIST
             if chosen_piece metadata; then cat <<LIST
 src/main/java/$reference_path/metadata/api/TodoListSettings.java
 src/main/resources/db/changelog/changes/0014-todo-list-defaults.sql
+src/main/resources/db/changelog/changes/0026-todo-numbers.sql
 src/test/java/$reference_path/metadata/MetadataIntegrationTest.java
 LIST
             fi
@@ -276,8 +281,10 @@ LIST
             echo "$ROW/docker"
             # Upload policies' starting limits per tenant, and the module listener that seeds them.
             # The example's fixed metadata key in every new tenant (0014 seeds the existing ones).
+            # The todos' display-number counter in every new tenant (0026 gives it to the existing ones).
             if chosen_piece metadata && chosen_piece example; then
                 echo "$ROW/src/main/java/$reference_path/todo/service/TodoListDefaultsSeed.java"
+                echo "$ROW/src/main/java/$reference_path/todo/service/TodoNumberSeed.java"
             fi
             # The tenant tables' column defaults dropped, and their replica identities set to a key with
             # tenant_id: only with a piece that brings tenant tables.
@@ -296,8 +303,11 @@ LIST
                 echo "$ROW/src/main/java/$reference_path/media/api/UploadLimits.java"
                 if chosen_piece example; then
                     echo "$ROW/src/main/java/$reference_path/todo/service/TodoAttachmentPolicySeed.java"
-                    echo "$ROW/src/test/java/$reference_path/todo/TodoSeedsBackfillIntegrationTest.java"
                 fi
+            fi
+            # The todo module's seeds against their backfills (the attachments' policy, the defaults, the counter).
+            if chosen_piece example && { chosen_piece media || chosen_piece metadata; }; then
+                echo "$ROW/src/test/java/$reference_path/todo/TodoSeedsBackfillIntegrationTest.java"
             fi
             ;;
         tenant-registration) cat <<LIST
@@ -485,9 +495,11 @@ fi
 all_pieces="core sign-in example metadata media tenancy-schema tenancy-row tenant-registration session-version"
 with_reference_prefix() { sed -e '/^overlays\//!s|^|reference-app/|'; }
 named_files="$(pieces="${all_pieces// /,}"; for piece in $all_pieces; do files_for "$piece"; done | with_reference_prefix)"
-# Core files a tenancy mode replaces: its connection hook borrows lazily, so the lazy proxy goes.
+# Core files a tenancy mode replaces: its connection hook borrows lazily, so the lazy proxy goes; a person in
+# a tenant is a member (user.api.Members), so the accounts' facade goes too.
 replaced_by_tenancy="reference-app/src/main/java/$reference_path/config/LazyConnectionConfig.java
-reference-app/src/test/java/$reference_path/config/LazyConnectionIntegrationTest.java"
+reference-app/src/test/java/$reference_path/config/LazyConnectionIntegrationTest.java
+reference-app/src/main/java/$reference_path/user/api/Users.java"
 replaced() { tenancy_chosen && grep -qxF "$1" <<< "$replaced_by_tenancy"; }
 named_alone() { grep -qxF "$1" <<< "$named_files"; }
 for piece in "${chosen[@]}"; do

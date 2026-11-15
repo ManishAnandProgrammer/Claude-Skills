@@ -711,7 +711,7 @@ beyond its own validity. A new path joins this table, with its test, in the chan
 
 Known limit, not closed here: staff have no removal or disable (they are rows an operator writes, and
 one with audit history can't be deleted: `fk_platform_audit_actor_id`), so a platform token is trusted
-for its lifetime. When staff deactivation is built (a feature, parked), impersonation must re-read the
+for its lifetime (the extension point: house-review TEN-05). When staff deactivation is built (a feature, parked), impersonation must re-read the
 staff row at the issue like every other path above.
 
 ## Later (rules and notes, not in the first setup)

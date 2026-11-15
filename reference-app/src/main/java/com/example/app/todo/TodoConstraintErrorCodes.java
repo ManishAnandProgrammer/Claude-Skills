@@ -13,6 +13,11 @@ import java.util.Map;
  * answers the parent's not-found code: nothing locks the parent for the write, and the foreign key
  * keeps the data right on its own. A tag's delete cascades to its links, so that key trips only on
  * the write side; a todo's delete removes its links first, under the todo's lock.
+ *
+ * <p>Two keys stay unmapped because they can't trip: {@code fk_todos_requester_id}, as the create checks the
+ * person through the user module first and their row is never deleted (an account; with tenancy a member's
+ * row in {@code members}, which a removal marks left), and {@code uq_todos_number}, whose numbers come from
+ * the counter's row, one create at a time.</p>
  */
 @Component
 class TodoConstraintErrorCodes implements ConstraintErrorCodes {

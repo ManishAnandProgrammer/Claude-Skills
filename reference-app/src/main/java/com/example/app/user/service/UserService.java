@@ -3,6 +3,10 @@ package com.example.app.user.service;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.wrapper.ObjectWrapper;
+// tenancy:begin
+// tenancy:else
+import com.example.app.user.api.Users;
+// tenancy:end
 import com.example.app.user.domain.User;
 import com.example.app.user.dto.request.SignupRequest;
 import com.example.app.user.dto.response.UserResponse;
@@ -34,7 +38,11 @@ import java.util.UUID;
 @Slf4j
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class UserService {
+// tenancy:begin
+// public class UserService {
+// tenancy:else
+public class UserService implements Users {
+// tenancy:end
 
     private final UserRepository repository;
     private final UserMapper mapper;
@@ -74,6 +82,16 @@ public class UserService {
         return ObjectWrapper.withObject(mapper.toResponse(user));
     }
 
+    // tenancy:begin
+    // tenancy:else
+    @Override
+    public void requireUser(UUID userId) {
+        if (!repository.existsById(userId)) {
+            throw AppException.of(ErrorCode.USER_NOT_FOUND);
+        }
+    }
+
+    // tenancy:end
     Optional<User> findByEmail(String email) {
         return repository.findByEmail(User.normalizeEmail(email));
     }

@@ -113,6 +113,12 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   tokens, and the main chain accepts only tenant tokens (`aud=tenant`). A platform token on a tenant
   endpoint is 401, and the reverse. Staff are never modelled as a tenant or a "super admin" role in a
   tenant.
+- **Extension point (staff deactivation):** the piece has no removal or disable for staff, so a platform
+  token is trusted for its lifetime. A project that needs it adds `platform_users.disabled_at` (a new
+  changeset; the audit key keeps a removed staff member's history), refuses a disabled one at platform
+  login and at every impersonation issue (the token-path table, docs/design/tenancy.md), generates its
+  endpoint with crud-gen and reviews it with house-review like any other code; this review then applies
+  TEN-08 to the new paths.
 - **Detect:** one decoder for both audiences; a `ROLE_SUPER_ADMIN` that bypasses tenant checks;
   operator endpoints behind a shared secret header; `isPlatform` branches in tenant-plane code.
 - **Severity:** Critical.
@@ -328,6 +334,12 @@ an extraction is an operation, not a migration project (the tooling itself is "L
   `tenant_memberships` stays the authority on who belongs and with which role. Test fixtures that add a
   membership add the row too (`IntegrationTest.addMember`). Tests:
   `TenantMemberIntegrationTest.theTenantsMembersFollowTheMemberships`, `provisioningAddsTheOwnersRow`.
+  A record naming a member (golden `Todo.requesterId`) checks them through `Members.isMember` at the write
+  and shows a former member by id alone (`TodoRequesterTenancyIntegrationTest`).
+- **Extension point (a members picker every member reads):** `GET /tenant-members` is ADMIN-only and
+  searches emails. A project whose screens let every member pick a person generates a members dropdown in
+  the user module with crud-gen (label the full name, `query` on it, read through `Members`, the current
+  tenant only, crud-gen dropdown.md's tests) and reviews it with house-review like any other code.
 - **Detect:** a membership created or removed without its `members` row in the same transaction; a
   `DELETE FROM members`; a role, email or name copied into `members`; a tenant record that references
   `tenant_memberships` (the platform's row is deleted on removal).

@@ -13,7 +13,18 @@ import java.util.UUID;
 public record TodoResponse(
         @Schema(description = "Todo id", example = "0190a9c2-7d11-7f0e-8a3b-2c4d6e8f0a1b") UUID id,
         @Schema(description = "Its list") UUID todoListId,
+        @Schema(description = "Its list, with its name") TodoTodoListResponse todoList,
+        // metadata:begin
+        @Schema(description = """
+                Its display number: 1 for the first todo, then one more for each (with tenancy, counted per \
+                organisation). A deleted todo's number is not handed out again.""", example = "42") Long number,
+        // metadata:end
         @Schema(description = "The owner's account id") UUID ownerId,
+        // tenancy:begin
+        // @Schema(description = "The member who asked for it; null for none") TodoRequesterResponse requester,
+        // tenancy:else
+        @Schema(description = "The account that asked for it; null for none") UUID requesterId,
+        // tenancy:end
         @Schema(description = "What to do", example = "Buy oat milk") String title,
         @Schema(description = "Free-form notes; null for none") String notes,
         @Schema(description = "OPEN or DONE", example = "OPEN") TodoStatus status,

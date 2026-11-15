@@ -34,6 +34,16 @@ public record TodoCreateRequest(
         @Schema(description = "Due date (yyyy-MM-dd), up to a configured latest date; empty for none", example = "2026-11-20")
         @EarliestDate("todo.due-date") @LatestDate("todo.due-date")
         LocalDate dueDate,
+        // tenancy:begin
+        // @Schema(description = """
+        //         The member of your organisation who asked for it (their account id); null or absent for none. \
+        //         It can't be changed later.""",
+        //         example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
+        // tenancy:else
+        @Schema(description = "The account that asked for it (its id); null or absent for none. It can't be changed later.",
+                example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
+        // tenancy:end
+        UUID requesterId,
 
         // media:begin
         @Schema(description = """

@@ -14,6 +14,9 @@ import java.util.UUID;
 public record TodoSummaryResponse(
         @Schema(description = "Todo id") UUID id,
         @Schema(description = "Its list") UUID todoListId,
+        // metadata:begin
+        @Schema(description = "Its display number (GET /todos/{id} says how it is counted)", example = "42") Long number,
+        // metadata:end
         @Schema(description = "What to do", example = "Buy oat milk") String title,
         @Schema(description = "OPEN or DONE", example = "OPEN") TodoStatus status,
         @Schema(description = "Priority", example = "MEDIUM") TodoPriority priority,
@@ -27,15 +30,25 @@ public record TodoSummaryResponse(
         @Schema(description = "Send it back when changing the todo", example = "0") Long version) {
 
     /** The batch's projection: the row without its tags, which the service reads in a second step. */
-    public TodoSummaryResponse(UUID id, UUID todoListId, String title, TodoStatus status, TodoPriority priority,
+    public TodoSummaryResponse(UUID id, UUID todoListId,
+                               // metadata:begin
+                               Long number,
+                               // metadata:end
+                               String title, TodoStatus status, TodoPriority priority,
                                LocalDate dueDate, Instant completedAt, Instant createdAt, Instant updatedAt,
                                UUID createdBy, UUID updatedBy, Long version) {
-        this(id, todoListId, title, status, priority, dueDate, completedAt, List.of(), createdAt, updatedAt,
-                createdBy, updatedBy, version);
+        this(id, todoListId,
+                // metadata:begin
+                number,
+                // metadata:end
+                title, status, priority, dueDate, completedAt, List.of(), createdAt, updatedAt, createdBy, updatedBy, version);
     }
 
     public TodoSummaryResponse withTags(List<TodoTagResponse> rowTags) {
-        return new TodoSummaryResponse(id, todoListId, title, status, priority, dueDate, completedAt, rowTags,
-                createdAt, updatedAt, createdBy, updatedBy, version);
+        return new TodoSummaryResponse(id, todoListId,
+                // metadata:begin
+                number,
+                // metadata:end
+                title, status, priority, dueDate, completedAt, rowTags, createdAt, updatedAt, createdBy, updatedBy, version);
     }
 }

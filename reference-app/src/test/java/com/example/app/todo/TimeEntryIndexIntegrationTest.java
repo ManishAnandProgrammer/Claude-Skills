@@ -53,18 +53,18 @@ class TimeEntryIndexIntegrationTest extends IntegrationTest {
         //         values (?, ?, ?, 'Seeded time', now(), now(), 0)
         //         """, listId, testTenant().id(), ownerId);
         // sql("""
-        //         insert into todos (id, tenant_id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
-        //         select gen_random_uuid(), ?, ?, ?, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0 from generate_series(1, 50) n
-        //         """, testTenant().id(), listId, ownerId);
+        //         insert into todos (id, %stenant_id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
+        //         select gen_random_uuid(), %s?, ?, ?, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0 from generate_series(1, 50) n
+        //         """.formatted(TODO_NUMBER_COLUMN, TODO_NUMBER), testTenant().id(), listId, ownerId);
         // tenancy-row:else
         sql("""
                 insert into todo_lists (id, owner_id, name, created_at, updated_at, version)
                 values (?, ?, 'Seeded time', now(), now(), 0)
                 """, listId, ownerId);
         sql("""
-                insert into todos (id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
-                select gen_random_uuid(), ?, ?, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0 from generate_series(1, 50) n
-                """, listId, ownerId);
+                insert into todos (id, %stodo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
+                select gen_random_uuid(), %s?, ?, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0 from generate_series(1, 50) n
+                """.formatted(TODO_NUMBER_COLUMN, TODO_NUMBER), listId, ownerId);
         // tenancy-row:end
         // tenancy-row:begin
         // sql("""

@@ -90,11 +90,11 @@ class PlanRowIndexIntegrationTest extends IntegrationTest {
                 values (gen_random_uuid(), ?, ?, 'Seeded', now(), now(), 0)
                 """, tenantId, owner);
         sql("""
-                insert into todos (id, tenant_id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
-                select gen_random_uuid(), list.tenant_id, list.id, list.owner_id, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0
+                insert into todos (id, %stenant_id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
+                select gen_random_uuid(), %slist.tenant_id, list.id, list.owner_id, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0
                   from todo_lists list cross join generate_series(1, ?) n
                  where list.owner_id = ?
-                """, plans, owner);
+                """.formatted(TODO_NUMBER_COLUMN, TODO_NUMBER), plans, owner);
         sql("""
                 insert into plans (id, tenant_id, todo_id, owner_id, starts_on, ends_on, created_at, updated_at, version)
                 select gen_random_uuid(), todo.tenant_id, todo.id, todo.owner_id, date '2020-01-01' + todo.rank,
@@ -116,11 +116,11 @@ class PlanRowIndexIntegrationTest extends IntegrationTest {
                   from members where tenant_id = ? and user_id not in (select owner_id from todo_lists where tenant_id = ?)
                 """, tenant.id(), tenant.id());
         sqlIn(tenant, """
-                insert into todos (id, tenant_id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
-                select gen_random_uuid(), list.tenant_id, list.id, list.owner_id, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0
+                insert into todos (id, %stenant_id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
+                select gen_random_uuid(), %slist.tenant_id, list.id, list.owner_id, 'Seeded ' || n, 'OPEN', 'LOW', now(), now(), 0
                   from todo_lists list cross join generate_series(1, ?) n
                  where list.tenant_id = ? and list.name = 'Seeded'
-                """, PLANS_PER_OTHER_OWNER, tenant.id());
+                """.formatted(TODO_NUMBER_COLUMN, TODO_NUMBER), PLANS_PER_OTHER_OWNER, tenant.id());
         sqlIn(tenant, """
                 insert into plans (id, tenant_id, todo_id, owner_id, starts_on, ends_on, created_at, updated_at, version)
                 select gen_random_uuid(), todo.tenant_id, todo.id, todo.owner_id, date '2020-01-01' + todo.rank,

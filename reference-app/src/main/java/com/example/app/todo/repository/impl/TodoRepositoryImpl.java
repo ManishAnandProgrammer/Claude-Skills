@@ -89,7 +89,11 @@ class TodoRepositoryImpl implements CustomTodoRepository {
 
     private static CompoundSelection<TodoSummaryResponse> summaryOf(CriteriaBuilder builder, Root<Todo> root) {
         return builder.construct(TodoSummaryResponse.class,
-                root.get(Todo_.id), root.get(Todo_.todoList).get(TodoList_.id), root.get(Todo_.title),
+                root.get(Todo_.id), root.get(Todo_.todoList).get(TodoList_.id),
+                // metadata:begin
+                root.get(Todo_.number),
+                // metadata:end
+                root.get(Todo_.title),
                 root.get(Todo_.status), root.get(Todo_.priority), root.get(Todo_.dueDate), root.get(Todo_.completedAt),
                 root.get(Todo_.createdAt), root.get(Todo_.updatedAt), root.get(Todo_.createdBy), root.get(Todo_.updatedBy),
                 root.get(Todo_.version));

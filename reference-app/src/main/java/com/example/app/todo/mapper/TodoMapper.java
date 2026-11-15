@@ -14,9 +14,13 @@ import com.example.app.todo.dto.request.TodoUpdateRequest;
 // media:begin
 import com.example.app.todo.dto.response.TodoAttachmentResponse;
 // media:end
+// tenancy:begin
+// import com.example.app.todo.dto.response.TodoRequesterResponse;
+// tenancy:end
 import com.example.app.todo.dto.response.TodoResponse;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import com.example.app.todo.dto.response.TodoTagResponse;
+import com.example.app.todo.dto.response.TodoTodoListResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -32,6 +36,7 @@ public class TodoMapper {
         Todo todo = Todo.builder()
                 .todoList(todoList)
                 .ownerId(ownerId)
+                .requesterId(request.requesterId())
                 .title(request.title().strip())
                 .notes(notesOrNone(request.notes()))
                 .priority(request.priority())
@@ -54,15 +59,28 @@ public class TodoMapper {
         todo.setDueDate(request.dueDate());
     }
 
+    /** The todo's list must be loaded: TodoService reads it with the todo, or under the todo's lock. */
     public TodoResponse toResponse(Todo todo,
                                    // media:begin
                                    List<MediaFileView> attachments,
                                    // media:end
+                                   // tenancy:begin
+                                   // TodoRequesterResponse requester,
+                                   // tenancy:end
                                    List<TodoTagResponse> tags) {
         return new TodoResponse(
                 todo.getId(),
                 todo.getTodoList().getId(),
+                new TodoTodoListResponse(todo.getTodoList().getId(), todo.getTodoList().getName()),
+                // metadata:begin
+                todo.getNumber(),
+                // metadata:end
                 todo.getOwnerId(),
+                // tenancy:begin
+                // requester,
+                // tenancy:else
+                todo.getRequesterId(),
+                // tenancy:end
                 todo.getTitle(),
                 todo.getNotes(),
                 todo.getStatus(),
