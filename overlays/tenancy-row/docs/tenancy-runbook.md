@@ -109,6 +109,12 @@ hand:
   logged cause; a duplicate key on a seeded row means a listener inserts unconditionally, a bug to fix
   in that module before approving again.
 
+Before such a backfill ships, its tests run on the previous release's database with tenants in every
+status (`./mvnw verify -Dapp.test.upgrade.previous-release=<n>`; the application's runbook, *Before
+upgrading a live database*), and the migration runs once against a restored copy of production: on an
+empty database a backfill that reaches only the ACTIVE tenants, or starts a counter at 0 instead of
+after the tenant's highest number, passes every test.
+
 ## 5. Query plans (a slow tenant)
 
 `EXPLAIN` as the app role with the tenant set, never as a superuser (it bypasses the policies and

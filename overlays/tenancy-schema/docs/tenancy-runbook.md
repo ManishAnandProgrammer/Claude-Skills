@@ -87,3 +87,10 @@ One tenant alone: `pg_dump -n t_<tenant id without dashes>` and restore that sch
   `UPDATE t_<id>.databasechangeloglock SET locked = false, lockgranted = NULL, lockedby = NULL WHERE id = 1;`.
 - A tenant stuck `PENDING` after approval: `SELECT * FROM platform.tenant_migrations WHERE status = 'PROVISIONING';`
   shows the provisioning error; the job retries every run (`app.jobs.tenant-provisioning.cron`).
+- **Approvals during a rolling deploy.** A tenant an old instance provisions after the last new instance
+  started has the old release's schema until a migration run reaches it: run one (restart an instance)
+  once the deploy is through, or approve tenants only then. `platform.tenant_migrations.last_changeset`
+  behind the template's names such a schema.
+- Before a release whose tenant changesets change existing rows ships, its tests run on schemas at the
+  previous release, seeded (`./mvnw verify -Dapp.test.upgrade.previous-release=<n>`; the application's
+  runbook, *Before upgrading a live database*), and the migration runs once against a restored copy.

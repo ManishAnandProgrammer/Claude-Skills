@@ -37,6 +37,11 @@
 #          dependencies: main and test code compile and the unit tests pass. Its integration and
 #          ArchUnit tests are left out: the integration tests sign users in through sign-in, and the
 #          ArchUnit rules fail on a project with no module yet;
+#   the stages with the example (1, 2b, 2h, 2j) run on an upgraded database: Liquibase applies the previous
+#   release's changesets alone, a seed fills them as a used database holds them (tenants in every status,
+#   skewed data, a member who left), then the application's own run applies the newer changesets over it
+#   (support/PreviousReleaseDatabase); UpgradeFromPreviousReleaseIntegrationTest checks what they did, and
+#   every other test runs on that database too. Backfills never run only on empty tables again;
 #   3. the reference's Docker image starts with the prod profile against PostgreSQL and Redis:
 #      healthy, sign-in rate limited through Redis, metrics only on the management port. Tests can't
 #      see this: Testcontainers hands them their connections (a missing Redis setting once switched
@@ -52,6 +57,10 @@
 set -euo pipefail
 
 STAGES="reference 2 2b 2c 2e 2f 2g 2h 2i 2j 2d image"
+# The highest changeset number of the release in production (main): the upgrade path starts from it.
+# Raise it, and extend the previous-release seeds, when a release ships.
+PREVIOUS_RELEASE=23
+UPGRADE="-Dapp.test.upgrade.previous-release=$PREVIOUS_RELEASE"
 only=""
 case "${1:-}" in
     "") ;;
@@ -111,6 +120,13 @@ mvn_verify() {
     return 1
 }
 
+# The upgrade path ran in this project: its test class ran every test, none skipped.
+upgraded() {
+    local report
+    report="$(find "$1/target/surefire-reports" -name 'TEST-*UpgradeFromPreviousReleaseIntegrationTest.xml' | head -1)"
+    [ -n "$report" ] && grep -qE 'tests="[1-9][0-9]*"' "$report" && grep -q 'skipped="0"' "$report" \
+        || { echo "FAILED: the upgrade path didn't run in $1 (UpgradeFromPreviousReleaseIntegrationTest missing or skipped)" >&2; exit 1; }
+}
 
 docker info > /dev/null 2>&1 || {
     echo "Docker is not reachable: the tests need it (Testcontainers). Start Docker, or run this as 'sg docker -c $0'." >&2
@@ -125,7 +141,8 @@ grep -rnE "TenantContext|TenantScope|tenant_memberships" "$REFERENCE/src/main/ja
 
 if wants reference; then
     echo "[1/3] reference-app: build and tests"
-    mvn_verify "$REFERENCE" "$WORK/reference.log"
+    mvn_verify "$REFERENCE" "$WORK/reference.log" "$UPGRADE"
+    upgraded "$REFERENCE"
 fi
 
 # The smoke project's application class is the template every other copy starts from.
@@ -191,7 +208,8 @@ if wants 2b; then
     grep -rqE "Attachment|UploadPurpose|MEDIA_(BUCKET|STORAGE)|UPLOAD_|media_files|awssdk" "$example/src" && { echo "FAILED: media entries left in an example copy without the media piece" >&2; exit 1; }
     [ -f "$example/src/test/java/com/acme/example/metadata/MetadataIntegrationTest.java" ] || { echo "FAILED: the metadata samples' tests are missing from the copy with both pieces" >&2; exit 1; }
     no_session_version "$example/src" "$example/docs"
-    mvn_verify "$example" "$WORK/example.log"
+    mvn_verify "$example" "$WORK/example.log" "$UPGRADE"
+    upgraded "$example"
 fi
 
 if wants 2c; then
@@ -323,10 +341,12 @@ if wants 2h; then
         && ! grep -q "session_version" "$tenants/src/main/java/com/acme/tenants/user/domain/User.java" \
         || { echo "FAILED: the session version isn't per membership in the schema-per-tenant copy" >&2; exit 1; }
     grep -q "0026-todo-numbers.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" \
-        || { echo "FAILED: the todo numbers are missing from the schema-per-tenant copy's tenant changelog" >&2; exit 1; }
+        && [ -f "$tenants/src/test/resources/db/upgrade/previous-release-tenant-seed.sql" ] \
+        || { echo "FAILED: the todo numbers or the tenant schemas' previous-release seed are missing from the schema-per-tenant copy" >&2; exit 1; }
     [ -f "$tenants/src/main/java/com/acme/tenants/user/api/Users.java" ] \
         && { echo "FAILED: the accounts' facade in a tenancy copy (a person in a tenant is a member: Members)" >&2; exit 1; }
-    mvn_verify "$tenants" "$WORK/tenants.log"
+    mvn_verify "$tenants" "$WORK/tenants.log" "$UPGRADE"
+    upgraded "$tenants"
 fi
 
 if wants 2i; then
@@ -386,7 +406,8 @@ if wants 2j; then
         || { echo "FAILED: the todo numbers' changeset or their seed listener is missing from the row-mode copy" >&2; exit 1; }
     [ -f "$rowtenants/src/main/java/com/acme/rowtenants/user/api/Users.java" ] \
         && { echo "FAILED: the accounts' facade in a tenancy copy (a person in a tenant is a member: Members)" >&2; exit 1; }
-    mvn_verify "$rowtenants" "$WORK/rowtenants.log"
+    mvn_verify "$rowtenants" "$WORK/rowtenants.log" "$UPGRADE"
+    upgraded "$rowtenants"
 fi
 
 if wants 2d; then

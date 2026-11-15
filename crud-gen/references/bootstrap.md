@@ -213,6 +213,11 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   are copied under the next free numbers instead (rename the file and its changeset id together).
 - The answers of step 0: signup policy, external IdP (`SecurityConfig`), client-IP mode,
   `app.limits.*` values, pool and admission sizes (admission ≥ 2× pool, checked at startup).
+- The upgrade path (core's `support/PreviousReleaseDatabase`, `support/ReadCost` for the index tests'
+  read bounds) is inert until the project has a release in production: then it writes
+  `src/test/resources/db/upgrade/previous-release-seed.sql` (with the example, the reference's is there to
+  follow) and runs `./mvnw verify -Dapp.test.upgrade.previous-release=<n>` before each release that
+  changes existing rows (tests.md, *Upgrading a used database*).
 - `ErrorCode`: remove the sign-in codes if `sign-in` wasn't copied. Constraint mappings live in each
   module's `ConstraintErrorCodes` bean (`UserConstraintErrorCodes`, ...), which the handler
   aggregates, so they come and go with their module.

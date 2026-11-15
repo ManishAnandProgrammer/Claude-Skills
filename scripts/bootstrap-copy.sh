@@ -196,6 +196,7 @@ src/main/resources/db/changelog/changes/0024-tags-status-newest.sql
 src/main/resources/db/changelog/changes/0025-todos-requester.sql
 src/test/java/$reference_path/todo
 src/test/java/$reference_path/planning
+src/test/resources/db/upgrade/previous-release-seed.sql
 LIST
             # The metadata piece's sample configuration and the tests that exercise the mechanism through it.
             if chosen_piece metadata; then cat <<LIST
@@ -268,9 +269,11 @@ LIST
             echo "$SCHEMA/src"
             echo "$SCHEMA/docs"
             echo "$SCHEMA/docker"
-            # The example's owners reference the tenant's members instead of the platform's users.
+            # The example's owners reference the tenant's members instead of the platform's users; a tenant
+            # schema's rows at the previous release, for the upgrade path (support/PreviousReleaseDatabase).
             if chosen_piece example; then
                 echo "$SCHEMA/src/main/resources/db/changelog/changes/0018-owners-reference-members.sql"
+                echo "$SCHEMA/src/test/resources/db/upgrade/previous-release-tenant-seed.sql"
             fi
             ;;
         tenancy-row)

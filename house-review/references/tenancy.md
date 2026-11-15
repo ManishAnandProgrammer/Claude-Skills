@@ -561,7 +561,18 @@ E1–E3 and the row tests named below, which run as the real application role.
   tenant then lacks the row, so a row the code can't work without is created on use too (a display
   number's create calls `Counters.createIfAbsent` before `next`), or the runbook says to approve only
   once the deploy is through.
+- **Check (the convention, every mode):** a per-tenant seed is create-if-absent and reaches **every
+  tenant row, whatever its status**: the backfill reads `FROM tenants`, never filtered by status, and
+  continues from the tenant's own data (a counter starts after the tenant's highest number, never at 0
+  over rows that are already numbered); schema per tenant puts the seed in a tenant changeset, which every
+  schema runs. Housekeeping jobs visit every tenant that holds data (`idsHoldingData`), work done for
+  users only the ACTIVE ones. The matrix of seeds × tenant statuses with a test per cell is
+  `docs/design/tenancy.md`, *Tenant lifecycle × seeding*; a new seed adds its row there, and its backfill
+  is tested on the upgraded database (crud-gen tests.md row 30, `UpgradeFromPreviousReleaseIntegrationTest`:
+  on an empty database a backfill limited to ACTIVE tenants, or a counter started at 0, passes).
 - **Detect:** `INSERT` into a tenant table in a changeset outside a `NO FORCE` … `FORCE` backfill; a
+  backfill with a `WHERE status = …` on `tenants`, or a counter seeded at a constant beside rows that
+  carry numbers; a backfill changeset with no test on the upgraded database; a
   new seed listener without the backfill for existing tenants; a seed listener that inserts
   unconditionally (`metadata.create`, `counters.create`, `repository.save`) beside a backfill; a seed listener on `TenantCreated` or
   `TenantApproved` (no tenant scope yet, or no committed tenant); seeding inside the approving

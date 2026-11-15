@@ -154,6 +154,15 @@ GC logs and out-of-memory heap dumps are already in `/diagnostics/<start>/`.
 
 Keep the notes, the query output and the files in `/diagnostics`. Write down the cause, what fixed
 it, and the guard (a test, a limit, an alert) that would have caught it earlier.
+
+## Before upgrading a live database
+
+A release whose changesets change existing rows (a backfill, a new `NOT NULL` column, a new unique key):
+its tests ran on the previous release's seeded database (`./mvnw verify
+-Dapp.test.upgrade.previous-release=<n>`, the highest changeset number production has). Also run the
+migration once against a restored copy of production (a recent backup, restored as the backup and
+restore section of your platform describes) and check what the backfills did there, and how long they
+held their tables: a backfill rewrites its table under a lock, so a big one runs in a quiet hour.
 <!-- tenancy:begin -->
 <!-- tenancy:else -->
 <!-- sign-in:begin -->

@@ -31,7 +31,8 @@ Two skills that share one set of house engineering rules:
 ## Verifying a change (before every push)
 The repository is private, so there is no CI: `scripts/verify.sh` builds and tests
 `reference-app/`, copies its pieces into fresh projects under other packages and builds those, and
-starts the production image against PostgreSQL and Redis. It needs Docker
+starts the production image against PostgreSQL and Redis; the copies with the example run on an upgraded
+database (the previous release's changesets, a realistic seed, then the new changesets). It needs Docker
 (`sg docker -c scripts/verify.sh` if your shell isn't in the `docker` group) and takes over ten
 minutes. On success it records a fingerprint of the code it tested (`reference-app/`, `scripts/`,
 `.githooks/`). `install.sh` enables a pre-push hook (`.githooks/pre-push`) that refuses a push whose

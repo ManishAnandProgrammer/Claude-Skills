@@ -101,7 +101,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMetrics
 @ActiveProfiles("test")
 @Import({TestcontainersConfiguration.class, StubBreachedPasswords.class, DistinctClientAddresses.class,
-        SupportAccessPolicies.class, TenantProvisioningForTests.class})
+        SupportAccessPolicies.class, TenantProvisioningForTests.class, PreviousReleaseDatabase.class})
 public abstract class IntegrationTest {
 
     protected static final String PASSWORD = "Correct-Horse-9";

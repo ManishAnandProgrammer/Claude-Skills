@@ -714,6 +714,60 @@ one with audit history can't be deleted: `fk_platform_audit_actor_id`), so a pla
 for its lifetime (the extension point: house-review TEN-05). When staff deactivation is built (a feature, parked), impersonation must re-read the
 staff row at the issue like every other path above.
 
+## Tenant lifecycle × seeding (2026-11-15, pre-round-4 pass)
+
+Round 3 found four variants of one gap, each fixed as an instance: a new upload purpose leaving the
+existing tenants without a policy, an approval answering PENDING, jobs cleaning only ACTIVE tenants, a
+PENDING tenant through a backfill that could never be activated. So every way per-tenant data is seeded
+was walked against every tenant status, and the tests that a fresh database can't reach run on the
+upgraded one (crud-gen tests.md, *Upgrading a used database*: the previous release's database with
+tenants in every status, then the new changesets).
+
+**The convention (house-review TEN-34, TEN-23): a per-tenant seed is create-if-absent and reaches every
+tenant row, whatever its status.** Row mode: the backfill changeset reads `FROM tenants`, never filtered by
+status, and continues from the tenant's own data (a counter after the tenant's highest number), beside a
+`TenantProvisioned` listener that creates the row only when missing; a row the code can't work without is
+also created on first use (the create's `Counters.createIfAbsent`). Schema per tenant: the seed is in a
+tenant changeset, which every schema runs, at its provisioning and at each deploy. Housekeeping jobs visit
+every tenant that holds data (`Tenants.idsHoldingData`), work done for users only the ACTIVE ones
+(`activeIds`). An approval during a rolling deploy, by an instance without the new seed, is the one case
+the code doesn't close for a row it can work without: the runbooks say to approve once the deploy is
+through.
+
+Row mode (tests in the overlays; *Upgrade* is `UpgradeFromPreviousReleaseIntegrationTest`, *Backfill*
+`TodoSeedsBackfillIntegrationTest`):
+
+| Seed (how it reaches a tenant) | PENDING | ACTIVE | SUSPENDED | REJECTED, CLOSED | Approved by an old instance during the rollout |
+|---|---|---|---|---|---|
+| Upload policy `TODO_ATTACHMENT`: `0010`'s backfill + `TodoAttachmentPolicySeed` | the backfill gives it, the approval keeps it (*Backfill* `aPendingTenantThroughTheBackfillsIsActivated`); a tenant registered after the backfill gets it from the listener (*Upgrade* `thePendingTenantIsActivatedAfterTheUpgrade`) | the backfill (*Backfill* `existingTenantsGetThePolicy`); new tenants the listener (every test tenant) | the backfill (`FROM tenants`) | the backfill; never read | none until the backfill's insert for that tenant (runbook section 4) |
+| List defaults `TODO_LIST_DEFAULTS`: `0014`'s backfill + `TodoListDefaultsSeed` | as the policy (*Backfill*, *Upgrade* as above) | as the policy | as the policy | as the policy | as the policy |
+| Display-number counter `TODO_NUMBER`: `0026`'s counters backfill (after the tenant's highest number) + `TodoNumberSeed` + the create's `createIfAbsent` | the backfill gives it (0), the approval keeps it, the first todo is #1 (*Backfill*, *Upgrade*) | after its highest (*Upgrade* `everyTenantIsNumberedOnItsOwn`, *Backfill* `existingTenantsGetTheirCounter`) | after its highest; reactivated, the next todo goes on (*Upgrade* `theSuspendedTenantGoesOnAfterItsHighestNumber`) | after its highest (*Upgrade* `everyTenantIsNumberedOnItsOwn`) | created on first use (*Backfill* `aTenantWithoutItsCounterNumbersFromOne`) |
+| The rows already there: `0026` numbers each tenant's todos 1 to n in id order | none to number | numbered (*Upgrade* `everyTenantIsNumberedOnItsOwn`) | numbered (same) | numbered (same) | a changeset: no instance runs it |
+| `members`: written with the membership in one transaction (`MembershipService`), `0017`'s backfill from the memberships | the owner's at registration (`TenantCreated`) | every add; a removal marks the row left, its records stay (`TenantMemberIntegrationTest`, *Upgrade* `aMemberWhoLeftIsNotNamed`) | kept | kept | one transaction with the membership: no gap |
+| Jobs' tenant loops: media verification (`activeIds`), media cleanup (`idsHoldingData`) | neither (no data) | both | cleanup only: verification waits, nothing reads the files until ACTIVE | CLOSED: cleanup; REJECTED: neither | a job, no seed (`MediaJobsPerTenantTest`) |
+
+Schema per tenant (tests in the schema overlay; *Upgrade* as above, *Migrations*
+`TenantMigrationsIntegrationTest`):
+
+| Seed | PENDING | ACTIVE | SUSPENDED | REJECTED, CLOSED | During the rollout |
+|---|---|---|---|---|---|
+| Tenant changesets (`0010`'s policy, `0014`'s defaults, `0017`'s members, `0026`'s numbers and counter) | no schema; provisioning on approval runs the whole changelog (*Migrations* `provisioningCreatesMigratesAndActivates`, *Upgrade* `thePendingTenantIsProvisionedAfterTheUpgrade`) | the deploy-time run applies the new changesets over its rows (*Upgrade* `theDeployMigratedEverySeededSchema`, `everySchemaIsNumberedOnItsOwn`) | migrated too: every provisioned schema is (same) | CLOSED migrated; REJECTED never gets a schema (*Migrations*, *Upgrade*) | a schema an old instance provisions after the last new instance started keeps the old release until a run reaches it (runbook section 5) |
+| The owner's `members` row | written on `TenantProvisioned` (`MembershipService.addOwnerToTenantData`) | `0017` copied the memberships | as ACTIVE | as ACTIVE | — |
+
+Without tenancy a seed is a changeset (`0010`, `0014`, `0026` with the rows' numbers), and the reference's
+*Upgrade* checks it over the seeded rows (`everySeededTodoIsNumberedInOrder`: red when the counter starts
+at 0 instead of after the highest, which an empty database never shows).
+
+Found by the pass: nothing new in the shipped seeds (round 3's fixes hold on the upgraded database); the
+new display number got its seed pair, its backfill from the tenants' own highest numbers and its
+first-use creation from the start, and the cells above are its tests (each proven red: a counters
+backfill filtered to ACTIVE tenants fails *Upgrade* for the SUSPENDED one, a listener's plain `create`
+fails *Backfill*'s approval, the create without `createIfAbsent` fails the rolling-deploy cell). Schema
+mode's rolling-deploy cell had no line in its runbook; it has now.
+
+The token-issuing paths (above) were checked again after these changes: the display number, the
+requester and the upgrade path add no path that issues a token.
+
 ## Later (rules and notes, not in the first setup)
 
 - **Moving a tenant out (after the extraction readiness above):**
