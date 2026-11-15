@@ -1,7 +1,7 @@
 # The fingerprint of what verify.sh tests: the git tree hashes of these paths. Sourced by
 # scripts/verify.sh (which records it after a green run) and .githooks/pre-push (which compares the
 # pushed commit with it), so a push needs no second, ten-minute verification of the same code.
-VERIFIED_PATHS=(reference-app scripts .githooks)
+VERIFIED_PATHS=(reference-app overlays scripts .githooks)
 
 # Of the working copy, uncommitted and untracked files included (ignored ones such as target/ not).
 working_fingerprint() {
