@@ -1,6 +1,7 @@
 package com.example.app.todo;
 
 import com.example.app.support.IntegrationTest;
+import com.example.app.todo.domain.TodoStatus;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.TestInstance;
@@ -14,8 +15,11 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.MatchResult;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,6 +52,10 @@ class TodoIndexIntegrationTest extends IntegrationTest {
               from tags""";
     private static final String DROPDOWN_ITEM = "select id, name from todo_lists";
 
+    /** A page of the list (its default size, plus the one row that tells whether there is a next). */
+    private static final int PAGE = 21;
+    private static final Pattern ROWS_REMOVED_BY_FILTER = Pattern.compile("Rows Removed by Filter: (\\d+)");
+
     private UUID ownerId;
     private UUID listId;
     private UUID tagId;
@@ -74,13 +82,15 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                 select gen_random_uuid(), ?, 'Seeded ' || n, now(), now(), 0 from generate_series(1, 50) n
                 """, ownerId);
         // tenancy-row:end
+        // One todo in twenty is open, the latest due ones (done todos pile up from the past): a rare status
+        // that comes last under DUE_DATE.
         // tenancy-row:begin
         // sql("""
         //         insert into todos (id, tenant_id, todo_list_id, owner_id, title, status, priority, due_date, completed_at,
         //                            created_at, updated_at, version)
         //         select gen_random_uuid(), list.tenant_id, list.id, list.owner_id, 'Seeded',
-        //                case when n % 20 = 0 then 'OPEN' else 'DONE' end, 'LOW', date '2026-01-01' + n,
-        //                case when n % 20 = 0 then null else now() end, now(), now(), 0
+        //                case when n > 95 then 'OPEN' else 'DONE' end, 'LOW', date '2026-01-01' + n,
+        //                case when n > 95 then null else now() end, now(), now(), 0
         //         from todo_lists list cross join generate_series(1, 100) n
         //         where list.owner_id = ?
         //         """, ownerId);
@@ -89,8 +99,8 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                 insert into todos (id, todo_list_id, owner_id, title, status, priority, due_date, completed_at,
                                    created_at, updated_at, version)
                 select gen_random_uuid(), list.id, list.owner_id, 'Seeded',
-                       case when n % 20 = 0 then 'OPEN' else 'DONE' end, 'LOW', date '2026-01-01' + n,
-                       case when n % 20 = 0 then null else now() end, now(), now(), 0
+                       case when n > 95 then 'OPEN' else 'DONE' end, 'LOW', date '2026-01-01' + n,
+                       case when n > 95 then null else now() end, now(), now(), 0
                 from todo_lists list cross join generate_series(1, 100) n
                 where list.owner_id = ?
                 """, ownerId);
@@ -220,6 +230,47 @@ class TodoIndexIntegrationTest extends IntegrationTest {
         for (String column : scope) {
             assertThat(indexCondition).as(plan).contains(column);
         }
+    }
+
+    static Stream<Arguments> everyStatusUnderEveryOrder() {
+        List<Arguments> cases = new ArrayList<>();
+        for (TodoStatus status : TodoStatus.values()) {
+            cases.add(Arguments.of(status, "DUE_DATE", "order by due_sort, id"));
+            cases.add(Arguments.of(status, "NEWEST", "order by id desc"));
+        }
+        return cases.stream();
+    }
+
+    private static long removedRows(MatchResult line) {
+        return Long.parseLong(line.group(1));
+    }
+
+    /**
+     * The status filter is offered for every value, so every value is bound, the rare one included: open
+     * todos are few and the latest due, so without the status's own index a DUE_DATE page of them would
+     * walk the owner's order index past every done todo first (the index name and "no sort" can't see
+     * that: the walk is in order). The plan's own count proves the walk short: EXPLAIN ANALYZE runs the
+     * page and reports the rows the index scan handed over that the filter threw away.
+     */
+    @ParameterizedTest(name = "{0}, {1}")
+    @MethodSource("everyStatusUnderEveryOrder")
+    @DisplayName("Every status value, the rare one included, reads a page under every order without walking past other rows")
+    void everyStatusValueReadsOnlyItsOwnRows(TodoStatus status, String order, String orderBy) {
+        MapSqlParameterSource parameters = new MapSqlParameterSource()
+                .addValue("owner", ownerId)
+                .addValue("status", status.name());
+
+        List<String> planLines = new TransactionTemplate(transactionManager).execute(transaction -> {
+            jdbc.execute("set local enable_seqscan = off");
+            jdbc.execute("set local enable_bitmapscan = off");
+            return new NamedParameterJdbcTemplate(jdbc).queryForList("explain (analyze, costs off, timing off) " + TODO_SUMMARY
+                    + " where owner_id = :owner and status = :status " + orderBy + " limit " + PAGE, parameters, String.class);
+        });
+        String plan = String.join("\n", planLines);
+
+        assertThat(plan).as(plan).doesNotContain("Sort");
+        assertThat(ROWS_REMOVED_BY_FILTER.matcher(plan).results().mapToLong(TodoIndexIntegrationTest::removedRows).sum())
+                .as(plan).isLessThanOrEqualTo(PAGE);
     }
 
     static Stream<Arguments> tagShapes() {

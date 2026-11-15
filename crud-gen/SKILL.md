@@ -348,10 +348,21 @@ and per scoping filter, ending with the id (none when the sort column is unique 
 new changeset if the entity's own one is applied (Step 2), with test row 28 for each. An order index
 that leads with a foreign key column (`(author_id, id)`) also serves that key's checks: it
 **replaces** the key's own index from the pre-flight (`idx_books_author_id`), never sits beside it
-(golden `0003-todos.sql`'s comment). A low-cardinality enum filter (a status, a priority) counts
-as scoping only when one value is rare and filtered for often (the owner's open todos among years of
-done ones): then it gets its index; otherwise the order index filters it (golden `0003`: priority,
-three values, none rare). Record which, so the review doesn't ask again.
+(golden `0003-todos.sql`'s comment). **A low-cardinality enum filter** (a status, a priority) is
+judged per value and per offered order, over the rows its scope leaves (the owner's rows; on a shared
+root, the whole table): a value is **rare** when it holds a small share of them (about one in ten or
+fewer: the owner's open todos among years of done ones, a book catalogue's withdrawn books, the active
+loans among the history). A filter with a rare value is **scoping**, and gets one index per offered
+order (`(<scope>, status, <sort keys>, id)`; golden `idx_todos_owner_id_status_due_sort_id` and
+`…_status_id`): walking the order's index with the filter reads every other row that comes first, and
+the rare rows come last under some order (active loans have the latest days, so `STARTS_ON` walks the
+whole history first; measured 165 ms against 0.06 ms with the index). Leave it to the order's index
+only when (record which and why, so the review doesn't ask again):
+- no value is rare (golden `0003`: priority, three values, none rare); or
+- the scope bounds the walk to a few pages whatever the value (status within one list: a list is
+  small); or
+- every offered order brings the rare value's rows first (the newest-first order for the newest
+  status), checked per order, never for the default one alone.
 
 **Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
 `List<@NotNull ID> ids` with `@ConfiguredMaxSize("cursor-page.max-size")` (offset:

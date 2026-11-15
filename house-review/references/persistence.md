@@ -449,6 +449,11 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     (`(tenant_id, sort…, id)`; TEN-33);
   - **also per scoping filter** (a parent id: a list's own screen): `(parent_id, owner_id, sort
     keys…, id)`, which also serves the foreign key, or the page walks every row of the owner;
+  - **a status (low-cardinality enum) filter with a rare value is a scoping filter**: one index per
+    offered order (`(scope…, status, sort keys…, id)`), unless the scope bounds the walk to a few pages
+    or every offered order brings the rare rows first (recorded per order, never for the default order
+    alone). Without it, an order under which the rare rows come last walks the scope past every other
+    row: on a shared root the whole table (measured: 165–202 ms against under 0.1 ms with the index);
   - every sort has a unique tie-breaker: the id, unless the sort column is itself unique and not
     null (a code), which is already a total order (`code, id` on a unique `code` adds a sort step
     the index can't serve);
@@ -467,7 +472,11 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     checked on create; `PlanIndexIntegrationTest.plannedDaysReadABoundedRange` asserts both bounds in the
     Index Cond). Without a maximum, it is a recorded decision that the filter scans the scope's history;
   - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).
-- **Detect:** an overlap filter written as two comparisons with nothing bounding `starts_on` from
+- **Detect:** a status filter on a list with no status index and no recorded reason per offered order
+  (a "rarely listed" note is not one: the UI offers the value); an index test that binds one status
+  value, or only asserts the index name and no Sort for a filter applied while walking (an in-order walk
+  that filters away the table passes it: the bound is `Rows Removed by Filter` from `EXPLAIN ANALYZE`);
+  an overlap filter written as two comparisons with nothing bounding `starts_on` from
   below (an index test that only finds `starts_on` in the Index Cond doesn't notice); an index on
   `updated_at` or `version` (or on any column every update changes): every
   update then writes new index entries and is never a HOT update (measured 2026-11-14 on a
