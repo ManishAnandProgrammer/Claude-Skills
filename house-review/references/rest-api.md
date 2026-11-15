@@ -373,6 +373,10 @@ types.
   changelog, k6 scripts); non-OpenAPI contracts follow ARCH-13. In **diff mode**, a change to a request or response DTO, a
   controller method or a thrown exception, with no change to the matching API interface or
   `@Schema`, is a finding.
+- **Detect:** a code-only description (`description = "AUTHENTICATION_REQUIRED"`) while springdoc's
+  i18n is on (no `springdoc.disable-i18n: true`): springdoc resolves it as a message key, and the
+  published docs show the code's message, never the code a client switches on. Fix the setting (the
+  reference's `config/server.yml`) and assert one code in the api-docs test.
 - **Severity:** Medium (Low for missing examples).
 - **Fix:** update the interface and `@Schema` in the same change.
 

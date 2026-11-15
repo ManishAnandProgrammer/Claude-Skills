@@ -68,6 +68,9 @@ server:
 
 # Off unless a profile turns them on (dev): a forgotten profile must not publish the API schema.
 springdoc:
+  # Annotation texts are published as written: with i18n on, springdoc resolves a description that is
+  # one error code ("AUTHENTICATION_REQUIRED") as a message key and publishes the message instead.
+  disable-i18n: true
   api-docs:
     enabled: false
   swagger-ui:

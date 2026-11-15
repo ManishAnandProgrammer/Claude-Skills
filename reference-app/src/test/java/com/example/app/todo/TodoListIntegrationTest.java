@@ -29,6 +29,7 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -831,13 +832,17 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The API docs show the configured limits, and errors as application/problem+json")
+    @DisplayName("The API docs show the configured limits, errors as application/problem+json, and error codes as written")
     void apiDocsShowTheConfiguredLimits() throws Exception {
         getAs(null, "/v3/api-docs")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.components.schemas.TodoListCreateRequest.properties.name.maxLength").value(100))
                 .andExpect(jsonPath("$.paths['/api/v1/todo-lists'].get.parameters[?(@.name == 'size')].schema.maximum").value(100))
                 .andExpect(jsonPath("$.paths['/api/v1/todo-lists/dropdown'].get.parameters[?(@.name == 'query')].schema.maxLength").value(100))
-                .andExpect(jsonPath("$.paths['/api/v1/todo-lists/{id}'].delete.responses['409'].content['application/problem+json']").exists());
+                .andExpect(jsonPath("$.paths['/api/v1/todo-lists/{id}'].delete.responses['409'].content['application/problem+json']").exists())
+                // The codes a client switches on, as written: never resolved as message keys into their messages
+                // (a piece may append its own codes to every 401, hence "starts with").
+                .andExpect(jsonPath("$.paths['/api/v1/todo-lists'].get.responses['401'].description").value(startsWith("AUTHENTICATION_REQUIRED")))
+                .andExpect(jsonPath("$.paths['/api/v1/todo-lists'].post.responses['409'].description").value("TODO_LIST_NAME_TAKEN"));
     }
 }

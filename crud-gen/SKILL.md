@@ -573,10 +573,12 @@ removes its cascadable member rows set-based can't (golden `TodoApi`; the race t
 aggregate's delete may remove meanwhile documents the 409 for that case (golden `replaceTags`). An `@Schema` states exactly what the validation does ("unique ignoring case" for a
 format-validated field, whose surrounding spaces are a 400).
 List descriptions explain the paging (cursor: `after` / `pageInfo.nextCursor`; offset: `page` /
-`size`, limits from configuration). Filters are `@ParameterObject`. A description is never exactly
-one error code: springdoc resolves annotation texts as message keys, so `description = "BOOK_NOT_FOUND"`
-publishes the code's message, placeholder included; write the code with its case, as the golden files
-do (`"TODO_NOT_FOUND (missing, or another user's)"`).
+`size`, limits from configuration). Filters are `@ParameterObject`. A description that is exactly one
+error code (`"AUTHENTICATION_REQUIRED"`, `"TODO_LIST_NAME_TAKEN"`) is fine: the reference's
+`config/server.yml` sets `springdoc.disable-i18n: true`, so annotation texts are published as written
+(with springdoc's i18n on, such a description is resolved as a message key and the docs publish the
+code's message instead; golden `TodoListIntegrationTest.apiDocsShowTheConfiguredLimits` asserts the
+codes). Add the case where it helps the client (`"TODO_NOT_FOUND (missing, or another user's)"`).
 
 ### 4.10 Controller
 Golden `TodoController`: package-private, `implements <Entity>Api`, class-level
