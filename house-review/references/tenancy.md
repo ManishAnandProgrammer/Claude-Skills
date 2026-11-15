@@ -155,6 +155,11 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   `ACCESS_DENIED`), tested by `TenantMemberIntegrationTest.aDemotedAdminsTokenManagesNoMore` and
   `aRemovedAdminCantComeBack`. A last-ADMIN count is no substitute: an add or a promotion never consults
   it.
+- **Check:** adding a member by email is a lookup that answers whether an address has an account (and the
+  person's name): it is rate limited per ADMIN account (`MemberRateLimits`, `app.rate-limit.members.add-per-account`,
+  429 `RATE_LIMITED`) whenever the limiter is on, and the API text says it is unlimited when the limiter is
+  off; any other endpoint that turns an email into a person takes the same limit. Reference
+  `TenantMemberIntegrationTest.addsAreLimitedPerAdmin`. Invitations (later) replace the direct add.
 - **Check:** **every path that issues a token** (login, refresh, switch-tenant, impersonation, and any
   later one: an invitation, a tenant-picker sign-in) re-reads at the issue what the token stands for:
   the membership (still there), its role and session version, the tenant ACTIVE; nothing comes from the

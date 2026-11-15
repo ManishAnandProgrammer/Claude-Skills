@@ -63,7 +63,9 @@ public interface TenantMemberApi {
 
     @Operation(summary = "Add an existing account to this tenant", description = """
             The person must have signed up (invitations come later); the answer tells an ADMIN whether an \
-            email has an account.""")
+            email has an account, so adds are rate limited per ADMIN account (20 per 10 minutes by default, \
+            app.rate-limit.members.add-per-account) whenever rate limiting is on (app.rate-limit.enabled); \
+            with it off they are not limited.""")
     @ApiResponse(responseCode = "201", description = "Added")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -74,6 +76,8 @@ public interface TenantMemberApi {
     @ApiResponse(responseCode = "404", description = "TENANT_MEMBER_ACCOUNT_NOT_FOUND (no account with that email)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "TENANT_MEMBER_EXISTS (already a member)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "429", description = "RATE_LIMITED (this ADMIN's adds); wait Retry-After seconds",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

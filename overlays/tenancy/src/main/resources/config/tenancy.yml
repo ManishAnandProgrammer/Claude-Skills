@@ -34,6 +34,12 @@ app:
       # The tenancy piece's maximum lengths, beside config/limits.yml's.
       tenant.name: 100
       tenant.support-reason: 500
+  rate-limit:
+    members:
+      # A tenant ADMIN's adds (POST /tenant-members), per ADMIN account: each looks an email up and names
+      # the person, so this bounds how fast an ADMIN can map emails to people. Off with the limiter
+      # (app.rate-limit.enabled).
+      add-per-account: { requests: 20, window: 10m }
   liquibase:
     # Migrations run as the owner role; the pool's role (DB_USER) owns nothing and can't change the
     # schema (docs/tenancy-runbook.md, "Database roles").

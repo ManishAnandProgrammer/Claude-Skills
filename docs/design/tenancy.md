@@ -643,6 +643,11 @@ returned by nothing but the add and the previous change.
   schema mode it sits in another schema, and it adds nothing the membership doesn't say. `createdAt` is
   when the person joined (again, after a removal). Reads go by the token's role; the changes keep
   checking the caller's membership under the tenant's lock (TEN-08).
+- **The add is rate limited per ADMIN account** (2026-11-15 evening, owner decision): it looks an email
+  up and names the person, so it is an email-to-person oracle for any ADMIN of any tenant.
+  `MemberRateLimits` (20 per 10 minutes, `app.rate-limit.members.add-per-account` in `config/tenancy.yml`,
+  the id hashed into the Redis key) whenever `app.rate-limit.enabled`; with the limiter off the API text
+  says the add is unlimited. Invitations (later) replace the direct add and its consent gap.
 - **The tenant in every statement:** `tenant_memberships` is a platform table in both modes (no policy),
   so the list, the GET and the facade name `TenantContext.current()` themselves.
 - **Indexes (`0020-tenant-members-list`, a platform changeset):** `(tenant_id, id)` for both orders,

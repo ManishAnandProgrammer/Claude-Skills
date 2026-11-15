@@ -4,6 +4,8 @@ import com.example.app.support.IntegrationTest;
 import com.example.app.support.WithoutTestTenant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.ArrayList;
@@ -18,6 +20,7 @@ import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -26,6 +29,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TenantMemberIntegrationTest extends IntegrationTest {
 
     private static final String MEMBERS = "/api/v1/tenant-members";
+
+    @Value("${app.rate-limit.members.add-per-account.requests}")
+    private int addsPerAccount;
     // session-version:begin
     // An older token of a demoted or removed ADMIN: refused by the session version before the write's own
     // check of the caller's current role (which stays, and is what refuses it without the session version).
@@ -114,6 +120,27 @@ class TenantMemberIntegrationTest extends IntegrationTest {
                 .andReturn().getResponse().getContentAsString();
         assertNoInternals(body);
         assertThat(roleOf(tenant, member.id())).isEqualTo("USER");
+    }
+
+    @Test
+    @DisplayName("""
+            An ADMIN's adds are limited per account: past the limit 429 RATE_LIMITED with Retry-After, even for an \
+            existing account; another ADMIN still adds""")
+    void addsAreLimitedPerAdmin() throws Exception {
+        TestTenant tenant = newTenant();
+        TestUser admin = soleAdminOf(tenant);
+        TestUser otherAdmin = newUserIn(tenant, "ADMIN");
+        String email = uniqueEmail("colleague");
+        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+
+        for (int lookup = 0; lookup < addsPerAccount; lookup++) {
+            postAs(admin.accessToken(), MEMBERS, addPayload(uniqueEmail("nobody"), "USER")).andExpect(status().isNotFound());
+        }
+        postAs(admin.accessToken(), MEMBERS, addPayload(email, "USER"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.errorCode").value("RATE_LIMITED"))
+                .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
+        postAs(otherAdmin.accessToken(), MEMBERS, addPayload(email, "USER")).andExpect(status().isCreated());
     }
 
     @Test

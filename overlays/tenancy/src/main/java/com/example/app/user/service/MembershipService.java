@@ -84,6 +84,7 @@ public class MembershipService implements Members {
     private final MembershipMapper mapper;
     private final Paging paging;
     private final Clock clock;
+    private final MemberRateLimits rateLimits;
     // session-version:begin
     private final ApplicationEventPublisher events;
     // session-version:end
@@ -143,12 +144,14 @@ public class MembershipService implements Members {
     }
 
     /**
-     * A tenant ADMIN adds an existing account to the caller's tenant: 404
-     * {@code TENANT_MEMBER_ACCOUNT_NOT_FOUND} without one, 409 {@code TENANT_MEMBER_EXISTS} (the unique
-     * pair) when it is already a member.
+     * A tenant ADMIN adds an existing account to the caller's tenant: 429 {@code RATE_LIMITED} past the
+     * caller's limit (MemberRateLimits), 404 {@code TENANT_MEMBER_ACCOUNT_NOT_FOUND} without an account, 409
+     * {@code TENANT_MEMBER_EXISTS} (the unique pair) when it is already a member.
      */
     @Transactional
     public ObjectWrapper<TenantMemberResponse> addMember(UUID callerId, TenantMemberAddRequest request) {
+        // Before the first statement, so the connection isn't borrowed while Redis answers.
+        rateLimits.add(callerId);
         UUID tenantId = lockAsCurrentAdmin(callerId);
         User user = users.findByEmail(request.email())
                 .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_ACCOUNT_NOT_FOUND));
