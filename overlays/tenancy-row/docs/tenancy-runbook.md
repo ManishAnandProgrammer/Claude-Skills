@@ -95,6 +95,19 @@ ALTER TABLE <table> FORCE ROW LEVEL SECURITY;
 Liquibase runs a formatted-SQL changeset in one transaction, so the table is never left unforced.
 New tenants get their defaults from their modules' `TenantProvisioned` listeners, never a changeset.
 
+Such a backfill reaches every tenant, a registration still PENDING included; its approval's listener
+then finds the row and keeps it (the listeners create their rows only when missing). Two cases need a
+hand:
+
+- **Approvals during a rolling deploy.** An instance of the old release (without the new listener) that
+  approves a tenant after the new release's backfill ran leaves that tenant without the row. Approve
+  tenants once every instance runs the new release, or give the tenant its row afterwards with the
+  backfill's insert, for that tenant only (the block above). A row the code numbers with (a display
+  number's counter) is also created on first use, so it needs nothing.
+- **A tenant stuck PENDING** ("Tenant provisioning failed" in the log on every approval): read the
+  logged cause; a duplicate key on a seeded row means a listener inserts unconditionally, a bug to fix
+  in that module before approving again.
+
 ## 5. Query plans (a slow tenant)
 
 `EXPLAIN` as the app role with the tenant set, never as a superuser (it bypasses the policies and
