@@ -194,7 +194,7 @@ public class MembershipService implements Members {
     }
 
     /**
-     * 409 {@code TENANT_MEMBER_OWN_CHANGE} for the caller's own membership, 404
+     * 403 {@code TENANT_MEMBER_OWN_CHANGE} for the caller's own membership, 404
      * {@code TENANT_MEMBER_NOT_FOUND} for a user who isn't a member here.
      */
     private TenantMembership otherMemberUnderTenantLock(UUID callerId, UUID userId) {

@@ -77,7 +77,7 @@ public enum ErrorCode {
     // TENANT_MEMBER_EXISTS,
     // /** Every tenant keeps an ADMIN: the last one can't be demoted or removed. */
     // TENANT_MEMBER_LAST_ADMIN,
-    // /** Nobody changes or removes their own membership (house-review SEC-02). */
+    // /** Nobody changes or removes their own membership (house-review SEC-02): a rule that never depends on state, so 403. */
     // TENANT_MEMBER_OWN_CHANGE,
     // tenancy:end
     // metadata:begin

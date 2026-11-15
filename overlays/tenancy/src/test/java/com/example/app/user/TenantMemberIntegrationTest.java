@@ -364,17 +364,17 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Changing or removing one's own membership is 409 TENANT_MEMBER_OWN_CHANGE")
+    @DisplayName("Changing or removing one's own membership is 403 TENANT_MEMBER_OWN_CHANGE, whatever the state")
     void nobodyChangesTheirOwnMembership() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
         newUserIn(tenant, "ADMIN");
 
         putAs(owner.accessToken(), MEMBERS + "/" + owner.id(), rolePayload("USER", versionOf(tenant, owner.id())))
-                .andExpect(status().isConflict())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_OWN_CHANGE"));
         deleteAs(owner.accessToken(), MEMBERS + "/" + owner.id())
-                .andExpect(status().isConflict())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_OWN_CHANGE"));
         assertThat(roleOf(tenant, owner.id())).isEqualTo("ADMIN");
     }

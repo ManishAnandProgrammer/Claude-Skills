@@ -63,7 +63,7 @@ public final class ErrorCodeHttpStatusMapper {
         // MAPPING.put(ErrorCode.TENANT_MEMBER_ACCOUNT_NOT_FOUND, HttpStatus.NOT_FOUND);
         // MAPPING.put(ErrorCode.TENANT_MEMBER_EXISTS, HttpStatus.CONFLICT);
         // MAPPING.put(ErrorCode.TENANT_MEMBER_LAST_ADMIN, HttpStatus.CONFLICT);
-        // MAPPING.put(ErrorCode.TENANT_MEMBER_OWN_CHANGE, HttpStatus.CONFLICT);
+        // MAPPING.put(ErrorCode.TENANT_MEMBER_OWN_CHANGE, HttpStatus.FORBIDDEN);
         // tenancy:end
         // metadata:begin
         MAPPING.put(ErrorCode.METADATA_KEY_UNKNOWN, HttpStatus.NOT_FOUND);

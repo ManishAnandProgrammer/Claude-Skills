@@ -85,13 +85,14 @@ public interface TenantMemberApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an ADMIN of this tenant now, whatever the token says)",
+    @ApiResponse(responseCode = "403", description = """
+            ACCESS_DENIED (not an ADMIN of this tenant now, whatever the token says), TENANT_MEMBER_OWN_CHANGE \
+            (your own membership: another ADMIN changes it)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TENANT_MEMBER_NOT_FOUND (not a member of this tenant)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = """
-            TENANT_MEMBER_LAST_ADMIN (it would leave no ADMIN), TENANT_MEMBER_OWN_CHANGE (your own \
-            membership), OPTIMISTIC_LOCK_CONFLICT (a stale version: the list, the member's GET, the add and \
+            TENANT_MEMBER_LAST_ADMIN (it would leave no ADMIN), OPTIMISTIC_LOCK_CONFLICT (a stale version: the list, the member's GET, the add and \
             the last change answer the current one; sign-ins don't move it)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
@@ -108,12 +109,13 @@ public interface TenantMemberApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an ADMIN of this tenant now, whatever the token says)",
+    @ApiResponse(responseCode = "403", description = """
+            ACCESS_DENIED (not an ADMIN of this tenant now, whatever the token says), TENANT_MEMBER_OWN_CHANGE \
+            (your own membership: another ADMIN removes it)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TENANT_MEMBER_NOT_FOUND (not a member of this tenant)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "409", description = """
-            TENANT_MEMBER_LAST_ADMIN (the only ADMIN), TENANT_MEMBER_OWN_CHANGE (your own membership)""",
+    @ApiResponse(responseCode = "409", description = "TENANT_MEMBER_LAST_ADMIN (the only ADMIN)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
