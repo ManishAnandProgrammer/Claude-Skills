@@ -2,6 +2,7 @@ package com.example.app.common.pagination;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.exception.RequestError;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,7 @@ class CursorTest {
                 .isThrownBy(reading)
                 .satisfies(refused -> {
                     assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.REQUEST_PARAMETER_INVALID);
-                    assertThat(refused.getExtensions()).containsEntry("parameter", "after");
+                    assertThat(refused.getErrors()).containsExactly(RequestError.atParameter("after", "invalid value"));
                 });
     }
 

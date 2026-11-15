@@ -23,7 +23,7 @@ public interface UploadUrlApi {
             by storage with 403.""")
     @ApiResponse(responseCode = "201", description = "One upload per file, in the request's order")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (see failed); REQUEST_UNREADABLE (an unknown purpose); \
+            VALIDATION_FAILED (see errors); REQUEST_UNREADABLE (an unknown purpose); \
             UPLOAD_FILE_COUNT_OUT_OF_RANGE (more files than the purpose's maxFiles); UPLOAD_TYPE_NOT_ALLOWED \
             (a type the purpose doesn't accept, never SVG, HTML or XML); UPLOAD_SIZE_OUT_OF_RANGE""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

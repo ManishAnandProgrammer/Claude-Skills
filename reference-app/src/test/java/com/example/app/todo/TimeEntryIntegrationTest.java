@@ -20,7 +20,6 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
@@ -294,9 +293,9 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), entries(createTodo(user)), "{}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("minutes"))))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("spentOn"))))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("billable"))));
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/minutes")))
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/spentOn")))
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/billable")));
     }
 
     @Test
@@ -309,7 +308,7 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         putAs(user.accessToken(), entry(todoId, id), createPayload(30, "2026-11-01", false))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value(containsString("version")));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/version"));
     }
 
     @Test
@@ -324,20 +323,24 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         putAs(user.accessToken(), entry(todoId, id), updatePayload(0, "2026-11-01", false, 1))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("minutes: must be greater than or equal to 1"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/minutes"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be greater than or equal to 1"));
 
         postAs(user.accessToken(), entries(todoId), createPayload(0, "2026-11-01", false))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("minutes: must be greater than or equal to 1"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/minutes"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be greater than or equal to 1"));
         postAs(user.accessToken(), entries(todoId), createPayload(1441, "2026-11-01", false))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("minutes: must be at most 1440"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/minutes"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 1440"));
         putAs(user.accessToken(), entry(todoId, id), updatePayload(1441, "2026-11-01", false, 1))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("minutes: must be at most 1440"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/minutes"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 1440"));
     }
 
     @Test
@@ -355,7 +358,8 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), entries(todoId), createPayload(30, future, false))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("spentOn: must not be in the future"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/spentOn"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must not be in the future"));
         putAs(user.accessToken(), entry(todoId, id), updatePayload(30, today.toString(), false, 0))
                 .andExpect(status().isOk());
         putAs(user.accessToken(), entry(todoId, id), updatePayload(30, latest, false, 1))
@@ -364,7 +368,8 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         putAs(user.accessToken(), entry(todoId, id), updatePayload(30, future, false, 2))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("spentOn: must not be in the future"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/spentOn"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must not be in the future"));
     }
 
     @Test
@@ -381,14 +386,16 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), entries(todoId), notePayload.formatted("n".repeat(501)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("note: must be at most 500 characters"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/note"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 500 characters"));
         String id = createEntry(user, todoId, 10, "2026-11-01", false);
         putAs(user.accessToken(), entry(todoId, id), noteUpdatePayload("ਨ".repeat(500), 0))
                 .andExpect(status().isOk());
         putAs(user.accessToken(), entry(todoId, id), noteUpdatePayload("n".repeat(501), 1))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("note: must be at most 500 characters"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/note"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 500 characters"));
     }
 
     @Test
@@ -540,7 +547,8 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), entries(todoId) + "?size=101")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("size: must be at most 100"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("size"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 100"));
     }
 
     @Test
@@ -555,7 +563,7 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), entries(todoId) + "?sort=SPENT_ON&size=1&after=" + minutesCursor)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.parameter").value("after"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("after"));
     }
 
     @Test
@@ -566,7 +574,7 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), entries(createTodo(user)) + "?after=not-a-cursor")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.parameter").value("after"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("after"));
     }
 
     @Test
@@ -618,11 +626,13 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), entries(todoId) + "?minMinutes=0")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("minMinutes: must be greater than or equal to 1")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("minMinutes")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be greater than or equal to 1")));
         getAs(user.accessToken(), entries(todoId) + "?maxMinutes=1441")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("maxMinutes: must be at most 1440")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("maxMinutes")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be at most 1440")));
     }
 
     @Test
@@ -638,11 +648,13 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=2026-11-02&spentOnTo=2026-11-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("spentOnRangeOrdered: spentOnFrom must not be after spentOnTo")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("spentOnRangeOrdered")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("spentOnFrom must not be after spentOnTo")));
         getAs(user.accessToken(), entries(todoId) + "?minMinutes=31&maxMinutes=30")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("minutesRangeOrdered: minMinutes must not be above maxMinutes")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("minutesRangeOrdered")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("minMinutes must not be above maxMinutes")));
     }
 
     @Test
@@ -679,9 +691,8 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 + "?spentOnFrom=01-11-2026&spentOnTo=yesterday&minMinutes=few&maxMinutes=lots&billable=maybe&sort=LONGEST&size=many")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.failed", containsInAnyOrder(
-                        "spentOnFrom: invalid value", "spentOnTo: invalid value", "minMinutes: invalid value",
-                        "maxMinutes: invalid value", "billable: invalid value", "sort: invalid value", "size: invalid value")))
+                .andExpect(jsonPath("$.errors[*].parameter", containsInAnyOrder("spentOnFrom", "spentOnTo", "minMinutes", "maxMinutes", "billable", "sort", "size")))
+                .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("invalid value", "invalid value", "invalid value", "invalid value", "invalid value", "invalid value", "invalid value")))
                 .andReturn().getResponse().getContentAsString();
         assertThat(body).doesNotContain("java.", "com.example", "Exception");
     }
@@ -772,11 +783,13 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), entries(todoId) + "?ids=" + randomIds(101))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("ids: must have at most 100 items")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("ids")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must have at most 100 items")));
         getAs(user.accessToken(), entries(todoId) + "?ids=nope," + UUID.randomUUID())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.failed", contains("ids: invalid value")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("ids")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("invalid value")));
     }
 
     @Test
@@ -803,11 +816,13 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), entries(todoId), createPayload(10, "-300000-01-01", false))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("spentOn: must be on or after 1900-01-01"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/spentOn"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be on or after 1900-01-01"));
         putAs(user.accessToken(), entry(todoId, id), updatePayload(10, "1899-12-31", false, 0))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("spentOn: must be on or after 1900-01-01"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/spentOn"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be on or after 1900-01-01"));
     }
 
     @Test
@@ -819,11 +834,11 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=-300000-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem("spentOnFrom: must be on or after 1900-01-01")));
+                .andExpect(jsonPath("$.errors[?(@.parameter == 'spentOnFrom')].detail", contains("must be on or after 1900-01-01")));
         getAs(user.accessToken(), entries(todoId) + "?spentOnTo=3000-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem("spentOnTo: must be on or before 2999-12-31")));
+                .andExpect(jsonPath("$.errors[?(@.parameter == 'spentOnTo')].detail", contains("must be on or before 2999-12-31")));
     }
 
     /** Statements run by one list request: a cursor list never counts. */

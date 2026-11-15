@@ -33,7 +33,7 @@ public interface TagApi {
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (page, size, query or the number of ids out of range); \
             REQUEST_PARAMETER_INVALID (an unknown sort or status, a non-numeric page or size, a malformed \
-            id; see failed)""",
+            id; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -55,7 +55,7 @@ public interface TagApi {
 
     @Operation(summary = "Create a tag", description = "Created active. The colour is optional, as #RRGGBB; empty means none.")
     @ApiResponse(responseCode = "201", description = "Created")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -69,7 +69,7 @@ public interface TagApi {
             Replaces name, colour (empty or null removes it) and active. Send the version you last read; if the tag changed since, \
             the update is refused with 409 OPTIMISTIC_LOCK_CONFLICT. Reload and try again.""")
     @ApiResponse(responseCode = "200", description = "Updated; the version increments when something changed")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -106,7 +106,7 @@ public interface TagApi {
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (size, query or after out of range); REQUEST_PARAMETER_INVALID (an unknown \
             status or sortDirection, a non-numeric size, or an after that is tampered or from the other \
-            direction; see failed or parameter)""",
+            direction; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

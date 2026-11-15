@@ -21,7 +21,6 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
@@ -137,12 +136,14 @@ class TagIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), TAGS, createPayload("Coloured", color))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("color: must be a colour as #RRGGBB"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/color"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be a colour as #RRGGBB"));
         String id = createTag(user, "Recoloured");
         putAs(user.accessToken(), TAGS + "/" + id, updatePayload("Recoloured", color, true, 0))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("color: must be a colour as #RRGGBB"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/color"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be a colour as #RRGGBB"));
     }
 
     @Test
@@ -249,11 +250,11 @@ class TagIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), TAGS, "{}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value(containsString("name")));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/name"));
         postAs(user.accessToken(), TAGS, createPayload("   ", null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value(containsString("name")));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/name"));
     }
 
     @Test
@@ -265,8 +266,8 @@ class TagIntegrationTest extends IntegrationTest {
         putAs(user.accessToken(), TAGS + "/" + id, createPayload("No version", null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("version"))))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("active"))));
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/version")))
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/active")));
     }
 
     @Test
@@ -279,13 +280,15 @@ class TagIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), TAGS, createPayload("y".repeat(51), null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("name: must be at most 50 characters"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/name"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 50 characters"));
         putAs(user.accessToken(), TAGS + "/" + id, updatePayload("ਬ".repeat(50), null, true, 0))
                 .andExpect(status().isOk());
         putAs(user.accessToken(), TAGS + "/" + id, updatePayload("y".repeat(51), null, true, 1))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("name: must be at most 50 characters"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/name"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 50 characters"));
     }
 
     @Test
@@ -459,7 +462,8 @@ class TagIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), TAGS + "?size=101")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("size: must be at most 100"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("size"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 100"));
     }
 
     @Test
@@ -538,7 +542,8 @@ class TagIntegrationTest extends IntegrationTest {
         getWithQuery(user, TAGS, "q".repeat(101))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("query: must be at most 100 characters"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("query"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 100 characters"));
     }
 
     @Test
@@ -563,8 +568,8 @@ class TagIntegrationTest extends IntegrationTest {
         String body = getAs(newUser().accessToken(), TAGS + "?sort=OLDEST_FIRST&page=first&size=many&status=maybe")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.failed", containsInAnyOrder(
-                        "sort: invalid value", "page: invalid value", "size: invalid value", "status: invalid value")))
+                .andExpect(jsonPath("$.errors[*].parameter", containsInAnyOrder("sort", "page", "size", "status")))
+                .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("invalid value", "invalid value", "invalid value", "invalid value")))
                 .andReturn().getResponse().getContentAsString();
         assertThat(body).doesNotContain("java.", "com.example", "Exception");
     }
@@ -625,11 +630,13 @@ class TagIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), TAGS + "?ids=" + randomIds(101))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("ids: must have at most 100 items")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("ids")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must have at most 100 items")));
         getAs(user.accessToken(), TAGS + "?ids=nope," + UUID.randomUUID())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.failed", contains("ids: invalid value")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("ids")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("invalid value")));
     }
 
     @Test
@@ -658,7 +665,8 @@ class TagIntegrationTest extends IntegrationTest {
         getAs(newUser().accessToken(), TAGS + "?page=100001")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("page: must be at most 100000"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("page"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 100000"));
     }
 
     @Test
@@ -753,7 +761,8 @@ class TagIntegrationTest extends IntegrationTest {
         getWithQuery(user, DROPDOWN, "q".repeat(101))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("query: must be at most 100 characters"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("query"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 100 characters"));
     }
 
     @Test
@@ -791,7 +800,7 @@ class TagIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), DROPDOWN + "?size=1&sortDirection=DESC&after=" + ascendingCursor)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.parameter").value("after"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("after"));
     }
 
     @Test
@@ -800,7 +809,7 @@ class TagIntegrationTest extends IntegrationTest {
         getAs(newUser().accessToken(), DROPDOWN + "?after=not-a-cursor")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.parameter").value("after"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("after"));
     }
 
     @Test
@@ -811,7 +820,8 @@ class TagIntegrationTest extends IntegrationTest {
         getAs(token, DROPDOWN + "?size=101")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("size: must be at most 100"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("size"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 100"));
     }
 
     @Test
@@ -820,6 +830,7 @@ class TagIntegrationTest extends IntegrationTest {
         getAs(newUser().accessToken(), DROPDOWN + "?status=ARCHIVED")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.failed", contains("status: invalid value")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("status")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("invalid value")));
     }
 }

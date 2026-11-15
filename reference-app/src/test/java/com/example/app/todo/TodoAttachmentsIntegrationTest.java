@@ -25,13 +25,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.endsWith;
-import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.startsWith;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -627,11 +623,13 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         create(user, listId, List.of(tooLong))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(allOf(startsWith("attachmentKeys"), endsWith(": must be at most " + UPLOAD_KEY_LIMIT + " characters")))));
+                .andExpect(jsonPath("$.errors[?(@.pointer == '#/attachmentKeys')].detail",
+                        contains("must be at most " + UPLOAD_KEY_LIMIT + " characters")));
         update(user, listId, todoId, 0, "With files", List.of(tooLong), List.of())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(allOf(startsWith("addAttachmentKeys"), endsWith(": must be at most " + UPLOAD_KEY_LIMIT + " characters")))));
+                .andExpect(jsonPath("$.errors[?(@.pointer == '#/addAttachmentKeys')].detail",
+                        contains("must be at most " + UPLOAD_KEY_LIMIT + " characters")));
     }
 
     @Test
@@ -647,21 +645,24 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         create(user, listId, randomKeys(51))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("attachmentKeys: must have at most 50 items")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/attachmentKeys")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must have at most 50 items")));
         update(user, listId, todoId, 0, "With files", randomKeys(50), List.of())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_FILE_COUNT_OUT_OF_RANGE"));
         update(user, listId, todoId, 0, "With files", randomKeys(51), List.of())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("addAttachmentKeys: must have at most 50 items")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/addAttachmentKeys")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must have at most 50 items")));
         update(user, listId, todoId, 0, "With files", List.of(), randomIdList(50))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("TODO_ATTACHMENT_NOT_FOUND"));
         update(user, listId, todoId, 0, "With files", List.of(), randomIdList(51))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("removeAttachmentIds: must have at most 50 items")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/removeAttachmentIds")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must have at most 50 items")));
     }
 
     @Test

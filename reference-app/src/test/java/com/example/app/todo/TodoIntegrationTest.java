@@ -33,6 +33,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -358,9 +359,9 @@ class TodoIntegrationTest extends IntegrationTest {
         postAs(newUser().accessToken(), TODOS, "{}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("todoListId"))))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("title"))))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("priority"))));
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/todoListId")))
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/title")))
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/priority")));
     }
 
     @Test
@@ -371,7 +372,7 @@ class TodoIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), TODOS, todoPayload(createList(user, "Blank"), "   ", "LOW", null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value(containsString("title")));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/title"));
     }
 
     @Test
@@ -386,13 +387,13 @@ class TodoIntegrationTest extends IntegrationTest {
                 """.formatted(listId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value(containsString("version")));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/version"));
         patchAs(user.accessToken(), TODOS + "/" + id + "/status", """
                 {"status": "DONE"}
                 """)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value(containsString("version")));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/version"));
     }
 
     @Test
@@ -405,7 +406,8 @@ class TodoIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), TODOS, todoPayload(listId, "t".repeat(201), "LOW", null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("title: must be at most 200 characters"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/title"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 200 characters"));
     }
 
     @Test
@@ -422,7 +424,8 @@ class TodoIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), TODOS, notesPayload.formatted(listId, "n".repeat(10_001)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("notes: must be at most 10000 characters"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/notes"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 10000 characters"));
     }
 
     @Test
@@ -455,13 +458,15 @@ class TodoIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), TODOS, todoPayload(listId, "Too late", "LOW", "3000-01-01"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("dueDate: must be on or before 2999-12-31"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/dueDate"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be on or before 2999-12-31"));
         putAs(user.accessToken(), TODOS + "/" + id, """
                 {"todoListId": "%s", "title": "Too late", "priority": "LOW", "dueDate": "9999-12-31", "version": 0}
                 """.formatted(listId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("dueDate: must be on or before 2999-12-31"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/dueDate"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be on or before 2999-12-31"));
     }
 
     @Test
@@ -474,13 +479,15 @@ class TodoIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), TODOS, todoPayload(listId, "Too early", "LOW", "1899-12-31"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("dueDate: must be on or after 1900-01-01"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/dueDate"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be on or after 1900-01-01"));
         putAs(user.accessToken(), TODOS + "/" + id, """
                 {"todoListId": "%s", "title": "Too early", "priority": "LOW", "dueDate": "-300000-01-01", "version": 0}
                 """.formatted(listId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("dueDate: must be on or after 1900-01-01"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/dueDate"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be on or after 1900-01-01"));
     }
 
     @Test
@@ -492,7 +499,8 @@ class TodoIntegrationTest extends IntegrationTest {
             mvc.perform(get(TODOS).param("dueOnOrBefore", date).header(HttpHeaders.AUTHORIZATION, "Bearer " + user.accessToken()))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                    .andExpect(jsonPath("$.failed[0]").value(containsString("dueOnOrBefore: must be on or")));
+                    .andExpect(jsonPath("$.errors[0].parameter").value("dueOnOrBefore"))
+                    .andExpect(jsonPath("$.errors[0].detail").value(startsWith("must be on or")));
         }
     }
 
@@ -616,7 +624,8 @@ class TodoIntegrationTest extends IntegrationTest {
         getAs(newUser().accessToken(), TODOS + "?size=101")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("size: must be at most 100"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("size"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 100"));
     }
 
     @Test
@@ -642,7 +651,7 @@ class TodoIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), TODOS + "?sort=DUE_DATE&size=1&after=" + newestCursor)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.parameter").value("after"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("after"));
     }
 
     @Test
@@ -651,7 +660,7 @@ class TodoIntegrationTest extends IntegrationTest {
         getAs(newUser().accessToken(), TODOS + "?after=not-a-cursor")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.parameter").value("after"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("after"));
     }
 
     @Test
@@ -701,11 +710,13 @@ class TodoIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), TODOS + "?ids=" + randomIds(101))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("ids: must have at most 100 items")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("ids")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must have at most 100 items")));
         getAs(user.accessToken(), TODOS + "?ids=" + UUID.randomUUID() + ",nope")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.failed", contains("ids: invalid value")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("ids")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("invalid value")));
     }
 
     @ParameterizedTest
@@ -762,9 +773,8 @@ class TodoIntegrationTest extends IntegrationTest {
                 TODOS + "?status=FOO&priority=URGENT&sort=OLDEST&dueOnOrBefore=30-11-2026&todoListId=nope&size=many")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.failed", containsInAnyOrder(
-                        "status: invalid value", "priority: invalid value", "sort: invalid value",
-                        "dueOnOrBefore: invalid value", "todoListId: invalid value", "size: invalid value")))
+                .andExpect(jsonPath("$.errors[*].parameter", containsInAnyOrder("status", "priority", "sort", "dueOnOrBefore", "todoListId", "size")))
+                .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("invalid value", "invalid value", "invalid value", "invalid value", "invalid value", "invalid value")))
                 .andReturn().getResponse().getContentAsString();
         assertThat(body).doesNotContain("java.", "com.example", "Exception");
     }
@@ -796,7 +806,8 @@ class TodoIntegrationTest extends IntegrationTest {
         getWithQuery(user, "q".repeat(101))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("query: must be at most 100 characters"));
+                .andExpect(jsonPath("$.errors[0].parameter").value("query"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 100 characters"));
     }
 
     @Test

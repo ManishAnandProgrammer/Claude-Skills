@@ -9,7 +9,6 @@ import org.springframework.test.web.servlet.ResultActions;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -100,6 +99,6 @@ class TenantRegistrationIntegrationTest extends IntegrationTest {
         register("", uniqueEmail("founder"), PASSWORD)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value(startsWith("organisationName:")));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/organisationName"));
     }
 }

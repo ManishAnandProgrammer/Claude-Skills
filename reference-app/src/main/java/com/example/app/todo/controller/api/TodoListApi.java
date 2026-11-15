@@ -30,7 +30,7 @@ public interface TodoListApi {
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (page, size, query or the number of ids out of range); \
             REQUEST_PARAMETER_INVALID (an unknown sort, a malformed id, a non-numeric page or size; see \
-            failed)""",
+            errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -52,7 +52,7 @@ public interface TodoListApi {
 
     @Operation(summary = "Create a todo list")
     @ApiResponse(responseCode = "201", description = "Created")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -66,7 +66,7 @@ public interface TodoListApi {
             Send the version you last read; if the list changed since, the update is refused with \
             409 OPTIMISTIC_LOCK_CONFLICT. Reload and try again.""")
     @ApiResponse(responseCode = "200", description = "Updated; the version increments when something changed")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -101,7 +101,7 @@ public interface TodoListApi {
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (size, query or after out of range); REQUEST_PARAMETER_INVALID (a status \
             other than ACTIVE, an unknown sortDirection, a non-numeric size, or an after that is \
-            tampered or from the other direction; see failed or parameter)""",
+            tampered or from the other direction; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

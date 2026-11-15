@@ -5,7 +5,9 @@ import com.example.app.common.web.ProblemTypes;
 import com.example.app.common.web.RetryAfterProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.core.MethodParameter;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -16,11 +18,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.validation.Errors;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
+import org.springframework.validation.method.ParameterErrors;
 import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -30,12 +35,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
  * Turns every exception into RFC 9457 Problem Details with the same members: {@code type}
  * ({@code urn:<application>:error:<CODE>}), {@code title}, {@code status}, {@code detail}, {@code instance}
- * (the request path) and {@code errorCode}; {@code failed} for validation errors. The request id
+ * (the request path) and {@code errorCode}; {@code errors} (RFC 9457's list of {@link RequestError}s) when the
+ * request's values failed: a JSON Pointer for a body value, the name for a parameter. The request id
  * travels in the {@code X-Request-ID} header and the log context. Every status comes from
  * {@link ErrorCodeHttpStatusMapper}.
  *
@@ -46,8 +51,6 @@ import java.util.stream.Stream;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
-
-    private static final String INVALID_VALUE = ": invalid value";
 
     private final MessageSource messageSource;
     private final ProblemTypes problemTypes;
@@ -78,8 +81,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         logClientError(status, code);
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, message(code, exception.getArgs()));
         exception.getExtensions().forEach(problem::setProperty);
-        if (exception.hasFailedValidations()) {
-            problem.setProperty(ProblemTypes.FAILED, exception.getFailedValidations());
+        if (exception.hasErrors()) {
+            problem.setProperty(ProblemTypes.ERRORS, exception.getErrors());
         }
         return respond(code, problem, request);
     }
@@ -95,37 +98,46 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                                   HttpHeaders headers,
                                                                   HttpStatusCode status,
                                                                   WebRequest request) {
-        List<String> unconvertible = new ArrayList<>();
-        List<String> failed = new ArrayList<>();
+        boolean body = isBody(exception.getParameter());
+        List<RequestError> unconvertible = new ArrayList<>();
         for (FieldError error : exception.getBindingResult().getFieldErrors()) {
             if (error.isBindingFailure()) {
-                unconvertible.add(error.getField() + INVALID_VALUE);
-            } else {
-                failed.add(error.getField() + ": " + error.getDefaultMessage());
+                unconvertible.add(located(body, error.getField(), RequestError.INVALID_VALUE));
             }
-        }
-        for (ObjectError error : exception.getBindingResult().getGlobalErrors()) {
-            failed.add(error.getObjectName() + ": " + error.getDefaultMessage());
         }
         if (!unconvertible.isEmpty()) {
             log.debug("Unconvertible request values: fields={}", unconvertible.size());
-            return withFailures(ErrorCode.REQUEST_PARAMETER_INVALID, unconvertible, request);
+            return withErrors(ErrorCode.REQUEST_PARAMETER_INVALID, unconvertible, request);
         }
-        log.debug("Validation failed: violations={}", failed.size());
-        return withFailures(ErrorCode.VALIDATION_FAILED, failed, request);
+        List<RequestError> errors = describe(body, exception.getBindingResult());
+        log.debug("Validation failed: violations={}", errors.size());
+        return withErrors(ErrorCode.VALIDATION_FAILED, errors, request);
     }
 
-    /** A constraint on a {@code @RequestParam} or {@code @PathVariable}: the same answer as a body field. */
+    /**
+     * Method validation: a constraint on a {@code @RequestParam} or {@code @PathVariable} (named as a
+     * parameter), and the {@code @Valid} objects of the same method, reported like the handler above.
+     */
     @Override
     protected ResponseEntity<Object> handleHandlerMethodValidationException(HandlerMethodValidationException exception,
                                                                             HttpHeaders headers,
                                                                             HttpStatusCode status,
                                                                             WebRequest request) {
-        List<String> failed = exception.getParameterValidationResults().stream()
-                .flatMap(GlobalExceptionHandler::describeFailures)
-                .toList();
-        log.debug("Parameter validation failed: violations={}", failed.size());
-        return withFailures(ErrorCode.VALIDATION_FAILED, failed, request);
+        List<RequestError> errors = new ArrayList<>();
+        for (ParameterValidationResult result : exception.getParameterValidationResults()) {
+            boolean body = isBody(result.getMethodParameter());
+            if (result instanceof ParameterErrors objectErrors) {
+                errors.addAll(describe(body, objectErrors));
+            } else {
+                for (MessageSourceResolvable error : result.getResolvableErrors()) {
+                    errors.add(body
+                            ? RequestError.atPointer(JsonPointers.WHOLE_BODY, error.getDefaultMessage())
+                            : RequestError.atParameter(result.getMethodParameter().getParameterName(), error.getDefaultMessage()));
+                }
+            }
+        }
+        log.debug("Parameter validation failed: violations={}", errors.size());
+        return withErrors(ErrorCode.VALIDATION_FAILED, errors, request);
     }
 
     /**
@@ -150,6 +162,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             }
             problem.setDetail(message(statusCode.is5xxServerError() ? ErrorCode.UNEXPECTED_ERROR : code));
             problem.setProperty(ProblemTypes.ERROR_CODE, code.name());
+            List<RequestError> errors = MvcRequestErrors.of(exception);
+            if (!statusCode.is5xxServerError() && !errors.isEmpty()) {
+                problem.setProperty(ProblemTypes.ERRORS, errors);
+            }
             problemTypes.identify(problem, request);
             Optional<String> retryAfterSeconds = retryAfterSeconds(code);
             if (retryAfterSeconds.isPresent()) {
@@ -223,9 +239,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return withOwnMessage(failure.errorCode(), request);
     }
 
-    private ResponseEntity<Object> withFailures(ErrorCode code, List<String> failed, WebRequest request) {
+    private ResponseEntity<Object> withErrors(ErrorCode code, List<RequestError> errors, WebRequest request) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(ErrorCodeHttpStatusMapper.resolve(code), message(code));
-        problem.setProperty(ProblemTypes.FAILED, failed);
+        problem.setProperty(ProblemTypes.ERRORS, errors);
         return problemBuilder(code, problem, request).body(problem);
     }
 
@@ -239,9 +255,29 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(status, message(ErrorCode.UNEXPECTED_ERROR));
     }
 
-    private static Stream<String> describeFailures(ParameterValidationResult result) {
-        String parameter = result.getMethodParameter().getParameterName();
-        return result.getResolvableErrors().stream().map(error -> parameter + ": " + error.getDefaultMessage());
+    /**
+     * A field of a body is named by its JSON Pointer, a field of a query object by its name, which is the
+     * query parameter's. A rule on the object as a whole, reported on no field, points to the body ({@code #}).
+     */
+    private static List<RequestError> describe(boolean body, Errors errors) {
+        List<RequestError> described = new ArrayList<>();
+        for (FieldError error : errors.getFieldErrors()) {
+            described.add(located(body, error.getField(), error.getDefaultMessage()));
+        }
+        for (ObjectError error : errors.getGlobalErrors()) {
+            described.add(RequestError.atPointer(JsonPointers.WHOLE_BODY, error.getDefaultMessage()));
+        }
+        return described;
+    }
+
+    private static RequestError located(boolean body, String field, String detail) {
+        return body
+                ? RequestError.atPointer(JsonPointers.fromPropertyPath(field), detail)
+                : RequestError.atParameter(field, detail);
+    }
+
+    private static boolean isBody(MethodParameter parameter) {
+        return parameter.hasParameterAnnotation(RequestBody.class);
     }
 
     private static void logClientError(HttpStatus status, ErrorCode code) {

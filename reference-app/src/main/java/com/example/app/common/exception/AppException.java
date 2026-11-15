@@ -22,18 +22,18 @@ public class AppException extends RuntimeException {
 
     /** Members every error response already has; an extension under one of them would replace it. */
     private static final Set<String> RESERVED_EXTENSIONS =
-            Set.of("type", "title", "status", "detail", "instance", "errorCode", "failed");
+            Set.of("type", "title", "status", "detail", "instance", "errorCode", "errors");
 
     private final ErrorCode errorCode;
     private final transient Object[] args;
-    private final transient List<String> failedValidations;
+    private final transient List<RequestError> errors;
     private final transient Map<String, Object> extensions = new LinkedHashMap<>();
 
-    private AppException(ErrorCode errorCode, Object[] args, List<String> failedValidations, Throwable cause) {
+    private AppException(ErrorCode errorCode, Object[] args, List<RequestError> errors, Throwable cause) {
         super(errorCode.name(), cause);
         this.errorCode = errorCode;
         this.args = args;
-        this.failedValidations = failedValidations;
+        this.errors = errors;
     }
 
     public static AppException of(ErrorCode errorCode, Object... args) {
@@ -44,9 +44,9 @@ public class AppException extends RuntimeException {
         return new AppException(errorCode, args, List.of(), cause);
     }
 
-    /** Field-level failures, sent as the {@code failed} member of the response. */
-    public static AppException withFailedValidations(ErrorCode errorCode, List<String> failedValidations) {
-        return new AppException(errorCode, new Object[0], List.copyOf(failedValidations), null);
+    /** The values that failed, each where it is in the request: sent as the {@code errors} member of the response. */
+    public static AppException withErrors(ErrorCode errorCode, List<RequestError> errors) {
+        return new AppException(errorCode, new Object[0], List.copyOf(errors), null);
     }
 
     public static Supplier<AppException> supply(ErrorCode errorCode, Object... args) {
@@ -69,7 +69,7 @@ public class AppException extends RuntimeException {
         return Collections.unmodifiableMap(extensions);
     }
 
-    public boolean hasFailedValidations() {
-        return !failedValidations.isEmpty();
+    public boolean hasErrors() {
+        return !errors.isEmpty();
     }
 }

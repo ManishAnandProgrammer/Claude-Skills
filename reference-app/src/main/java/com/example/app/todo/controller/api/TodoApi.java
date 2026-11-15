@@ -46,7 +46,7 @@ public interface TodoApi {
             VALIDATION_FAILED (size, query, after or the number of ids out of range); \
             REQUEST_PARAMETER_INVALID (an unknown status, priority or sort, a malformed date, id, \
             todoListId or tagId, a non-numeric size, or an after that is tampered or from another sort; \
-            see failed or parameter)""",
+            see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -77,13 +77,13 @@ public interface TodoApi {
     @ApiResponse(responseCode = "201", description = "Created")
     // media:begin
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (see failed; tagIds over the maximum or holding null), REQUEST_UNREADABLE \
+            VALIDATION_FAILED (see errors; tagIds over the maximum or holding null), REQUEST_UNREADABLE \
             (a malformed id); UPLOAD_FILE_COUNT_OUT_OF_RANGE (attachmentKeys outside the purpose's minFiles \
             and maxFiles)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:else
     // @ApiResponse(responseCode = "400", description = """
-    //         VALIDATION_FAILED (see failed; tagIds over the maximum or holding null), REQUEST_UNREADABLE \
+    //         VALIDATION_FAILED (see errors; tagIds over the maximum or holding null), REQUEST_UNREADABLE \
     //         (a malformed id)""",
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:end
@@ -132,11 +132,11 @@ public interface TodoApi {
     @ApiResponse(responseCode = "200", description = "Updated; the version increments when something changed")
     // media:begin
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID; \
+            VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID; \
             UPLOAD_FILE_COUNT_OUT_OF_RANGE (its files would end outside the purpose's minFiles and maxFiles)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:else
-    // @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
+    // @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:end
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
@@ -200,7 +200,7 @@ public interface TodoApi {
             again.""")
     @ApiResponse(responseCode = "200", description = "The todo with its tags; the version increments when they changed")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (see failed: tagIds or version missing, tagIds over the maximum or holding \
+            VALIDATION_FAILED (see errors: tagIds or version missing, tagIds over the maximum or holding \
             null), REQUEST_UNREADABLE (a malformed tag id), REQUEST_PARAMETER_INVALID (the id is not a \
             UUID)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -251,7 +251,7 @@ public interface TodoApi {
             spentOnFrom after spentOnTo, or minMinutes above maxMinutes, naming the lower bound); \
             REQUEST_PARAMETER_INVALID (a malformed id or date, a non-numeric size or minutes, a billable \
             that is not true or false, an unknown sort, or an after that is tampered or from another \
-            sort; see failed or parameter)""",
+            sort; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -279,7 +279,7 @@ public interface TodoApi {
             that is in the future everywhere (after today in UTC plus a configured tolerance). A blank note \
             is stored as none.""")
     @ApiResponse(responseCode = "201", description = "Created")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (the id is not a UUID)",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (the id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -293,7 +293,7 @@ public interface TodoApi {
             Replaces minutes, spentOn, note and billable, with the rules of logging time. Send the version \
             you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT.""")
     @ApiResponse(responseCode = "200", description = "Updated; the version increments when something changed")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

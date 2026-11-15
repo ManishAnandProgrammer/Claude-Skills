@@ -154,9 +154,9 @@ class PlanIntegrationTest extends IntegrationTest {
         postAs(newUser().accessToken(), PLANS, "{}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("todoId"))))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("startsOn"))))
-                .andExpect(jsonPath("$.failed", hasItem(containsString("endsOn"))));
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/todoId")))
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/startsOn")))
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/endsOn")));
     }
 
     @Test
@@ -168,7 +168,8 @@ class PlanIntegrationTest extends IntegrationTest {
         create(user, todoId, "2026-11-22", "2026-11-21")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("dateRangeOrdered: endsOn must not be before startsOn")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/dateRangeOrdered")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("endsOn must not be before startsOn")));
         create(user, todoId, "2026-11-22", "2026-11-22").andExpect(status().isCreated());
         assertThat(plansOf(user)).isOne();
     }
@@ -183,13 +184,14 @@ class PlanIntegrationTest extends IntegrationTest {
         create(user, todoId, "2999-12-29", "3000-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("endsOn: must be on or before 2999-12-31")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/endsOn")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be on or before 2999-12-31")));
         // startsOn can't be late alone: an endsOn before it would be refused as an inverted range.
         create(user, todoId, "3000-01-01", "3000-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", containsInAnyOrder(
-                        "startsOn: must be on or before 2999-12-31", "endsOn: must be on or before 2999-12-31")));
+                .andExpect(jsonPath("$.errors[*].pointer", containsInAnyOrder("#/startsOn", "#/endsOn")))
+                .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("must be on or before 2999-12-31", "must be on or before 2999-12-31")));
         assertThat(plansOf(user)).isOne();
     }
 
@@ -203,24 +205,25 @@ class PlanIntegrationTest extends IntegrationTest {
         create(user, todoId, "1899-12-31", "1900-01-02")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("startsOn: must be on or after 1900-01-01")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/startsOn")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be on or after 1900-01-01")));
         // endsOn can't be early alone: a startsOn after it would be refused as an inverted range.
         create(user, todoId, "1899-12-31", "1899-12-31")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", containsInAnyOrder(
-                        "startsOn: must be on or after 1900-01-01", "endsOn: must be on or after 1900-01-01")));
+                .andExpect(jsonPath("$.errors[*].pointer", containsInAnyOrder("#/startsOn", "#/endsOn")))
+                .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("must be on or after 1900-01-01", "must be on or after 1900-01-01")));
         // A year PostgreSQL's date can't hold, in each field: refused here, not at the insert.
         create(user, todoId, "-300000-01-01", "2026-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", containsInAnyOrder(
-                        "startsOn: must be on or after 1900-01-01", "lengthInDays: must be at most " + MAX_DAYS)));
+                .andExpect(jsonPath("$.errors[*].pointer", containsInAnyOrder("#/startsOn", "#/lengthInDays")))
+                .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("must be on or after 1900-01-01", "must be at most " + MAX_DAYS)));
         create(user, todoId, "-300000-01-01", "-300000-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", containsInAnyOrder(
-                        "startsOn: must be on or after 1900-01-01", "endsOn: must be on or after 1900-01-01")));
+                .andExpect(jsonPath("$.errors[*].pointer", containsInAnyOrder("#/startsOn", "#/endsOn")))
+                .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("must be on or after 1900-01-01", "must be on or after 1900-01-01")));
         assertThat(plansOf(user)).isOne();
     }
 
@@ -234,7 +237,8 @@ class PlanIntegrationTest extends IntegrationTest {
         create(user, todoId, first.toString(), first.plusDays(MAX_DAYS).toString())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("lengthInDays: must be at most " + MAX_DAYS)));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/lengthInDays")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be at most " + MAX_DAYS)));
         assertThat(plansOf(user)).isZero();
         create(user, todoId, first.toString(), first.plusDays(MAX_DAYS - 1).toString()).andExpect(status().isCreated());
     }
@@ -694,7 +698,8 @@ class PlanIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), PLANS + "?plannedFrom=2026-03-11&plannedTo=2026-03-10")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("plannedRangeOrdered: plannedFrom must not be after plannedTo")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("plannedRangeOrdered")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("plannedFrom must not be after plannedTo")));
         getAs(user.accessToken(), PLANS + "?plannedFrom=2026-03-10&plannedTo=2026-03-10").andExpect(status().isOk());
     }
 
@@ -741,11 +746,13 @@ class PlanIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), PLANS + "?ids=" + randomIds(101))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("ids: must have at most 100 items")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("ids")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must have at most 100 items")));
         getAs(user.accessToken(), PLANS + "?ids=nope," + UUID.randomUUID())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.failed", contains("ids: invalid value")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("ids")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("invalid value")));
     }
 
     @Test
@@ -773,7 +780,7 @@ class PlanIntegrationTest extends IntegrationTest {
             getAs(user.accessToken(), path)
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                    .andExpect(jsonPath("$.parameter").value("after"));
+                    .andExpect(jsonPath("$.errors[0].parameter").value("after"));
         }
     }
 
@@ -786,7 +793,8 @@ class PlanIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), PLANS + "?size=101")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("size: must be at most 100")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("size")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be at most 100")));
     }
 
     private long statementsFor(TestUser user, String path) throws Exception {

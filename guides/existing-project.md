@@ -56,7 +56,9 @@ what clients see:
 - **No client impact:** logging pattern, config baseline (database timeouts, Hikari), test
   base, ArchUnit, persistence base for *new* tables.
 - **Client-visible (plan, announce, record in the frontend changelog):**
-  - the error contract (adds `errorCode` and changes the error shapes);
+  - the error contract (adds `errorCode`, and validation errors become RFC 9457's `errors` list:
+    `{"pointer": "#/email", "detail": ...}` for a body field, `{"parameter": "size", ...}` for a query
+    parameter);
   - `PaginationWrapper` (`pageInfo` instead of whatever the lists return today);
   - the dropdown standard;
   - status code fixes (201, 204).

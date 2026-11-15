@@ -1,8 +1,9 @@
 # House error contract (ERR-xx)
 
 Reference implementation: the reference application's `common/exception/` (`ErrorCode`,
-`ErrorCodeHttpStatusMapper`, `AppException`, `TransientDatabaseFailure`, `GlobalExceptionHandler`,
-`ConstraintViolationCodes` with each module's `ConstraintErrorCodes`), `config/MessageSourceConfig`
+`ErrorCodeHttpStatusMapper`, `AppException`, `RequestError`, `JsonPointers`, `MvcRequestErrors`,
+`TransientDatabaseFailure`, `GlobalExceptionHandler`, `ConstraintViolationCodes` with each module's
+`ConstraintErrorCodes`), `common/web/ProblemSchemaOpenApiCustomizer`, `config/MessageSourceConfig`
 and `messages/message_en.properties`.
 
 This file is the reference shape that REST-05, REST-06 and REL-10 check against. A project
@@ -16,7 +17,8 @@ that hasn't adopted it yet gets one finding per missing piece, not one per endpo
 |---|---|
 | `ErrorCode` | One protocol-agnostic enum, grouped by module (`AUTH_…`, `ORDER_…`). Each constant is one well-defined failure mode. Constants in a module's `api/` package carry Javadoc. |
 | `ErrorCodeHttpStatusMapper` | `final` utility class with a private constructor, holding a static `EnumMap<ErrorCode, HttpStatus>`. It is the **only** place an ErrorCode meets an HttpStatus. `resolve()` throws `IllegalStateException` for an unmapped code, so a new code can't reach production silently. Other protocols (gRPC) would get their own mapper. |
-| `AppException` | One `RuntimeException` carrying `ErrorCode`, `Object[] args`, optional `failedValidations` and response `extensions`. Private constructor, with static factories: `of(code, args…)`, `withCause(code, cause, args…)`, `withFailedValidations(code, failed)`, `supply(code, args…)` (for `orElseThrow`). Also `withExtension(name, value)`, which rejects the reserved names `type`, `title`, `status`, `detail`, `instance`, `errorCode` and `failed`. |
+| `AppException` | One `RuntimeException` carrying `ErrorCode`, `Object[] args`, optional `errors` (`RequestError`s, ERR-07) and response `extensions`. Private constructor, with static factories: `of(code, args…)`, `withCause(code, cause, args…)`, `withErrors(code, errors)`, `supply(code, args…)` (for `orElseThrow`). Also `withExtension(name, value)`, which rejects the reserved names `type`, `title`, `status`, `detail`, `instance`, `errorCode` and `errors`. |
+| `RequestError` | A record `(pointer, parameter, detail)`, `@JsonInclude(NON_NULL)`, with the factories `atPointer(pointer, detail)` and `atParameter(name, detail)`: exactly one of the two locations is set. `JsonPointers` builds the pointer from a property path (`items[0].name`) or Jackson's path; `MvcRequestErrors` gives the entries of the exceptions Spring MVC answers itself. The OpenAPI document describes `errorCode` and `errors` on the `ProblemDetail` schema (a customizer: springdoc can't see extension members). |
 | Messages | `messages/message_<locale>.properties`, keyed by `ErrorCode.name()`, with `{0}` arguments, written for `MessageFormat` (ERR-06). `ReloadableResourceBundleMessageSource` set to `UTF-8` **and** `setAlwaysUseMessageFormat(true)`. Without that setting a message with no arguments skips MessageFormat, and `''` / `{0}` reach the client raw (MESSAGE-PLACEHOLDERS-LEAK). The bean validator uses the same MessageSource. Locale comes from `AcceptHeaderLocaleResolver` **with its supported locales set**, and the MessageSource has **`setDefaultLocale(ENGLISH)`**: otherwise any `Accept-Language` without its own file (`de`, `pa`) throws `NoSuchMessageException` inside the error handler and breaks every error response (verified 2026-11-13). |
 | `GlobalExceptionHandler` | `@RestControllerAdvice extends ResponseEntityExceptionHandler`, so Spring MVC's own errors pass through it too. |
 
@@ -29,7 +31,8 @@ that hasn't adopted it yet gets one finding per missing piece, not one per endpo
   every 5xx.
 - `instance`: the request path, with Spring's `uri=` debug prefix stripped.
 - `errorCode`: the same code as in `type`.
-- `failed`: the field-level validation failures (validation errors only).
+- `errors`: the request values that failed, RFC 9457's own list (ERR-07): on `VALIDATION_FAILED`, and on
+  `REQUEST_PARAMETER_INVALID`, `REQUEST_PARAMETER_MISSING` and `REQUEST_UNREADABLE` when the value is known.
 - extension members from `AppException.withExtension` (client errors only).
 - the request id: in the response header (`X-Request-ID`) and the log context.
 
@@ -42,12 +45,12 @@ the generic text.
 |---|---|---|---|
 | `AppException`, 4xx code | from the mapper | the code | DEBUG (WARN for 401/403) |
 | `AppException`, 5xx code | from the mapper | the code | ERROR with stack; body generic |
-| `MethodArgumentNotValidException`, constraint failures | 400 | `VALIDATION_FAILED` + `failed` | DEBUG |
-| `MethodArgumentNotValidException`, **binding failures** (`FieldError.isBindingFailure()`: an unknown enum, a malformed date or UUID in a query object) | 400 | `REQUEST_PARAMETER_INVALID` + `failed: ["<field>: invalid value"]`, **never the default message** (it names Java classes) | DEBUG |
-| `HandlerMethodValidationException` (constraints on `@RequestParam` / `@PathVariable`) | 400 | `VALIDATION_FAILED` naming the parameter | DEBUG |
-| `HttpMessageNotReadableException` | 400 | `REQUEST_UNREADABLE` | via `handleExceptionInternal` |
-| `MissingServletRequestParameterException` | 400 | `REQUEST_PARAMETER_MISSING` | |
-| `TypeMismatchException` | 400 | `REQUEST_PARAMETER_INVALID` | |
+| `MethodArgumentNotValidException`, constraint failures | 400 | `VALIDATION_FAILED` + `errors` (a body's fields by pointer, a query object's by parameter) | DEBUG |
+| `MethodArgumentNotValidException`, **binding failures** (`FieldError.isBindingFailure()`: an unknown enum, a malformed date or UUID in a query object) | 400 | `REQUEST_PARAMETER_INVALID` + `errors: [{"parameter": "<field>", "detail": "invalid value"}]`, **never the default message** (it names Java classes) | DEBUG |
+| `HandlerMethodValidationException` (constraints on `@RequestParam` / `@PathVariable`, and the `@Valid` objects of the same method) | 400 | `VALIDATION_FAILED` + `errors` naming the parameter (`ParameterErrors`: their fields as above) | DEBUG |
+| `HttpMessageNotReadableException` | 400 | `REQUEST_UNREADABLE`; + `errors` with the pointer Jackson's path gives (`"unknown field"` / `"invalid value"`), none for broken syntax | via `handleExceptionInternal` |
+| `MissingServletRequestParameterException` | 400 | `REQUEST_PARAMETER_MISSING` + `errors` naming the parameter | |
+| `TypeMismatchException` | 400 | `REQUEST_PARAMETER_INVALID` + `errors` naming the parameter, `"invalid value"` | |
 | `HttpRequestMethodNotSupportedException` | 405 | `REQUEST_METHOD_NOT_ALLOWED` (keeps `Allow`) | |
 | `HttpMediaTypeNotSupportedException` | 415 | `REQUEST_MEDIA_TYPE_UNSUPPORTED` | |
 | `AccessDeniedException` | 403 | `ACCESS_DENIED` | WARN |
@@ -150,6 +153,30 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
   message of a code a `ConstraintErrorCodes` bean maps; a test asserting only the `errorCode` of a
   refusal whose message carries a number (assert `$.detail` once per such message).
 - **Severity:** Medium (wrong client-facing text; a lost apostrophe Low).
+
+## ERR-07: Where a value failed: RFC 9457's `errors`
+- **Check:** a 400 that names values carries them as `errors`, the list RFC 9457 shows in its own
+  example, one entry per value, each `{location, "detail": "<message>"}` with exactly one location:
+  - a **request-body** value: `"pointer"`, a JSON Pointer (RFC 6901) in its URI fragment form:
+    `"#/email"`, nested `"#/address/city"`, a list element `"#/items/0/name"`, a map key escaped
+    (`~` → `~0`, `/` → `~1`); an element of a **set** has no position, so it points to the set (`"#/tagIds"`);
+  - a **query or path parameter** (a bound filter's field, a `@RequestParam`, a type mismatch):
+    `"parameter": "size"`;
+  - a **class-level or cross-field rule**: on the field the violation is reported on (its property node:
+    an `@AssertTrue boolean isDateRangeOrdered()` is `#/dateRangeOrdered`, a class-level constraint
+    with `addPropertyNode("endsOn")` is `#/endsOn`), else the body as a whole, `"pointer": "#"`.
+
+  `detail` is the constraint's message (from the MessageSource) or a fixed phrase (`invalid value`,
+  `unknown field`), never a converter's or Jackson's message. Code that refuses a value itself builds
+  the entry (`AppException.withErrors(code, List.of(RequestError.atParameter("after", RequestError.INVALID_VALUE)))`,
+  a nested document's violations prefixed with its field: golden `MetadataService`). Reference test:
+  `common/exception/RequestErrorsTest` (each shape, nested and indexed pointers, escaping).
+- **Detect:** a `failed` member or `"field: message"` strings; a top-level `parameter` extension naming
+  the one bad parameter; a body field reported as a `parameter` or a query parameter as a `pointer`
+  (the handler decides by `@RequestBody` on the method parameter); a dotted path (`items[0].name`) or a
+  bare field name in `pointer`; a test asserting the whole message string instead of the location and the
+  `detail` (`$.errors[0].pointer`, `$.errors[0].detail`, or `$.errors[?(@.pointer == '#/x')].detail`).
+- **Severity:** Medium (a client can't place the message next to its field).
 
 ## Detect
 - An `ErrorCode` constant missing from the mapper or the messages file. Grep both against the

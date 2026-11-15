@@ -2,6 +2,8 @@ package com.example.app.metadata.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.exception.JsonPointers;
+import com.example.app.common.exception.RequestError;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.metadata.api.Metadata;
 import com.example.app.metadata.api.MetadataKey;
@@ -17,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -116,13 +119,17 @@ public class MetadataService implements Metadata {
         Objects.requireNonNull(value, "value");
         Set<ConstraintViolation<T>> violations = validator.validate(value);
         if (!violations.isEmpty()) {
-            List<String> failed = violations.stream().map(MetadataService::describe).sorted().toList();
-            throw AppException.withFailedValidations(ErrorCode.VALIDATION_FAILED, failed);
+            List<RequestError> errors = violations.stream()
+                    .map(MetadataService::describe)
+                    .sorted(Comparator.comparing(RequestError::pointer))
+                    .toList();
+            throw AppException.withErrors(ErrorCode.VALIDATION_FAILED, errors);
         }
     }
 
-    private static String describe(ConstraintViolation<?> violation) {
-        return VALUE + violation.getPropertyPath() + ": " + violation.getMessage();
+    /** The record is the body's {@code value}, so each violation's pointer starts there. */
+    private static RequestError describe(ConstraintViolation<?> violation) {
+        return RequestError.atPointer(JsonPointers.fromPropertyPath(VALUE + violation.getPropertyPath()), violation.getMessage());
     }
 
     private static MetadataKey<?> declaredKey(String name) {

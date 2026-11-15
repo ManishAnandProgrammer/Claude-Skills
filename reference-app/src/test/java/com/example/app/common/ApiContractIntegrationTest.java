@@ -65,7 +65,32 @@ class ApiContractIntegrationTest extends IntegrationTest {
     void malformedBodyIs400() throws Exception {
         postAs(null, "/api/v1/auth/login", "{not json")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"));
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
+                .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("An unknown body field is 400 REQUEST_UNREADABLE whose errors point to it (RFC 9457), never Jackson's message")
+    void unknownFieldIsNamedByItsPointer() throws Exception {
+        postAs(null, "/api/v1/auth/login", """
+                {"email": "someone@example.com", "password": "irrelevant", "rememberMe": true}""")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/rememberMe"))
+                .andExpect(jsonPath("$.errors[0].detail").value("unknown field"));
+    }
+
+    @Test
+    @DisplayName("The OpenAPI document describes errorCode and the errors list of every Problem Details response")
+    void problemSchemaDocumentsTheErrorsList() throws Exception {
+        getAs(null, "/v3/api-docs")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.schemas.ProblemDetail.properties.errorCode.type").value("string"))
+                .andExpect(jsonPath("$.components.schemas.ProblemDetail.properties.errors.items.$ref")
+                        .value("#/components/schemas/RequestError"))
+                .andExpect(jsonPath("$.components.schemas.RequestError.properties.pointer").exists())
+                .andExpect(jsonPath("$.components.schemas.RequestError.properties.parameter").exists())
+                .andExpect(jsonPath("$.components.schemas.RequestError.properties.detail").exists());
     }
 
     @Test

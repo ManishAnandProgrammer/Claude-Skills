@@ -3,6 +3,7 @@ package com.example.app.metadata;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.exception.GlobalExceptionHandler;
+import com.example.app.common.exception.RequestError;
 import com.example.app.metadata.api.TodoListSettings;
 import com.example.app.metadata.api.Metadata;
 import com.example.app.metadata.api.MetadataKey;
@@ -263,18 +264,21 @@ class MetadataIntegrationTest extends IntegrationTest {
                 {"reminderMinutesBefore": -1}""", 0))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("value.reminderMinutesBefore: must be greater than or equal to 0")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/value/reminderMinutesBefore")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be greater than or equal to 0")));
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
                 {"reminderMinutesBefore": 1441}""", 0))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.failed", contains("value.reminderMinutesBefore: must be at most 1440")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/value/reminderMinutesBefore")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be at most 1440")));
         assertThat(storedVersion(DEFAULTS)).isZero();
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
                 {"reminderMinutesBefore": 1440}""", 0))
                 .andExpect(status().isOk());
         assertThatThrownBy(() -> metadata.create(MetadataKeys.todoListSettings(newListId()), new TodoListSettings(-5, null, null)))
                 .isInstanceOfSatisfying(AppException.class,
-                        refused -> assertThat(refused.getFailedValidations()).containsExactly("value.reminderMinutesBefore: must be greater than or equal to 0"));
+                        refused -> assertThat(refused.getErrors()).containsExactly(
+                                RequestError.atPointer("#/value/reminderMinutesBefore", "must be greater than or equal to 0")));
     }
 
     @Test
@@ -289,29 +293,35 @@ class MetadataIntegrationTest extends IntegrationTest {
                 {"reminderMinutesBefore": "ten"}""", 0))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
-                .andExpect(jsonPath("$.failed", contains("value.reminderMinutesBefore: invalid value")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/value/reminderMinutesBefore")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("invalid value")));
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
                 {"dailyDigestAt": "8 o'clock"}""", 0))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.failed", contains("value.dailyDigestAt: invalid value")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/value/dailyDigestAt")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("invalid value")));
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
                 {"reminderMinutesBefore": 5, "reminderMinutesBefroe": 6}""", 0))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
-                .andExpect(jsonPath("$.failed", contains("value.reminderMinutesBefroe: unknown field")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/value/reminderMinutesBefroe")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("unknown field")));
         for (String notAnObject : List.of("5", "null", "[]", "\"text\"")) {
             putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload(notAnObject, 0))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
-                    .andExpect(jsonPath("$.failed", contains("value: must be a JSON object")));
+                    .andExpect(jsonPath("$.errors[*].pointer", contains("#/value")))
+                    .andExpect(jsonPath("$.errors[*].detail", contains("must be a JSON object")));
         }
         putAs(admin.accessToken(), DEFAULTS_PATH, "{\"version\": 0}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("value: must not be null")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/value")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must not be null")));
         putAs(admin.accessToken(), DEFAULTS_PATH, "{\"value\": {}}")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.failed", contains("version: must not be null")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/version")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must not be null")));
         assertThat(metadata.get(DEFAULTS)).isEqualTo(TodoListSettings.defaults());
     }
 

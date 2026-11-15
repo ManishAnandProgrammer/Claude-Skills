@@ -22,7 +22,7 @@ public interface TenantRegistrationApi {
             answer is the same 202 in every case, so it never tells whether an email has an account: a \
             wrong password for an existing account registers nothing.""")
     @ApiResponse(responseCode = "202", description = "Received; no body")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, USER_PASSWORD_BREACHED",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, USER_PASSWORD_BREACHED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "429", description = "RATE_LIMITED; wait Retry-After seconds",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

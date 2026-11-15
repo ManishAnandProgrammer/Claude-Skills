@@ -31,7 +31,7 @@ public interface AuthApi {
             against Have I Been Pwned without sending the password; skipped while that service is \
             unreachable or busy). Sign in afterwards with login.""")
     @ApiResponse(responseCode = "201", description = "Created; Location points at /api/{version}/users/me, in the version called")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see failed), REQUEST_UNREADABLE, USER_PASSWORD_BREACHED",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, USER_PASSWORD_BREACHED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "USER_EMAIL_TAKEN",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

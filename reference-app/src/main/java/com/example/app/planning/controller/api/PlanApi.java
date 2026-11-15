@@ -31,7 +31,7 @@ public interface PlanApi {
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (size, after or the number of ids out of range); REQUEST_PARAMETER_INVALID \
             (a malformed id or todoId, a non-numeric size, an unknown sort, or an after that is tampered \
-            or from another sort; see failed or parameter)""",
+            or from another sort; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -60,7 +60,7 @@ public interface PlanApi {
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (a missing field, a date outside the configured earliest and latest ones, or \
-            endsOn before startsOn, named dateRangeOrdered; see failed), REQUEST_UNREADABLE (a malformed id \
+            endsOn before startsOn, named dateRangeOrdered; see errors), REQUEST_UNREADABLE (a malformed id \
             or date)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",

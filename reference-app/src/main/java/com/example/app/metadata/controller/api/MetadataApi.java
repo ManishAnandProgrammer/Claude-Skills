@@ -45,8 +45,8 @@ public interface MetadataApi {
             one changes nothing, not even the version.""")
     @ApiResponse(responseCode = "200", description = "Replaced; the version increments when the value changed")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (a field breaks its rule, or value or version is missing; see failed); \
-            REQUEST_UNREADABLE (not JSON, a field of the wrong type, an unknown field; see failed)""",
+            VALIDATION_FAILED (a field breaks its rule, or value or version is missing; see errors); \
+            REQUEST_UNREADABLE (not JSON, a field of the wrong type, an unknown field; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

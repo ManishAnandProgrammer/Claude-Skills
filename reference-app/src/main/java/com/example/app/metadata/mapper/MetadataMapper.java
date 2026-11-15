@@ -2,6 +2,8 @@ package com.example.app.metadata.mapper;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.exception.JsonPointers;
+import com.example.app.common.exception.RequestError;
 import com.example.app.metadata.api.MetadataKey;
 import com.example.app.metadata.domain.ConfigurationMetadata;
 import com.example.app.metadata.dto.response.MetadataResponse;
@@ -12,8 +14,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Values to and from JSON with the application's {@code JsonMapper}, the one that reads request
@@ -54,19 +56,19 @@ public class MetadataMapper {
 
     /**
      * An admin's value, read strictly like any request body: a misspelt field is refused, not dropped.
-     * Every refusal is 400 {@code REQUEST_UNREADABLE} naming the field ({@code value.graceMinutes}),
+     * Every refusal is 400 {@code REQUEST_UNREADABLE} pointing to the field ({@code #/value/graceMinutes}),
      * never Jackson's message, which names Java classes.
      */
     public <T> T toValue(JsonNode value, MetadataKey<T> key) {
         if (!value.isObject()) {
-            throw AppException.withFailedValidations(ErrorCode.REQUEST_UNREADABLE, List.of(VALUE + ": must be a JSON object"));
+            throw unreadable(JsonPointers.of(List.of(VALUE)), "must be a JSON object");
         }
         try {
             return jsonMapper.treeToValue(value, key.type());
         } catch (UnrecognizedPropertyException unknown) {
-            throw AppException.withFailedValidations(ErrorCode.REQUEST_UNREADABLE, List.of(pathOf(unknown) + ": unknown field"));
+            throw unreadable(pointerOf(unknown), RequestError.UNKNOWN_FIELD);
         } catch (JacksonException unreadable) {
-            throw AppException.withFailedValidations(ErrorCode.REQUEST_UNREADABLE, List.of(pathOf(unreadable) + ": invalid value"));
+            throw unreadable(pointerOf(unreadable), RequestError.INVALID_VALUE);
         }
     }
 
@@ -81,15 +83,14 @@ public class MetadataMapper {
                 metadata.getVersion());
     }
 
-    private static String pathOf(JacksonException exception) {
-        StringBuilder path = new StringBuilder(VALUE);
-        for (JacksonException.Reference reference : exception.getPath()) {
-            if (Objects.nonNull(reference.getPropertyName())) {
-                path.append('.').append(reference.getPropertyName());
-            } else if (reference.getIndex() >= 0) {
-                path.append('[').append(reference.getIndex()).append(']');
-            }
-        }
-        return path.toString();
+    /** The value is the body's {@code value}, so Jackson's path inside it starts there. */
+    private static String pointerOf(JacksonException exception) {
+        List<String> tokens = new ArrayList<>(List.of(VALUE));
+        tokens.addAll(JsonPointers.tokensOf(exception));
+        return JsonPointers.of(tokens);
+    }
+
+    private static AppException unreadable(String pointer, String detail) {
+        return AppException.withErrors(ErrorCode.REQUEST_UNREADABLE, List.of(RequestError.atPointer(pointer, detail)));
     }
 }

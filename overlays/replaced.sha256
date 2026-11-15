@@ -8,7 +8,7 @@ a60a3b85f4bedaf6f216a50f0056cea6db23a51b4907cc7963742df9ad81597b  reference-app/
 df56c1ae3f0a43839532337ae11c1fd9234ab6b5f8d8cf24e672b6afec2950fb  reference-app/src/main/java/com/example/app/media/service/MediaCleanupJob.java
 268be131eb8c006149313217e8a4455de2c216b032b44060b322d71493491f32  reference-app/src/main/java/com/example/app/media/service/MediaVerificationJob.java
 7184b2b52e285e82c1e55843a7cd7b814f12d74085a2df93a17b2a57a9528353  reference-app/src/main/java/com/example/app/metadata/repository/CounterRepository.java
-d67aa34d0e9573a38f6dd1ce9ed2898c140bdd69a45af6bb41724fdd485a7a31  reference-app/src/main/java/com/example/app/user/controller/api/AuthApi.java
+76466a0bd180b6baf17f42c9b2a66c9df75fc272db755abffea63e2f8f6141f3  reference-app/src/main/java/com/example/app/user/controller/api/AuthApi.java
 b9f2fdf2584c4032e84fa0cc845d4fade2a81a6f03a7a74821b166271735ac1d  reference-app/src/main/java/com/example/app/user/controller/AuthController.java
 5b29eea3687be9e419905ae9ce03b6bf5ec40e6ebd3f5907a19dce002f6335e4  reference-app/src/main/java/com/example/app/user/domain/RefreshToken.java
 cfec5a4626ca8cd86a5989aad6074358a0041e050c66eba364f2020f3c16e419  reference-app/src/main/java/com/example/app/user/service/AuthService.java

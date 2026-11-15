@@ -82,6 +82,8 @@ a finding**. Profile keys are written `{{key}}`.
   - every error is Problem Details (`application/problem+json`) with a stable,
     machine-readable `errorCode`;
   - the request id is included;
+  - the values that failed are RFC 9457's `errors` list: a JSON Pointer for a body value, `parameter`
+    for a query or path parameter (error-contract.md ERR-07), never a house-made `failed` list;
   - the protocol-agnostic `ErrorCode` enum is mapped to HTTP in one place;
   - messages come from a `MessageSource` (i18n);
   - **never** class names, SQL fragments, constraint names or stack traces.
@@ -246,7 +248,7 @@ types.
 
     | Parameter | Effect |
     |---|---|
-    | `status` | With an `activeField`: `ACTIVE` (default) → `= TRUE`, `INACTIVE` → `= FALSE`, `ALL` → no predicate. **Without one, anything but `ACTIVE` is a 400** `REQUEST_PARAMETER_INVALID` (`parameter: status`), never silently ignored |
+    | `status` | With an `activeField`: `ACTIVE` (default) → `= TRUE`, `INACTIVE` → `= FALSE`, `ALL` → no predicate. **Without one, anything but `ACTIVE` is a 400** `REQUEST_PARAMETER_INVALID` (`errors: [{"parameter": "status", ...}]`), never silently ignored |
     | `sortDirection` | Flips `sortField`'s direction. Each direction is its own keyset (`NAME_ASC`, `NAME_DESC`), so a cursor from one direction is refused in the other |
     | `size`, `after` | The batch (default and maximum from `app.limits.cursor-page`) and the position; over the maximum, or a foreign or tampered cursor, is a 400 |
     | `query` | Only when `searchable`: `TextSearch.contains` on `displayField`, `@MaxLength("search-query")`. On a non-searchable dropdown it is a 400, never ignored |

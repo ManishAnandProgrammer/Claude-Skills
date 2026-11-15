@@ -38,7 +38,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.startsWith;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -182,7 +181,7 @@ class AuthIntegrationTest extends IntegrationTest {
         signup(uniqueEmail("weak"), password)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value(containsString("password")));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/password"));
     }
 
     @Test
@@ -191,7 +190,8 @@ class AuthIntegrationTest extends IntegrationTest {
         signup("", PASSWORD)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", contains("email: must not be blank")));
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/email")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must not be blank")));
     }
 
     @Test
@@ -200,7 +200,8 @@ class AuthIntegrationTest extends IntegrationTest {
         signup(uniqueEmail("short"), "Sh0rt!x")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("password: must be at least 8 characters"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/password"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at least 8 characters"));
     }
 
     @Test
@@ -210,7 +211,7 @@ class AuthIntegrationTest extends IntegrationTest {
 
         signup(uniqueEmail("long"), password)
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.failed[0]").value(containsString("password")));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/password"));
     }
 
     @Test
@@ -547,7 +548,7 @@ class AuthIntegrationTest extends IntegrationTest {
         postAs(null, "/api/v1/auth/signup", body)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(startsWith(field + ":"))));
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/" + field)));
     }
 
     static Stream<Arguments> invalidSignups() {

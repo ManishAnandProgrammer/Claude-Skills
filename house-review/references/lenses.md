@@ -509,7 +509,7 @@ resilience or failure-injection test is Medium).
 
 ### TEST-08: A status code is not a reason (`STATUS-IS-NOT-A-REASON`)
 - **Check:** every negative test asserts *why* it was refused (the `errorCode`, or the field in
-  `failed`), not only the status. A test aimed at a service rule must not be stopped earlier by
+  `errors`: its `pointer` or `parameter`, ERR-07), not only the status. A test aimed at a service rule must not be stopped earlier by
   bean validation. Incident: 36 tests passed with value validation switched off.
 - **Severity:** Medium (High for SEC checks).
 

@@ -25,7 +25,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -225,8 +224,8 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         putAs(user.accessToken(), TODOS + "/" + id + "/tags", "{}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(startsWith("tagIds"))))
-                .andExpect(jsonPath("$.failed", hasItem(startsWith("version"))));
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/tagIds")))
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/version")));
     }
 
     @Test
@@ -305,14 +304,16 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         postAs(user.accessToken(), TODOS, createPayload(listId, "Overfull", tags))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("tagIds: must have at most 10 items"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/tagIds"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must have at most 10 items"));
         putTags(user, growing, max, 0)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.tags.length()").value(MAX_TAGS));
         putTags(user, full, tags, 0)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed[0]").value("tagIds: must have at most 10 items"));
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/tagIds"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must have at most 10 items"));
         getAs(user.accessToken(), TODOS + "/" + full)
                 .andExpect(jsonPath("$.response.tags.length()").value(MAX_TAGS))
                 .andExpect(jsonPath("$.response.version").value(0));
@@ -348,13 +349,13 @@ class TodoTagsIntegrationTest extends IntegrationTest {
                 """.formatted(listId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(startsWith("tagIds"))));
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/tagIds")));
         putAs(user.accessToken(), TODOS + "/" + id + "/tags", """
                 {"tagIds": [null], "version": 0}
                 """)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.failed", hasItem(startsWith("tagIds"))));
+                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/tagIds")));
         String body = putAs(user.accessToken(), TODOS + "/" + id + "/tags", """
                 {"tagIds": ["nope"], "version": 0}
                 """)
@@ -418,7 +419,8 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), TODOS + "?tagId=nope")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.failed", contains("tagId: invalid value")));
+                .andExpect(jsonPath("$.errors[*].parameter", contains("tagId")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("invalid value")));
     }
 
     @Test

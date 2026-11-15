@@ -9,7 +9,7 @@ so `house-review` has nothing to say about anything except your business logic.
 
 | Piece | What it gives you |
 |---|---|
-| Error contract | `ErrorCode` + mapper + `AppException` + `GlobalExceptionHandler` + messages: every error is Problem Details with a stable `errorCode`; outages answer 503 + `Retry-After` |
+| Error contract | `ErrorCode` + mapper + `AppException` + `GlobalExceptionHandler` + messages: every error is Problem Details with a stable `errorCode`, and the values that failed as RFC 9457's `errors` (a JSON Pointer or a parameter name); outages answer 503 + `Retry-After` |
 | API primitives | `ObjectWrapper`, `ListWrapper`, `PaginationWrapper` (explicit `pageInfo`), paging filters, dropdown standard (`DropdownItem`, `DropdownFilter`, `@DropdownCandidate`) |
 | Persistence base | `AuditableEntity` (UUIDv7 id, audit columns, `@Version`), Liquibase baseline |
 | Configuration | Hikari, JPA, PostgreSQL timeouts, Jackson strictness, actuator and metrics, graceful shutdown, virtual threads + admission control |

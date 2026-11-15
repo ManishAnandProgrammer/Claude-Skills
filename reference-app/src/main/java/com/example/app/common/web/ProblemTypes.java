@@ -19,7 +19,7 @@ public class ProblemTypes {
 
     /** Member names of the error contract; clients parse them, so they never change. */
     public static final String ERROR_CODE = "errorCode";
-    public static final String FAILED = "failed";
+    public static final String ERRORS = "errors";
     private static final String REQUEST_DESCRIPTION_URI_PREFIX = "uri=";
 
     private final String namespace;

@@ -5,6 +5,7 @@ import com.example.app.common.dropdown.DropdownItem;
 import com.example.app.common.dropdown.DropdownStatus;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.exception.RequestError;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Paging;
 import com.example.app.common.security.CurrentUser;
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 /** Every read and write is scoped to the caller: another user's list answers 404, like a missing one. */
@@ -70,7 +72,8 @@ public class TodoListService {
     /** Lists have no active flag, so a {@code status} other than the default is refused, not ignored. */
     public CursorWrapper<DropdownItem> dropdown(DropdownFilter filter) {
         if (filter.getStatus() != DropdownStatus.ACTIVE) {
-            throw AppException.of(ErrorCode.REQUEST_PARAMETER_INVALID).withExtension("parameter", "status");
+            throw AppException.withErrors(ErrorCode.REQUEST_PARAMETER_INVALID,
+                    List.of(RequestError.atParameter("status", RequestError.INVALID_VALUE)));
         }
         CursorBatch<DropdownItem> batch = repository.findDropdownItems(filter, currentUser.id(), paging.cursorSize(filter));
         return CursorWrapper.of(batch.items(), batch.nextCursor());

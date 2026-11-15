@@ -35,7 +35,7 @@ public interface UploadPolicyApi {
             end inside it).""")
     @ApiResponse(responseCode = "200", description = "Replaced; the version increments when something changed")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (see failed: a limit missing or out of range, minSizeBytes above maxSizeBytes, \
+            VALIDATION_FAILED (see errors: a limit missing or out of range, minSizeBytes above maxSizeBytes, \
             minFiles above maxFiles); REQUEST_UNREADABLE; REQUEST_PARAMETER_INVALID (an unknown purpose); \
             UPLOAD_TYPE_NOT_ALLOWED (a type the application never accepts)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

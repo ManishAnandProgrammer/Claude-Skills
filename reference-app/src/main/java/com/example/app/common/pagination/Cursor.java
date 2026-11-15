@@ -2,6 +2,7 @@ package com.example.app.common.pagination;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.exception.RequestError;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.MapperFeature;
@@ -121,6 +122,7 @@ public final class Cursor {
     }
 
     private static AppException invalid() {
-        return AppException.of(ErrorCode.REQUEST_PARAMETER_INVALID).withExtension("parameter", PARAMETER);
+        return AppException.withErrors(ErrorCode.REQUEST_PARAMETER_INVALID,
+                List.of(RequestError.atParameter(PARAMETER, RequestError.INVALID_VALUE)));
     }
 }
