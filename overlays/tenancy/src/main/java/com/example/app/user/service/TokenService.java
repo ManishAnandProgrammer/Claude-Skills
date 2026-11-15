@@ -98,11 +98,7 @@ class TokenService {
         // Before the token is spent: no membership there any more, or a tenant no longer active, is a
         // refusal that keeps it.
         TenantMembership membership = memberships.forTenant(user, tenantId);
-        // Issued for a membership that was removed since: adding the member again starts new sessions,
-        // it doesn't revive the old ones.
-        if (token.getCreatedAt().isBefore(membership.getCreatedAt())) {
-            throw AppException.of(ErrorCode.AUTH_INVALID_REFRESH_TOKEN);
-        }
+        requireIssuedForThisMembership(token, membership);
         tenants.requireActive(tenantId);
         revokeForRotation(tokenHash, now);
         // Read again: the revoking update cleared the persistence context.
@@ -112,13 +108,19 @@ class TokenService {
     /**
      * Rotates the refresh token into tokens for another of the user's tenants: 404
      * {@code MEMBERSHIP_NOT_FOUND} unless the user is a member there, 403 {@code TENANT_NOT_ACTIVE} unless
-     * it is ACTIVE; either way the token stays usable.
+     * it is ACTIVE; either way the token stays usable. The token's own session must still stand, as for a
+     * refresh: once its holder was removed from the token's tenant (added again or not), it switches
+     * nowhere, 401 {@code AUTH_INVALID_REFRESH_TOKEN}.
      */
     @Transactional(noRollbackFor = AppException.class)
     TokenResponse switchTenant(String rawToken, UUID tenantId) {
         Instant now = clock.instant();
         String tokenHash = Hashes.sha256Hex(rawToken);
-        User user = Hibernate.unproxy(usableToken(tokenHash, now).getUser(), User.class);
+        RefreshToken token = usableToken(tokenHash, now);
+        User user = Hibernate.unproxy(token.getUser(), User.class);
+        TenantMembership own = memberships.findForTenant(user, token.getTenantId())
+                .orElseThrow(AppException.supply(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
+        requireIssuedForThisMembership(token, own);
         memberships.forTenant(user, tenantId);
         // Before the token is spent: switching to a tenant that isn't active keeps the current session.
         tenants.requireActive(tenantId);
@@ -184,6 +186,17 @@ class TokenService {
         log.info("Signed out everywhere: userId={}, sessions={}", userId, revoked);
     }
     // session-version:end
+
+    /**
+     * A token created before its membership belongs to a membership removed since: adding the member again
+     * starts new sessions, it doesn't revive the old ones. Every path that issues from a refresh token
+     * checks it (refresh, switch-tenant).
+     */
+    private static void requireIssuedForThisMembership(RefreshToken token, TenantMembership membership) {
+        if (token.getCreatedAt().isBefore(membership.getCreatedAt())) {
+            throw AppException.of(ErrorCode.AUTH_INVALID_REFRESH_TOKEN);
+        }
+    }
 
     private RefreshToken findToken(String tokenHash) {
         return repository.findByTokenHash(tokenHash).orElseThrow(AppException.supply(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));

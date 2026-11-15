@@ -138,6 +138,22 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("Refresh and switch-tenant read the membership's role at the issue, never the presented token's: a role change reaches the next one")
+    void tokenIssuesReadTheCurrentRole() throws Exception {
+        TestTenant first = newTenant();
+        TestTenant second = newTenant();
+        TestUser user = newUserIn(first);
+        addMember(second, user.id(), "USER");
+        sql("update tenant_memberships set role = 'ADMIN' where tenant_id = ? and user_id = ?", first.id(), user.id());
+        sql("update tenant_memberships set role = 'ADMIN' where tenant_id = ? and user_id = ?", second.id(), user.id());
+
+        ResultActions refreshed = refresh(user.refreshToken()).andExpect(status().isOk());
+        assertThat(claim(read(refreshed, "$.response.accessToken"), "$.roles[0]")).isEqualTo("ADMIN");
+        ResultActions switched = switchTenant(read(refreshed, "$.response.refreshToken"), second.id()).andExpect(status().isOk());
+        assertThat(claim(read(switched, "$.response.accessToken"), "$.roles[0]")).isEqualTo("ADMIN");
+    }
+
+    @Test
     @DisplayName("Switch-tenant issues tokens for another membership with its role; login then picks it as the most recent")
     void switchTenantMovesToAnotherMembership() throws Exception {
         TestTenant first = newTenant();

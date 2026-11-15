@@ -690,6 +690,30 @@ the details that bite).
   change, Redis down). Verified by `verify.sh` 2h (schema per tenant) and 2j (row mode); 2g and 2i
   prove a copy without it has none of it.
 
+## Every path that issues a token (2026-11-15, round-3 pass)
+
+Round 3 found switch-tenant reviving a removed member's session (campus-desk G1): round 2's fix for the
+same hole had gone into `refresh` only. So every path that issues a token was walked once, and each one
+re-reads what the token stands for from the database at the issue; none trusts the presented token
+beyond its own validity. A new path joins this table, with its test, in the change that adds it
+(house-review TEN-08). Tests are in the tenancy overlay unless named otherwise.
+
+| Path | What it reads and checks at the issue | Tests |
+|---|---|---|
+| Login (`AuthService.login` → `TokenService.issue`) | the password against the account's row; the person's memberships (`forLogin`: the most recently used one whose tenant is ACTIVE; none: 403 `TENANT_MEMBERSHIP_REQUIRED`); the tenant ACTIVE (403 `TENANT_NOT_ACTIVE`); role and session version from that membership row | `TenantPlanesIntegrationTest.accountWithoutMembershipIsRefused`, `suspendedTenantGetsNoTokens`, `suspendedTenantDoesNotLockOutTheOthers`, `tokensCarryTheTenant`; reference `AuthIntegrationTest.loginRefusalsLookTheSame` |
+| Refresh (`TokenService.refresh`) | the refresh token's row (revoked, expired, reused: 401 `AUTH_INVALID_REFRESH_TOKEN`, a reuse revokes every session); the membership of the token's tenant (gone: 404 `MEMBERSHIP_NOT_FOUND`); the token issued after that membership was created (a removal and re-add: 401); the tenant ACTIVE; role and session version read again after the rotation | `TenantMemberIntegrationTest.adminRemovesAMember`, `aReAddedMembersOldSessionStaysEnded`; `TenantPlanesIntegrationTest.suspendedTenantGetsNoTokens`, `tokenIssuesReadTheCurrentRole`; `SessionVersionTenancyIntegrationTest.aDemotionTakesEffectAtOnce`, `aPromotionRefreshesIntoTheHigherRole`; reference `AuthIntegrationTest.reusingARefreshTokenRevokesEverySession`, `expiredRefreshTokenIsRefused` |
+| Switch tenant (`TokenService.switchTenant`) | the refresh token's row, as for a refresh; the membership of the token's **own** tenant still there and created before the token (else 401 `AUTH_INVALID_REFRESH_TOKEN`: a removed member's old session switches nowhere, re-added or not); the target membership (404 `MEMBERSHIP_NOT_FOUND`) and its tenant ACTIVE (403); role and session version from the target membership row | `TenantMemberIntegrationTest.aRemovedMembersOldSessionDoesNotSwitch` (new, red before the fix); `TenantPlanesIntegrationTest.switchTenantMovesToAnotherMembership`, `switchToAForeignTenantIs404`, `suspendedTenantDoesNotLockOutTheOthers`, `tokenIssuesReadTheCurrentRole` |
+| Impersonation start (`ImpersonationService.impersonate` → `TokenService.issueImpersonation`) | the tenant ACTIVE; the impersonated membership read now (404 `MEMBERSHIP_NOT_FOUND`), its role and session version; the support policy (403 `SUPPORT_ACCESS_DENIED`), audited before it is asked. The staff member is the platform token's subject (see below) | `ImpersonationIntegrationTest.impersonationTokenWorksOnTheTenantPlane`, `impersonateANamedMember`, `refusingPolicyBlocksIssuance`; `SessionVersionTenancyIntegrationTest.anImpersonationEndsWithTheMembersRoleChange` |
+| Impersonation stop | no endpoint: the token is short-lived (`app.impersonation.token-ttl`) and has no refresh token; with the session version the member's access change ends it at once | as above |
+| Platform login (`PlatformAuthService.login` → `TokenService.issuePlatform`) | the password against the staff row; the role from that row; no refresh token, so staff sign in again after one lifetime | `PlatformTenantIntegrationTest.platformLoginIsForStaffOnly` |
+| Tenant registration, approval, activation | issue no token: registration answers 202 without one, the owner signs in afterwards through login (which checks the tenant ACTIVE) | `TenantRegistrationIntegrationTest.registrationWaitsForApproval` (the owner's login is 403 `TENANT_NOT_ACTIVE` until approved) |
+| Sign out everywhere (session-version piece) | issues nothing: revokes every refresh token and raises every membership's version in one transaction | `SessionVersionTenancyIntegrationTest.signingOutEverywhereEndsEveryTenant` |
+
+Known limit, not closed here: staff have no removal or disable (they are rows an operator writes, and
+one with audit history can't be deleted: `fk_platform_audit_actor_id`), so a platform token is trusted
+for its lifetime. When staff deactivation is built (a feature, parked), impersonation must re-read the
+staff row at the issue like every other path above.
+
 ## Later (rules and notes, not in the first setup)
 
 - **Moving a tenant out (after the extraction readiness above):**

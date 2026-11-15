@@ -207,6 +207,35 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("A removed member's old refresh token switches into no tenant: to another, or back to the re-added one, 401")
+    void aRemovedMembersOldSessionDoesNotSwitch() throws Exception {
+        TestTenant tenant = newTenant();
+        TestUser owner = soleAdminOf(tenant);
+        TestUser member = newUserIn(tenant, "USER");
+        TestTenant other = newTenant();
+        addMember(other, member.id(), "USER");
+
+        deleteAs(owner.accessToken(), MEMBERS + "/" + member.id()).andExpect(status().isNoContent());
+        switchTenant(member.refreshToken(), other)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));
+        postAs(owner.accessToken(), MEMBERS, addPayload(member.email(), "USER")).andExpect(status().isCreated());
+        switchTenant(member.refreshToken(), tenant)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));
+        switchTenant(member.refreshToken(), other)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));
+        login(member.email(), PASSWORD).andExpect(status().isOk());
+    }
+
+    private ResultActions switchTenant(String refreshToken, TestTenant tenant) throws Exception {
+        return postAs(null, "/api/v1/auth/switch-tenant", """
+                {"refreshToken": "%s", "tenantId": "%s"}
+                """.formatted(refreshToken, tenant.id()));
+    }
+
+    @Test
     // session-version:begin
     @DisplayName("A demoted ADMIN's older token is 401 SESSION_VERSION_STALE: it can't demote, remove, promote or add, so the last ADMIN stays")
     // session-version:else

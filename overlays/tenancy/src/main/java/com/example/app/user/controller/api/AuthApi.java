@@ -69,7 +69,7 @@ public interface AuthApi {
     @ApiResponse(responseCode = "200", description = "New tokens")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "401", description = "AUTH_INVALID_REFRESH_TOKEN (unknown, expired or reused)",
+    @ApiResponse(responseCode = "401", description = "AUTH_INVALID_REFRESH_TOKEN (unknown, expired or reused, or issued before you were removed from its tenant, even if added again since)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus): the tenant was suspended or closed; the refresh token stays usable",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -88,7 +88,7 @@ public interface AuthApi {
     @ApiResponse(responseCode = "200", description = "Tokens for the other tenant")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "401", description = "AUTH_INVALID_REFRESH_TOKEN (unknown, expired or reused)",
+    @ApiResponse(responseCode = "401", description = "AUTH_INVALID_REFRESH_TOKEN (unknown, expired or reused, or issued before you were removed from its tenant, even if added again since)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

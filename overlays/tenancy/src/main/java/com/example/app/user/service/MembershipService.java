@@ -311,6 +311,11 @@ public class MembershipService implements Members {
         return membership.orElseThrow(AppException.supply(ErrorCode.MEMBERSHIP_NOT_FOUND, tenantId));
     }
 
+    /** The user's membership of that tenant, if any: the tenant a refresh token was issued for (switch-tenant). */
+    Optional<TenantMembership> findForTenant(User user, UUID tenantId) {
+        return repository.findByUserIdAndTenantId(user.getId(), tenantId);
+    }
+
     /** 404 {@code MEMBERSHIP_NOT_FOUND}: the user isn't a member of that tenant (or it doesn't exist). */
     @Transactional(readOnly = true, noRollbackFor = AppException.class)
     TenantMembership forTenant(User user, UUID tenantId) {

@@ -149,8 +149,16 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   `ACCESS_DENIED`), tested by `TenantMemberIntegrationTest.aDemotedAdminsTokenManagesNoMore` and
   `aRemovedAdminCantComeBack`. A last-ADMIN count is no substitute: an add or a promotion never consults
   it.
-- **Check:** a member removed and added again starts with new sessions: a refresh token issued before
-  the current membership is refused (reference: `TokenService.refresh`).
+- **Check:** **every path that issues a token** (login, refresh, switch-tenant, impersonation, and any
+  later one: an invitation, a tenant-picker sign-in) re-reads at the issue what the token stands for:
+  the membership (still there), its role and session version, the tenant ACTIVE; nothing comes from the
+  presented token beyond its own validity. A member removed and added again starts with new sessions: a
+  refresh token issued before the current membership is refused by every path that issues from it,
+  refresh **and** switch-tenant (the token's own membership checked before the target's; reference
+  `TokenService.requireIssuedForThisMembership`, tested by `TenantMemberIntegrationTest
+  .aReAddedMembersOldSessionStaysEnded` and `aRemovedMembersOldSessionDoesNotSwitch`). The paths, their
+  checks and tests are one table in the tenancy design note (*Every path that issues a token*); a new
+  path adds its row and its test.
 - **Check:** `tenant_memberships` is a platform table (TEN-35), so no policy narrows it: every query for
   one tenant's members names the tenant itself (`findByUserIdAndTenantId(userId, tenantId)`,
   `countByTenantIdAndRole`, the members list's `TenantMembershipRepositoryImpl.findByFilter(filter,
@@ -161,7 +169,10 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   (`TenantMemberIntegrationTest.anotherTenantsMemberIs404`, `changesStayInTheCallersTenant`), and the
   list and a member's GET show the caller's tenant only (`TenantMemberListIntegrationTest
   .listShowsOnlyThisTenantsMembers`, `getOfANonMemberIs404`; `MembersIntegrationTest` for the facade).
-- **Detect:** `users.tenant_id`; the role read from `users.role` into a tenant token;
+- **Detect:** grep every caller of the token service's issue methods and of the refresh-token lookup
+  (`usableToken`): each one reads the membership and the tenant status itself, and each path that takes a
+  refresh token checks it was issued after the token's own membership; a path that takes the role or the
+  tenant from the presented token; `users.tenant_id`; the role read from `users.role` into a tenant token;
   `@PreAuthorize`/`@AdminOnly` as the only check on an endpoint that grants or keeps roles; a members
   service that takes no caller id; a membership lookup by user or by id alone on a tenant-plane path
   (it reaches the person's membership in another tenant).
