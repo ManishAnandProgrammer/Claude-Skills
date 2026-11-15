@@ -19,19 +19,24 @@ changeset `0012`. Schema per tenant, `overlays/tenancy-schema/`: `common/tenancy
 `tenant.yaml`, `docs/tenancy-runbook.md`, `docker/postgres-init/`. Row mode, `overlays/tenancy-row/`:
 `common/tenancy/TransactionLocalTenantProvider` (the hook), `common/persistence/TenantOwnedEntity`
 (`@TenantId`), `config/TenancyConfig`, `tenant/service/TenantProvisioning` (activation after the
-approval), changeset `0013-row-security` (the app role's grants), with `media` `media/api/UploadLimits`
-and with `example` `todo/service/TodoAttachmentPolicySeed` (a tenant's defaults on
-`TenantProvisioned`), `docs/tenancy-runbook.md`, `docker/postgres-init/`; the tenant tables' `tenant_id`,
-keys and policies are `tenancy-row` blocks in the reference's own changesets `0002`–`0011` and entities.
+approval), changeset `0013-row-security` (the app role's grants), `0016-tenant-id-no-default`, with
+`media` `media/api/UploadLimits` and `media/repository/MediaFileRepository` (native statements that name
+their tenant), with `metadata` `metadata/repository/CounterRepository`, with `example`
+`todo/service/TodoAttachmentPolicySeed` (a tenant's defaults on `TenantProvisioned`),
+`docs/tenancy-runbook.md`, `docker/postgres-init/`; the tenant tables' `tenant_id`, keys and policies
+are `tenancy-row` blocks in the reference's own changesets `0002`–`0011` and entities. Both modes:
+changeset `0015-platform-users-read-only`, `config/PoolRoleCheck`, `tenant/service/StaffTenantService`.
 Tests: `tenant/**`, `archunit/TenancyArchTest`, `todo/TodoTenantIsolationIntegrationTest`,
 `support/IntegrationTest` (the test tenant, `@WithoutTestTenant`); row mode's
-`tenant/row/RowIsolationIntegrationTest` and `tenant/row/RowSecurityCatalogIntegrationTest` (the guard
-on the schema). In a bootstrapped project these sit at the same paths under
+`tenant/row/RowIsolationIntegrationTest`, `tenant/row/RowSecurityCatalogIntegrationTest` (the guard
+on the schema) and `tenant/row/NativeQueryTenantIntegrationTest` (the guard on native SQL); both modes'
+`config/PoolRoleCheckIntegrationTest` and `media/service/MediaJobsPerTenantTest`. In a bootstrapped project these sit at the same paths under
 its own package. The design and its experiments: the skills repo's `docs/design/tenancy.md`.
 
 The flow: JWT (`tenant_id`) → `TenantContext` → Hibernate's resolver → the connection hook runs one
 statement as the transaction's first (schema: `search_path`; row: `app.tenant_id`) → the commit or
-rollback clears it. Jobs: `for tenant in tenants.activeIds(): TenantScope.runAs(tenant, work)`.
+rollback clears it. Jobs: `for tenant in tenants.activeIds(): try { TenantScope.runAs(tenant, work) }
+catch (log, go on)`.
 Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` only.
 
 **Severity rule for the whole file:** any path that can read or write another tenant's data is
@@ -134,9 +139,16 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   it.
 - **Check:** a member removed and added again starts with new sessions: a refresh token issued before
   the current membership is refused (reference: `TokenService.refresh`).
+- **Check:** `tenant_memberships` is a platform table (TEN-35), so no policy narrows it: every query for
+  one tenant's members names the tenant itself (`findByUserIdAndTenantId(userId, tenantId)`,
+  `countByTenantIdAndRole`), and only login and "my tenants" read a user's memberships across tenants.
+  The members test crosses tenants: another tenant's member is 404 `TENANT_MEMBER_NOT_FOUND`, and a
+  person who is a member of two tenants is changed and removed in the caller's tenant only
+  (`TenantMemberIntegrationTest.anotherTenantsMemberIs404`, `changesStayInTheCallersTenant`).
 - **Detect:** `users.tenant_id`; the role read from `users.role` into a tenant token;
   `@PreAuthorize`/`@AdminOnly` as the only check on an endpoint that grants or keeps roles; a members
-  service that takes no caller id.
+  service that takes no caller id; a membership lookup by user or by id alone on a tenant-plane path
+  (it reaches the person's membership in another tenant).
 - **Severity:** Medium; High for the role check of member changes (a removed ADMIN keeps control).
 
 ### TEN-09: One way in, one lifecycle
@@ -149,9 +161,13 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   seeded on `TenantProvisioned`, under the new tenant's scope. A tenant no longer PENDING when
   provisioning reaches it (rejected after approval) gets no schema (`tenant_migrations` CANCELLED).
   **[row]** provisioning is the activation alone, right after the approval commits (TEN-34).
+- **Check:** staff's create and approve answer the tenant as it is once their transaction committed
+  (`StaffTenantService`, `NOT_SUPPORTED`, reads it after the call): in row mode it is ACTIVE by then,
+  with the activation's version. A body mapped inside the approving transaction shows PENDING and the
+  version before, and a client sending that version back gets 409.
 - **Detect:** a second activation path; staff activating a tenant whose tables don't exist;
   provisioning that creates storage without re-checking the status; plans or payment state on
-  `tenants`.
+  `tenants`; a create or approve answer mapped inside the transaction that publishes `TenantApproved`.
 - **Severity:** Medium.
 
 ## Work off the request path
@@ -159,13 +175,18 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
 ### TEN-10: Every unit of work carries its tenant
 - **Check:**
   - a job loops `Tenants.activeIds()` and runs each tenant's batch under `runAs`, each in its own
-    transactions (one big tenant can't starve the rest);
+    transactions (one big tenant can't starve the rest). Each tenant's run is caught, logged with the
+    tenant id and left to the next run: one tenant that fails (a query timeout in a big tenant) must not
+    skip every tenant after it, run after run (golden `MediaVerificationJob`, `MediaCleanupJob`, tested
+    by `MediaJobsPerTenantTest`). Housekeeping whose rows a suspended or closed tenant still holds (expired
+    uploads) loops `Tenants.idsHoldingData()` (ACTIVE, SUSPENDED, CLOSED) instead;
   - `@Async` work inherits the tenant through the `TaskDecorator` (`TenantTaskDecorator`);
   - outbox rows and messages carry `tenant_id`, and the consumer runs under `runAs`;
   - caches have the tenant in their key; the MDC carries `tenantId`;
   - object-store keys start with the tenant (`{tenantId}/{purpose}/{uuid}`).
 - **Detect:** a job that queries tenant tables without a scope (it sees nothing, or, in row mode with
-  a bypass role, everything); `@Async` without the decorator; a cache key without the tenant.
+  a bypass role, everything); a tenant loop without a catch per tenant; storage housekeeping limited to
+  ACTIVE tenants; `@Async` without the decorator; a cache key without the tenant.
 - **Severity:** Critical for a cache or message without the tenant; High for a job without a scope.
 
 ### TEN-11: Metrics are never tagged by tenant
@@ -182,7 +203,18 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   `DB_OWNER_USER`); `<app>_app` is the pool's role, not an owner, DML grants only through
   `ALTER DEFAULT PRIVILEGES` in a changeset. **[row]** the app role is `NOBYPASSRLS` and RLS is
   `FORCE`d. No policy or code path has an "or bypass" switch the app role can flip itself.
-- **Detect:** the pool connecting as the owner or a superuser; `GRANT ALL`; a policy with
+- **Check:** the app role only reads `platform_users` (changeset `0015`): staff accounts are the owner's
+  to write (runbook section 2), and with the write right one SQL injection creates a staff account that
+  impersonates every tenant. Tests seed staff as the owner (the Liquibase data source).
+- **Check:** `PoolRoleCheck` stops startup unless the pool's role is plain **through its memberships
+  too**: no superuser or `BYPASSRLS` role, and no table owner, among the roles it is a member of
+  (`pg_has_role(current_user, …, 'MEMBER')`), and no write on `platform_users`. `GRANT <owner> TO <app>`,
+  a common quick fix for a missing grant, leaves every catalogue column of the app role plain and hands
+  it the owner's power to lift `FORCE` or drop a policy (`PoolRoleCheckIntegrationTest` proves each
+  case is caught).
+- **Detect:** the pool connecting as the owner or a superuser; `GRANT ALL`; `GRANT <owner> TO <app>`
+  (or any role grant to the app role); a role check reading only `rolsuper`/`rolbypassrls`/`relowner` of
+  the role itself; DML on `platform_users` for the app role; a policy with
   `OR current_setting('app.bypass') = 'on'`.
 - **Severity:** Critical.
 
@@ -305,11 +337,15 @@ E1–E3 and the row tests named below, which run as the real application role.
 
 ### TEN-30: [row] Every tenant table is forced under one tenant policy, in the changeset that creates it
 - **Check:** the changeset that creates a tenant table also has
-  - `tenant_id uuid NOT NULL DEFAULT nullif(current_setting('app.tenant_id', true), '')::uuid` and
-    `CONSTRAINT fk_<table>_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenants (id)`. Hibernate sets the
-    column; the default fills a native or fixture insert from the transaction's tenant, and without a
-    tenant it is NULL, refused (the policy's check fires first: `new row violates row-level security
-    policy`, `RowIsolationIntegrationTest`);
+  - `tenant_id uuid NOT NULL` with **no default**, and `CONSTRAINT fk_<table>_tenant_id FOREIGN KEY
+    (tenant_id) REFERENCES tenants (id)`. Hibernate sets the column on entity inserts; every other insert
+    (native SQL, a changeset's backfill, a test fixture) names its tenant. An insert that forgets it
+    fails at once, whatever the session was told (its NULL is refused by the policy's check before NOT
+    NULL: `RowIsolationIntegrationTest.anInsertNamesItsTenant`). A `current_setting` default would fill
+    it from the transaction's tenant and hide the omission until a job or a platform path inserts with
+    another tenant set. The golden changesets `0002`–`0011` were applied with such a default; the row
+    overlay's `0016-tenant-id-no-default` drops it (an applied changeset is never edited), and a new
+    table never has one;
   - `ALTER TABLE <t> ENABLE ROW LEVEL SECURITY; ALTER TABLE <t> FORCE ROW LEVEL SECURITY;` (forced: the
     owner, which runs Liquibase, is bound too);
   - exactly one policy for every command, `CREATE POLICY tenant_isolation ON <t> USING (tenant_id =
@@ -318,11 +354,12 @@ E1–E3 and the row tests named below, which run as the real application role.
 
   Every table is a tenant table unless it is in `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES`
   with its reason; that test fails on a tenant table missing any part above (it is proven to catch a
-  table without a policy and one enabled but not forced), on a table that is neither, on a `tenant_id`
-  that is nullable or doesn't reference `tenants`, and on an app role that is a superuser, owns a table
-  or has `BYPASSRLS`.
-- **Detect:** a `tenant_id` column without `FORCE`; the policy in a later changeset (a window without
-  it); `USING` without `WITH CHECK` (a write into another tenant); `FOR SELECT` only; a policy with
+  table without a policy, one enabled but not forced, and a `tenant_id` with a default), on a table
+  that is neither, on a `tenant_id` that is nullable, has a default or doesn't reference `tenants`, and
+  on an app role that is a superuser, owns a table or has `BYPASSRLS`.
+- **Detect:** a `tenant_id` column without `FORCE`; `tenant_id … DEFAULT …` (any default); a native or
+  fixture `INSERT` into a tenant table whose column list lacks `tenant_id`; the policy in a later
+  changeset (a window without it); `USING` without `WITH CHECK` (a write into another tenant); `FOR SELECT` only; a policy with
   `OR current_setting('app.bypass', true) = 'on'` or any switch the app role can set itself (TEN-12);
   `current_setting('app.tenant_id')::uuid` without `nullif` (a reused session returns `''`, and the cast
   fails instead of matching nothing); a new table missing from the catalogue test's lists.
@@ -330,8 +367,8 @@ E1–E3 and the row tests named below, which run as the real application role.
 
 ### TEN-31: [row] Only the hook names `app.tenant_id`
 - **Check:** `TransactionLocalTenantProvider` is the only Java that sets or reads `app.tenant_id`
-  (`TenancyArchTest`), with one parameterised transaction-local statement (TEN-04); the policies and
-  the column default read it in SQL. `NO_TENANT` sets it empty: platform tables work, tenant rows read
+  (`TenancyArchTest`), with one parameterised transaction-local statement (TEN-04); the policies read
+  it in SQL, and nothing else does (no column default). `NO_TENANT` sets it empty: platform tables work, tenant rows read
   as none, a tenant write is refused. Nothing of it survives the transaction: after a commit and after a
   rollback every pooled connection reads `''` and a plain JDBC borrower sees no tenant rows
   (`RowIsolationIntegrationTest`).
@@ -346,24 +383,24 @@ E1–E3 and the row tests named below, which run as the real application role.
     Hibernate then refuses an entity carrying another tenant's id before any SQL, finds no other
     tenant's row by id or reference, and filters JPQL, Criteria, joins and bulk updates (E1,
     `RowIsolationIntegrationTest`);
-  - repositories, services, filters and requests never take a tenant parameter (TEN-01);
-  - **native SQL** is not filtered by Hibernate; the policy filters it (proven in the row test), and
-    its predicate is an index condition on an index with `tenant_id` among its equality columns (the
-    row test's `EXPLAIN`). So a native query needs no tenant parameter. With Hibernate's own
-    `tenant_id = ?` in an entity query, the policy's predicate reduces to a one-time filter (measured on
-    the todo index shapes).
-- **Detect:** a tenant entity extending `AuditableEntity` (the column default would fill it, but
-  entity queries lose their predicate and the insert check); `tenantId` in a repository method, a
-  `@Query` or a service signature; a native query that adds the tenant from a parameter it was given.
+  - entity queries, filters and requests never take a tenant parameter (TEN-01): Hibernate adds
+    `tenant_id = ?` to every entity query, and the policy's predicate then reduces to a one-time filter
+    (measured on the todo index shapes). The one exception is native SQL (TEN-37).
+- **Detect:** a tenant entity extending `AuditableEntity` (its inserts fail without a tenant column
+  value, and entity queries lose their predicate and the insert check); `tenantId` in a request, a
+  filter, a JPQL `@Query` or a derived query method; a native statement without it (TEN-37).
 - **Severity:** High (RLS still holds; Critical when combined with a policy gap).
 
 ### TEN-33: [row] Keys carry the tenant; references between tenant tables are composite
 - **Check:**
-  - every unique constraint and list index has `tenant_id` among its equality columns, in DATA-10's
-    scope order: after the owner in an owner-scoped table (`(owner_id, tenant_id, name, id)`, which
-    still serves the owner's foreign key), leading where the tenant alone scopes the list (the media
-    jobs' `(tenant_id, upload_expires_at, id)`, `(tenant_id, key)`). The single-tenant names stay, so the
-    modules' `ConstraintErrorCodes` serve every mode;
+  - every unique constraint and list index has `tenant_id` among its **leading equality columns**
+    (DATA-10). The order between `tenant_id` and the owner is plain: **the owner first when the table
+    has an owner** (`(owner_id, tenant_id, name, id)`: it still serves the owner's foreign key, and an
+    owner lives in one tenant, so the pair is as selective either way); **`tenant_id` first when the
+    table has no owner, or when a list filters by the tenant alone** (a tenant-shared customer list
+    `(tenant_id, name, id)`, the media jobs' `(tenant_id, upload_expires_at, id)`, `(tenant_id, key)`).
+    The sort keys and `id` follow. The single-tenant names stay, so the modules' `ConstraintErrorCodes`
+    serve every mode;
   - a reference between two tenant tables is a **composite foreign key** carrying `tenant_id` on both
     sides, to a parent key with `tenant_id` last: `(todo_list_id, owner_id, tenant_id) → todo_lists (id,
     owner_id, tenant_id)`, `(media_file_id, tenant_id) → media_files (id, tenant_id)`. Key checks bypass
@@ -407,8 +444,8 @@ E1–E3 and the row tests named below, which run as the real application role.
   `platform_audit` and Liquibase's tables. `tenant_memberships` and `refresh_tokens` carry a
   `tenant_id` but stay platform tables: login and "my tenants" read a user's memberships across
   tenants before one is chosen, and a refresh reads its token before it knows the tenant. Code reads
-  them by user or by token, never as "all rows". A project's own platform table joins the list with
-  its reason, in the same change.
+  them by user or by token, never as "all rows"; a query for one tenant's members names the tenant
+  (TEN-08). A project's own platform table joins the list with its reason, in the same change.
 - **Detect:** a table added to the list without a reason, or to make the guard pass; a tenant-plane
   endpoint reading `tenant_memberships` without the caller's tenant in its predicate.
 - **Severity:** High.
@@ -432,6 +469,25 @@ E1–E3 and the row tests named below, which run as the real application role.
 - **Detect:** a GIN or GiST index whose only user is a non-leakproof operator on a tenant table;
   `EXPLAIN` evidence taken as a superuser; a PostgreSQL enum column filtered on.
 - **Severity:** Medium (performance), High when a large tenant's list runs it on every request.
+
+### TEN-37: [row] Native SQL on a tenant table names its tenant
+- **Check:** Hibernate's tenant filter never reaches native SQL, so every native statement on a tenant
+  table carries `tenant_id = :tenantId`, once per tenant table it reads or writes (a subquery's table
+  included), and an insert names `tenant_id` in its column list. The service passes the current
+  tenant (`TenantContext.id()`, which throws outside a tenant); a job's statements get the tenant the
+  job runs for, from the `TenantScope.runAs` around each tenant's batch. The policy is the fallback,
+  not the filter: the code always sends the right tenant, so a platform statement and a tenant
+  statement never look alike, and the planner sees the tenant as a parameter. Golden: the row
+  overlay's `MediaFileRepository` (claims, releases, the jobs' leases) and `CounterRepository`
+  (`MediaFileService`, `CounterService` pass it). `NativeQueryTenantIntegrationTest` reads every
+  repository's `@Query(nativeQuery = true)` and fails on a tenant table named without its predicate
+  (proven to catch one removed); native SQL lives in repositories, so it sees all of it.
+- **Detect:** a native statement on a tenant table without `tenant_id = :tenantId`; a subquery's tenant
+  table without its own; a `JdbcTemplate` or `createNativeQuery` on a tenant table outside a repository
+  (the guard can't see it); the tenant read from the `app.tenant_id` setting in SQL
+  (`current_setting`) instead of passed.
+- **Severity:** High (the policy still holds; Critical when combined with a policy gap or a bypass
+  role).
 
 ## Not built yet (phase 2)
 

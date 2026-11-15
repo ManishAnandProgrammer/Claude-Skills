@@ -99,11 +99,13 @@ only when the project has that piece.
     at deployment); the unique `key` is per schema. The tenant comes from the token's claim (TEN-01),
     and the connection hook sets `search_path` to its schema (TEN-04), so the native counter update
     needs no change either.
-  - *Row mode* (the `tenancy-row` piece): `0008`'s `tenancy-row` blocks add `tenant_id` (with its
-    default), `UNIQUE (tenant_id, key)` under the same constraint names (`MetadataConstraintErrorCodes`
-    keeps working) and the forced policy; the entities' blocks extend `TenantOwnedEntity`. The native
-    `CounterRepository.increment` needs no tenant parameter: the policy filters it to the
-    transaction's tenant, and its predicate is an index condition on `(tenant_id, key)` (TEN-32).
+  - *Row mode* (the `tenancy-row` piece): `0008`'s `tenancy-row` blocks add `tenant_id` (its default
+    dropped again by the row overlay's `0016`: every insert names its tenant, TEN-30), `UNIQUE
+    (tenant_id, key)` under the same constraint names (`MetadataConstraintErrorCodes` keeps working)
+    and the forced policy; the entities' blocks extend `TenantOwnedEntity`. The native
+    `CounterRepository.increment` names its tenant (`AND tenant_id = :tenantId`, the row overlay's
+    replacement; `CounterService` passes `TenantContext.id()`), an index condition on `(tenant_id, key)`
+    (TEN-37).
   - In both models, lifecycle code without a request (a scheduled job, tenant registration) opens
     its session for an explicit tenant.
 

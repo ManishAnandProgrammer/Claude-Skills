@@ -121,11 +121,19 @@ its `errorCode` (TEST-08):
   values suffice: validation runs before the claim);
 - claim refusals, 409 `UPLOAD_NOT_AVAILABLE`: a key already attached (here or to another record),
   another user's key, another purpose's key, an expired key, an unknown key; on create **and** on
-  update (`add<X>Keys`); the record unchanged after each;
+  update (`add<X>Keys`); the record unchanged after each. "Attached here" is its own case: the update
+  re-adds a key this same record already holds;
 - a remove id that isn't this record's file is refused; another user's record is 404 (TEST-02). **A
   shared root** (no owner, tests.md *Shared tables*): the refused-create checks count the caller's
   rows by `created_by` instead of `owner_id` (golden `todosOf`), and the other-user 404 has no
-  counterpart: with tenancy the `TenantIsolationIntegrationTest` covers who reaches the record;
+  counterpart: with tenancy the `TenantIsolationIntegrationTest` covers who reaches the record. On a
+  shared record, one member removes a file another member attached (its row RELEASED); a malformed
+  remove id is 400 `REQUEST_UNREADABLE`, the record keeping its files (golden
+  `TodoAttachmentsIntegrationTest.malformedRemoveIdIs400`; re-adding its own key:
+  `reAddingThisTodosOwnKeyIsRefused`);
+- a purpose that lists **several roles** (`USER` and `ADMIN`): a member of each role attaches a file
+  (an upload URL, then the record's write); only a role the purpose doesn't list is 403 (that test is
+  skipped while every role is listed: step 1 above);
 - remove: the file leaves the response and its row is RELEASED; delete releases every file;
 - update with a stale version is 409 and attaches nothing; concurrent removals with one version
   apply once (the RELEASED count exact); **concurrent replacements** (remove the same file, add each

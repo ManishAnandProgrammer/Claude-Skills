@@ -40,6 +40,9 @@ but no `@DropdownCandidate`, ask whether to add one.
 - `sortDirection=DESC` reverses it.
 - `query` matches part of the label ignoring case (searchable), or is 400 (not searchable).
 - Batches: walk `size=2` with `after` to the end (`hasMore` false, no `nextCursor`).
+- When `displayField` isn't unique (customer names repeat; golden todo-list names are unique per
+  owner, so the golden can't show it): a group of equal labels split across batches, walked in both
+  directions, comes back in id order within the label (the tie-breaker), every item once.
 - A cursor from the other direction, and a tampered cursor: 400 `REQUEST_PARAMETER_INVALID`.
 - `size` at the configured maximum accepted, one more 400 naming `size` with the configured number
   (golden `dropdownSizeFollowsTheConfiguredMaximum`; tests.md row 9).

@@ -291,8 +291,8 @@ Platform:  JWT (aud=platform) ─▶ /api/v1/platform/** ─▶ TenantService (t
   - the pre-flight checks of decision 6;
   - `@TenantId` on generated entities;
   - the generated cross-tenant tests;
-  - a native query in a repository gets `AND tenant_id = :tenantId` (RLS backs it up, but the
-    planner needs the predicate).
+  - a native query in a repository gets `AND tenant_id = :tenantId`, jobs' included (they pass the
+    tenant they run for): RLS is the fallback, not the filter (owner decision 2026-11-15, below).
 - **bootstrap.md:**
   - question 6's tenancy line becomes a real question with the piece;
   - the piece row needs `sign-in` (or the external identity provider's claim mapping);
@@ -551,28 +551,41 @@ registrations; parallel tenant migrations; impersonating a suspended tenant; bre
   platform table named with its reason; the app role is no superuser, has no `BYPASSRLS`, owns nothing.
   It is proven to catch a table without a policy and one enabled but not forced.
 - **Decided while building, each measured:**
-  - `tenant_id` has `DEFAULT nullif(current_setting('app.tenant_id', true), '')::uuid`: native and
-    fixture inserts get the transaction's tenant without naming it; without a tenant the policy refuses
-    the row (its check fires before NOT NULL).
-  - **Key order:** `tenant_id` is an equality column after the owner (`(owner_id, tenant_id, name, id)`,
-    DATA-10's order), and last in a composite key's target (`(id, owner_id, tenant_id)`). With the
-    tenant first, the owner's foreign key needed an index of its own, and both it and a `(tenant_id, id)`
-    target took the list plans (with a sort) in the reference's index tests.
+  - ~~`tenant_id` has `DEFAULT nullif(current_setting('app.tenant_id', true), '')::uuid`~~, superseded
+    by the owner (2026-11-15): **no default**. Every insert names its tenant, fixtures included, so a
+    forgotten one fails at once (the policy's check refuses its NULL before NOT NULL would) instead of
+    taking whatever tenant the session was told. The golden changesets `0002`–`0011` were applied with
+    the default; the row overlay's `0016-tenant-id-no-default` drops it, and the catalogue guard fails on
+    a `tenant_id` with a default.
+  - **Key order:** `tenant_id` and the owner are both leading equality columns: the owner first when
+    the table has an owner (`(owner_id, tenant_id, name, id)`, DATA-10's order), `tenant_id` first when
+    it has none or a list filters by the tenant alone (`(tenant_id, name, id)`); `tenant_id` last in a
+    composite key's target (`(id, owner_id, tenant_id)`). With the tenant first on an owned table, the
+    owner's foreign key needed an index of its own, and both it and a `(tenant_id, id)` target took the
+    list plans (with a sort) in the reference's index tests.
   - With Hibernate's `tenant_id = ?`, the policy's predicate becomes a one-time filter; alone (native
-    SQL), it is an index condition. Native queries take no tenant parameter.
+    SQL), it is an index condition. ~~Native queries take no tenant parameter~~, superseded by the
+    owner (2026-11-15): **native SQL on a tenant table always carries `tenant_id = :tenantId`**, jobs
+    included (they pass the tenant they run for, through the scope of each tenant's batch). RLS is the
+    fallback, not the filter: the code always sends the right tenant, so platform queries and tenant
+    queries never look alike. `NativeQueryTenantIntegrationTest` fails on a native repository
+    statement without it (house-review TEN-37).
   - The plans' overlap check (`&&`, not leakproof) can't use the exclusion constraint's GiST index under
     the policy: the reference's `PlanIndexIntegrationTest` has a row variant (TEN-36).
-  - **Memberships stay a platform table** (decision 8 said a tenant table): login and "my tenants" read a
-    user's memberships across tenants before one is chosen.
+  - **Memberships stay a platform table** (decision 8 said a tenant table; confirmed by the owner
+    2026-11-15): login and "my tenants" read a user's memberships across tenants before one is chosen.
+    No policy narrows the table, so every per-tenant membership query names the tenant itself, and the
+    members test crosses tenants (a member of two tenants is changed and removed in the caller's only).
   - **Provisioning** is the activation, right after the approval commits, in a new transaction inside
     `TenantScope.runAs` (inside the approving one the tenant is fixed as `NO_TENANT`, and before its
-    commit the tenant row isn't visible). A failure leaves it PENDING; approving again retries.
+    commit the tenant row isn't visible). A failure leaves it PENDING; approving again retries. Staff's
+    create and approve answer the tenant as provisioning left it (`StaffTenantService` reads it after the
+    approving transaction): ACTIVE with the activation's version, or PENDING when provisioning failed.
   - **Upload policies are per tenant** in both modes. A changeset can't seed them in row mode, so the
     owning module seeds a new tenant's on `TenantProvisioned` (`TodoAttachmentPolicySeed` through
     `Uploads.definePolicy`).
 
-**Row-mode gaps:** the jobs' native statements rely on the policy, not an explicit predicate (proven
-correct; plans per tenant measured on the test data only); tenant export and deletion; the `BYPASSRLS`
+**Row-mode gaps:** tenant export and deletion; the `BYPASSRLS`
 system pool (decision 10); per-tenant reads of `tenant_memberships` are the services' predicates, not
 RLS.
 

@@ -437,7 +437,11 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Check:**
   - every foreign key column is indexed;
   - **one index per offered list order**, leading with the scope columns (owner, tenant), then the
-    sort keys, **ending with the id** tie-breaker; filtered columns covered (composite or partial);
+    sort keys, **ending with the id** tie-breaker; filtered columns covered (composite or partial).
+    With a tenant column (row tenancy) both it and the owner are leading equality columns: **the owner
+    first when the table has an owner** (`(owner_id, tenant_id, sort…, id)`, which still serves the
+    owner's foreign key), **`tenant_id` first when it has none or a list filters by the tenant alone**
+    (`(tenant_id, sort…, id)`; TEN-33);
   - **also per scoping filter** (a parent id: a list's own screen): `(parent_id, owner_id, sort
     keys…, id)`, which also serves the foreign key, or the page walks every row of the owner;
   - every sort has a unique tie-breaker: the id, unless the sort column is itself unique and not
@@ -449,8 +453,18 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     `Seek.after` adds it;
   - **a keyset sort key is never null.** A nullable column (a due date) sorts through a stored
     generated column (`coalesce(due_date, date '9999-12-31')`) that the index and the keyset use;
+  - **an overlap filter has a lower bound.** "What is on during [from, to]" is `ends_on >= from AND
+    starts_on <= to`; every index orders by the start, so only `starts_on <= to` reaches it and
+    `ends_on >= from` filters the scope's whole history before `to` (a "this week" screen reads years).
+    A configured maximum range length gives the bound: a range ending on or after `from` started no
+    earlier than `from - (max - 1)`, so the query adds `starts_on >= from - (max - 1)` and the index
+    range is bounded on both sides (golden `PlanRepositoryImpl.filterPredicates`, `plan.max-days`,
+    checked on create; `PlanIndexIntegrationTest.plannedDaysReadABoundedRange` asserts both bounds in the
+    Index Cond). Without a maximum, it is a recorded decision that the filter scans the scope's history;
   - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).
-- **Detect:** an index on `updated_at` or `version` (or on any column every update changes): every
+- **Detect:** an overlap filter written as two comparisons with nothing bounding `starts_on` from
+  below (an index test that only finds `starts_on` in the Index Cond doesn't notice); an index on
+  `updated_at` or `version` (or on any column every update changes): every
   update then writes new index entries and is never a HOT update (measured 2026-11-14 on a
   todos-shaped table: 0% HOT with the index, about 72% without it at the default fillfactor, 97% at
   fillfactor 80). Hibernate rewriting unchanged columns with the same value does not stop HOT, so

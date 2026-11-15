@@ -36,7 +36,7 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
 | `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
 | `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@AssertTrue boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
-| `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
+| `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`) of a **configured maximum length** (`getLengthInDays`, `plan.max-days`), an **overlap filter with a lower index bound** (`plannedFrom`/`plannedTo`: `ends_on >= from`, `starts_on <= to` and the derived `starts_on >= from - (max - 1)`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 
 The rules behind the shape are the house-review references, which are the source of truth:
 `rest-api.md`, `error-contract.md`, `persistence.md`, `java.md`, `code-smells.md`, `lenses.md`
@@ -212,7 +212,7 @@ native query names none either (TEN-21): the connection hook picks the schema. A
 stays a plain foreign key to `users` (a platform table, found through the owner's `search_path`).
 Ownership checks are unchanged: they separate users inside one tenant.
 
-**With `{{tenancy}}` = `row`** (house-review `tenancy.md`, TEN-30…36; golden: the `tenancy-row` blocks of
+**With `{{tenancy}}` = `row`** (house-review `tenancy.md`, TEN-30…37; golden: the `tenancy-row` blocks of
 the reference's `0002`–`0006` changesets and its todo entities, which bootstrap uncommented in the
 project's copies), add these pre-flight rows for every tenant table (a platform table is one the user
 names as such; it joins `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES` with its reason):
@@ -220,13 +220,13 @@ names as such; it joins `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES` with
 | Check | Rule |
 |---|---|
 | The entity extends `TenantOwnedEntity` (`@TenantId`), never `{{AuditBase}}` directly; no `tenantId` in its builder calls, requests, filters, repositories or services | TEN-32, TEN-01 |
-| `tenant_id uuid NOT NULL DEFAULT nullif(current_setting('app.tenant_id', true), '')::uuid` and `fk_<table>_tenant_id → tenants (id)` | TEN-30 |
+| `tenant_id uuid NOT NULL` with **no default** and `fk_<table>_tenant_id → tenants (id)`: every insert names its tenant, so a forgotten one fails at once. The golden `0002`–`0011` blocks still show a `current_setting` default; it predates the rule and the row overlay's `0016` drops it (an applied changeset is never edited): never copy it into a new changeset | TEN-30 |
 | `ENABLE` + `FORCE ROW LEVEL SECURITY` and the one `tenant_isolation` policy (`USING` and `WITH CHECK`, the same predicate) **in the changeset that creates the table** | TEN-30 |
-| Every unique constraint and list index has `tenant_id` among its equality columns, after the owner (`(owner_id, tenant_id, sort…, id)`), leading when the tenant alone scopes the list; names as in single-tenant | TEN-33, DATA-10 |
-| A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually applied by then; the key exists for the child); a reference to `users`: **ask** "any account, or a member of this tenant?". An account stays a plain key; a member is a composite key `(user_id, tenant_id) → tenant_memberships (user_id, tenant_id)` (its unique pair), and removing that member is then refused while referenced (409, ask whether that is right) | TEN-33, DATA-33 |
+| Every unique constraint and list index has `tenant_id` among its leading equality columns: the owner first when the table has an owner (`(owner_id, tenant_id, sort…, id)`), `tenant_id` first when it has none or a list filters by the tenant alone (`(tenant_id, sort…, id)`); names as in single-tenant | TEN-33, DATA-10 |
+| A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually applied by then; the key exists for the child); a reference to `users`: **ask** "any account, or a member of this tenant?". An account stays a plain key; a member is a composite key `(user_id, tenant_id) → tenant_memberships (user_id, tenant_id)` (its unique pair), and removing that member is then refused while referenced (409, ask whether that is right). When it is, the generation also adds (the tenancy piece ships none, since no golden record references a member): `TENANT_MEMBER_IN_USE` (409, "This person still has <records> here. Reassign or remove them first.") and `TENANT_MEMBER_GONE` (404, the member was removed while the record was being saved) beside the other `TENANT_MEMBER_*` codes in `ErrorCode`, `ErrorCodeHttpStatusMapper` and the messages; the **child's** module maps its key, `byConstraintName` → `TENANT_MEMBER_IN_USE`, `byForeignKeyOnWrite` → `TENANT_MEMBER_GONE` (4.4); the members API's remove documents the 409 ("while another record references the member"), asserted by a docs test in the child's test class; and row 23's race runs the child's creates against `DELETE /tenant-members/{userId}` (every create 201 and the removal 409, or the removal 204 and the creates 404 `TENANT_MEMBER_GONE`; never an orphan) | TEN-33, DATA-33 |
 | A changeset already applied gets no new comment (its checksum changes): a later note (a TEN-36 search warning) goes in the runbook or the entity's javadoc | DATA-13 |
 | No seed rows in the entity's changeset: a new tenant's starting rows come from a `TenantProvisioned` listener in the module (golden `TodoAttachmentPolicySeed`), the existing tenants' from a backfill changeset that lifts `FORCE` for its own transaction (golden `0010`'s `…-existing-tenants`, tested by `TodoAttachmentPolicyBackfillIntegrationTest`) | TEN-34 |
-| A native query adds no tenant parameter (the policy filters it, and its predicate is an index condition); a search on `jsonb @>`, `LIKE`/`ILIKE` or range `&&` is flagged as a filter over the tenant's rows | TEN-32, TEN-36 |
+| A native query on a tenant table names its tenant: `AND tenant_id = :tenantId` once per tenant table it reads or writes (a subquery's too), a `UUID tenantId` first parameter, the service passing `TenantContext.id()` (a job's batch runs under `TenantScope.runAs`, so it gets the tenant the job runs for); an insert lists `tenant_id`. The policy is the fallback, not the filter (golden: the row overlay's `MediaFileRepository`, guarded by `NativeQueryTenantIntegrationTest`). A search on `jsonb @>`, `LIKE`/`ILIKE` or range `&&` is flagged as a filter over the tenant's rows | TEN-37, TEN-36 |
 | Statuses `text` with a check constraint, never a PostgreSQL enum (its `=` isn't leakproof) | DATA-07, TEN-36 |
 
 The master (`db.changelog-master.yaml`) lists the platform's changesets first; the new changeset goes
@@ -320,13 +320,18 @@ and per scoping filter, ending with the id (none when the sort column is unique 
 new changeset if the entity's own one is applied (Step 2), with test row 28 for each. An order index
 that leads with a foreign key column (`(author_id, id)`) also serves that key's checks: it
 **replaces** the key's own index from the pre-flight (`idx_books_author_id`), never sits beside it
-(golden `0003-todos.sql`'s comment).
+(golden `0003-todos.sql`'s comment). A low-cardinality enum filter (a status, a priority) counts
+as scoping only when one value is rare and filtered for often (the owner's open todos among years of
+done ones): then it gets its index; otherwise the order index filters it (golden `0003`: priority,
+three values, none rare). Record which, so the review doesn't ask again.
 
 **Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
 `List<@NotNull ID> ids` with `@ConfiguredMaxSize("cursor-page.max-size")` (offset:
 `"offset-page.max-size"`), `requireIdsPredicate()` (non-null and non-empty), an `in` predicate in the
 list query (offset: in the page **and** the count query; not in the dropdown), and
-`@Schema(description = "Find by ids …: unknown or another user's ids are simply absent")`. The list's
+`@Schema(description = "Find by ids …: unknown or another user's ids are simply absent")`; a record
+shared by the tenant (no owner scope) says "unknown ids, or another tenant's, are simply absent" (the
+cross-tenant test proves it), and one shared by everyone "unknown ids are simply absent". The list's
 description and its 400 response name it.
 
 **Shapes** (golden `Tag` / `TimeEntry`):
@@ -347,12 +352,25 @@ description and its 400 response name it.
   (golden `PlanCreateRequest`); the API text says whether the ends are inclusive. An updatable range
   changes through **one** entity method that takes both ends and guards them (`reschedule(from, to)`,
   `IllegalStateException` on an inverted range; no golden code: `Plan` is immutable), never a setter
-  per end. A filter for "what is on during [from, to]" is an overlap, written as two comparisons
-  (`startsOn <= :to AND endsOn >= :from`, both inclusive), not the range `&&` operator (not leakproof
-  under row-level security, TEN-36).
+  per end. When the range's scope column (the exclusion constraint's `owner_id WITH =`, a shift's
+  member) is updatable too, it changes through an action of its own (`handOverTo(member)`), not a
+  third parameter of `reschedule`: each guards its own rule and is tested on its own.
+- **A filter for "what is on during [from, to]"** is an overlap, not the range `&&` operator (not
+  leakproof under row-level security, TEN-36). Two comparisons alone (`endsOn >= :from AND startsOn
+  <= :to`) give the index **no lower bound**: every index orders by the start, so `endsOn >= :from`
+  filters the scope's whole history before `:to`, and "who is on call this week" reads years (DATA-10).
+  So **ask the maximum range length** (a plan spans at most a month, a shift a week) and make it a
+  configured limit (`limits.yml` `<entity>.max-days`, with the comment "raise it any time, lower it
+  only once no stored range is longer"): checked on create and update by `@ConfiguredMax("<entity>.max-days")`
+  on a hidden getter `getLengthInDays()` (null while a date is missing or the range inverted), and used
+  by the repository for a third predicate, `startsOn >= :from - (max - 1)` (golden `PlanCreateRequest`,
+  `PlanFilter.plannedFrom`/`plannedTo`, `PlanRepositoryImpl.filterPredicates`). Without a maximum
+  (open-ended ranges), record the decision that the filter scans the scope's history. Tests: tests.md
+  rows 25b and 28.
 - **Email** (golden: the sign-in piece's `SignupRequest.email`, `User.normalizeEmail`):
-  `@NotBlank @Email @MaxLength("<entity>.email") @Pattern(regexp = "\\p{ASCII}+", message = "must
-  contain only ASCII characters")` (254 in `limits.yml`), `@Schema` "Email address (ASCII only);
+  `@NotBlank @Email @MaxLength("<entity>.email") @Pattern(regexp = "\\p{ASCII}*", message = "must
+  contain only ASCII characters")` (254 in `limits.yml`; `*`, not `+`: an empty value gets only "must not
+  be blank"), `@Schema` "Email address (ASCII only);
   stored lower-case; unique ignoring case". The mapper stores `email.strip().toLowerCase(Locale.ROOT)`
   (another module can't call `User.normalizeEmail`: the two lines are repeated), backed by
   `CONSTRAINT ck_<table>_email_normalized CHECK (email = lower(trim(email)))` and a plain
