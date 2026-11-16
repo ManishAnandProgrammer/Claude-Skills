@@ -23,15 +23,17 @@ public interface PlanApi {
     @Operation(summary = "Your plans, in batches", description = """
             Cursor-paged: the first call returns a batch and pageInfo.nextCursor; send it as after to get \
             the next batch, until hasMore is false. size sets the batch (default and maximum from \
-            configuration). Filters: ids (find by ids: unknown or another user's ids are simply absent) \
-            and todoId (the plans of one of your todos). Ordered by sort: STARTS_ON (the default; calendar \
-            order) or NEWEST; a cursor only continues the order it came from. Each plan carries its todo's \
-            id and title.""")
+            configuration). Filters: ids (find by ids: unknown or another user's ids are simply absent), \
+            todoId (the plans of one of your todos) and plannedFrom/plannedTo (the plans sharing a day with \
+            the range; either end alone is open on the other side; with sort STARTS_ON only). Ordered by \
+            sort: STARTS_ON (the default; calendar order) or NEWEST; a cursor only continues the order it \
+            came from. Each plan carries its todo's id and title.""")
     @ApiResponse(responseCode = "200", description = "One batch, with pageInfo {nextCursor, hasMore}")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (size, after or the number of ids out of range); REQUEST_PARAMETER_INVALID \
-            (a malformed id or todoId, a non-numeric size, an unknown sort, or an after that is tampered \
-            or from another sort; see errors)""",
+            VALIDATION_FAILED (size, after or the number of ids out of range, an empty sort, a planned \
+            day out of the configured dates, plannedFrom after plannedTo, a planned day under sort \
+            NEWEST); REQUEST_PARAMETER_INVALID (a malformed id, todoId or planned day, a non-numeric \
+            size, an unknown sort, or an after that is tampered or from another sort; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

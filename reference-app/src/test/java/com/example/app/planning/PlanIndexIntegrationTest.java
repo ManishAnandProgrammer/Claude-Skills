@@ -24,7 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Every cell of the plan reads (each order, plain and under the todo filter, a later batch, the planned-days
- * overlap in both orders, the ids lookup, the todo's foreign key check and the overlap check) has its index
+ * overlap and each of its ends alone under STARTS_ON, the only order offering them, the ids lookup, the todo's
+ * foreign key check and the overlap check) has its index
  * and reads at most its bound (crud-gen tests.md row 28), with the statements PlanRepositoryImpl issues.
  * The owner's 2,000 plans, one a day over five todos, sit beside a sibling owner's 20,000, written as the
  * application writes them (UUIDv7 ids and clock times, twenty rounds of the owner's then the sibling's, so the
@@ -176,8 +177,14 @@ class PlanIndexIntegrationTest extends IntegrationTest {
                 // from below, so the filter reads the week and the days a plan reaches back, not the owner's history.
                 cell("plans sharing a day with plannedFrom..plannedTo, STARTS_ON", "idx_plans_owner_id_starts_on_id",
                         plannedDays + " order by starts_on, id limit 21", PLANNED_DAYS),
-                cell("plans sharing a day with plannedFrom..plannedTo, NEWEST", "idx_plans_owner_id_starts_on_id",
-                        plannedDays + " order by created_at desc, id desc limit 21", PLANNED_DAYS),
+                // Either end alone is a range of the same index, read until a page is full: plannedFrom from the
+                // derived bound (the days a plan may reach back, then a page), plannedTo from the owner's first
+                // plan. Under NEWEST neither is offered (PlanFilter.isPlannedFromSortedByStartsOn).
+                cell("plans ending on or after plannedFrom, STARTS_ON", "idx_plans_owner_id_starts_on_id",
+                        PLAN_ROW + " where owner_id = :owner and ends_on >= :from and starts_on >= :earliestStart"
+                                + " order by starts_on, id limit 21", MAX_DAYS + PAGE),
+                cell("plans starting on or before plannedTo, STARTS_ON", "idx_plans_owner_id_starts_on_id",
+                        PLAN_ROW + " where owner_id = :owner and starts_on <= :to order by starts_on, id limit 21", TWO_PAGES),
                 // The ids filter under every order: the asked rows through the primary key, then sorted.
                 cell("plans by ids, STARTS_ON", "pk_plans",
                         PLAN_ROW + " where owner_id = :owner and id in (:ids) order by starts_on, id limit 21", TWO_PAGES),

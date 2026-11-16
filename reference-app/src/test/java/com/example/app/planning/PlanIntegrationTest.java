@@ -706,6 +706,30 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("A planned day under sort NEWEST is 400 VALIDATION_FAILED naming each end sent: no index bounds that walk")
+    void plannedDaysNeedTheStartsOnOrder() throws Exception {
+        TestUser user = newUser();
+        createPlan(user, createTodo(user, "Ordered"), "2026-03-14", "2026-03-14");
+
+        getAs(user.accessToken(), PLANS + "?plannedFrom=2026-03-10&sort=NEWEST")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[*].parameter", contains("plannedFrom")))
+                .andExpect(jsonPath("$.errors[0].detail").value("plannedFrom and plannedTo need sort STARTS_ON"));
+        getAs(user.accessToken(), PLANS + "?plannedTo=2026-03-19&sort=NEWEST")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].parameter", contains("plannedTo")));
+        getAs(user.accessToken(), PLANS + "?plannedFrom=2026-03-10&plannedTo=2026-03-19&sort=NEWEST")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].parameter", containsInAnyOrder("plannedFrom", "plannedTo")));
+        for (String range : List.of("plannedFrom=2026-03-10", "plannedTo=2026-03-19", "plannedFrom=2026-03-10&plannedTo=2026-03-19")) {
+            getAs(user.accessToken(), PLANS + "?sort=STARTS_ON&" + range)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.response", hasSize(1)));
+        }
+    }
+
+    @Test
     @DisplayName("todoId walks one todo's plans in both orders, every plan once")
     void cursorWalkUnderTheTodoFilter() throws Exception {
         TestUser user = newUser();

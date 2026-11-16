@@ -395,9 +395,11 @@ batch or page, the `ids` lookup, each second step, each delete-side key check, e
 that serves it and the most rows it may read; test row 28 runs it. A cell no index serves gets one or is
 not offered: **a range filter is offered under its own column's order only** (under another order it is a
 400 naming the rule, golden `TodoFilter.isDueOnOrBeforeSortedByDueDate`), unless a bounded scope holds it
-(one todo's time entries), recorded. The exception is an **overlap filter** with its derived lower bound:
-the start's index serves it under every order (golden `PlanFilter`'s planned days under NEWEST), as its
-bounds hold the range on both sides. An order index
+(one todo's time entries), recorded. An **overlap filter** is no exception: it is a range of its start's
+index, so it is offered under the start's order only, each end alone too, one rule per end reported on that
+end (golden `PlanFilter.isPlannedFromSortedByStartsOn`, `isPlannedToSortedByStartsOn`): under another order
+an end alone leaves the walk unbounded (newest first, filtered by days in the past, reads the scope's
+history), and both ends bound it only by the range's width, which the client picks. An order index
 that leads with a foreign key column (`(author_id, id)`) also serves that key's checks: it
 **replaces** the key's own index from the pre-flight (`idx_books_author_id`), never sits beside it
 (golden `0003-todos.sql`'s comment). **A low-cardinality enum filter** (a status, a priority) is
@@ -477,8 +479,8 @@ description and its 400 response name it.
   (a 400 at `#/endsOn`, like an inverted range) (null while a date is missing or the range inverted), and used
   by the repository for a third predicate, `startsOn >= :from - (max - 1)` (golden `PlanCreateRequest`,
   `PlanFilter.plannedFrom`/`plannedTo`, `PlanRepositoryImpl.filterPredicates`). Without a maximum
-  (open-ended ranges), record the decision that the filter scans the scope's history. Tests: tests.md
-  rows 25b and 28.
+  (open-ended ranges), record the decision that the filter scans the scope's history. Like any range
+  filter, it is offered under its start's order only (above). Tests: tests.md rows 25b and 28.
 - **Email** (golden: the sign-in piece's `SignupRequest.email`, core's `common.validation.Emails`):
   `@NotBlank @Email @MaxLength("<entity>.email") @AsciiOnly` (254 in `limits.yml`; `@AsciiOnly` passes an
   empty value, so it gets only "must not be blank"), `@Schema` "Email address (ASCII only);

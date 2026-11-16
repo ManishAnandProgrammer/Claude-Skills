@@ -518,7 +518,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     range is bounded on both sides (golden `PlanRepositoryImpl.filterPredicates`, `plan.max-days`,
     checked on create; `PlanIndexIntegrationTest`'s planned-days cells read at most the maximum length
     plus the range's days). Without a maximum, it is a recorded decision that the filter scans the scope's
-    history;
+    history. These bounds hold under the start's order only: the overlap is a range filter like any other
+    (next point), each end alone included (golden `PlanFilter.isPlannedFromSortedByStartsOn`,
+    `isPlannedToSortedByStartsOn`);
   - **a range filter is offered under its own column's order** (a range of that order's index); under
     another order no index serves it on an unbounded scope (newest first, filtered by a date, walks the
     owner's history), so the filter refuses that sort with a 400 naming the rule (golden
@@ -548,7 +550,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   leading key; **a rare value's cell bounded by the walking bound**
   (it passes without its index) or a status set by a later decision seeded uniformly over every id (it
   then sits among the newest rows, where production never has it, and the planner walks); a range filter offered under another column's order
-  on an unbounded scope; an index test seeded with the tested scope as most of its table, or not
+  on an unbounded scope, an overlap filter's end (alone or with the other) under NEWEST included; an index test seeded with the tested scope as most of its table, or not
   interleaved in creation order (a missing index then reads few rows); an overlap filter written as two
   comparisons with nothing bounding `starts_on` from below; an index on
   `updated_at` or `version` (or on any column every update changes): every

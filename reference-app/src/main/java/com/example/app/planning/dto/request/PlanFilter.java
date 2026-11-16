@@ -36,12 +36,12 @@ public class PlanFilter extends CursorFilter {
     @EarliestDate("plan.dates") @LatestDate("plan.dates")
     @Schema(description = """
             Only plans that share a day with plannedFrom..plannedTo (both inclusive): here, plans ending on or \
-            after this day (yyyy-MM-dd); not after plannedTo""", example = "2026-11-16")
+            after this day (yyyy-MM-dd); not after plannedTo; with sort STARTS_ON only""", example = "2026-11-16")
     private LocalDate plannedFrom;
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     @EarliestDate("plan.dates") @LatestDate("plan.dates")
-    @Schema(description = "Only plans starting on or before this day (yyyy-MM-dd)", example = "2026-11-22")
+    @Schema(description = "Only plans starting on or before this day (yyyy-MM-dd); with sort STARTS_ON only", example = "2026-11-22")
     private LocalDate plannedTo;
 
     @NotNull
@@ -60,6 +60,22 @@ public class PlanFilter extends CursorFilter {
     @CrossField(reportedOn = "plannedTo", message = "{plan.planned-range}")
     public boolean isPlannedRangeOrdered() {
         return DateRanges.isOrdered(plannedFrom, plannedTo);
+    }
+
+    /**
+     * A range filter comes with the order of its own column, the overlap's ends included: under STARTS_ON
+     * the planned days are a range of the start's index, read until a page is full; under NEWEST every end,
+     * alone or with the other, leaves the walk unbounded (newest first, filtered by days in the past, reads
+     * the owner's whole history; both ends, a range as wide as the dates allow). Reported on each end sent.
+     */
+    @CrossField(reportedOn = "plannedFrom", message = "{plan.planned-filter-order}")
+    public boolean isPlannedFromSortedByStartsOn() {
+        return Objects.isNull(plannedFrom) || sort == PlanSort.STARTS_ON;
+    }
+
+    @CrossField(reportedOn = "plannedTo", message = "{plan.planned-filter-order}")
+    public boolean isPlannedToSortedByStartsOn() {
+        return Objects.isNull(plannedTo) || sort == PlanSort.STARTS_ON;
     }
 
     public boolean requirePlannedFromPredicate() {
