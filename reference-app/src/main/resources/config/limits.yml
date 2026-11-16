@@ -1,7 +1,7 @@
 # Every tunable limit in one place. Code names a limit; the number lives only here.
 app:
   limits:
-    # Offset-paged lists (bounded admin tables): page and size beyond these are a 400.
+    # Offset-paged lists (admin screens with page numbers or a total): page and size beyond these are a 400.
     offset-page:
       default-size: 20
       max-size: 100

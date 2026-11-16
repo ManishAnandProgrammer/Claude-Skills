@@ -14,7 +14,7 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.UUID;
 
-/** A user has few lists (a bounded table), so this list is offset-paged with page numbers. */
+/** The lists' management page is an admin-style screen that needs page numbers and a total, so it is offset-paged. */
 @Getter
 @Setter
 public class TodoListFilter extends PageFilter implements QueryFilter {

@@ -7,7 +7,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Query parameters of an offset-paged list (bounded admin tables). A mutable class: query
+ * Query parameters of an offset-paged list (an admin screen that needs page numbers or a total). A mutable class: query
  * parameters bind through setters. Sizes and the page cap come from {@code app.limits.offset-page};
  * a value beyond them is a 400, never silently clamped.
  */

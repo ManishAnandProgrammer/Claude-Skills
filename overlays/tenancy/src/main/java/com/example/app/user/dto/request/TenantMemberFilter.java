@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** A tenant's members are a bounded list (its team), so it is offset-paged with page numbers. */
+/** The members page is an admin screen that needs page numbers and a total, so it is offset-paged. */
 @Getter
 @Setter
 public class TenantMemberFilter extends PageFilter {

@@ -125,10 +125,13 @@ the path.
 
 ### REST-08: Lists
 - **Check:**
-  - **pagination:** **cursor-based by default** for lists in `{{cursorLists}}` (user-facing,
-    growing, feeds, dropdowns): `after` cursor, `CursorWrapper` with `pageInfo {nextCursor,
-    hasMore}`, no count. **Offset** only for bounded admin tables in `{{offsetLists}}`:
-    `PaginationWrapper`, the count only on a full page;
+  - **pagination follows the list's consumer**, as the profile records it (`{{cursorLists}}` /
+    `{{offsetLists}}`, the developer's statement): **cursor** (`after`, `CursorWrapper` with `pageInfo
+    {nextCursor, hasMore}`, no count) for pages a mobile or end-user app reads, dropdowns, and an admin
+    screen that needs no total and no page numbers and whose filters are simple and non-nullable;
+    **offset** (`PaginationWrapper`, the count only on a full page) for an admin screen that needs page
+    numbers or a total, or has complex filters. The review checks that the kind follows this rule for the
+    recorded consumer, never a guess at the table's size, which only the developer knows;
   - **sizes from configuration** (`app.limits.cursor-page` / `offset-page`); over the maximum is a
     400, never a silent clamp;
   - **filters:** validated fail-fast (400 `REQUEST_PARAMETER_INVALID` on an unknown value, naming
@@ -154,12 +157,13 @@ the path.
     `QUERY` method (RFC 10008, June 2026) replaces it once the project's Spring has it in a GA
     release (merged for Spring Framework 7.1) and the proxies and OpenAPI tooling pass it.
 - **Detect:** a `PageRequest` from raw client values; an unbounded `findAll()` behind an endpoint;
-  a sort as a free String; an OFFSET list over a growing table; a count on a cursor list; a cursor
+  a sort as a free String; a list whose kind doesn't follow the rule for its recorded consumer, or a list
+  with no consumer recorded; a count on a cursor list; a cursor
   limit below `(6 × max + 100) × 4/3` for a text sort key or a dropdown label; a cursor key parsed by
   `java.time` with no range check, by `UUID.fromString`/`Integer.valueOf` without comparing with what was
   written, or as an enum through `valueOf` outside `Cursor` (a 500 on a bad name); `Cursor.read` without
   the key count.
-- **Severity:** High for an unbounded list, otherwise Medium.
+- **Severity:** High for an unbounded `findAll()` or a list without a page size, otherwise Medium.
 
 ### REST-09: Validation layers
 - **Check:**

@@ -16,7 +16,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * A user has few tags (a bounded table), so this list is offset-paged with page numbers. The active
+ * The tags' management page is an admin-style screen that needs page numbers and a total, so this list is
+ * offset-paged. The active
  * flag is filtered with the dropdown's word and values ({@code status}), so a client learns one; only
  * the default differs: this page manages every tag, the dropdown offers the usable ones.
  */

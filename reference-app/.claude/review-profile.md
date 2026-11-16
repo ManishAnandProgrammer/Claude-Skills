@@ -43,7 +43,7 @@ nothing: it is the code the skills copy.
 | `exceptionHandler` | `com.example.app.common.exception.GlobalExceptionHandler` | |
 | `errorCodeType` | `com.example.app.common.exception.ErrorCode` | |
 | `cursorLists` | `Todo`, `TimeEntry`, dropdowns | Keyset; `pageInfo {nextCursor, hasMore}`; no counts |
-| `offsetLists` | `TodoList`, `Tag` | Bounded per user; page numbers and counts |
+| `offsetLists` | `TodoList`, `Tag` | Admin-style screens that need page numbers and a total |
 | `NotXss` | `escape-on-output` | JSON API; clients render text |
 | `noEmojiFields` | `none` | |
 | `tokenRevocation` | `session-version` | The reference runs with the session-version piece on (`short-lived(15)` stays its access-token bound); copies without it are `short-lived(15)` |

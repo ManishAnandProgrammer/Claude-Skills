@@ -46,8 +46,8 @@ project doesn't have.
 | `ObjectWrapper` / `ListWrapper` / `MapWrapper` / `PaginationWrapper` / `CursorWrapper` | FQNs | REST-11 |
 | `exceptionHandler` | FQN | REST-06 |
 | `errorCodeType` | `none` | FQN of the ErrorCode enum once it exists |
-| `cursorLists` | `all lists not in offsetLists` | Cursor (keyset) paging, the default: user-facing and growing lists, dropdowns |
-| `offsetLists` | `none` | Bounded admin tables that need page numbers, as **entity class names** (`TodoList`), not prose |
+| `cursorLists` | `all lists not in offsetLists` | Cursor (keyset) paging, the default: pages an end-user or mobile app reads, dropdowns, admin screens without totals or page numbers whose filters are simple and non-nullable (REST-08) |
+| `offsetLists` | `none` | Admin screens that need page numbers or a total, or have complex filters, as **entity class names** (`TodoList`), each with its consumer |
 | `NotXss` | `none` | FQN of the anti-XSS validator, or `escape-on-output` with a link to the policy |
 | `noEmojiFields` | `none` | Fields where `@NoEmoji` applies (codes, identifiers) |
 | `tokenRevocation` | `short-lived(15)` | `blacklist` (jti blacklist with a TTL, any store, no DB connection on a cache hit), `short-lived(<max minutes>)`, or `session-version` (the bootstrap piece: a version per account or membership in every token, checked per request through Redis; SEC-07) |

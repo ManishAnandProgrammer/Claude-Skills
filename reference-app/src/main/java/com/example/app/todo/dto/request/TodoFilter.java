@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Todos grow without bound, so this list is cursor-paged. */
+/** Todos are read by an end-user app's main screen, so this list is cursor-paged. */
 @Getter
 @Setter
 public class TodoFilter extends CursorFilter {

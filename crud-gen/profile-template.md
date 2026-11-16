@@ -47,8 +47,8 @@ Fill values from the codebase, not from memory.
 
 | Key | Value | Notes |
 |---|---|---|
-| `cursorLists` | `all lists not in offsetLists` | Keyset paging (the default): `CursorFilter`, `CursorWrapper`, `pageInfo {nextCursor, hasMore}`, no count |
-| `offsetLists` | `none` | Bounded admin tables that need page numbers, as **entity class names** (`TodoList`): `PageFilter`, `PaginationWrapper`, count on a full page |
+| `cursorLists` | `all lists not in offsetLists` | Keyset paging (the default), for pages an end-user or mobile app reads and admin screens without totals or page numbers whose filters are simple and non-nullable: `CursorFilter`, `CursorWrapper`, `pageInfo {nextCursor, hasMore}`, no count |
+| `offsetLists` | `none` | Admin screens that need page numbers or a total, or have complex filters (SKILL.md Step 3), as **entity class names** (`TodoList`): `PageFilter`, `PaginationWrapper`, count on a full page |
 | `CursorFilter` / `CursorWrapper` / `Cursor` / `Seek` / `CursorBatch` | `com.example.common.pagination.CursorFilter` / `…wrapper.CursorWrapper` / `…pagination.Cursor`, `…pagination.Seek` | Cursor lists |
 | `PageFilter` / `PaginationWrapper` / `OffsetPages` | `com.example.common.pagination.PageFilter` / `…wrapper.PaginationWrapper` / `…pagination.OffsetPages` | Offset lists |
 | `Paging` | `com.example.common.pagination.Paging` | Default sizes from configuration (`offset(filter, sort)`, `cursorSize(filter)`) |
@@ -108,9 +108,8 @@ These override the skill's defaults. Leave empty to follow the pattern exactly.
 <!--
 One section per generated entity, "### <Entity> (<date>)", with the owner's answers to the skill's
 questions and their reasons: aggregate root or member, owned or shared and who writes and reads, the list
-kind (and for an offset list of a growing table, why), retired or deleted, how a person is erased, each
-picked parent's picker, the domain facts the index test's seed rests on (scope sizes, value shares), the
-open items. A choice no house rule forbids is recorded here and in the code's javadoc, never as a
+kind and its consumer, retired or deleted, how a person is erased, each picked parent's picker, the open
+items. A choice no house rule forbids is recorded here and in the code's javadoc, never as a
 review-profile Conventions row (that reads as an override of a rule).
 -->
 
