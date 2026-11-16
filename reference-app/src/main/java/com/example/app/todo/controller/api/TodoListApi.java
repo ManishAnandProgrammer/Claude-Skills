@@ -28,7 +28,7 @@ public interface TodoListApi {
             or another user's ids are simply absent) and query (a case-insensitive part of the name).""")
     @ApiResponse(responseCode = "200", description = "One page, with pageInfo")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (page, size, query or the number of ids out of range); \
+            VALIDATION_FAILED (page, size, query or the number of ids out of range, an empty sort); \
             REQUEST_PARAMETER_INVALID (an unknown sort, a malformed id, a non-numeric page or size; see \
             errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

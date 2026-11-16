@@ -160,7 +160,7 @@ public class TodoService implements Todos {
         Todo todo = getOwnedTodoForUpdate(id, ownerId);
         todo.checkVersion(request.version());
         TodoList todoList = todoListService.getOwnedTodoList(request.todoListId(), ownerId);
-        // Only someone new: a PUT re-sends the person it read, who may have left since (4.3).
+        // Only someone new: a PUT re-sends the person it read, who may have left since.
         if (Objects.nonNull(request.requesterId()) && !request.requesterId().equals(todo.getRequesterId())) {
             requireRequester(request.requesterId());
         }
@@ -342,7 +342,7 @@ public class TodoService implements Todos {
     // media:end
 
     /**
-     * The batch's lists by name in one more statement, never a join in the keyset query (4.3). A row whose list
+     * The batch's lists by name in one more statement, never a join in the keyset query. A row whose list
      * went meanwhile (deleted with its todos) is left out; the cursor still goes on after the batch's last row.
      */
     private List<TodoSummaryResponse> withTodoLists(List<TodoSummaryResponse> rows, UUID ownerId) {

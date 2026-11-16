@@ -46,7 +46,7 @@ public interface TodoApi {
             from. Rows carry the tags (id and name) and leave out the notes; GET /todos/{id} has them.""")
     @ApiResponse(responseCode = "200", description = "One batch, with pageInfo {nextCursor, hasMore}")
     @ApiResponse(responseCode = "400", description = """
-            VALIDATION_FAILED (size, query, after or the number of ids out of range; dueOnOrBefore with \
+            VALIDATION_FAILED (size, query, after or the number of ids out of range, an empty sort; dueOnOrBefore with \
             sort NEWEST, reported on dueOnOrBefore); REQUEST_PARAMETER_INVALID (an unknown \
             status, priority or sort, a malformed date, id, todoListId or tagId, a non-numeric size, or an \
             after that is tampered or from another sort; see errors)""",

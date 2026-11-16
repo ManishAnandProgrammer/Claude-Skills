@@ -176,7 +176,8 @@ course): ask, per parent, whether its screen picks it from a dropdown, and wheth
 change it (a ticket moved to another customer: the update request carries the id, the move is tested
 with its race, tests.md row 23; or the column is `updatable = false`). A parent without
 `{{dropdownAnnotation}}` then gets one, generated for that parent in update mode (4.11); the answer
-"the list's `query` is the picker" is recorded in the profiles' conventions. Never leave it unasked:
+"the list's `query` is the picker" is recorded in the crud profile's *Decisions per entity* (Conventions
+are for departures from a house rule). Never leave it unasked:
 the picker is the first screen that needs it. Whichever it is, check that the picker can be used by
 **every role that writes the child** and searches the **label the screen shows**: a list behind
 `@AdminOnly` (the tenancy piece's `GET /tenant-members`, which searches emails) is no picker for a rota
@@ -463,7 +464,8 @@ description and its 400 response name it.
   member) is updatable too, it changes through an action of its own (`handOverTo(member)`), not a
   third parameter of `reschedule`: each guards its own rule and is tested on its own. Its API is a
   `PATCH /<entities>/{id}/<scope>` (`PATCH /on-call-shifts/{id}/member`) with a
-  `<Entity><Scope>Request {<scope>Id, version}`; a person is checked through `Members` (404
+  `<Entity><Scope>Request {<scope>Id, version}` (a person is a user id everywhere: `userId`, never
+  `memberId`); a person is checked through `Members` (404
   `TENANT_MEMBER_NOT_FOUND` for a removed one), and moving to the current value is a no-op answering
   200 with the version unchanged. The version is checked **first** (a stale one is 409 even for a no-op),
   then the no-op; the person is checked only when the value changes, so a hand-over to the member the
@@ -492,7 +494,8 @@ description and its 400 response name it.
   `UNIQUE (email)`, which a lookup by email uses (DATA-05). Tests: a malformed address 400; the
   length bound both sides with an address `@Email` accepts (64 characters before the `@`, domain
   labels of at most 63: `"a".repeat(64) + "@" + "b".repeat(63) + "." + "c".repeat(63) + "." +
-  "d".repeat(58) + ".io"` is 254); surrounding spaces 400 (row 11 tests the case only); a case-only
+  "d".repeat(58) + ".io"` is 254; on a table unique per tenant or per scope, a second use in the class
+  is a 409, so each test builds its own with a fresh local part of the same length); surrounding spaces 400 (row 11 tests the case only); a case-only
   duplicate 409 `<ENTITY>_EMAIL_TAKEN`, on create and update. **That is the platform's `users` shape.** On
   a **tenant table** (row mode) the key is `uq_<table>_email UNIQUE (tenant_id, email)` (also its
   replica identity, TEN-38), the `@Schema` says "unique in your organisation", and a cross-tenant test
@@ -594,7 +597,8 @@ entity's; `ErrorCodeContractTest.everyErrorCodeHasAStatus` catches a missing one
 `{{messagesFile}}`; the handler's
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
 `*_IN_USE` for the parent's delete, and `ERROR_PREFIX_GONE`, a 404 without placeholders, for a
-child's insert or update after it: `byForeignKeyOnWrite`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02), except a key that can't trip once the service checked its target first: a person's key to `members` (checked through `Members`, whose row is never deleted) and a `CHECK` that the mapper's own normalisation always satisfies (`ck_<table>_email_normalized`) stay unmapped, with that reason in the module's `ConstraintErrorCodes` javadoc. Every later write that names the person calls the same check; one that forgets it answers 500, which its guard proof shows (never map the key to hide a missing check). A state
+child's insert or update after it: `byForeignKeyOnWrite`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02), except a key that can't trip once the service checked its target first: a person's key to `members` (checked through `Members`, whose row is never deleted) a `CHECK` that the mapper's own normalisation always satisfies (`ck_<table>_email_normalized`) and one the
+request's validation always satisfies (`ck_<table>_dates` behind `is<X>RangeOrdered`) stay unmapped, with that reason in the module's `ConstraintErrorCodes` javadoc. Every later write that names the person calls the same check; one that forgets it answers 500, which its guard proof shows (never map the key to hide a missing check). A state
 conflict is 409, a wrong value 400 (ERR-05). A child's foreign key adds the parent's `*_IN_USE` to
 **the parent's** delete docs (`@ApiResponse(409)`) in the same change, asserted in **the child's**
 test class (with the parent's `deleteWhileReferencedIs409`): the parent's existing tests stay unchanged
@@ -726,7 +730,8 @@ Golden `TodoApi`: `@Tag`; `@Operation` with text-block descriptions; an `@ApiRes
 status and errorCode the endpoint can return (except `API_VERSION_UNSUPPORTED`: a customizer adds it
 to every operation; error `@Content` needs no `mediaType`, a customizer publishes it as
 `application/problem+json`): 200/201/204, 400 (`VALIDATION_FAILED`,
-`REQUEST_UNREADABLE`, `REQUEST_PARAMETER_INVALID` for a bad id, enum, date or cursor), 401, 403
+`REQUEST_UNREADABLE`, `REQUEST_PARAMETER_INVALID` for a bad id, enum, date or cursor; a list's
+`VALIDATION_FAILED` names an empty `sort`, which `@NotNull` refuses), 401, 403
 (roles), 404 (incl. a parent's `*_GONE` on a child's write), 409 (`*_TAKEN`, `OPTIMISTIC_LOCK_CONFLICT`,
 `*_IN_USE`), 503. A delete documents
 `OPTIMISTIC_LOCK_CONFLICT` only when it can happen: an unlocked delete can lose a race (golden
