@@ -23,7 +23,7 @@ The rules are fixed and identical across projects. They live in `references/`:
 | `references/config-baseline.md` | CFG-xx | Hikari/JPA/PostgreSQL, server and threads, Jackson, actuator, logging, JVM |
 | `references/metadata.md` | META-xx | Configuration metadata and counters; only for projects with the `metadata` piece |
 | `references/media.md` | MEDIA-xx | File uploads to S3 (presigned URLs, purposes and policies, claim, verification, cleanup); only for projects with the `media` piece |
-| `references/tenancy.md` | TEN-xx | Multi-tenancy: the tenant from the token, the connection hook, the platform and tenant planes, memberships, jobs per tenant, roles; schema-per-tenant migrations; row mode's policies, keys and leakproof operators; a tenant's data as a closed graph that can move to its own database (members, per-tenant numbers and file prefixes, replica identities). Only when the profile's `tenancy` is `row` or `schema` |
+| `references/tenancy.md` | TEN-xx | Multi-tenancy: the tenant from the token, the connection hook, the platform and tenant planes, memberships, jobs per tenant, roles; schema-per-tenant migrations; row mode's policies, keys and leakproof operators; a tenant's data as a closed graph that can move to its own database (members, per-tenant numbers and file prefixes, replica identities). Only when the profile's `tenancy` is `row` or `schema`; its test matrices (token paths × access changes, seeds × tenant statuses) are `references/tenancy-matrices.md` |
 
 Everything that differs between projects (conventions, thresholds, pagination style, token
 revocation, accepted deviations) is in the project profile, `.claude/review-profile.md`.
@@ -202,6 +202,10 @@ Finding format (reviewers and you):
 - Fix: concrete
 - Tracked: <task id, and which part is new> | new
 ```
+
+**Severity comes from the defect, never from a guessed data size.** A rule's "High on a hot path" means
+any list, dropdown or public endpoint (and the profile's `hotPaths`); no rule raises a finding for a
+"growing" or "large" table or tenant, which only the developer can know.
 
 **Project-wide findings.** A path, diff or uncommitted review also meets causes outside its
 scope: shared configuration (`application.yml`, timeouts, Jackson), the exception handler, a

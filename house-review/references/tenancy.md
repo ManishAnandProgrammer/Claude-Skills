@@ -41,7 +41,8 @@ schema); both modes' `config/PoolRoleCheckIntegrationTest`, `media/service/Media
 `media/mapper/MediaKeysPerTenantTest`, `metadata/CounterTenantIntegrationTest` and `user/`'s
 `TenantMemberIntegrationTest`, `TenantMemberListIntegrationTest`, `TenantMemberIndexIntegrationTest`,
 `MembersIntegrationTest`. In a bootstrapped project these sit at the same paths under
-its own package. The design and its experiments: the skills repo's `docs/design/tenancy.md`.
+its own package. The token-path and seeding matrices with a test per cell: `tenancy-matrices.md`, beside
+this file.
 
 The flow: JWT (`tenant_id`) → `TenantContext` → Hibernate's resolver → the connection hook runs one
 statement as the transaction's first (schema: `search_path`; row: `app.tenant_id`) → the commit or
@@ -176,7 +177,7 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   refresh **and** switch-tenant (the token's own membership checked before the target's; reference
   `TokenService.requireIssuedForThisMembership`, tested by `TenantMemberIntegrationTest
   .aReAddedMembersOldSessionStaysEnded` and `aRemovedMembersOldSessionDoesNotSwitch`). The paths, their
-  checks and tests are one table in the tenancy design note (*Every path that issues a token*), with the
+  checks and tests are one table in `tenancy-matrices.md` (*Every path that issues a token*), with the
   matrix *Every state × every token path* (removed member, demoted member, suspended account, deactivated
   staff, suspended tenant × login, refresh, switch-tenant, impersonation, each request): a new path or
   state adds its row or column and a test per cell.
@@ -321,7 +322,7 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
 A tenant that outgrows the shared database moves to one of its own: row mode by logical replication
 filtered by its `tenant_id`, schema per tenant by `pg_dump -n <schema>`. Both work only when the tenant's
 data references nothing outside itself but the register. These rules keep it so from the first table, so
-an extraction is an operation, not a migration project (the tooling itself is "Later" in the design doc).
+an extraction is an operation, not a migration project (the tooling itself is not built yet, below).
 
 ### TEN-16: No foreign key from tenant data into the platform, but the register
 - **Check:** a tenant table references, outside its own tenant's tables, only `tenants (id)` (row mode's
@@ -509,8 +510,8 @@ E1–E3 and the row tests named below, which run as the real application role.
     tenant's row by id or reference, and filters JPQL, Criteria, joins and bulk updates (E1,
     `RowIsolationIntegrationTest`);
   - entity queries, filters and requests never take a tenant parameter (TEN-01): Hibernate adds
-    `tenant_id = ?` to every entity query, and the policy's predicate then reduces to a one-time filter
-    (measured on the todo index shapes). The one exception is native SQL (TEN-37).
+    `tenant_id = ?` to every entity query, and the policy's predicate then reduces to a one-time filter.
+    The one exception is native SQL (TEN-37).
 - **Detect:** a tenant entity extending `AuditableEntity` (its inserts fail without a tenant column
   value, and entity queries lose their predicate and the insert check); `tenantId` in a request, a
   filter, a JPQL `@Query` or a derived query method; a native statement without it (TEN-37).
@@ -588,7 +589,7 @@ E1–E3 and the row tests named below, which run as the real application role.
   over rows that are already numbered); schema per tenant puts the seed in a tenant changeset, which every
   schema runs. Housekeeping jobs visit every tenant that holds data (`idsHoldingData`), work done for
   users only the ACTIVE ones. The matrix of seeds × tenant statuses with a test per cell is
-  `docs/design/tenancy.md`, *Tenant lifecycle × seeding*; a new seed adds its row there, and its backfill
+  `tenancy-matrices.md`, *Tenant lifecycle × seeding*; a new seed adds its row there, and its backfill
   is tested on the upgraded database (crud-gen tests.md row 30, `UpgradeFromPreviousReleaseIntegrationTest`:
   on an empty database a backfill limited to ACTIVE tenants, or a counter started at 0, passes).
 - **Detect:** `INSERT` into a tenant table in a changeset outside a `NO FORCE` … `FORCE` backfill; a
@@ -614,23 +615,21 @@ E1–E3 and the row tests named below, which run as the real application role.
 
 ### TEN-36: [row] Operators that aren't leakproof lose their index under a policy
 - **Check:** PostgreSQL evaluates the policy before any user condition that isn't leakproof, so such
-  a condition can't be an index condition and filters the tenant's rows instead:
-  - **measured** (E3, 200 tenants x 1,000 rows): a jsonb `@>` with a GIN index read 1,016 buffers as the
-    app role (a filter over the tenant's rows), 26 as a superuser (`BitmapAnd` with the GIN index);
-    `ILIKE` became a filter after the tenant index; the reference's plan overlap check (`&&` on a
-    range) leaves the exclusion constraint's GiST index for a btree walk of the owner's plans (the
-    constraint itself still decides);
+  a condition can't be an index condition and filters the tenant's rows instead (a jsonb `@>` leaves its
+  GIN index, `ILIKE` its trigram index, the range `&&` the exclusion constraint's GiST index; DESIGN.md,
+  *Measurements behind the rules*):
   - `pg_proc.proleakproof` (asserted by `RowIsolationIntegrationTest`): leakproof `uuid_eq`, `texteq`,
     `int8eq`, `timestamptz_lt`; not leakproof `jsonb_contains`, `textlike`, `texticlike`, `enum_eq`,
     `range_overlaps`. Statuses as `text` with a check constraint (DATA-07) stay leakproof; PostgreSQL
     enums don't.
 
-  A search on such an operator scans the tenant's rows: fine for a bounded tenant. For a large one,
-  `EXPLAIN` as the app role with the tenant set (runbook, section 5), and change the shape (a leakproof
-  equality on a derived column) or add a measured, marked reader on a bypass role (decision 10).
+  A search on such an operator is bounded by the leakproof predicates in front of it (the tenant and the
+  owner, the list's order index): a `query` on a table with no other scope needs its scoping filter
+  (DATA-10). A faster shape (a leakproof equality on a derived column) or a reader on a bypass role is a
+  use case: the project measures it with `EXPLAIN` as the app role with the tenant set (runbook, section 5).
 - **Detect:** a GIN or GiST index whose only user is a non-leakproof operator on a tenant table;
   `EXPLAIN` evidence taken as a superuser; a PostgreSQL enum column filtered on.
-- **Severity:** Medium (performance), High when a large tenant's list runs it on every request.
+- **Severity:** Medium (performance).
 
 ### TEN-37: [row] Native SQL on a tenant table names its tenant
 - **Check:** Hibernate's tenant filter never reaches native SQL, so every native statement on a tenant
@@ -678,4 +677,4 @@ migrations (one JVM runs Liquibase one schema at a time); impersonating a suspen
 today, as every token issue for it); break-glass access and a support-access log the tenant reads;
 per-tenant rate limits and quotas; a role per tenant schema; moving a tenant out (a tenant directory
 with its cell, a `MIGRATING` status, the extraction runbook) and a JWT key pair for a second deployable
-that checks tokens (the design doc's "Later": the rules above only keep a tenant extractable).
+that checks tokens (the rules above only keep a tenant extractable).

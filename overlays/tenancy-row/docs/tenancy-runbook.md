@@ -159,8 +159,8 @@ RESET ROLE;
 
 An operator that isn't leakproof (`jsonb @>`, `LIKE`, `ILIKE`, range `&&`, a PostgreSQL enum's `=`)
 can't use its own index under a policy: it becomes a filter over the tenant's rows (house-review
-TEN-36). Fine for a bounded tenant; for a large one, a measured fix (a leakproof shape, or a reader on a
-bypass role behind a marker) is a design decision.
+TEN-36). The leakproof predicates in front of it (the tenant, the owner) bound the search; a faster shape
+(a leakproof one, or a reader on a bypass role behind a marker) is a design decision, measured as the app role.
 
 ## 6. Backup and restore order
 

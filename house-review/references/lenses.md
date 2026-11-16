@@ -122,8 +122,8 @@ is code-smells.md, java.md and architecture.md.
   share-locked and ACTIVE (`UserService.activeForTokenIssue`, 403 `AUTH_ACCOUNT_SUSPENDED`), before any
   refresh token or membership: a change of access racing an issue then leaves no token valid. Without the
   piece the access tokens already out live out their lifetime (REST-15's bound) and issue nothing. The
-  table of states × paths with a test per cell is in the tenancy design note (*Every state × every token
-  path*; without tenancy its suspended-account row).
+  table of states × paths with a test per cell is `references/tenancy-matrices.md` (*Every state × every
+  token path*; without tenancy its suspended-account row).
 - **Detect:** a new write to a role, a status, a membership row, a password hash or the refresh tokens
   without a bump in its transaction; a token issue that reads the account without its share lock, or
   after it spent the refresh token (a suspension racing it leaves a token); a status check on some paths
@@ -153,7 +153,7 @@ is code-smells.md, java.md and architecture.md.
 
   Shared expensive reads are cached, and a cache hit takes no connection (the lazy proxy, DATA-20).
 - **Detect:** a new index on `updated_at` or `version`: every update of that table stops being a HOT
-  update (DATA-10, measured 0% HOT).
+  update (DATA-10).
 - **Severity:** Medium (High when it is unbounded).
 
 ### PERF-02: Connection pool
@@ -187,7 +187,7 @@ is code-smells.md, java.md and architecture.md.
     runs it as a formula;
   - the export is written to a temporary file and sent once complete: streamed straight to the
     client, a failure halfway delivers a truncated file that looks complete.
-- **Severity:** Medium (High on growing tables).
+- **Severity:** Medium (High on a hot path).
 
 ### PERF-05: Caches stay correct
 - **Check:**
@@ -502,21 +502,13 @@ resilience or failure-injection test is Medium).
 - **Check:** new transitions, dedupe, caps and uniqueness get N identical requests through a
   `CyclicBarrier` / `CountDownLatch` against Testcontainers PostgreSQL, then assert the
   **database invariant** (row count), not just the status codes.
-- **Racers on different rows that share one global row** (two "make default" calls on two different
-  records) may both succeed one after the other, correctly. Assert the invariant (exactly one
-  default row, one of the winners; every refusal carries the expected code), never "exactly one
-  200": that test is flaky.
-- **A write guarded by another row's state** (checked under that row's `FOR UPDATE`, DATA-29) gets a race test against a
-  change of that state, gated so the change really waits on the lock (hold the lock in the test's
-  own transaction, or a latch). The end state is often the same with or without the lock (the write,
-  then the change), so the assertion that proves it is "the change is still waiting while the gate
-  holds" (reference: the test base's `writesHeldWhileTheParentWaits`, used by
-  `PlanIntegrationTest.completionRacingACreateWaitsForIt`). Removing the lock must turn the test red
-  (TEST-09).
+- **Racers on different rows that share one global row**, and **a write guarded by another row's state**
+  (checked under that row's lock, DATA-29): crud-gen tests.md rows 13b and 23b say what each asserts (the
+  invariant, never "exactly one 200"; "the change is still waiting while the gate holds").
 
 ### TEST-06: Query count
-- **Check:** new paged lists assert a constant statement count, with a fixture **larger than one
-  page** (`FIXTURE-AT-N-EQUALS-ONE`).
+- **Check:** new lists and dropdowns assert a constant statement count, for 1 row and for page size + 1
+  rows (`FIXTURE-AT-N-EQUALS-ONE`); the counts per list kind are crud-gen tests.md row 21.
 
 ### TEST-07: Test quality
 - **Check:**
@@ -572,9 +564,12 @@ resilience or failure-injection test is Medium).
 - **Severity:** Medium (High for SEC checks).
 
 ### TEST-09: Prove the guard can fail
-- **Check:** a regression test goes red against the code without the fix. In diff mode, revert the
-  fix hunk, run the test and expect red; for a layered check, switch the layer off. "A regression
-  net nobody has seen fail is just an assertion."
+- **Check:** a regression test goes red against the code without the fix. For a **hand-written fix**
+  the diff gives the hunk: revert it, run the test and expect red; for a layered check, switch the layer
+  off. "A regression net nobody has seen fail is just an assertion." **Generated code** carries no such
+  duty per entity (a red run leaves nothing a reviewer can check): its guards mirror golden tests, proven
+  red in the reference, and the generation report names which golden test each one mirrors; the review
+  compares the shapes.
 
 ### TEST-10: Setup that silently failed (`SETUP-THAT-SILENTLY-FAILED`)
 - **Check:** every fixture built through the API asserts its own 2xx, or goes through a helper
@@ -587,15 +582,19 @@ resilience or failure-injection test is Medium).
   sort ignored: fixtures must give a different result under every order and direction.
 
 ### TEST-11: A collection needs a bound (`COLLECTION-WITHOUT-A-BOUND`)
-- **Check:** `contains(x)` is never the only assertion on a list endpoint: also check that
-  `pageInfo.size` is at most the cap, and that `pageInfo` (number, totalElements, hasNext,
-  hasPrevious) is correct. With a shared database, assert at least N of
-  your own rows and the cap, not exact totals.
+- **Check:** `contains(x)` is never the only assertion on a list endpoint. With a shared database,
+  assert at least N of your own rows and the cap, not exact totals. Per list kind (the page records
+  differ, so a rule for one names fields the other doesn't have):
+  - **offset** (crud-gen tests.md row 16b): `pageInfo.size` is at most the cap, and `pageInfo` (number,
+    totalElements, hasNext, hasPrevious) is correct;
+  - **cursor** (row 16): a batch holds at most the asked size, and `pageInfo` is `{nextCursor, hasMore}`
+    alone: `hasMore` false and no `nextCursor` on the last batch.
 
 ### TEST-12: One step past the edge (`ONE-STEP-PAST-THE-EDGE`, `FLAG-AND-FIELD-DIVERGE`)
 - **Check:**
-  - pagination has an overrun test: an empty `response`, `pageInfo.hasNext` false,
-    `pageInfo.hasPrevious` true;
+  - pagination has an edge test. **Offset** (tests.md row 16b): the page past the last one has an empty
+    `response`, `pageInfo.hasNext` false, `pageInfo.hasPrevious` true. **Cursor** (row 16): the walk ends
+    on a batch with `hasMore` false and no `nextCursor`, every row seen once;
   - state machines have an illegal-transition test;
   - response flags (`pageInfo.hasNext` / `hasPrevious`, or a cursor's `hasMore`) come from the
     same data as the token or page they promise.

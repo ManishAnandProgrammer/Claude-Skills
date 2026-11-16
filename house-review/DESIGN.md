@@ -633,3 +633,28 @@ The owner's notes on path placement, DTO naming and layering, with the decisions
   through its root's service (validation, ownership, locking, caching aren't bypassed); a Manager
   service only spans several aggregates, to own their transaction. Enforced by `AggregateArchTest`
   from the profile's `aggregates`.
+
+## Measurements behind the rules (moved out of the rule texts, 2026-11-16)
+
+The rules say why in general terms; the numbers that first showed each cost live here, so no generated
+text copies them as a claim. Each was one run on the reference's shapes, not a bound a project can rely on.
+
+- DATA-10, a status filter left to the order's index: an order under which the wanted rows come last walked
+  the owner's rows past every other one, 165–202 ms against under 0.1 ms with the filter's own index
+  (crud-gen 4.1 quoted 165 ms against 0.06 ms).
+- DATA-10, a seek in OR form inside a tie group: 172 rows read for a page of 21.
+- DATA-10, an index on `updated_at` or `version` (2026-11-14, a todos-shaped table): 0% HOT updates with the
+  index, about 72% without it at the default fillfactor, 97% at fillfactor 80.
+- DATA-11, list pages as entities instead of projections: 22 ms against 7 ms per page (2026-11-13).
+- DATA-11, OFFSET against keyset: 20,020 rows read for row 20,000, against 20.
+- DATA-26, a collection fetch on a list page (2026-11-13, Hibernate 7.4): 20 lists × 1,000 todos, 111.6 ms
+  against 7.2 ms for two steps.
+- DATA-29, a same-version double submit without the owner's row lock: 409 `DUPLICATE_RECORD` in 84 of 120
+  runs, a deadlock's 503 in 16 of 120.
+- TEN-36, experiment E3 (200 tenants × 1,000 rows): a jsonb `@>` with a GIN index read 1,016 buffers as the
+  app role (a filter over the tenant's rows) and 26 as a superuser (`BitmapAnd` with the GIN index); `ILIKE`
+  became a filter after the tenant index; the plan overlap check (`&&`) left the exclusion constraint's GiST
+  index for a btree walk of the owner's plans.
+- `TextSearch`, a contains search on 50,000 rows: 54 ms as `position()`, 1 ms with a trigram index and an
+  escaped `LIKE`.
+- TEN-32, Hibernate's `tenant_id = ?` makes the policy's predicate a one-time filter (the todo index shapes).

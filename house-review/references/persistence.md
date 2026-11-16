@@ -232,13 +232,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     product; two Lists: `MultipleBagFetchException`);
   - **no collection fetch on a list page.** Hibernate 7.4 no longer paginates such a query in
     memory: it pages the roots in a derived table and joins the children, so
-    `fail_on_pagination_over_collection_fetch` never fires (measured 2026-11-13). The cost moved:
-    every child of the page comes back (20 lists × 1,000 todos: 111.6 ms against 7.2 ms for two
-    steps). Child data on a list page is an aggregate subquery in the projection, or two steps
+    `fail_on_pagination_over_collection_fetch` never fires. The cost moved: every child of the page
+    comes back (DESIGN.md, *Measurements behind the rules*). Child data on a list page is an aggregate subquery in the projection, or two steps
     (a page of ids, then one grouped child query);
   - lazy relations in lists are covered by batch fetching;
   - list pages use projections, not entities (DATA-11).
-- **Severity:** Medium (High on a growing table).
+- **Severity:** Medium (High on a hot path).
 
 ### DATA-27: JSON columns use an explicit format mapper
 - **Check:** when any attribute is `@JdbcTypeCode(SqlTypes.JSON)`, Hibernate's JSON format mapper
@@ -285,8 +284,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
       the write also changes its member rows (attachments, tag links) or deletes it, so concurrent
       writers queue there (MEDIA-07, the reference's `TodoService.update`, `replaceTags`, `delete`).
       It costs nothing (the version bump locks that row anyway) and holds the answers: without it a
-      same-version double submit answered 409 `DUPLICATE_RECORD` (84 of 120) or a deadlock's 503
-      (16 of 120) instead of `OPTIMISTIC_LOCK_CONFLICT`, and a member write racing the delete 500;
+      same-version double submit answered 409 `DUPLICATE_RECORD` or a deadlock's 503 instead of
+      `OPTIMISTIC_LOCK_CONFLICT`, and a member write racing the delete 500;
     - pollers' `FOR UPDATE SKIP LOCKED` (below);
     - **a claim is a conditional update**, not a read lock: `UPDATE … SET <claimed> WHERE id = ? AND
       <still claimable>` and the rows affected decide (1: this writer won; 0: re-read and take the
@@ -475,21 +474,20 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     first when the table has an owner** (`(owner_id, tenant_id, sort…, id)`, which still serves the
     owner's foreign key), **`tenant_id` first when it has none or a list filters by the tenant alone**
     (`(tenant_id, sort…, id)`; TEN-33);
-  - **also per scoping filter** (a parent id: a list's own screen): `(parent_id, owner_id, sort
-    keys…, id)`, which also serves the foreign key, or the page walks every row of the owner;
-  - **a status (low-cardinality enum) filter with a rare value is a scoping filter**: one index per
-    offered order (`(scope…, status, sort keys…, id)`), unless the scope bounds the walk to a few pages
-    or every offered order brings the rare rows first (recorded per order, never for the default order
-    alone). Without it, an order under which the rare rows come last walks the scope past every other
-    row (measured: 165–202 ms against under 0.1 ms with the index). On a table without a leading scope
-    column the planner may still walk the order's index; a rare value's plan there is a use case
-    (crud-gen SKILL.md 4.1's extension point: a partial index for that value, the value a literal, proven
-    with the project's own `EXPLAIN (ANALYZE, BUFFERS)` test), not a finding against the composite;
-  - **a contains search (`query`) on a table without a scope column** reads the whole table, which grows:
-    the house convention is that it is offered only on a table whose size is bounded and recorded (the most
-    rows it will hold, crud-gen *Decisions per entity*), or together with a filter that
-    scopes it through its own index (the list refuses `query` alone, 400 naming the rule, the
-    `@CrossField` shape); a project that needs it unbounded adds the trigram remedy (`TextSearch`'s javadoc);
+  - **also per offered equality filter on the list's own columns** (a parent id, a status, a priority, a
+    flag), whatever its values: `(scope…, filter, sort keys…, id)` per offered order (`(parent_id,
+    owner_id, sort keys…, id)` also serves the foreign key). How many rows a value holds is a fact about
+    the data, which the review can't know, so no filter is left to an order's index. A filter through a
+    link table (a tag on a todo) is served by the link's key. On a table without a leading scope column the
+    planner may still walk the order's index for a rare value; that plan is a use case (crud-gen SKILL.md
+    4.1's extension point: a partial index for the value, proven with the project's own `EXPLAIN (ANALYZE,
+    BUFFERS)` test), not a finding against the composite;
+  - **a contains search (`query`) on a table without a scope column** reads the whole table, so it is
+    offered only together with a filter that scopes it through its own index: the list refuses `query`
+    alone, 400 naming `query` (the `@CrossField` shape; reference: the tenancy overlay's
+    `TenantFilter.isQueryScopedByStatus`). **Extension point (a use case):** a project that needs a fast
+    contains search adds the trigram pair (`TextSearch`'s javadoc), never in row mode, where `LIKE` isn't
+    leakproof and the policy keeps any index from serving it (TEN-36);
   - every sort has a unique tie-breaker: the id, unless the sort column is itself unique and not
     null (a code), which is already a total order (`code, id` on a unique `code` adds a sort step
     the index can't serve);
@@ -499,7 +497,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     the scan starts exactly at the cursor. The OR form (`a > x OR (a = x AND id > y)`) is no index
     condition at all (batch N reads N batches), and even with the leading `a >= x` it bounds the index on
     `a` alone: a later batch inside a tie group (a term's start day shared by a thousand enrollments)
-    rereads the group's rows before the cursor on every batch (measured: 172 rows for a page of 21);
+    rereads the group's rows before the cursor on every batch;
   - **NEWEST is the creation time, then the id** (`(created_at, id)`, index `(scope…, created_at, id)`),
     **never the id alone**, whatever the scope: the primary key leads with the id, so an id order gives
     every scoped list a competitor, and with UUIDv7 ids in heap order the planner costs walking `pk_<table>`
@@ -520,33 +518,31 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     (next point), each end alone included (golden `PlanFilter.isPlannedFromSortedByStartsOn`,
     `isPlannedToSortedByStartsOn`);
   - **a range filter is offered under its own column's order** (a range of that order's index); under
-    another order no index serves it on an unbounded scope (newest first, filtered by a date, walks the
-    owner's history), so the filter refuses that sort with a 400 naming the rule (golden
-    `TodoFilter.isDueOnOrBeforeSortedByDueDate`), unless a bounded scope holds it (a todo's time entries),
-    recorded;
+    another order no index serves it (newest first, filtered by a date, walks the scope's history), so the
+    filter refuses that sort with a 400 naming each bound sent (golden
+    `TodoFilter.isDueOnOrBeforeSortedByDueDate`, `TimeEntryFilter.isSpentOnFromSortedBySpentOn`), with no
+    exception for a scope;
   - **every list has its index test** (crud-gen tests.md, *Index tests*): each offered filter and order,
     the `ids` lookup, the second steps, the delete-side key checks and the job leases name their index,
     and the test asserts it exists; each list's first page, as the repository issues it, is planned on its
     order's index (`QueryPlan`: plan nodes and index names, never a cost or a row count). Measured read
     costs are a project's own `EXPLAIN (ANALYZE, BUFFERS)` tests, where it knows its data (a use case);
   - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).
-- **Detect:** a status filter on a list with no status index and no recorded reason per offered order
-  (a "rarely listed" note is not one: the UI offers the value); a list's offered filter or order with no
+- **Detect:** an offered equality filter without its index per offered order (a "few values" or "small
+  scope" note is no reason: the data decides, not the schema); a list's offered filter or order with no
   index named in its index test, or a list without the first-page plan check; **an index test that asserts
   a cost or a row count** (a read bound, buffers) or makes a claim it doesn't assert (a javadoc saying a
   cell "fails without its index", a seed shaped to make it so): costs turn on the data, which is a
-  project's own measured test; a contains search on an unscoped growing table with neither a recorded size
-  nor a required scoping filter; **an order by the id alone** (`NEWEST` as `id desc`,
+  project's own measured test; a contains search on an unscoped table without a required scoping filter;
+  **an order by the id alone** (`NEWEST` as `id desc`,
   `Sort.Order.desc("id")`) on any list; a seek in OR form; a range filter offered under another column's
-  order on an unbounded scope, an overlap filter's end (alone or with the other) under NEWEST included; an
+  order, an overlap filter's end (alone or with the other) under NEWEST included; an
   overlap filter written as two comparisons with nothing bounding `starts_on` from below; an index on
   `updated_at` or `version` (or on any column every update changes): every
-  update then writes new index entries and is never a HOT update (measured 2026-11-14 on a
-  todos-shaped table: 0% HOT with the index, about 72% without it at the default fillfactor, 97% at
-  fillfactor 80). Hibernate rewriting unchanged columns with the same value does not stop HOT, so
+  update then writes new index entries and is never a HOT update. Hibernate rewriting unchanged columns with the same value does not stop HOT, so
   `@DynamicUpdate` is not needed for it. A "recently changed" list is served by a column the
   business sets (a `published_at`), not the audit column.
-- **Severity:** Medium (High on unbounded tables).
+- **Severity:** Medium.
 
 ### DATA-11: Query shape
 - **Check:**
@@ -555,16 +551,14 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - no `findAll()` behind an endpoint;
   - count queries are skipped when the page isn't full; cursor lists never count;
   - **list pages and dropdowns are projections** (`construct(Row.class, …)` of only the columns they
-    show), never entities: measured 22 ms against 7 ms per page (2026-11-13). That includes a page's
+    show), never entities. That includes a page's
     second step (the parents' names for the batch): a constructor projection of the view's columns
     (reference `TodoRepository.findViewsByIdInAndOwnerId`), not the parents' whole rows;
-  - **growing lists are keyset-paged** (`after` cursor); OFFSET reads every skipped row (20,020 rows
-    for row 20,000, against 20 with keyset);
-  - **outliers:** every list or loop over one owner's rows (a user's todos, a tenant's orders) that
-    can grow without bound is keyset-paged, or the owner has a configured maximum
-    (`app.limits.*`, enforced on create, DATA-29). Ask "what if one owner has 10 million rows?":
-    a loop that loads them all, an export with no page, an in-memory sort or a cap check that counts
-    them all is a finding.
+  - **the list kind follows its recorded consumer** (REST-08: cursor for an end-user or mobile app and a
+    simple admin screen, offset where page numbers, a total or complex filters are needed); OFFSET reads
+    every skipped row, which the consumer's need for page numbers accepts;
+  - **outliers:** a loop over one owner's rows (a user's todos, a tenant's orders) that loads them all,
+    an export with no page, an in-memory sort or a cap check that counts them all is a finding.
 - **Severity:** High for unbounded loads; Medium for N+1.
 
 ### DATA-12: Columns fit the data
