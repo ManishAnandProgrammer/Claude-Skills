@@ -390,9 +390,11 @@ dropdown needs no interface (golden `TodoFilter`). The dropdown's `query` search
 when the list's `query` searches more (a name **or** an email), the two predicates differ, and the
 filter doesn't implement `QueryFilter`.
 
-**A contains search (`query`) on an unscoped root** (no owner or tenant column) is offered only together
-with a scoping filter: alone it is a 400 naming `query`, the `@CrossField` shape (golden: the tenancy
-overlay's `TenantFilter.isQueryScopedByStatus`; DATA-10).
+**A contains search (`query`)** is offered where the developer asks for it, alone or with other filters,
+on any table: never refuse it or tie it to another filter on a guessed table size (golden: the tenancy
+overlay's `TenantFilter`, whose `query` works alone). **Extension point (a use case, not generated):** a
+project whose search gets slow adds the trigram index and the escaped `LIKE` (`TextSearch`'s javadoc),
+never in row mode (TEN-36), and proves it with its own `EXPLAIN` test.
 
 **Then the indexes**, now that the orders and filters are chosen, by DATA-10's rules (one per offered order
 and per offered equality filter, the scope first and the id last; NEWEST's `(scope…, created_at, id)`;
@@ -796,8 +798,8 @@ checklist's review item stays open until that reviewer's report is clean.
       the record (Step 3), a unique code's shape (Step 2).
 - [ ] A same-module parent's service changed (4.8): listed among the changed shared files.
 - [ ] Row 28: every offered filter and order names its index, which exists, and each list's first page
-      is planned on its order's index (4.1); a range filter offered under its own order only; a `query`
-      on an unscoped root needs its scoping filter; row 18b: the `ids` filter's statement count.
+      is planned on its order's index (4.1); a range filter offered under its own order only; row 18b:
+      the `ids` filter's statement count.
 - [ ] A changeset that backfills existing rows, once the project has a release in production: row 30 on
       the upgraded database (until the first release the upgrade path is inert: record it; tests.md, *Upgrading a
       used database*).

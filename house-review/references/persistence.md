@@ -482,12 +482,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     planner may still walk the order's index for a rare value; that plan is a use case (crud-gen SKILL.md
     4.1's extension point: a partial index for the value, proven with the project's own `EXPLAIN (ANALYZE,
     BUFFERS)` test), not a finding against the composite;
-  - **a contains search (`query`) on a table without a scope column** reads the whole table, so it is
-    offered only together with a filter that scopes it through its own index: the list refuses `query`
-    alone, 400 naming `query` (the `@CrossField` shape; reference: the tenancy overlay's
-    `TenantFilter.isQueryScopedByStatus`). **Extension point (a use case):** a project that needs a fast
-    contains search adds the trigram pair (`TextSearch`'s javadoc), never in row mode, where `LIKE` isn't
-    leakproof and the policy keeps any index from serving it (TEN-36);
+  - **a contains search (`query`)** is offered where the developer asks for it, alone or with other
+    filters, on any table: how many rows it reads is a fact about the data, so a list that offers `query`
+    without another filter is not a finding (reference: the tenancy overlay's `TenantFilter`).
+    **Extension point (a use case):** a project whose search gets slow adds the trigram pair
+    (`TextSearch`'s javadoc) and proves it with its own `EXPLAIN` test, never in row mode, where `LIKE`
+    isn't leakproof and the policy keeps any index from serving it (TEN-36);
   - every sort has a unique tie-breaker: the id, unless the sort column is itself unique and not
     null (a code), which is already a total order (`code, id` on a unique `code` adds a sort step
     the index can't serve);
@@ -533,7 +533,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   index named in its index test, or a list without the first-page plan check; **an index test that asserts
   a cost or a row count** (a read bound, buffers) or makes a claim it doesn't assert (a javadoc saying a
   cell "fails without its index", a seed shaped to make it so): costs turn on the data, which is a
-  project's own measured test; a contains search on an unscoped table without a required scoping filter;
+  project's own measured test;
   **an order by the id alone** (`NEWEST` as `id desc`,
   `Sort.Order.desc("id")`) on any list; a seek in OR form; a range filter offered under another column's
   order, an overlap filter's end (alone or with the other) under NEWEST included; an

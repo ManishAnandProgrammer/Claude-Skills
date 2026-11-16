@@ -11,7 +11,6 @@ import org.springframework.test.web.servlet.ResultActions;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -169,16 +168,16 @@ class PlatformTenantIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("query without status is 400 VALIDATION_FAILED naming query: the tenants table has no scope, so a search needs the status filter")
-    void queryNeedsAStatus() throws Exception {
+    @DisplayName("query alone searches the tenants of every status: staff find a tenant by its name without knowing its status")
+    void queryAloneSearchesEveryStatus() throws Exception {
         String staff = platformToken();
+        UUID tenantId = newTenant().id();
+        String name = read(getAs(staff, TENANTS + "/" + tenantId), "$.response.name");
 
-        getAs(staff, TENANTS + "?query=acme")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[*].parameter", contains("query")))
-                .andExpect(jsonPath("$.errors[0].detail").value("query needs status"));
-        getAs(staff, TENANTS + "?query=acme&status=ACTIVE").andExpect(status().isOk());
+        getAs(staff, TENANTS + "?query=" + name.substring(7))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].id", hasItem(tenantId.toString())))
+                .andExpect(jsonPath("$.pageInfo.totalElements").value(1));
     }
 
     @Test

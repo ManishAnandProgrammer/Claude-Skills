@@ -33,8 +33,8 @@ class TenantIndexIntegrationTest extends IntegrationTest {
         return Stream.of(
                 Arguments.of("tenants, NEWEST", "idx_tenants_created_at_id"),
                 Arguments.of("tenants, NAME", "idx_tenants_name_id"),
-                Arguments.of("tenants by status, NEWEST (and query, which needs status)", "idx_tenants_status_created_at_id"),
-                Arguments.of("tenants by status, NAME (and query, which needs status)", "idx_tenants_status_name_id"));
+                Arguments.of("tenants by status, NEWEST", "idx_tenants_status_created_at_id"),
+                Arguments.of("tenants by status, NAME", "idx_tenants_status_name_id"));
     }
 
     @ParameterizedTest(name = "{0}: {1}")

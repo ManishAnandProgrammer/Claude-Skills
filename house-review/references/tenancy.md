@@ -624,9 +624,9 @@ E1–E3 and the row tests named below, which run as the real application role.
     enums don't.
 
   A search on such an operator is bounded by the leakproof predicates in front of it (the tenant and the
-  owner, the list's order index): a `query` on a table with no other scope needs its scoping filter
-  (DATA-10). A faster shape (a leakproof equality on a derived column) or a reader on a bypass role is a
-  use case: the project measures it with `EXPLAIN` as the app role with the tenant set (runbook, section 5).
+  owner, the list's order index). A faster shape (a leakproof equality on a derived column) or a reader on
+  a bypass role is a use case: the project measures it with `EXPLAIN` as the app role with the tenant set
+  (runbook, section 5).
 - **Detect:** a GIN or GiST index whose only user is a non-leakproof operator on a tenant table;
   `EXPLAIN` evidence taken as a superuser; a PostgreSQL enum column filtered on.
 - **Severity:** Medium (performance).
