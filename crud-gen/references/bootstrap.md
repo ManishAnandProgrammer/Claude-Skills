@@ -120,8 +120,9 @@ With **AskUserQuestion** (several per call):
    `GET /platform/tenants/{id}/audit`, and a tenant's owner as its ADMIN. Roles don't
    include each other: a record that members and the owner both write names both roles where a role
    is listed (an upload purpose: `"USER", "ADMIN"`). Not built: invitations of people without an
-   account, disabling platform staff, a retention job for CLOSED tenants,
-   a metric for a failed provisioning. Record the ones the project needs as open items.
+   account, a retention job for CLOSED tenants. Record the ones the project needs as open items.
+   (Built since: staff deactivation, `platform_users.deactivated_at` with `ActiveStaffFilter`; the
+   `tenant.provisioning.failed` metric.)
 
 Write `.claude/crud-profile.md` and `.claude/review-profile.md` from their templates. The review
 profile's `mainBranch` is the repository's base branch, read from git (`git symbolic-ref --short
@@ -205,7 +206,8 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   piece that brings tenant tables), 0020 (the members list's index), row mode with the example 0023
   (the owners' dependency statistics); session-version 0021 without tenancy (the users column) or 0022
   with it (the membership column, a platform changeset); example 0024 (tags by status, newest first) and
-  0025 (a todo's requester), with metadata 0026 (the todos' display numbers). **The pieces own 0001 to
+  0025 (a todo's requester), with metadata 0026 (the todos' display numbers), 0029 (NEWEST indexes on the
+  creation time); tenancy 0030 (the same for the platform's lists). **The pieces own 0001 to
   0099; a project's own changesets start at 0100** (`0100-orders.sql`, then 0101, …), whatever the copy
   holds: a piece turned on later (the session version) or a piece's new changeset in a later skills
   release brings its own number below 0100 without two files sharing one, appended to the master after

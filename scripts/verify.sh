@@ -60,7 +60,7 @@ STAGES="reference 2 2b 2c 2e 2f 2g 2h 2i 2j 2d image"
 # The highest changeset number of the release in production (main): the upgrade path starts from it.
 # Raise it, and extend the previous-release seeds, when a release ships. The pieces' range alone (0001-0099):
 # the reference has no project changesets (a project passes <pieces>,<project>, PreviousReleaseDatabase).
-PREVIOUS_RELEASE=23
+PREVIOUS_RELEASE=28
 UPGRADE="-Dapp.test.upgrade.previous-release=$PREVIOUS_RELEASE"
 only=""
 case "${1:-}" in
@@ -80,8 +80,9 @@ wants() {
     [ -z "$only" ] || [[ ",$only," == *",$1,"* ]]
 }
 
-# What the session-version piece leaves in a copy; a copy without it has none of it.
-SESSION_VERSION_TRACES='session-version|SessionVersion|session_version|SESSION_VERSION|"sv"|membership_id|TenantDeactivated|users/me/sessions|endAllSessions|logoutEverywhere'
+# What the session-version piece leaves in a copy; a copy without it has none of it, its prose included (an API
+# text or javadoc describing the mechanism to a deployment that doesn't have it).
+SESSION_VERSION_TRACES='session-version|SessionVersion|session_version|SESSION_VERSION|"sv"|membership_id|TenantDeactivated|users/me/sessions|endAllSessions|logoutEverywhere|[Ss]ession versions?'
 no_session_version() {
     if grep -rqE "$SESSION_VERSION_TRACES" "$@"; then
         echo "FAILED: session-version entries in a copy without the session-version piece:" >&2

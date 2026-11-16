@@ -4,8 +4,10 @@
 -- the list defaults), the PENDING and REJECTED ones none (they were never provisioned). Members who are in
 -- two tenants, one who left (the membership gone, the tenant's members row marked left, their todos
 -- still there). One owner with most of the rows, statuses skewed. The policies are forced on the owner
--- too, so each tenant table's is lifted for its inserts and restored. Its fixed ids are the ones
--- UpgradeFromPreviousReleaseIntegrationTest reads.
+-- too, so each tenant table's is lifted for its inserts and restored. And what the release's last changesets
+-- added: each tenant's todos numbered with its counter after the highest (0026), requesters, one of them the
+-- member who left (0025), a suspended account (0027), a deactivated staff member (0028). Its fixed ids are
+-- the ones UpgradeFromPreviousReleaseIntegrationTest reads.
 
 INSERT INTO tenants (id, name, status, created_at, updated_at, version) VALUES
     ('01890000-0000-7000-8100-00000000000a', 'Upgrade Alpha', 'ACTIVE', now() - interval '400 days', now(), 1),
@@ -29,9 +31,14 @@ INSERT INTO users (id, email, full_name, password_hash, role, created_at, update
     ('01890000-0000-7000-8000-000000000007', 'upgrade-pi@example.com', 'Pi Upgrader', 'not-a-hash', 'USER', now(), now(), 0),
     ('01890000-0000-7000-8000-000000000008', 'upgrade-rho@example.com', 'Rho Upgrader', 'not-a-hash', 'USER', now(), now(), 0),
     ('01890000-0000-7000-8000-000000000009', 'upgrade-chi@example.com', 'Chi Upgrader', 'not-a-hash', 'USER', now(), now(), 0);
--- A staff member, from before 0028 added their deactivation.
-INSERT INTO platform_users (id, email, full_name, password_hash, role, created_at, updated_at, version) VALUES
-    ('01890000-0000-7000-8200-000000000001', 'upgrade-staff@example.com', 'Staff Upgrader', 'not-a-hash', 'STAFF', now(), now(), 0);
+-- The REJECTED tenant's owner was suspended (0027).
+UPDATE users SET status = 'SUSPENDED' WHERE id = '01890000-0000-7000-8000-000000000008';
+-- A staff member, and one deactivated (0028).
+INSERT INTO platform_users (id, email, full_name, password_hash, role, deactivated_at, created_at, updated_at, version) VALUES
+    ('01890000-0000-7000-8200-000000000001', 'upgrade-staff@example.com', 'Staff Upgrader', 'not-a-hash', 'STAFF', null,
+     now(), now(), 0),
+    ('01890000-0000-7000-8200-000000000002', 'upgrade-gone-staff@example.com', 'Gone Staff', 'not-a-hash', 'STAFF',
+     now() - interval '3 days', now() - interval '100 days', now(), 1);
 -- (account, tenant, role): the light member is in Alpha and Beta; the left member's membership is gone.
 INSERT INTO tenant_memberships (id, tenant_id, user_id, role, created_at, updated_at, version)
 SELECT gen_random_uuid(), membership.tenant_id::uuid, membership.user_id::uuid, membership.role, now() - interval '100 days', now(), 0
@@ -86,17 +93,37 @@ SELECT gen_random_uuid(), shape.tenant_id::uuid, shape.owner_id::uuid, 'Upgrade 
                ('01890000-0000-7000-8100-00000000000f', '01890000-0000-7000-8000-000000000009', 1))
        AS shape (tenant_id, owner_id, lists)
  CROSS JOIN generate_series(1, shape.lists) n;
-INSERT INTO todos (id, tenant_id, todo_list_id, owner_id, title, status, priority, due_date, completed_at, created_at, updated_at, version)
+-- Every tenth of the heavy owner's todos (n = 3, 13, ...) asked for by the member who left since.
+INSERT INTO todos (id, tenant_id, todo_list_id, owner_id, title, status, priority, due_date, completed_at, created_at, updated_at, version,
+-- metadata:begin
+                   number,
+-- metadata:end
+                   requester_id)
 SELECT uuidv7(), list.tenant_id, list.id, list.owner_id, 'Upgrade todo ' || n,
        case when n > per_list * 0.95 then 'OPEN' else 'DONE' end,
        case n % 10 when 0 then 'HIGH' when 1 then 'MEDIUM' else 'LOW' end,
        case when n % 9 = 0 then null else date '2025-01-01' + n end,
        case when n > per_list * 0.95 then null else now() - interval '1 day' end,
-       now() - interval '200 days', now(), 0
+       now() - interval '200 days', now(), 0,
+-- metadata:begin
+       row_number() OVER (PARTITION BY list.tenant_id ORDER BY list.id, n),
+-- metadata:end
+       case when list.owner_id = '01890000-0000-7000-8000-000000000001' AND n % 10 = 3
+            then '01890000-0000-7000-8000-000000000003'::uuid end
   FROM (SELECT list.*, case when owner_id = '01890000-0000-7000-8000-000000000001' then 60
                             when owner_id = '01890000-0000-7000-8000-000000000006' then 30 else 5 end AS per_list
           FROM todo_lists list WHERE name like 'Upgrade list %') list
  CROSS JOIN generate_series(1, list.per_list) n;
+-- metadata:begin
+-- Each tenant's counter after its highest number, whatever its status: 0026's backfill or the seed listener gave
+-- every tenant one, and its creates moved it.
+ALTER TABLE counters NO FORCE ROW LEVEL SECURITY;
+INSERT INTO counters (id, tenant_id, key, last_value, created_at, updated_at, version)
+SELECT uuidv7(), t.id, 'TODO_NUMBER', coalesce((SELECT max(todo.number) FROM todos todo WHERE todo.tenant_id = t.id), 0),
+       now(), now(), 0
+  FROM tenants t WHERE t.name like 'Upgrade %';
+ALTER TABLE counters FORCE ROW LEVEL SECURITY;
+-- metadata:end
 ALTER TABLE todos FORCE ROW LEVEL SECURITY;
 ALTER TABLE todo_lists FORCE ROW LEVEL SECURITY;
 

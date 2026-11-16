@@ -3,7 +3,8 @@
 -- Tenants in every status; the provisioned ones (ACTIVE, SUSPENDED, CLOSED) recorded in tenant_migrations
 -- with no last changeset yet: PreviousReleaseDatabase then creates each one's schema at the previous
 -- release and seeds it (previous-release-tenant-seed.sql). The PENDING tenant has no schema (provisioning
--- comes with its approval), the REJECTED one never will (CANCELLED). Members in two tenants, one who left.
+-- comes with its approval), the REJECTED one never will (CANCELLED). Members in two tenants, one who left; a
+-- suspended account (0027) and a deactivated staff member (0028).
 -- Its fixed ids are the ones UpgradeFromPreviousReleaseIntegrationTest reads.
 
 INSERT INTO platform.tenants (id, name, status, created_at, updated_at, version) VALUES
@@ -29,9 +30,14 @@ INSERT INTO platform.users (id, email, full_name, password_hash, role, created_a
     ('01890000-0000-7000-8000-000000000007', 'upgrade-pi@example.com', 'Pi Upgrader', 'not-a-hash', 'USER', now(), now(), 0),
     ('01890000-0000-7000-8000-000000000008', 'upgrade-rho@example.com', 'Rho Upgrader', 'not-a-hash', 'USER', now(), now(), 0),
     ('01890000-0000-7000-8000-000000000009', 'upgrade-chi@example.com', 'Chi Upgrader', 'not-a-hash', 'USER', now(), now(), 0);
--- A staff member, from before 0028 added their deactivation.
-INSERT INTO platform.platform_users (id, email, full_name, password_hash, role, created_at, updated_at, version) VALUES
-    ('01890000-0000-7000-8200-000000000001', 'upgrade-staff@example.com', 'Staff Upgrader', 'not-a-hash', 'STAFF', now(), now(), 0);
+-- The REJECTED tenant's owner was suspended (0027).
+UPDATE platform.users SET status = 'SUSPENDED' WHERE id = '01890000-0000-7000-8000-000000000008';
+-- A staff member, and one deactivated (0028).
+INSERT INTO platform.platform_users (id, email, full_name, password_hash, role, deactivated_at, created_at, updated_at, version) VALUES
+    ('01890000-0000-7000-8200-000000000001', 'upgrade-staff@example.com', 'Staff Upgrader', 'not-a-hash', 'STAFF', null,
+     now(), now(), 0),
+    ('01890000-0000-7000-8200-000000000002', 'upgrade-gone-staff@example.com', 'Gone Staff', 'not-a-hash', 'STAFF',
+     now() - interval '3 days', now() - interval '100 days', now(), 1);
 INSERT INTO platform.tenant_memberships (id, tenant_id, user_id, role, created_at, updated_at, version)
 SELECT gen_random_uuid(), membership.tenant_id::uuid, membership.user_id::uuid, membership.role, now() - interval '100 days', now(), 0
   FROM (VALUES ('01890000-0000-7000-8100-00000000000a', '01890000-0000-7000-8000-000000000001', 'ADMIN'),

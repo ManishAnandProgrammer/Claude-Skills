@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.PlatformTransactionManager;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,6 +30,7 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     private static final UUID HEAVY = UUID.fromString("01890000-0000-7000-8000-000000000001");
     private static final UUID HEAVY_FIRST_LIST = UUID.fromString("01890000-0000-7000-8001-000000000001");
     private static final String HEAVY_EMAIL = "upgrade-heavy@example.com";
+    private static final UUID LIGHT = UUID.fromString("01890000-0000-7000-8000-000000000002");
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -43,23 +45,31 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The new release's changesets ran over the seeded rows, and the rows are all there")
+    @DisplayName("""
+            The new release's changesets ran over the seeded rows: the rows are all there, the requesters kept, NEWEST's \
+            indexes on the creation time replaced the id ones (0029)""")
     void theNewChangesetsRanOverTheSeededRows() {
-        assertThat(jdbc.queryForList("select id from databasechangelog", String.class))
-                .contains("0024-tags-status-newest", "0025-todos-requester");
+        assertThat(jdbc.queryForList("select id from databasechangelog", String.class)).contains("0029-newest-by-created-at");
         assertThat(jdbc.queryForObject("select count(*) from todos where owner_id = ?", Integer.class, HEAVY)).isGreaterThanOrEqualTo(1_200);
-        assertThat(jdbc.queryForObject("select count(*) from todos where owner_id = ? and requester_id is not null", Integer.class, HEAVY))
-                .isZero();
+        assertThat(jdbc.queryForObject("select count(*) from todos where owner_id = ? and requester_id = ?", Integer.class, HEAVY, LIGHT))
+                .as("every tenth seeded todo names the light account").isEqualTo(20 * 6);
+        assertThat(ReadCost.indexExists(jdbc, "idx_todos_owner_id_created_at_id")).isTrue();
+        assertThat(ReadCost.indexExists(jdbc, "idx_todos_owner_id_id")).isFalse();
     }
 
     @Test
     @DisplayName("""
-            0027 left every seeded account ACTIVE and every seeded refresh token as it was: the live one live, the \
-            rotated one still ROTATED""")
-    void theSeededAccountsAreActive() {
+            The upgrade changed no account and no refresh token: the suspended one still SUSPENDED (login 403), the \
+            others ACTIVE, the live token live, the rotated one still ROTATED""")
+    void theSeededAccountsKeepTheirStatus() throws Exception {
         assertThat(jdbc.queryForObject("select count(*) from users where email like 'upgrade-%' and status <> 'ACTIVE'", Integer.class))
-                .isZero();
-        assertThat(jdbc.queryForObject("select count(*) from users where email like 'upgrade-%'", Integer.class)).isPositive();
+                .isOne();
+        assertThat(jdbc.queryForObject("select status from users where email = 'upgrade-idle@example.com'", String.class))
+                .isEqualTo("SUSPENDED");
+        sql("update users set password_hash = ? where email = 'upgrade-idle@example.com'", passwordEncoder.encode(PASSWORD));
+        login("upgrade-idle@example.com", PASSWORD)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_ACCOUNT_SUSPENDED"));
         assertThat(jdbc.queryForObject("select revoked_at is null from refresh_tokens where token_hash = 'upgrade-live-token'", Boolean.class))
                 .isTrue();
         assertThat(jdbc.queryForObject("select revocation_reason from refresh_tokens where token_hash = 'upgrade-rotated-token'", String.class))
@@ -84,25 +94,26 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A page of the seeded owner's OPEN todos, the rare status, still reads at most two pages")
+    @DisplayName("A page of the seeded owner's OPEN todos (the rare status) and of their newest still reads at most two pages")
     void theIndexBoundsHoldOnTheSeededRows() {
-        ReadCost cost = ReadCost.of(jdbc, transactionManager, """
-                select id from todos where owner_id = :owner and status = 'OPEN' order by due_sort, id limit 21""",
-                new MapSqlParameterSource("owner", HEAVY));
+        for (String statement : List.of(
+                "select id from todos where owner_id = :owner and status = 'OPEN' order by due_sort, id limit 21",
+                "select id from todos where owner_id = :owner order by created_at desc, id desc limit 21")) {
+            ReadCost cost = ReadCost.of(jdbc, transactionManager, statement, new MapSqlParameterSource("owner", HEAVY));
 
-        assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
+            assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
+        }
     }
     // metadata:begin
 
     @Test
-    @DisplayName("Every seeded todo got its number, 1 to N in the order they were created, and the counter goes on after the highest")
-    void everySeededTodoIsNumberedInOrder() throws Exception {
+    @DisplayName("Every seeded todo keeps its number, 1 to N, and the counter goes on after the highest")
+    void theSeededNumbersAreKept() throws Exception {
         Long seeded = jdbc.queryForObject("select count(*) from todos where title like 'Upgrade todo %' or title like 'Light todo %'",
                 Long.class);
         assertThat(jdbc.queryForObject("""
-                select count(*) from (select number, row_number() over (order by id) as expected from todos
-                                       where title like 'Upgrade todo %' or title like 'Light todo %') seeded
-                 where number <> expected""", Integer.class)).isZero();
+                select count(distinct number) from todos where title like 'Upgrade todo %' or title like 'Light todo %'""",
+                Long.class)).isEqualTo(seeded);
         Long counter = jdbc.queryForObject("select last_value from counters where key = 'TODO_NUMBER'", Long.class);
 
         Number created = read(postAs(heavyOwnersToken(), "/api/v1/todos", """

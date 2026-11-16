@@ -2,7 +2,8 @@
 -- support/PreviousReleaseDatabase after the tenant changelog up to that release, which seeded the upload
 -- policy and the list defaults and copied its memberships into members. upgrade.tenant names the tenant
 -- (Alpha also has a member who left: the members row marked left, their list still there); the heavy owner
--- holds most of Alpha's rows, statuses skewed.
+-- holds most of Alpha's rows, statuses skewed. And what the release's last changesets added: the todos numbered
+-- with the counter after the highest (0026), requesters, one of them the member who left (0025).
 
 -- The members of its memberships are there already: changeset 0017 copied them in the previous release.
 INSERT INTO members (id, user_id, left_at, created_at, updated_at, version)
@@ -14,17 +15,32 @@ SELECT gen_random_uuid(), member.user_id, 'Upgrade list ' || n, now() - interval
   FROM members member
  CROSS JOIN LATERAL generate_series(1, case member.user_id when '01890000-0000-7000-8000-000000000001' then 20
                                                           when '01890000-0000-7000-8000-000000000005' then 3 else 1 end) n;
-INSERT INTO todos (id, todo_list_id, owner_id, title, status, priority, due_date, completed_at, created_at, updated_at, version)
+-- Every tenth of the heavy owner's todos (n = 3, 13, ...) asked for by the member who left since (Alpha's).
+INSERT INTO todos (id, todo_list_id, owner_id, title, status, priority, due_date, completed_at, created_at, updated_at, version,
+-- metadata:begin
+                   number,
+-- metadata:end
+                   requester_id)
 SELECT uuidv7(), list.id, list.owner_id, 'Upgrade todo ' || n,
        case when n > list.per_list * 0.95 then 'OPEN' else 'DONE' end,
        case n % 10 when 0 then 'HIGH' when 1 then 'MEDIUM' else 'LOW' end,
        case when n % 9 = 0 then null else date '2025-01-01' + n end,
        case when n > list.per_list * 0.95 then null else now() - interval '1 day' end,
-       now() - interval '200 days', now(), 0
+       now() - interval '200 days', now(), 0,
+-- metadata:begin
+       row_number() OVER (ORDER BY list.id, n),
+-- metadata:end
+       case when list.owner_id = '01890000-0000-7000-8000-000000000001' AND n % 10 = 3
+                 AND current_setting('upgrade.tenant') = '01890000-0000-7000-8100-00000000000a'
+            then '01890000-0000-7000-8000-000000000003'::uuid end
   FROM (SELECT todo_list.*, case owner_id when '01890000-0000-7000-8000-000000000001' then 60
                                           when '01890000-0000-7000-8000-000000000006' then 30 else 5 end AS per_list
           FROM todo_lists todo_list) list
  CROSS JOIN LATERAL generate_series(1, list.per_list) n;
+-- metadata:begin
+-- The tenant changeset 0026 made the counter in the empty schema; the creates since moved it to the highest.
+UPDATE counters SET last_value = (SELECT coalesce(max(number), 0) FROM todos) WHERE key = 'TODO_NUMBER';
+-- metadata:end
 
 INSERT INTO tags (id, owner_id, name, active, created_at, updated_at, version)
 SELECT gen_random_uuid(), user_id, 'Upgrade tag ' || n, n % 5 <> 0, now(), now(), 0

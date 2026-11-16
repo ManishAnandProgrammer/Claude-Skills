@@ -88,7 +88,7 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         for (UUID tenant : PROVISIONED) {
             String schema = TenantSchemas.of(tenant);
             assertThat(owner.queryForList("select id from %s.databasechangelog".formatted(schema), String.class))
-                    .as(schema).contains("0024-tags-status-newest", "0025-todos-requester");
+                    .as(schema).contains("0029-newest-by-created-at");
             assertThat(owner.queryForObject("select status from platform.tenant_migrations where tenant_id = ?", String.class, tenant))
                     .isEqualTo("MIGRATED");
         }
@@ -96,6 +96,10 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
                 .formatted(TenantSchemas.of(ALPHA)), Integer.class)).isEqualTo(20 * 60 + 5 + 5);
         assertThat(owner.queryForObject("select count(*) from %s.todos where owner_id = ?".formatted(TenantSchemas.of(ALPHA)),
                 Integer.class, LEFT)).as("a member who left keeps their todos").isEqualTo(5);
+        assertThat(owner.queryForObject("select count(*) from %s.todos where requester_id = ?".formatted(TenantSchemas.of(ALPHA)),
+                Integer.class, LEFT)).as("the todos the member who left asked for still name them").isEqualTo(20 * 6);
+        assertThat(owner.queryForList("select id from platform.databasechangelog", String.class))
+                .contains("0030-platform-newest-by-created-at");
         for (UUID unprovisioned : List.of(PI, RHO)) {
             assertThat(owner.queryForObject("select count(*) from pg_namespace where nspname = ?", Integer.class,
                     TenantSchemas.of(unprovisioned))).isZero();
@@ -103,25 +107,34 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("0027 and 0028 left every seeded account ACTIVE and the seeded staff member active: both sign in")
-    void theSeededAccountsAndStaffAreActive() throws Exception {
+    @DisplayName("""
+            The upgrade changed no account and no staff member: the suspended account still SUSPENDED, the others \
+            ACTIVE and signing in; the deactivated staff member still deactivated, the other active""")
+    void theSeededAccountsAndStaffKeepTheirStatus() throws Exception {
         assertThat(jdbc.queryForObject("select count(*) from users where email like 'upgrade-%' and status <> 'ACTIVE'", Integer.class))
-                .isZero();
+                .isOne();
+        assertThat(jdbc.queryForObject("select status from users where email = 'upgrade-rho@example.com'", String.class))
+                .isEqualTo("SUSPENDED");
         assertThat(jdbc.queryForObject("select count(*) from platform_users where email = 'upgrade-staff@example.com' and deactivated_at is null",
+                Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from platform_users where email = 'upgrade-gone-staff@example.com' and deactivated_at is not null",
                 Integer.class)).isEqualTo(1);
         tokenOf("upgrade-heavy@example.com");
     }
 
     @Test
-    @DisplayName("A page of the seeded owner's OPEN todos, the rare status, still reads at most two pages")
+    @DisplayName("A page of the seeded owner's OPEN todos (the rare status) and of their newest still reads at most two pages")
     void theIndexBoundsHoldOnTheSeededRows() {
         migratedOwner();
 
-        ReadCost cost = TenantScope.callAs(ALPHA, () -> ReadCost.of(jdbc, transactionManager, """
-                select id from todos where owner_id = :owner and status = 'OPEN' order by due_sort, id limit 21""",
-                new MapSqlParameterSource("owner", HEAVY)));
+        for (String statement : List.of(
+                "select id from todos where owner_id = :owner and status = 'OPEN' order by due_sort, id limit 21",
+                "select id from todos where owner_id = :owner order by created_at desc, id desc limit 21")) {
+            ReadCost cost = TenantScope.callAs(ALPHA, () -> ReadCost.of(jdbc, transactionManager, statement,
+                    new MapSqlParameterSource("owner", HEAVY)));
 
-        assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
+            assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
+        }
     }
 
     @Test
@@ -138,16 +151,14 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     // metadata:begin
 
     @Test
-    @DisplayName("Every seeded schema numbers its own todos 1 to n in the order they were created, its counter after the highest")
-    void everySchemaIsNumberedOnItsOwn() {
+    @DisplayName("Every seeded schema keeps its own numbers 1 to n and its counter after the highest")
+    void everySchemaKeepsItsNumbers() {
         JdbcTemplate owner = migratedOwner();
 
         for (UUID tenant : PROVISIONED) {
             String schema = TenantSchemas.of(tenant);
-            assertThat(owner.queryForObject("""
-                    select count(*) from (select number, row_number() over (order by id) as expected from %s.todos
-                                           where title like 'Upgrade todo %%') seeded
-                     where number <> expected""".formatted(schema), Integer.class)).as(schema).isZero();
+            assertThat(owner.queryForObject("select count(distinct number) from %s.todos".formatted(schema), Integer.class))
+                    .as(schema).isEqualTo(owner.queryForObject("select count(*) from %s.todos".formatted(schema), Integer.class));
             assertThat(owner.queryForObject("select last_value from %s.counters where key = 'TODO_NUMBER'".formatted(schema), Long.class))
                     .as(schema).isEqualTo(owner.queryForObject("select coalesce(max(number), 0) from %s.todos".formatted(schema), Long.class));
         }

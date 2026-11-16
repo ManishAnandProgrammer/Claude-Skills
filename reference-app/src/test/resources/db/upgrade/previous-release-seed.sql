@@ -1,8 +1,9 @@
 -- The rows a used database holds at the previous release (support/PreviousReleaseDatabase runs this after
 -- that release's changesets and before the ones that came after it). Written against the previous
 -- release's tables only, and realistic rather than tidy: one owner with most of the rows, statuses
--- skewed (one todo in twenty OPEN, the latest due), every table of the example filled. Its fixed ids are
--- the ones UpgradeFromPreviousReleaseIntegrationTest reads. Raise app.test.upgrade.previous-release (verify.sh)
+-- skewed (one todo in twenty OPEN, the latest due), every table of the example filled, and what the release's
+-- last changesets added: numbered todos and the counter after the highest (0026), requesters (0025), a
+-- suspended account (0027). Its fixed ids are the ones UpgradeFromPreviousReleaseIntegrationTest reads. Raise app.test.upgrade.previous-release (verify.sh)
 -- and extend this file when a release ships.
 
 INSERT INTO users (id, email, full_name, password_hash, role, created_at, updated_at, version) VALUES
@@ -12,6 +13,8 @@ INSERT INTO users (id, email, full_name, password_hash, role, created_at, update
      now() - interval '30 days', now(), 0),
     ('01890000-0000-7000-8000-000000000003', 'upgrade-idle@example.com', 'Idle Upgrader', 'not-a-hash', 'USER',
      now() - interval '10 days', now(), 0);
+-- The idle account was suspended (0027).
+UPDATE users SET status = 'SUSPENDED' WHERE id = '01890000-0000-7000-8000-000000000003';
 -- admin:begin
 INSERT INTO users (id, email, full_name, password_hash, role, created_at, updated_at, version) VALUES
     ('01890000-0000-7000-8000-000000000004', 'upgrade-admin@example.com', 'Admin Upgrader', 'not-a-hash', 'ADMIN',
@@ -33,19 +36,39 @@ INSERT INTO todo_lists (id, owner_id, name, created_at, updated_at, version)
 SELECT ('01890000-0000-7000-8002-' || lpad(n::text, 12, '0'))::uuid, '01890000-0000-7000-8000-000000000002',
        'Upgrade list ' || n, now() - interval '20 days', now(), 0
   FROM generate_series(1, 3) n;
-INSERT INTO todos (id, todo_list_id, owner_id, title, notes, status, priority, due_date, completed_at, created_at, updated_at, version)
+-- Every tenth todo (n = 3, 13, ...) asked for by the light account.
+INSERT INTO todos (id, todo_list_id, owner_id, title, notes, status, priority, due_date, completed_at, created_at, updated_at, version,
+-- metadata:begin
+                   number,
+-- metadata:end
+                   requester_id)
 SELECT uuidv7(), list.id, list.owner_id, 'Upgrade todo ' || n, case when n % 7 = 0 then 'Some notes' end,
        case when n > 57 then 'OPEN' else 'DONE' end,
        case n % 10 when 0 then 'HIGH' when 1 then 'MEDIUM' when 2 then 'MEDIUM' else 'LOW' end,
        case when n % 9 = 0 then null else date '2025-01-01' + n end,
        case when n > 57 then null else now() - interval '1 day' end,
-       now() - interval '200 days', now(), n % 3
+       now() - interval '200 days', now(), n % 3,
+-- metadata:begin
+       row_number() OVER (ORDER BY list.id, n),
+-- metadata:end
+       case when n % 10 = 3 then '01890000-0000-7000-8000-000000000002'::uuid end
   FROM todo_lists list CROSS JOIN generate_series(1, 60) n
  WHERE list.owner_id = '01890000-0000-7000-8000-000000000001';
-INSERT INTO todos (id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version)
+INSERT INTO todos (id, todo_list_id, owner_id, title, status, priority, created_at, updated_at, version
+-- metadata:begin
+                   , number
+-- metadata:end
+                   )
 SELECT uuidv7(), list.id, list.owner_id, 'Light todo ' || n, 'OPEN', 'LOW', now(), now(), 0
+-- metadata:begin
+       , (SELECT max(number) FROM todos) + row_number() OVER (ORDER BY list.id, n)
+-- metadata:end
   FROM todo_lists list CROSS JOIN generate_series(1, 5) n
  WHERE list.owner_id = '01890000-0000-7000-8000-000000000002';
+-- metadata:begin
+-- 0026 made the counter on an empty table; the creates since moved it to the highest number.
+UPDATE counters SET last_value = (SELECT max(number) FROM todos) WHERE key = 'TODO_NUMBER';
+-- metadata:end
 
 INSERT INTO tags (id, owner_id, name, color, active, created_at, updated_at, version)
 SELECT gen_random_uuid(), '01890000-0000-7000-8000-000000000001', 'Upgrade tag ' || n, case when n % 2 = 0 then '#A0B0C0' end,

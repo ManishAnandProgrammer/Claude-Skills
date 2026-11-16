@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * PreviousReleaseDatabase built it: that release's changesets, then db/upgrade/previous-release-seed.sql
  * with tenants in every status, then the rest; crud-gen tests.md, *Upgrading a used database*). The cells
  * of the tenant lifecycle x seeding matrix (docs/design/tenancy.md) a fresh database can't reach: a
- * backfill over tenants that already hold rows, in every status. Runs only on such a run: verify.sh sets
+ * changeset over tenants that already hold rows, in every status. Runs only on such a run: verify.sh sets
  * {@code app.test.upgrade.previous-release}.
  */
 @WithoutTestTenant
@@ -87,36 +87,46 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The new release's changesets ran over the seeded tenants: no todo lost, none of them names a requester")
+    @DisplayName("""
+            The new release's changesets ran over the seeded tenants (0029, 0030): no todo lost, the requesters kept, \
+            the member who left among them""")
     void theNewChangesetsRanOverTheSeededTenants() throws SQLException {
         // The owner's table: the application role can't read it.
         assertThat(textInTenant(ALPHA, "select string_agg(id, ',') from databasechangelog"))
-                .contains("0024-tags-status-newest", "0025-todos-requester", "0026-todo-numbers");
+                .contains("0029-newest-by-created-at", "0030-platform-newest-by-created-at");
         assertThat(inTenant(ALPHA, "select count(*) from todos where title like 'Upgrade todo %'")).isEqualTo(20 * 60 + 2 * 5 + 5);
-        assertThat(inTenant(ALPHA, "select count(*) from todos where requester_id is not null and title like 'Upgrade todo %'")).isZero();
+        assertThat(inTenant(ALPHA, "select count(*) from todos where requester_id = '" + LEFT + "'")).isEqualTo(20 * 6);
         assertThat(inTenant(ALPHA, "select count(*) from todos where owner_id = '" + LEFT + "'"))
                 .as("a member who left keeps their todos").isEqualTo(5);
     }
 
     @Test
-    @DisplayName("0027 and 0028 left every seeded account ACTIVE and the seeded staff member active: both sign in")
-    void theSeededAccountsAndStaffAreActive() throws Exception {
+    @DisplayName("""
+            The upgrade changed no account and no staff member: the suspended account still SUSPENDED, the others \
+            ACTIVE and signing in; the deactivated staff member still deactivated, the other active""")
+    void theSeededAccountsAndStaffKeepTheirStatus() throws Exception {
         assertThat(jdbc.queryForObject("select count(*) from users where email like 'upgrade-%' and status <> 'ACTIVE'", Integer.class))
-                .isZero();
+                .isOne();
+        assertThat(jdbc.queryForObject("select status from users where email = 'upgrade-rho@example.com'", String.class))
+                .isEqualTo("SUSPENDED");
         assertThat(jdbc.queryForObject("select count(*) from platform_users where email = 'upgrade-staff@example.com' and deactivated_at is null",
+                Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from platform_users where email = 'upgrade-gone-staff@example.com' and deactivated_at is not null",
                 Integer.class)).isEqualTo(1);
         tokenOf("upgrade-heavy@example.com");
     }
 
     @Test
-    @DisplayName("A page of the seeded owner's OPEN todos, the rare status, still reads at most two pages")
+    @DisplayName("A page of the seeded owner's OPEN todos (the rare status) and of their newest still reads at most two pages")
     void theIndexBoundsHoldOnTheSeededRows() {
-        ReadCost cost = TenantScope.callAs(ALPHA, () -> ReadCost.of(jdbc, transactionManager, """
-                select id from todos
-                 where owner_id = :owner and tenant_id = :tenant and status = 'OPEN' order by due_sort, id limit 21""",
-                new MapSqlParameterSource("owner", HEAVY).addValue("tenant", ALPHA)));
+        for (String statement : List.of(
+                "select id from todos where owner_id = :owner and tenant_id = :tenant and status = 'OPEN' order by due_sort, id limit 21",
+                "select id from todos where owner_id = :owner and tenant_id = :tenant order by created_at desc, id desc limit 21")) {
+            ReadCost cost = TenantScope.callAs(ALPHA, () -> ReadCost.of(jdbc, transactionManager, statement,
+                    new MapSqlParameterSource("owner", HEAVY).addValue("tenant", ALPHA)));
 
-        assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
+            assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
+        }
     }
 
     @Test
@@ -133,14 +143,12 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     // metadata:begin
 
     @Test
-    @DisplayName("Every tenant, whatever its status, numbers its own todos 1 to n in the order they were created, its counter after the highest")
-    void everyTenantIsNumberedOnItsOwn() throws SQLException {
+    @DisplayName("Every tenant, whatever its status, keeps its own numbers 1 to n and one counter after its highest")
+    void everyTenantKeepsItsNumbers() throws SQLException {
         for (UUID tenant : TENANTS) {
             assertThat(inTenant(tenant, "select count(*) from counters where key = 'TODO_NUMBER'")).as("the counter of " + tenant).isOne();
-            assertThat(inTenant(tenant, """
-                    select count(*) from (select number, row_number() over (order by id) as expected from todos
-                                           where title like 'Upgrade todo %') seeded
-                     where number <> expected""")).as("the numbers of " + tenant).isZero();
+            assertThat(inTenant(tenant, "select count(distinct number) from todos"))
+                    .as("the numbers of " + tenant).isEqualTo(inTenant(tenant, "select count(*) from todos"));
             assertThat(inTenant(tenant, "select last_value from counters where key = 'TODO_NUMBER'"))
                     .as("the counter of " + tenant).isEqualTo(inTenant(tenant, "select coalesce(max(number), 0) from todos"));
         }
