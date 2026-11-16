@@ -1,5 +1,6 @@
 package com.example.app.media.dto.request;
 
+import com.example.app.common.limits.ConfiguredMaxSize;
 import com.example.app.media.api.UploadPurpose;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
@@ -19,6 +20,6 @@ public record UploadUrlRequest(
         UploadPurpose purpose,
 
         @Schema(description = "The files, at most the purpose's maxFiles")
-        @NotEmpty
+        @NotEmpty @ConfiguredMaxSize("upload-policy.max-files")
         List<@NotNull @Valid UploadFileRequest> files) {
 }

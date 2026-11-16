@@ -1,12 +1,14 @@
 package com.example.app.common.limits;
 
 import com.example.app.common.pagination.Cursor;
+import com.example.app.common.validation.MaxUtf8Bytes;
 import com.example.app.common.pagination.CursorFilter;
 import com.example.app.common.pagination.PageFilter;
 import com.example.app.support.IntegrationTest;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import io.swagger.v3.core.converter.AnnotatedType;
@@ -115,6 +117,55 @@ class LimitsIntegrationTest extends IntegrationTest {
 
         assertThat(checked).isPositive();
         assertThat(missing).isEmpty();
+    }
+
+    @Test
+    @DisplayName("""
+            Every text field of every request and filter is bounded (@MaxLength, or a @Pattern that bounds the \
+            length), and every collection has a configured size and bounded text elements""")
+    void everyRequestFieldIsBounded() {
+        JavaClasses classes = new ClassFileImporter()
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("com.example.app");
+        List<String> unbounded = new ArrayList<>();
+        int checked = 0;
+        for (JavaField field : classes.stream().flatMap(javaClass -> javaClass.getFields().stream()).toList()) {
+            if (field.getModifiers().contains(JavaModifier.STATIC) || !field.getOwner().getPackageName().contains(".dto.request")) {
+                continue;
+            }
+            if (field.getRawType().isEquivalentTo(String.class)) {
+                checked++;
+                if (!field.isAnnotatedWith(MaxLength.class) && !hasALengthBoundingPattern(field) && !isBoundInBytes(field)) {
+                    unbounded.add(field.getFullName() + " (no @MaxLength)");
+                }
+            }
+            if (field.getRawType().isAssignableTo(java.util.Collection.class)) {
+                checked++;
+                if (!field.isAnnotatedWith(ConfiguredMaxSize.class)) {
+                    unbounded.add(field.getFullName() + " (no @ConfiguredMaxSize)");
+                }
+                if (field.reflect().getGenericType().getTypeName().endsWith("<java.lang.String>") && elementMaxLengths(field).isEmpty()) {
+                    unbounded.add(field.getFullName() + " (elements without @MaxLength)");
+                }
+            }
+        }
+
+        assertThat(checked).isPositive();
+        assertThat(unbounded).as("request fields without a configured bound").isEmpty();
+    }
+
+    /** A password: bcrypt reads only 72 bytes, so the bound is that number, not a configured one. */
+    private static boolean isBoundInBytes(JavaField field) {
+        return field.isAnnotatedWith(MaxUtf8Bytes.class) || field.isMetaAnnotatedWith(MaxUtf8Bytes.class);
+    }
+
+    /** A pattern without an open repetition ({@code *}, {@code +}, {@code {n,}}) bounds the text's length. */
+    private static boolean hasALengthBoundingPattern(JavaField field) {
+        if (!field.isAnnotatedWith(jakarta.validation.constraints.Pattern.class)) {
+            return false;
+        }
+        String regexp = field.getAnnotationOfType(jakarta.validation.constraints.Pattern.class).regexp();
+        return !regexp.contains("*") && !regexp.contains("+") && !regexp.matches(".*\\{\\d+,}.*");
     }
 
     /** Limits on a collection's elements ({@code Set<@MaxLength("…") String>}), which field annotations don't include. */

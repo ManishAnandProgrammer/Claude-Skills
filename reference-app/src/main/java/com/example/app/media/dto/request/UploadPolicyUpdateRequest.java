@@ -2,6 +2,7 @@ package com.example.app.media.dto.request;
 
 import com.example.app.common.limits.ConfiguredMax;
 import com.example.app.common.limits.ConfiguredMaxSize;
+import com.example.app.common.limits.MaxLength;
 import com.example.app.common.validation.CrossField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -35,7 +36,7 @@ public record UploadPolicyUpdateRequest(
                 Exact content types accepted, each one the application allows (never SVG, HTML or XML), up \
                 to a configured number""", example = "[\"image/jpeg\", \"application/pdf\"]")
         @NotEmpty @ConfiguredMaxSize("upload-policy.max-content-types")
-        Set<@NotBlank String> contentTypes,
+        Set<@NotBlank @MaxLength("media.content-type") String> contentTypes,
 
         @Schema(description = "The version you last read; a stale one is refused with 409", example = "0")
         @NotNull
