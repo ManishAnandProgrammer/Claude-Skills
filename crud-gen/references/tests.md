@@ -66,8 +66,8 @@ nothing about costs:
    parameters)` plans it without running it, with sequential scans, bitmap scans and sorts off (on a test
    database's small tables, or for a scope the statistics put at a row, the plan would otherwise turn on the
    data), and the test asserts `doesNotContain("Seq Scan")` and that
-   `QueryPlan.indexesScanned(plan)` holds the expected index, or one of the expected ones when another is an
-   equally good plan (golden `TagIndexIntegrationTest`'s ACTIVE dropdown). A scope id that matches nothing
+   `QueryPlan.indexesScanned(plan)` holds the expected index; when the default first page carries an equality
+   filter (a dropdown's ACTIVE), the filter's index or the order's index (golden `TagIndexIntegrationTest`). A scope id that matches nothing
    is enough: no seed, the plan comes from the statement.
 
 Golden: `TodoIndexIntegrationTest`, `TagIndexIntegrationTest`, `TimeEntryIndexIntegrationTest`,

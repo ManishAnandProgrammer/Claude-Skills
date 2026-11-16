@@ -121,7 +121,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     `config/LiquibaseConnectionConfig`, Liquibase's own data source with `-c lock_timeout`, from
     `app.liquibase.lock-timeout`), or `SET lock_timeout` at the top of each changeset that alters a
     busy table; a migration that hits it fails and is re-run;
-  - hot paths use a short default, and exports raise it locally (`SET LOCAL statement_timeout`);
+  - requests run under the pool's `statement_timeout` (CFG-01), and exports raise it locally
+    (`SET LOCAL statement_timeout`);
   - a test holds the order.
 - **Severity:** High if they are missing (the migration lock timeout included); Medium for the
   order alone.
@@ -546,7 +547,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 
 ### DATA-11: Query shape
 - **Check:**
-  - no loading of unbounded data to count, average or filter in Java;
+  - no loading of rows without a page or a `LIMIT` to count, average or filter in Java;
   - no N+1;
   - no `findAll()` behind an endpoint;
   - count queries are skipped when the page isn't full; cursor lists never count;
@@ -559,7 +560,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     every skipped row, which the consumer's need for page numbers accepts;
   - **outliers:** a loop over one owner's rows (a user's todos, a tenant's orders) that loads them all,
     an export with no page, an in-memory sort or a cap check that counts them all is a finding.
-- **Severity:** High for unbounded loads; Medium for N+1.
+- **Severity:** High for a load without a page or a `LIMIT`; Medium for N+1.
 
 ### DATA-12: Columns fit the data
 - **Check:**

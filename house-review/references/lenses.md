@@ -151,7 +151,7 @@ is code-smells.md, java.md and architecture.md.
      `synchronized` no longer pins, but native frames and class initialisation still can;
   4. **which metric would show a regression in production.**
 
-  Shared expensive reads are cached, and a cache hit takes no connection (the lazy proxy, DATA-20).
+  A cache hit takes no connection (the lazy proxy, DATA-20).
 - **Detect:** a new index on `updated_at` or `version`: every update of that table stops being a HOT
   update (DATA-10).
 - **Severity:** Medium (High when it is unbounded).
@@ -167,8 +167,9 @@ is code-smells.md, java.md and architecture.md.
 ### PERF-03: Under virtual threads, bound concurrency explicitly
 - **Check:** with virtual threads, `server.tomcat.threads.max` bounds nothing (k6: 1,995 requests
   waiting on the pool). Admission control does the bounding:
-  - a Resilience4j **semaphore** bulkhead per route group (about 2× the pool for request groups,
-    small for reports and exports), or Spring 7 `@ConcurrencyLimit`;
+  - a Resilience4j **semaphore** bulkhead per route group (the `api` group at least 2× the pool,
+    checked at startup, golden `app.admission`; a report or export group's limit is the developer's
+    number), or Spring 7 `@ConcurrencyLimit`;
   - a short max-wait, then 503 `SERVER_BUSY` + `Retry-After`;
   - a rejected-count metric per group;
   - placed before the security chain; the actuator is never capped.
@@ -179,8 +180,9 @@ is code-smells.md, java.md and architecture.md.
   - exports read in bounded keyset pages, one short read-only transaction per page, streaming
     between transactions;
   - CPU work and uploads run with no transaction;
-  - exact counts over large sets are capped ("10,000+") and computed once per filter set
-    (F-079: p50 of 3.4 s from exact counts);
+  - an offset list counts only on a full page, a cursor list never (DATA-11). **Extension point (a
+    use case):** a project whose counts get slow caps them ("10,000+") and computes them once per
+    filter set (F-079: p50 of 3.4 s from exact counts);
   - export and report row caps exist;
   - CSV is written with a library (Commons CSV, Jackson CSV), never hand-quoted, and a cell
     starting with `=`, `+`, `-`, `@`, tab or CR is neutralised (prefixed with `'`): a spreadsheet
@@ -442,7 +444,7 @@ is code-smells.md, java.md and architecture.md.
 ## Lens 8: Concurrency (CONC)
 
 ### CONC-01: Two threads, same data, same instant
-- **Check:** for every state change, dedupe, counter, cap or uniqueness rule, consider:
+- **Check:** for every state change, dedupe, counter, cap or uniqueness rule, check each of:
   - lost updates (DATA-06);
   - check-then-act (DATA-05);
   - caps (DATA-29);
@@ -547,8 +549,8 @@ resilience or failure-injection test is Medium).
     it in again on use (`signIn(account)`): the token lives `app.jwt.access-token-ttl` (at most
     15 minutes, checked at startup), and a run that passes it turns every later call into 401;
   - the test profile lowers bcrypt's cost (`app.security.password-hash-strength: 4`; at production's
-    12 every account costs about half a second: a hash at signup, another at login). A class that
-    creates many accounts still prefers one per role per test to one per call.
+    12 every account costs about half a second: a hash at signup, another at login). Even so, a test
+    creates one account per role, never one per call.
 - **MockMvc traps:**
   - a query value with special characters goes through `.param(...)`: `get(String)` treats the
     string as a URI template and encodes `%25` a second time, so the test sends something else;

@@ -281,5 +281,5 @@ How the skill uses it:
    - a dated comment on every carve-out.
 
    Also offer it when an automatable guideline finding recurs.
-4. Use `FreezingArchRule` only to adopt ArchUnit on a large legacy codebase, and its stored
-   violations go in the deviation register.
+4. Use `FreezingArchRule` only when the developer chooses to freeze existing violations instead of
+   fixing them first, and its stored violations go in the deviation register.

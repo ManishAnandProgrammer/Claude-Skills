@@ -114,7 +114,8 @@ there), use them instead and say so in the report's header, with the commit they
   diagnose them beyond reading the failure, unless they are in scope.
 - A red ArchUnit rule is a finding citing the rule name and its `because`. Don't hand-check what
   a green ArchUnit rule guarantees: list it under "Checked and fine (ArchUnit)".
-- Note the total duration. A suite that got slower is worth one line in the report.
+- Note the total duration. When an earlier report in `reportDir` records one, give the difference in
+  one line.
 
 ---
 
@@ -155,7 +156,8 @@ of every endpoint.
 3. **Trace one critical use case end to end:** entry point, service, domain, writes, events,
    async work, response. Answer: who owns the workflow, where the transaction boundary is, where
    the side effects happen, and how many modules took part.
-4. **Change-blast test:** simulate one likely change and count the files and modules it touches.
+4. **Change-blast test:** simulate adding one field to the module's main entity (request,
+   response, mapper, changeset) and count the files and modules it touches.
 5. **Output:**
    - a one- or two-sentence **structural verdict**;
    - the **deep pattern** (workflow entanglement, boundary contamination, orchestration sink,

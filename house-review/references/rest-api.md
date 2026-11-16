@@ -438,7 +438,7 @@ types.
   `api-facades` mode, ARCH-06), so their validation, scoping and caching still apply; it never reads
   repositories itself. Each part keeps its own size cap.
 - **Detect:** a screen documented (frontend contract, API changelog, a client) as needing more
-  than about five calls on open.
+  than five calls on open.
 - **Not a finding when:** the calls are lazy (below the fold, on a tab switch). Not generated:
   added when a screen asks for it.
 - **Severity:** Medium.

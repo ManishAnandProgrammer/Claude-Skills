@@ -351,7 +351,7 @@ at its end.
   `cursorLists` / `offsetLists` in each: the review profile's lists are REST-08's source).
 
 - **A feature that needs configuration, not an entity** (rules an admin chooses per tenant or per
-  context, read often, changed rarely): with the `metadata` piece, generate no entity. Rules:
+  context: META-01): with the `metadata` piece, generate no entity. Rules:
   house-review `metadata.md` (META-01…09). Golden: `metadata/` (the fixed key
   `TODO_LIST_DEFAULTS`; the per-context key `MetadataKeys.todoListSettings(listId)`; the record
   `TodoListSettings`) and `MetadataIntegrationTest`, `CounterIntegrationTest`. A per-context value

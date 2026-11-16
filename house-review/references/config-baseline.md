@@ -63,7 +63,7 @@ query plan cache size left at its default.
     `log_autovacuum_min_duration` set (e.g. `10s`), so slow vacuums show in the log;
   - an alert on `age(datfrozenxid)` above about 1 billion (wraparound stops writes at about 2
     billion, and recovery is a manual `VACUUM FREEZE`);
-  - dead tuples on the hot tables watched (`pg_stat_user_tables.n_dead_tup`); a long `idle in
+  - dead tuples watched per table (`pg_stat_user_tables.n_dead_tup`); a long `idle in
     transaction` session (which blocks vacuum) is already cut by
     `idle_in_transaction_session_timeout` (CFG-01).
 

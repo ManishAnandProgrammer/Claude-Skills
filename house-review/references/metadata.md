@@ -7,11 +7,11 @@ the short rules; this file has them with their reasons and the tenancy guide). A
 only when the project has that piece.
 
 ### META-01: Metadata is configuration, not a hidden table
-- **Check:** a key holds one value, read often and changed rarely, by an admin (a todo list's
-  settings, a store's opening hours, a feature switch, a template choice). Records that grow, are listed, filtered or
+- **Check:** a key holds one value, set by an admin (a todo list's
+  settings, a store's opening hours, a feature switch, a template choice). Records that are added over time, listed, filtered or
   have their own lifecycle are real tables with columns, indexes and constraints.
 - **Detect:** keys built from timestamps or counters (`SURVEY_FORM_<datetime>`); `key LIKE 'X%'`;
-  `value ->> 'field'` in a `WHERE`; a service that loops over many metadata rows.
+  `value ->> 'field'` in a `WHERE`; a service that loops over the rows a metadata query returns.
 - **Severity:** High.
 
 ### META-02: One plain record per key
@@ -118,5 +118,5 @@ only when the project has that piece.
 
 Not in scope by default: history (audit columns and `version` record the last change; a project
 that must show earlier values adds Envers, an approved dependency, or an append-only
-`configuration_metadata_history` table at bootstrap) and caching (a read is one indexed lookup; cache only a key read repeatedly on a
-hot path, with eviction on every write across instances).
+`configuration_metadata_history` table at bootstrap) and caching (a read is one indexed lookup; a project that caches a key, a use case, evicts it on
+every write across instances).

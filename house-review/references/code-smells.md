@@ -26,7 +26,7 @@ Lines are counted without blank or comment lines.
   reasons (HTTP transport + resilience + message wording + parsing).
 - **Detect:**
   - list the class's responsibilities, one line each; 4 or more is a finding;
-  - injected collaborators: 1–4 normal, 5–7 review, 8+ likely too broad;
+  - injected collaborators: 8 or more is a finding; 5–7 sends you to the responsibility list above;
   - ask "if two unrelated rules change, do they both hit this class?".
 - **Severity:** Medium.
 - **Fix:** split by use case or workflow slice, within the same module. Don't extract random
@@ -78,11 +78,11 @@ Lines are counted without blank or comment lines.
 - **Severity:** Medium.
 
 ### SMELL-10: Shotgun surgery
-- **Check:** one change needs edits in many unrelated classes (e.g. adding a payload field in 3
+- **Check:** one change needs edits in unrelated classes (e.g. adding a payload field in 3
   hand-copied places; a workflow rule split between two modules).
-- **Detect:** the change-blast test. Simulate one likely change and count what it touches: one
-  module and a few files is healthy; many modules plus DTOs, mappers, listeners and transactions
-  is High.
+- **Detect:** the change-blast test (SKILL.md Step 3a): the change stays in one module; one that
+  needs edits in two or more modules, their DTOs, mappers, listeners or transactions included, is
+  High.
 - **Fix:** put the knowledge in one place. (The "reuse the entity as a DTO / reflection mapping"
   fix in Coding_Standards §10 is **not** used: DTOs at boundaries and hand-written mappers are
   house rules.)
@@ -209,7 +209,7 @@ Lines are counted without blank or comment lines.
 - **Severity:** Low.
 
 ### SMELL-26: Incomplete library class
-- **Check:** a missing library capability worked around in many places.
+- **Check:** a missing library capability worked around in two or more places.
 - **Fix:** wrap it once in an adapter.
 - **Severity:** Low.
 
