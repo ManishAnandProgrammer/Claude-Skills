@@ -26,6 +26,9 @@ import java.util.UUID;
 @Repository
 class TimeEntryRepositoryImpl implements CustomTimeEntryRepository {
 
+    /** Every order's keyset: its sort key, then the id. */
+    private static final int CURSOR_KEYS = 2;
+
     private final EntityManager entityManager;
 
     TimeEntryRepositoryImpl(EntityManager entityManager) {
@@ -36,7 +39,7 @@ class TimeEntryRepositoryImpl implements CustomTimeEntryRepository {
     @Override
     public CursorBatch<TimeEntryResponse> findByFilter(TimeEntryFilter filter, UUID todoId, UUID ownerId, int size) {
         String sort = filter.getSort().name();
-        Cursor cursor = Cursor.read(filter.getAfter(), sort);
+        Cursor cursor = Cursor.read(filter.getAfter(), sort, CURSOR_KEYS);
 
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaQuery<TimeEntryResponse> query = builder.createQuery(TimeEntryResponse.class);

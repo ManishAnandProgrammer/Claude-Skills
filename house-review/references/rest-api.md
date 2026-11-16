@@ -139,6 +139,12 @@ the path.
     reference's `PlanFilter`; its parents' text is searched in their own lists);
   - **sorting:** a sort enum (allow-list), a stable tie-breaker (id); a cursor carries its sort, and
     one from another sort is refused;
+  - **a tampered cursor is a 400** `REQUEST_PARAMETER_INVALID` naming `after`, never a 500: `Cursor.read`
+    takes the sort and its key count (a key missing or extra is refused), and each key reader takes a key
+    only in the form `Cursor.write` gives it and only inside what the column stores (text without U+0000
+    or a lone surrogate; a canonical id; a day or moment in years 1-9999, PostgreSQL's range being
+    narrower than `java.time`'s, a moment in microseconds; an `integer`'s range; an enum's exact names).
+    A new key type gets a reader in that shape;
   - **the cursor's length limit** (`app.limits.text.cursor`) holds the cursor the server writes after
     the longest value of every text key a cursor carries (a text sort key, a dropdown's label):
     Base64url JSON, a control character escaped in six bytes, so `(6 × @MaxLength + 100) × 4/3`.
@@ -149,7 +155,10 @@ the path.
     release (merged for Spring Framework 7.1) and the proxies and OpenAPI tooling pass it.
 - **Detect:** a `PageRequest` from raw client values; an unbounded `findAll()` behind an endpoint;
   a sort as a free String; an OFFSET list over a growing table; a count on a cursor list; a cursor
-  limit below `(6 × max + 100) × 4/3` for a text sort key or a dropdown label.
+  limit below `(6 × max + 100) × 4/3` for a text sort key or a dropdown label; a cursor key parsed by
+  `java.time` with no range check, by `UUID.fromString`/`Integer.valueOf` without comparing with what was
+  written, or as an enum through `valueOf` outside `Cursor` (a 500 on a bad name); `Cursor.read` without
+  the key count.
 - **Severity:** High for an unbounded list, otherwise Medium.
 
 ### REST-09: Validation layers

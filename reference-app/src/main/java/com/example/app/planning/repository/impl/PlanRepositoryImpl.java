@@ -26,6 +26,9 @@ import java.util.UUID;
 @Repository
 class PlanRepositoryImpl implements CustomPlanRepository {
 
+    /** Every order's keyset: its sort key, then the id. */
+    private static final int CURSOR_KEYS = 2;
+
     private final EntityManager entityManager;
     private final Limits limits;
 
@@ -44,7 +47,7 @@ class PlanRepositoryImpl implements CustomPlanRepository {
     @Override
     public CursorBatch<PlanRow> findByFilter(PlanFilter filter, UUID ownerId, int size) {
         String sort = filter.getSort().name();
-        Cursor cursor = Cursor.read(filter.getAfter(), sort);
+        Cursor cursor = Cursor.read(filter.getAfter(), sort, CURSOR_KEYS);
 
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaQuery<PlanRow> query = builder.createQuery(PlanRow.class);

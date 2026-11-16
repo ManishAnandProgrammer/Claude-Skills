@@ -1,5 +1,6 @@
 package com.example.app.planning;
 
+import com.example.app.common.pagination.Cursor;
 import com.example.app.support.IntegrationTest;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.DisplayName;
@@ -9,6 +10,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -781,6 +783,29 @@ class PlanIntegrationTest extends IntegrationTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
                     .andExpect(jsonPath("$.errors[0].parameter").value("after"));
+        }
+    }
+
+    @Test
+    @DisplayName("A cursor key the database can't store or the list doesn't expect is 400 naming after, never a 500")
+    void cursorKeysTheDatabaseCantTakeAreRefused() throws Exception {
+        TestUser user = newUser();
+        String id = UUID.randomUUID().toString();
+        List<String> paths = List.of(
+                PLANS + "?sort=STARTS_ON&after=" + Cursor.write("STARTS_ON", "-300000-01-01", id),
+                PLANS + "?sort=STARTS_ON&after=" + Cursor.write("STARTS_ON", "+300000-01-01", id),
+                PLANS + "?sort=NEWEST&after=" + Cursor.write("NEWEST", "+290000-01-01T00:00:00Z", id),
+                PLANS + "?sort=NEWEST&after=" + Cursor.write("NEWEST", Instant.MIN.toString(), id),
+                PLANS + "?sort=NEWEST&after=" + Cursor.write("NEWEST", Instant.MAX.toString(), id),
+                PLANS + "?sort=STARTS_ON&after=" + Cursor.write("STARTS_ON", "2026-11-14", id, id));
+
+        for (String path : paths) {
+            String body = getAs(user.accessToken(), path)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                    .andExpect(jsonPath("$.errors[0].parameter").value("after"))
+                    .andReturn().getResponse().getContentAsString();
+            assertNoInternals(body);
         }
     }
 

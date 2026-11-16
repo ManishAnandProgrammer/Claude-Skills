@@ -650,9 +650,11 @@ Golden: `TodoRepositoryImpl` (cursor), `TodoListRepositoryImpl` (offset + dropdo
 - **Derived values** (days between two dates, the days left of a balance) are computed by one
   static method of the entity, which the entity and the projection's constructor both call; never
   the formula written twice.
-- Cursor: `Cursor cursor = Cursor.read(filter.getAfter(), sort)`; `if (cursor.isPresent())` add
+- Cursor: `Cursor cursor = Cursor.read(filter.getAfter(), sort, CURSOR_KEYS)` (the keys every order
+  writes, its sort keys and the id: a cursor with a key more or less is a 400); `if (cursor.isPresent())` add
   `Seek.after(builder, descending, key1, cursor.text(0), …, id, cursor.uuid(n))` (one row-value
-  comparison, never a hand-written seek: DATA-10); **NEWEST is `createdAt` then the id**
+  comparison, never a hand-written seek: DATA-10; each key through its typed reader, `text`, `uuid`,
+  `date`, `instant`, `number`, `enumValue`, which refuse what the column can't store: REST-08); **NEWEST is `createdAt` then the id**
   (`Seek.after(builder, true, root.get(X_.createdAt), cursor.instant(0), root.get(X_.id), cursor.uuid(1))`,
   an offset list's `Sort.by(desc("createdAt"), desc("id"))`, the index `(scope…, created_at, id)`), never
   the id alone, whose primary key competes with the scope's index (DATA-10, golden `TodoRepositoryImpl`);

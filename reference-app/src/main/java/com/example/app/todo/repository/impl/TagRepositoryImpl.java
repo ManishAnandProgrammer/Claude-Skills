@@ -36,6 +36,9 @@ class TagRepositoryImpl implements CustomTagRepository {
     private static final String NAME_ASC = "NAME_ASC";
     private static final String NAME_DESC = "NAME_DESC";
 
+    /** Every order's keyset: its sort key, then the id. */
+    private static final int CURSOR_KEYS = 2;
+
     private final EntityManager entityManager;
 
     TagRepositoryImpl(EntityManager entityManager) {
@@ -67,7 +70,7 @@ class TagRepositoryImpl implements CustomTagRepository {
     public CursorBatch<DropdownItem> findDropdownItems(DropdownFilter filter, UUID ownerId, int size) {
         boolean descending = filter.getSortDirection() == DropdownCandidate.SortDirection.DESC;
         String sort = descending ? NAME_DESC : NAME_ASC;
-        Cursor cursor = Cursor.read(filter.getAfter(), sort);
+        Cursor cursor = Cursor.read(filter.getAfter(), sort, CURSOR_KEYS);
 
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaQuery<DropdownItem> query = builder.createQuery(DropdownItem.class);

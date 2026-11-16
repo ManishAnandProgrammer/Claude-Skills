@@ -29,6 +29,9 @@ class PlatformAuditEntryRepositoryImpl implements CustomPlatformAuditEntryReposi
      */
     private static final String SORT = "NEWEST";
 
+    /** Every order's keyset: its sort key, then the id. */
+    private static final int CURSOR_KEYS = 2;
+
     private final EntityManager entityManager;
 
     PlatformAuditEntryRepositoryImpl(EntityManager entityManager) {
@@ -37,7 +40,7 @@ class PlatformAuditEntryRepositoryImpl implements CustomPlatformAuditEntryReposi
 
     @Override
     public CursorBatch<PlatformAuditResponse> findByTenant(UUID tenantId, PlatformAuditFilter filter, int size) {
-        Cursor cursor = Cursor.read(filter.getAfter(), SORT);
+        Cursor cursor = Cursor.read(filter.getAfter(), SORT, CURSOR_KEYS);
 
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaQuery<PlatformAuditResponse> query = builder.createQuery(PlatformAuditResponse.class);

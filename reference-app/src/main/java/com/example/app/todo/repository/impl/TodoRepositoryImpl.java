@@ -36,6 +36,9 @@ class TodoRepositoryImpl implements CustomTodoRepository {
     /** The same value as the {@code due_sort} expression in changeset 0003. */
     private static final LocalDate UNDATED_SORTS_LAST = LocalDate.of(9999, 12, 31);
 
+    /** Every order's keyset: its sort key, then the id. */
+    private static final int CURSOR_KEYS = 2;
+
     private final EntityManager entityManager;
 
     TodoRepositoryImpl(EntityManager entityManager) {
@@ -51,7 +54,7 @@ class TodoRepositoryImpl implements CustomTodoRepository {
     @Override
     public CursorBatch<TodoSummaryResponse> findByFilter(TodoFilter filter, UUID ownerId, int size) {
         String sort = filter.getSort().name();
-        Cursor cursor = Cursor.read(filter.getAfter(), sort);
+        Cursor cursor = Cursor.read(filter.getAfter(), sort, CURSOR_KEYS);
 
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaQuery<TodoSummaryResponse> query = builder.createQuery(TodoSummaryResponse.class);
