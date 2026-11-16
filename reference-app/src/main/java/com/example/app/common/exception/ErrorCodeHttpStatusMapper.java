@@ -96,6 +96,7 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.TAG_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TAG_NAME_TAKEN, HttpStatus.CONFLICT);
         MAPPING.put(ErrorCode.TAG_GONE, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.TAG_MERGE_INTO_ITSELF, HttpStatus.BAD_REQUEST);
         // media:begin
         MAPPING.put(ErrorCode.TODO_ATTACHMENT_NOT_FOUND, HttpStatus.NOT_FOUND);
         // media:end

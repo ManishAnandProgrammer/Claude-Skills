@@ -7,6 +7,7 @@ import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.todo.dto.request.TagCreateRequest;
 import com.example.app.todo.dto.request.TagFilter;
+import com.example.app.todo.dto.request.TagMergeRequest;
 import com.example.app.todo.dto.request.TagUpdateRequest;
 import com.example.app.todo.dto.response.TagResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -96,6 +97,24 @@ public interface TagApi {
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     void delete(UUID id);
+
+    @Operation(summary = "Merge another of your tags into this one", description = """
+            Every todo carrying sourceTagId carries this tag instead (once, when it carried both), and the \
+            source tag is deleted, all at once: either all of it happens or nothing does. Each todo whose tags \
+            changed gets a new version. This tag itself stays as it was, its version too. A todo tagged with \
+            the source while the merge runs is refused with 404 TAG_GONE.""")
+    @ApiResponse(responseCode = "200", description = "Merged: this tag")
+    @ApiResponse(responseCode = "400", description = """
+            VALIDATION_FAILED (sourceTagId missing; see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (the \
+            id is not a UUID), TAG_MERGE_INTO_ITSELF (sourceTagId is this tag)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "TAG_NOT_FOUND (this tag or the source: missing, or another user's)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ObjectWrapper<TagResponse> merge(UUID id, TagMergeRequest request);
 
     @Operation(summary = "Options for the Tag dropdown", description = """
             Your tags as {value, label}, ordered by name (sortDirection DESC reverses it), in batches: \

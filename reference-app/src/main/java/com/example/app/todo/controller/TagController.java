@@ -8,8 +8,10 @@ import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.todo.controller.api.TagApi;
 import com.example.app.todo.dto.request.TagCreateRequest;
 import com.example.app.todo.dto.request.TagFilter;
+import com.example.app.todo.dto.request.TagMergeRequest;
 import com.example.app.todo.dto.request.TagUpdateRequest;
 import com.example.app.todo.dto.response.TagResponse;
+import com.example.app.todo.service.TagMergeManager;
 import com.example.app.todo.service.TagService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,7 @@ import java.util.UUID;
 class TagController implements TagApi {
 
     private final TagService service;
+    private final TagMergeManager mergeManager;
 
     @Override
     @GetMapping(version = "v1+")
@@ -64,6 +67,12 @@ class TagController implements TagApi {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);
+    }
+
+    @Override
+    @PostMapping(path = "/{id}/merge", version = "v1+")
+    public ObjectWrapper<TagResponse> merge(@PathVariable UUID id, @RequestBody @Valid TagMergeRequest request) {
+        return mergeManager.merge(id, request);
     }
 
     @Override

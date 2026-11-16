@@ -5,6 +5,9 @@ import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Paging;
 import com.example.app.common.security.CurrentUser;
+// tenancy-row:begin
+// import com.example.app.common.tenancy.TenantContext;
+// tenancy-row:end
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 // media:begin
@@ -55,6 +58,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -221,6 +225,29 @@ public class TodoService implements Todos {
         todo.replaceTags(tagService.getOwnedTags(request.tagIds(), ownerId));
         repository.flush();
         return ObjectWrapper.withObject(toResponse(todo));
+    }
+
+    /**
+     * A tag merge's todo half (TagMergeManager), after both tags are locked: every todo carrying the source
+     * carries the target instead (once, when it carried both), and its version moves. The todos are locked
+     * first, in id order, as their own writes lock them, then changed by three statements whatever their
+     * number: the merge never loads them. The source's key lock means no link to it is added meanwhile.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void moveTagLinks(UUID sourceTagId, UUID targetTagId, UUID ownerId) {
+        Instant now = clock.instant();
+        UUID userId = currentUser.id();
+        // tenancy-row:begin
+        // UUID tenantId = TenantContext.id();
+        // repository.lockAllCarryingTag(tenantId, sourceTagId, ownerId);
+        // repository.bumpVersionsOfAllCarryingTag(sourceTagId, ownerId, now, userId);
+        // todoTagRepository.addTargetWhereSourceIs(tenantId, sourceTagId, targetTagId, ownerId, now, userId);
+        // tenancy-row:else
+        repository.lockAllCarryingTag(sourceTagId, ownerId);
+        repository.bumpVersionsOfAllCarryingTag(sourceTagId, ownerId, now, userId);
+        todoTagRepository.addTargetWhereSourceIs(sourceTagId, targetTagId, ownerId, now, userId);
+        // tenancy-row:end
+        todoTagRepository.deleteAllOfTag(sourceTagId, ownerId);
     }
 
     @Transactional

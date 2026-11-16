@@ -135,6 +135,8 @@ public enum ErrorCode {
     TAG_NAME_TAKEN,
     /** Deleted between the write's read of it and the insert of its link to a todo. */
     TAG_GONE,
+    /** A merge that names one tag as both the source and the target: the tag's id. */
+    TAG_MERGE_INTO_ITSELF,
     // media:begin
 
     // ── Todo attachments ─────────────────────────────────────────────────
