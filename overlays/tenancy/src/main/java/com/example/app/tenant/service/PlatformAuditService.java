@@ -33,10 +33,13 @@ public class PlatformAuditService implements PlatformAudit {
         repository.save(PlatformAuditEntry.of(currentUser.id(), tenantId, action, detail));
     }
 
-    /** A tenant's support history for staff, newest first. 404 {@code TENANT_NOT_FOUND}. */
+    /**
+     * A tenant's support history for staff, newest first. 404 {@code TENANT_NOT_FOUND}. The batch is read first,
+     * so its cursor is checked before the lookup (a tampered one is 400 whatever the tenant).
+     */
     public CursorWrapper<PlatformAuditResponse> findByTenant(UUID tenantId, PlatformAuditFilter filter) {
-        tenants.getTenant(tenantId);
         CursorBatch<PlatformAuditResponse> batch = repository.findByTenant(tenantId, filter, paging.cursorSize(filter));
+        tenants.getTenant(tenantId);
         return CursorWrapper.of(batch.items(), batch.nextCursor());
     }
 }

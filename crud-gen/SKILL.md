@@ -315,7 +315,9 @@ at its end.
   `TodoApi` / `TodoController` / `TodoService`): no service, controller or API of its own; endpoints
   nested under the root (`/<roots>/{<root>Id}/<members>`) in the root's API, controller and service.
   Ask: may a root with members be deleted (cascade), or is it 409 `<ROOT>_IN_USE`? Follow the golden
-  methods for the rest (owner check on the root first, the root read without a lock on create: its
+  methods for the rest (a list reads its batch, and so its cursor, before the root's owner check: bad input
+  is 400 before any lookup, the batch holding the owner's rows only; a write checks the owner of the root
+  first; the root read without a lock on create: its
   foreign key refuses an entry after the root's delete, 404 `<ROOT>_GONE`; the root's version
   untouched).
 - **Variant N: many-to-many between aggregates** (golden `TodoTag`, `Todo.replaceTags`,

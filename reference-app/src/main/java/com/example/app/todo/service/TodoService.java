@@ -286,12 +286,16 @@ public class TodoService implements Todos {
         return ObjectWrapper.withObject(timeEntryMapper.toResponse(getOwnedTimeEntry(todoId, id, currentUser.id())));
     }
 
-    /** An unknown or foreign todo is a 404, not an empty list. */
+    /**
+     * An unknown or foreign todo is a 404, not an empty list. The batch is read first, so its cursor is checked
+     * before any lookup (a tampered one is 400 whatever the todo); the batch is the owner's rows only, so
+     * nothing of another's todo is read.
+     */
     public CursorWrapper<TimeEntryResponse> findTimeEntries(UUID todoId, TimeEntryFilter filter) {
         UUID ownerId = currentUser.id();
-        getOwnedTodo(todoId, ownerId);
         CursorBatch<TimeEntryResponse> batch =
                 timeEntryRepository.findByFilter(filter, todoId, ownerId, paging.cursorSize(filter));
+        getOwnedTodo(todoId, ownerId);
         return CursorWrapper.of(batch.items(), batch.nextCursor());
     }
 

@@ -292,9 +292,8 @@ class EndpointContractIntegrationTest extends IntegrationTest {
         List<String> accepted = new ArrayList<>();
         String token = newUser().accessToken();
         for (Endpoint endpoint : endpoints()) {
-            // A list under a parent (an id in its path) finds the parent first: an unknown one is its 404, so
-            // its own class tests the cursor (crud-gen tests.md row 17).
-            if (endpoint.method().equals("GET") && endpoint.hasQueryParameter("after") && endpoint.uuidPathVariables().isEmpty()) {
+            // A list under a parent reads its cursor before it looks the parent up: an unknown parent's id is enough.
+            if (endpoint.method().equals("GET") && endpoint.hasQueryParameter("after")) {
                 MockHttpServletResponse answer = send(endpoint, endpoint.pathWith("after=bm90LWEtY3Vyc29y"), tokenFor(endpoint, token), null);
                 if (!isProblem(answer, 400, "REQUEST_PARAMETER_INVALID") || !parameterOf(answer).equals("after")) {
                     accepted.add(endpoint.name() + " answered " + answer.getStatus() + " " + answer.getContentAsString());
