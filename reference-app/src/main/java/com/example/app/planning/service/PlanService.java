@@ -90,21 +90,28 @@ public class PlanService {
     }
 
     /**
-     * New days for a plan, the version checked first. The plan's row lock (the update's) queues
-     * reschedules of one plan; reschedules of two of the owner's plans onto the same days meet in
-     * {@code ex_plans_owner_id_dates}: one wins, the other is 409 {@code PLAN_OVERLAPS}, or 503
-     * {@code DATABASE_CONTENTION} when the constraint's check deadlocks (the retry then answers 409). The
-     * todo is read like the GET's, after the write: it can't be deleted while it has this plan.
+     * New days for a plan, the version checked first, then its own status (a final plan is frozen, whatever
+     * its todo's state). A plan's days move only while its todo is open, the create's rule, read the create's
+     * way: the todo locked through its facade, so the todo's completion waits for this reschedule, and one
+     * that commits first makes it 409 {@code PLAN_TODO_DONE}. Locks in the create's order, the todo before the
+     * plan's row (the update's). The plan's row lock queues reschedules of one plan; reschedules of two of the
+     * owner's plans onto the same days meet in {@code ex_plans_owner_id_dates}: one wins, the other is 409
+     * {@code PLAN_OVERLAPS}, or 503 {@code DATABASE_CONTENTION} when the constraint's check deadlocks (the
+     * retry then answers 409). The todo can't be deleted while it has this plan, so the locked view is the
+     * response's.
      */
     @Transactional
     public ObjectWrapper<PlanResponse> update(UUID id, PlanUpdateRequest request) {
         UUID ownerId = currentUser.id();
         Plan plan = getOwnedPlan(id, ownerId);
         plan.checkVersion(request.version());
+        plan.requirePlanned();
+        TodoView todo = todos.getOwnedTodoViewForUpdate(plan.getTodoId(), ownerId);
+        if (!todo.open()) {
+            throw AppException.of(ErrorCode.PLAN_TODO_DONE, todo.id());
+        }
         plan.reschedule(request.startsOn(), request.endsOn());
         repository.flush();
-        TodoView todo = todos.findOwnedTodoView(plan.getTodoId(), ownerId)
-                .orElseThrow(AppException.supply(ErrorCode.PLAN_NOT_FOUND, id));
         return ObjectWrapper.withObject(mapper.toResponse(plan, todo));
     }
 

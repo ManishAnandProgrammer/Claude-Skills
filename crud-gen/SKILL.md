@@ -374,8 +374,8 @@ terminal statuses** (WITHDRAWN, CANCELLED, CLOSED): may a record in one still be
 member and file writes) or deleted? When it is frozen, the entity's edit method guards it (or, when a rule the service checks comes before the edit, a public `require<Live>()` the service calls right after the version check) **first
 after the version check**, before any other rule (a configured maximum, a parent's state): 409
 `<ENTITY>_<STATUS>` (`ENROLLMENT_WITHDRAWN`, ERR-04's names; golden `Plan.requirePlanned`, first in
-`Plan.reschedule`: 409 `PLAN_DONE`, `PLAN_CANCELLED`), documented on each refused write, with
-tests.md row 26b (golden `PlanStatusIntegrationTest.aFinalPlanIsFrozen`) (whose write would also break another rule, so the order is tested); when only the delete stays open, say so in the API text. Their tests take each
+`Plan.reschedule` and called by `PlanService.update` before its todo's state: 409 `PLAN_DONE`, `PLAN_CANCELLED`), documented on each refused write, with
+tests.md row 26b (golden `PlanStatusIntegrationTest.aFinalPlanIsFrozen`, `aFinalPlanIsRefusedBeforeItsTodosState`) (whose write would also break another rule, so the order is tested); when only the delete stays open, say so in the API text. Their tests take each
 party × each action, and for a Manager each aggregate's refusal rolling both back.
 
 ---

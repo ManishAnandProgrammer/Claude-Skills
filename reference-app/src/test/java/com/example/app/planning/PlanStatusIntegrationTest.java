@@ -269,6 +269,24 @@ class PlanStatusIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("A DONE plan whose todo is done too is 409 PLAN_DONE on a PUT, not its todo's PLAN_TODO_DONE: the plan's own status comes first")
+    void aFinalPlanIsRefusedBeforeItsTodosState() throws Exception {
+        TestUser user = newUser();
+        String id = createPlan(user, STARTS_ON, "2026-01-12");
+        changeStatus(user, id, "DONE", dayFor("DONE")).andExpect(status().isOk());
+        String todoId = read(getAs(user.accessToken(), PLANS + "/" + id), "$.response.todo.id");
+        patchAs(user.accessToken(), "/api/v1/todos/" + todoId + "/status", """
+                {"status": "DONE", "version": 0}
+                """).andExpect(status().isOk());
+
+        putAs(user.accessToken(), PLANS + "/" + id, """
+                {"startsOn": "2026-04-02", "endsOn": "2026-04-03", "version": %d}
+                """.formatted(versionOf(user, id)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_DONE"));
+    }
+
+    @Test
     @DisplayName("The API docs name the status change's codes")
     void apiDocsNameTheStatusCodes() throws Exception {
         getAs(null, "/v3/api-docs")

@@ -75,9 +75,10 @@ public class Plan extends AuditableEntity {
 
     /**
      * A DONE or CANCELLED plan is final: every edit is refused with 409 naming the status ({@code PLAN_DONE},
-     * {@code PLAN_CANCELLED}), before any other rule the edit checks. A delete stays open.
+     * {@code PLAN_CANCELLED}), before any other rule the edit checks. A delete stays open. Public because the
+     * reschedule checks its todo's state before calling {@link #reschedule}: the service calls this first.
      */
-    private void requirePlanned() {
+    public void requirePlanned() {
         if (status == PlanStatus.DONE) {
             throw AppException.of(ErrorCode.PLAN_DONE, getId());
         }

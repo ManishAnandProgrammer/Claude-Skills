@@ -660,6 +660,56 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("""
+            Rescheduling a plan whose todo is done is 409 PLAN_TODO_DONE, as the create, without internals; the plan \
+            unchanged; reopened, the todo's plan moves again""")
+    void rescheduleOfADoneTodosPlanIs409() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Done later");
+        String id = createPlan(user, todoId, "2026-11-20", "2026-11-22");
+        complete(user, todoId, 0).andExpect(status().isOk());
+
+        String body = update(user, id, "2026-12-20", "2026-12-22", 0)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_TODO_DONE"))
+                .andExpect(jsonPath("$.detail", containsString(todoId)))
+                .andReturn().getResponse().getContentAsString();
+        assertNoInternals(body);
+        getAs(user.accessToken(), PLANS + "/" + id)
+                .andExpect(jsonPath("$.response.startsOn").value("2026-11-20"))
+                .andExpect(jsonPath("$.response.version").value(0));
+
+        patchAs(user.accessToken(), TODOS + "/" + todoId + "/status", """
+                {"status": "OPEN", "version": 1}
+                """).andExpect(status().isOk());
+        update(user, id, "2026-12-20", "2026-12-22", 0).andExpect(status().isOk());
+    }
+
+    /**
+     * Row 23b for the reschedule: it checks the todo is open under the todo's lock, as the create does. Held
+     * at its write to the plan, it keeps the todo's completion waiting, which then applies after the move,
+     * made while the todo was open. Without the lock the completion commits first under the gate (the
+     * helper's "waits" assertion goes red).
+     */
+    @Test
+    @DisplayName("A todo completed while its plan is being rescheduled waits for the reschedule: the move is 200, the completion 200 after it")
+    void completionRacingARescheduleWaitsForIt() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Nearly done");
+        String id = createPlan(user, todoId, "2026-11-20", "2026-11-22");
+        List<Callable<ResultActions>> reschedules = List.of(() -> update(user, id, "2026-12-20", "2026-12-22", 0));
+
+        HeldWrites race = writesHeldWhileTheParentWaits("plans", reschedules, () -> complete(user, todoId, 0));
+
+        assertThat(race.writes()).extracting(Answer::status).containsExactly(200);
+        assertThat(race.parentWrite().status()).isEqualTo(200);
+        getAs(user.accessToken(), PLANS + "/" + id).andExpect(jsonPath("$.response.startsOn").value("2026-12-20"));
+        update(user, id, "2027-01-20", "2027-01-22", 1)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_TODO_DONE"));
+    }
+
+    @Test
     @DisplayName("A batch whose plan and todo are deleted between its two statements leaves that plan out, never 500")
     void listLeavesOutAPlanWhoseTodoVanishedBetweenTheReads() throws Exception {
         TestUser user = newUser();
@@ -1047,6 +1097,7 @@ class PlanIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['404'].description", not(containsString("TODO_GONE"))))
                 .andExpect(jsonPath("$.paths['/api/v1/plans/{id}'].put.responses['409'].description", containsString("PLAN_OVERLAPS")))
                 .andExpect(jsonPath("$.paths['/api/v1/plans/{id}'].put.responses['409'].description", containsString("OPTIMISTIC_LOCK_CONFLICT")))
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{id}'].put.responses['409'].description", containsString("PLAN_TODO_DONE")))
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].delete.responses['409'].description", containsString("plans")));
     }
 }

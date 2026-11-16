@@ -80,8 +80,9 @@ public interface PlanApi {
     @Operation(summary = "Move a plan's days", description = """
             Both ends at once, with the version you last read, under the same rules as the create: between \
             the configured dates, at most a configured number of days, and free of your other plans (409 \
-            PLAN_OVERLAPS; the plan's own old days don't count). Its todo stays the same. A DONE or CANCELLED plan \
-            is final: 409 PLAN_DONE or PLAN_CANCELLED, whatever the new days.""")
+            PLAN_OVERLAPS; the plan's own old days don't count). Its todo stays the same, and must still be open, \
+            as on the create (409 PLAN_TODO_DONE). A DONE or CANCELLED plan is final: 409 PLAN_DONE or \
+            PLAN_CANCELLED, whatever the new days and its todo's state.""")
     @ApiResponse(responseCode = "200", description = "The plan with its new days and version")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (a missing field, a date outside the configured earliest and latest ones, or \
@@ -94,7 +95,7 @@ public interface PlanApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = """
             OPTIMISTIC_LOCK_CONFLICT (the version is stale); PLAN_DONE, PLAN_CANCELLED (the plan is final); \
-            PLAN_OVERLAPS (the new days share one with another of your plans)""",
+            PLAN_TODO_DONE (its todo is done); PLAN_OVERLAPS (the new days share one with another of your plans)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
