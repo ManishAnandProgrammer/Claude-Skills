@@ -125,8 +125,6 @@ SELECT uuidv7(), t.id, 'TODO_NUMBER', coalesce((SELECT max(todo.number) FROM tod
   FROM tenants t WHERE t.name like 'Upgrade %';
 ALTER TABLE counters FORCE ROW LEVEL SECURITY;
 -- metadata:end
-ALTER TABLE todos FORCE ROW LEVEL SECURITY;
-ALTER TABLE todo_lists FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE tags NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE todo_tags NO FORCE ROW LEVEL SECURITY;
@@ -174,3 +172,8 @@ SELECT gen_random_uuid(), todo.tenant_id, todo.id, ('01890000-0000-7000-8003-' |
 ALTER TABLE todo_attachments FORCE ROW LEVEL SECURITY;
 ALTER TABLE media_files FORCE ROW LEVEL SECURITY;
 -- media:end
+
+-- The todos' and lists' policies last: every insert above that reads them (tags, time entries, plans,
+-- attachments) needs them lifted.
+ALTER TABLE todos FORCE ROW LEVEL SECURITY;
+ALTER TABLE todo_lists FORCE ROW LEVEL SECURITY;

@@ -196,9 +196,11 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("After 0033 every seeded tenant's plans are PLANNED without a done day")
     void theSeededPlansArePlanned() throws Exception {
-        assertThat(inTenant(ALPHA, "select count(*) from plans")).isPositive();
+        long seeded = 0;
         for (UUID tenant : TENANTS) {
+            seeded += inTenant(tenant, "select count(*) from plans");
             assertThat(inTenant(tenant, "select count(*) from plans where status <> 'PLANNED' or done_on is not null")).isZero();
         }
+        assertThat(seeded).as("the seeded plans").isPositive();
     }
 }
