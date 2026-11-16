@@ -150,6 +150,38 @@ grep -rnE "(help|campus|library)-desk|\b[Rr]ound [0-9]" "$REPO/crud-gen" "$REPO/
 grep -rn "docs/design" "$REPO/crud-gen" "$REPO/house-review/SKILL.md" "$REPO/house-review/references" "$REPO/guides" \
     && { echo "FAILED: a skill text or guide cites docs/design (a history log, not a rule)" >&2; exit 1; }
 
+# The profile templates agree with the rules: every {{key}} a skill's text uses is a row of its own template; a key
+# both templates have has one default (where both give a value, not a format); and no default is a value a rule
+# grades as a finding (NOT_A_DEFAULT: key=value, the rule that finds it).
+NOT_A_DEFAULT="NotXss=none:REST-10"
+template_default() {
+    # A row may name two keys (`migrationsDir` / `changesetAuthor`): the key in its first cell.
+    awk -F'|' -v key="\`$2\`" 'index($2, key) { gsub(/^ +| +$/, "", $3); print $3; exit }' "$REPO/$1/profile-template.md"
+}
+for skill in crud-gen house-review; do
+    for key in $(grep -rhoE '\{\{[A-Za-z]+\}\}' "$REPO/$skill" --include=*.md | tr -d '{}' | sort -u); do
+        [ "$key" = key ] && continue
+        [ -n "$(template_default "$skill" "$key")" ] \
+            || { echo "FAILED: $skill's texts use {{$key}}, which its profile-template.md has no row for" >&2; exit 1; }
+    done
+done
+for key in $(grep -oE '^\| `[A-Za-z]+` \|' "$REPO/crud-gen/profile-template.md" | tr -d '|` '); do
+    crud="$(template_default crud-gen "$key")" review="$(template_default house-review "$key")"
+    if [[ "$crud" == \`* && "$review" == \`* && "$crud" != "$review" ]]; then
+        echo "FAILED: the profile templates give $key two defaults: crud-gen $crud, house-review $review" >&2
+        exit 1
+    fi
+done
+for entry in $NOT_A_DEFAULT; do
+    key="${entry%%=*}" rest="${entry#*=}" value="${rest%%:*}" rule="${rest#*:}"
+    for skill in crud-gen house-review; do
+        if [ "$(template_default "$skill" "$key")" = "\`$value\`" ]; then
+            echo "FAILED: $skill's profile template defaults $key to $value, which $rule finds" >&2
+            exit 1
+        fi
+    done
+done
+
 # --render shows a golden file as a mode's project gets it: row mode's tenant lines live, no marker left, and
 # none of them without tenancy.
 golden_todos="src/main/resources/db/changelog/changes/0003-todos.sql"

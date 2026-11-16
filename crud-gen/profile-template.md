@@ -24,7 +24,7 @@ Fill values from the codebase, not from memory.
 | `objectFactory` | `ObjectWrapper.withObject` | Static factory that wraps one object (must accept `null`) |
 | `ListWrapper` | `com.example.dto.ListWrapper` | Fully-qualified wrapper for unpaged lists: ones the code bounds (an enum's values, a configured maximum enforced on create, a fixed relation such as a student's subjects this session) or ones the review profile's `unpagedLists` names (house-review REST-11). Never for paginated lists or dropdowns (cursor-paged) |
 | `BaseRepository` | `org.springframework.data.jpa.repository.JpaRepository` | Project base repository interface (FQN) |
-| `NotXss` | `none` | FQN of an anti-XSS constraint annotation |
+| `NotXss` | `escape-on-output` | A JSON API whose clients render text as text (no annotation generated); or the FQN of an anti-XSS constraint annotation; same value as the review profile |
 | `NoEmoji` | `none` | FQN of a no-emoji constraint annotation |
 | `AuditBase` | `none` | `@MappedSuperclass` that entities extend for audit columns |
 | `auditFields` | `none` | Ordered `name:Type` list, e.g. `createdDate:LocalDateTime, lastModifiedDate:LocalDateTime, createdBy:Long, lastModifiedBy:Long` |
@@ -60,7 +60,7 @@ Fill values from the codebase, not from memory.
 | `noEmojiFields` | `none` | The only fields that get `{{NoEmoji}}` (codes, identifiers) |
 | `idStrategy` | `uuidv7` | `uuidv7` (Hibernate `UuidVersion7Strategy`, app-assigned) or `tsid` |
 | `instances` | `multiple` | `single` or `multiple`, same value as the review profile (dropdown caching) |
-| `moduleContracts` | `service-entity-methods` | Or `api-facades` (modulith); same value as the review profile |
+| `moduleContracts` | `api-facades` | Or `service-entity-methods`; same value as the review profile |
 | `repositoryAccess` | `aggregate-service` | ARCH-15: only the aggregate's service uses its repositories; mappers receive resolved entities |
 | `aggregates` | `none` | Same value as the review profile: `Root (OwningService): Member, ...` |
 | `requestSuffix` | `Request` | `<Entity><Action>{{requestSuffix}}`: `Request` (default), `Payload` or `Command`, one per project |
@@ -116,7 +116,7 @@ review-profile Conventions row (that reads as an override of a rule).
 
 ## Fallbacks (reference, don't edit)
 
-- `NotXss` / `NoEmoji` `none` → those annotations are dropped from the validation table.
+- `NotXss` `escape-on-output` and `NoEmoji` `none` → those annotations are dropped from the validation table.
 - `AuditBase` `none` → no audit fields in Response or mapper.
 - `PaginationWrapper` `none` → run `/crud-gen bootstrap` (it creates `PaginationWrapper` +
   `PageInfo`); never fall back to `ListWrapper` for a paged list.

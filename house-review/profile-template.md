@@ -51,8 +51,10 @@ project doesn't have.
 | `cursorLists` | `all lists not in offsetLists` | Cursor (keyset) paging, the default, by REST-08's consumer rule; dropdowns always |
 | `offsetLists` | `none` | Offset lists by REST-08's consumer rule, as **entity class names** (`TodoList`), each with its consumer |
 | `unpagedLists` | `none` | REST-11: unpaged (`ListWrapper`) lists the code doesn't bound (not an enum's values, a configured maximum or a fixed relation), each with the developer's statement |
-| `NotXss` | `none` | FQN of the anti-XSS validator, or `escape-on-output` with a link to the policy |
+| `NotXss` | `escape-on-output` | A JSON API whose clients render text as text; or the FQN of the anti-XSS validator. Never `none`: REST-10 then finds every free-text field |
+| `NoEmoji` | `none` | FQN of the no-emoji constraint, for `noEmojiFields` |
 | `noEmojiFields` | `none` | Fields where `@NoEmoji` applies (codes, identifiers) |
+| `dropdownSecurity` | `@PreAuthorize("isAuthenticated()")` | REST-13: the dropdowns' read check; a role only when the resource's reads need one |
 | `tokenRevocation` | `short-lived(15)` | `blacklist` (jti blacklist with a TTL, any store, no DB connection on a cache hit), `short-lived(<max minutes>)`, or `session-version` (the bootstrap piece: a version per account or membership in every token, checked per request through Redis; SEC-07) |
 | `edgeRateLimiter` | `none` | e.g. `nginx`: the edge proxy is the IP limiter in prod (REST-14) |
 | `metricsAuth` | `pending` | How the metrics scrape is secured (CFG-06); health stays unauthenticated |
