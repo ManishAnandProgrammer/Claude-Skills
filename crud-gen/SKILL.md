@@ -206,6 +206,20 @@ view. **The view never goes on the
 wire:** the consuming module maps it into a response record of its own (golden `PlanTodoResponse`,
 `TodoAttachmentResponse`; ARCH-06, enforced by `ModuleBoundaryArchTest`).
 
+**Ask, don't guess.** Ask the developer once per entity, in one batch with the questions above, unless the
+request or the profile already says. Record each answer in the crud profile's *Decisions per entity*:
+- **text limits**: each String field's maximum length (4.2's `@MaxLength` number);
+- **date bounds**: each date's earliest and latest day (4.1's `@EarliestDate` / `@LatestDate` values);
+- **dropdown**: per dropdown, whether it is searchable (`searchable`, the `query` parameter) and its label;
+- **parent by name**: whether the detail and the list rows show each referenced parent or person by name
+  (4.3; without tenancy a person stays an id), or by id only;
+- **upload limits**: per upload purpose, the file sizes, file counts and content types (Step 5);
+- **overlap race**: with an exclusion constraint, whether DATA-35's rare 503 is accepted (the default) or
+  the endpoint's traffic makes it normal, so the scope is serialised.
+A golden value (`plan.dates`, the golden upload seed's limits) is an example, never an answer. When
+nobody can be asked (a non-interactive run), take the golden value, record it as **assumed**, and list it
+in the report.
+
 ---
 
 ## Step 2: Pre-flight the entity and its migration
@@ -491,7 +505,7 @@ description and its 400 response name it.
   "null, absent or blank for none (returned as null)".
 - **Calendar dates:** every date that reaches a column or a query, filters included, carries
   `@EarliestDate("<entity>.<field>")` (one key may serve a range's two ends, golden `plan.dates`;
-  `app.limits.earliest-date`): a `LocalDate` reaches years
+  `app.limits.earliest-date`; the values are the developer's, Step 1's *Ask, don't guess*): a `LocalDate` reaches years
   PostgreSQL's `date` can't hold, and `-300000-01-01` is otherwise a 500 at the database (REST-09).
   A date that records the past (a day worked, a birth date) also takes `@NotAfterToday`, never
   `@PastOrPresent` (JAVA-25); a filter on it a sanity `@LatestDate`. **A state action that records a
@@ -511,7 +525,7 @@ description and its 400 response name it.
 one per state action (`<Entity>Status{{requestSuffix}}`). **Every String carries `@MaxLength("<entity>.<field>")`**
 (except a closed `@Pattern` field that bounds its own length, 4.1 *Pattern fields*: golden `TagColor`), the
 elements of a String collection too (`Set<@NotBlank @MaxLength("…") String>`), and its
-number is added to `app.limits.text` in `config/limits.yml`; collections carry a configured size
+number (the developer's, Step 1's *Ask, don't guess*) is added to `app.limits.text` in `config/limits.yml`; collections carry a configured size
 limit (`@ConfiguredMaxSize("<entity>.<field>")`) and `@NotNull` elements, plus `@NotEmpty` only when
 an empty collection is meaningless (an optional set of tags may be empty); a date with a meaningful upper bound carries `@LatestDate("<entity>.<field>")`
 (`app.limits.latest-date`), e.g. below a sort sentinel. `@Schema` on every component. Golden:
@@ -558,7 +572,8 @@ parent (an id column and a facade). Three more shapes, golden on `Todo` (tests.m
   changes. A PUT is a full replace and re-sends the person it read, who may have left since: checked again,
   every record of a former member would refuse every later edit, so the one it already names is kept
   (and can be cleared with `null`), golden `TodoService.update`, `TodoUpdateRequest.requesterId`. List rows
-  carry the person as the id (`requesterId`); a screen that needs the name on rows gets it through one
+  carry the person as the id (`requesterId`); when the developer wants the name on rows (Step 1's *Ask,
+  don't guess*), it comes through one
   `Members.getMemberViews` per page (statement count + 1), never per row. With tenancy the detail shows `{id, fullName}` while
   they are a member and the id alone once they left (every record still listed and editable); without
   tenancy the id alone, as every internet account is a USER and a name is personal data (Step 1). Ask
@@ -794,8 +809,8 @@ checklist's review item stays open until that reviewer's report is clean.
       (grep them). A role that now writes a shared root names it in `Role`'s javadoc (Step 1).
 - [ ] A text key a cursor carries: `app.limits.text.cursor` holds it and its key is in
       `LimitsIntegrationTest.CURSOR_TEXT_KEYS` (4.2).
-- [ ] Asked, and recorded: each picked parent's dropdown (Step 1), whether a terminal status freezes
-      the record (Step 3), a unique code's shape (Step 2).
+- [ ] Asked, and recorded: each picked parent's dropdown and Step 1's *Ask, don't guess* list (Step 1),
+      whether a terminal status freezes the record (Step 3), a unique code's shape (Step 2).
 - [ ] A same-module parent's service changed (4.8): listed among the changed shared files.
 - [ ] Row 28: every offered filter and order names its index, which exists, and each list's first page
       is planned on its order's index (4.1); a range filter offered under its own order only; row 18b:

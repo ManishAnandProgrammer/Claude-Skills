@@ -40,7 +40,8 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
      every retry: a tenant that can never be activated). Golden tests in `TodoSeedsBackfillIntegrationTest`:
      `existingTenantsGetThePolicy` (the changeset for a tenant without the row) and
      `aPendingTenantThroughTheBackfillsIsActivated` (the backfill, then the approval: ACTIVE, one row).
-     Generate both, and both tests. Ask the user for the limits; never SVG,
+     Generate both, and both tests. The limits are the developer's answer (SKILL.md Step 1's *Ask,
+     don't guess*), never the golden seed's numbers; never SVG,
    HTML or XML. With the **project's first purpose**, the media piece's own endpoint tests
    (`UploadUrlIntegrationTest`, `UploadPolicyIntegrationTest`, `PresignedUploadIntegrationTest`)
    stop being skipped: they run against `UploadPurpose.values()[0]` with its role; run them. When that

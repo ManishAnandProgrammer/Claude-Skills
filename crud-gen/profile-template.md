@@ -108,7 +108,8 @@ These override the skill's defaults. Leave empty to follow the pattern exactly.
 <!--
 One section per generated entity, "### <Entity> (<date>)", with the owner's answers to the skill's
 questions and their reasons: aggregate root or member, owned or shared and who writes and reads, the list
-kind and its consumer, retired or deleted, how a person is erased, each picked parent's picker, the open
+kind and its consumer, retired or deleted, how a person is erased, each picked parent's picker, the
+answers to Step 1's "Ask, don't guess" list (each marked assumed when nobody could be asked), the open
 items. A choice no house rule forbids is recorded here and in the code's javadoc, never as a
 review-profile Conventions row (that reads as an override of a rule).
 -->

@@ -666,8 +666,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     each wait in the exclusion check for the other's uncommitted row, and PostgreSQL ends it as a
     deadlock. The victim answers 503 `DATABASE_CONTENTION`, exactly one row is stored, and its retry
     answers 409 (measured 2026-11-14: about 1 answer in 6 of a 6-way race, never 500, never two
-    rows). Serialise the scope only when that 503 is normal traffic for the endpoint, or when the
-    write spans several rows of the scope (a version chain's close-and-open, DATA-36: lock the
+    rows). Serialise the scope only when the developer says that 503 is normal traffic for the
+    endpoint (recorded in the crud profile, never assumed), or when the write spans several rows of
+    the scope (a version chain's close-and-open, DATA-36: lock the
     referent row);
   - the constraint is named (`ex_<table>_<columns>`) and mapped by its module's
     `ConstraintErrorCodes` to a 409 code (`<ENTITY>_OVERLAPS`, a message without placeholders: ERR-06).

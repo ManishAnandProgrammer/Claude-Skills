@@ -44,7 +44,7 @@ public @interface DropdownCandidate {
     /** Default direction of {@link #sortField()}; the request's {@code sortDirection} overrides it. */
     SortDirection sortDirection() default SortDirection.ASC;
 
-    /** {@code true} for large sets: enables the {@code query} parameter. */
+    /** {@code true} when the developer wants the picker searchable: enables the {@code query} parameter. */
     boolean searchable() default false;
 
     /** {@code true} only for static master data. */
