@@ -163,9 +163,9 @@ The rules below say which mode they apply to.
 - **Severity:** Medium (High for an unannounced breaking change).
 
 ### ARCH-14: Architecture-rule exemptions are deviations
-- **Check:** every ArchUnit carve-out has a dated reason and a register entry, and is as narrow
-  as its need ("the exemption had been far wider than the need").
-- **Severity:** Medium; High when it has grown into a hole.
+- **Check:** every ArchUnit carve-out has a dated reason and a register entry, and exempts only the
+  classes its reason names.
+- **Severity:** Medium; High when the carve-out exempts classes its dated reason doesn't name.
 
 ### ARCH-15: Aggregates own their repositories; Manager services own cross-aggregate transactions
 Within a module as well as across modules.
