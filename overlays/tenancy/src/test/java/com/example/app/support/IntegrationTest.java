@@ -467,6 +467,7 @@ public abstract class IntegrationTest {
         // tenancy-row:end
     }
     // metadata:end
+
     /**
      * The test tenant exists before any test body, @WithoutTestTenant classes included: the fixture
      * {@code jdbc} names it on every connection, and created inside a fixture's transaction it would
