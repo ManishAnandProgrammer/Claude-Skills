@@ -48,6 +48,7 @@ project doesn't have.
 | `errorCodeType` | `none` | FQN of the ErrorCode enum once it exists |
 | `cursorLists` | `all lists not in offsetLists` | Cursor (keyset) paging, the default, by REST-08's consumer rule; dropdowns always |
 | `offsetLists` | `none` | Offset lists by REST-08's consumer rule, as **entity class names** (`TodoList`), each with its consumer |
+| `unpagedLists` | `none` | REST-11: unpaged (`ListWrapper`) lists the code doesn't bound (not an enum's values, a configured maximum or a fixed relation), each with the developer's statement |
 | `NotXss` | `none` | FQN of the anti-XSS validator, or `escape-on-output` with a link to the policy |
 | `noEmojiFields` | `none` | Fields where `@NoEmoji` applies (codes, identifiers) |
 | `tokenRevocation` | `short-lived(15)` | `blacklist` (jti blacklist with a TTL, any store, no DB connection on a cache hit), `short-lived(<max minutes>)`, or `session-version` (the bootstrap piece: a version per account or membership in every token, checked per request through Redis; SEC-07) |

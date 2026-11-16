@@ -58,6 +58,7 @@ Look for `.claude/review-profile.md` at the project root.
      may be extracted later;
    - `instances`;
    - `hotPaths`;
+   - `unpagedLists` (the developer's statement for each unpaged list the code doesn't bound, REST-11);
    - `archTests` (with their carve-outs, entered in the register);
    - `publishedContracts`.
 4. Fill the **Conventions** section with the project's deliberate choices that differ from the

@@ -231,8 +231,11 @@ the path.
     `pageInfo` (number, size, totalElements, totalPages, hasNext, hasPrevious);
   - `CursorWrapper` for a **cursor-paged** list: `response` + `pageInfo {nextCursor, hasMore}`;
   - `MapWrapper` for values keyed by name;
-  - `{{ListWrapper}}` only for a list bounded by nature.
-- **Detect:** a paged list returned as `{{ListWrapper}}`, or page details put in `extraDetails`
+  - `{{ListWrapper}}` only for a list the code bounds (an enum's values, a configured maximum enforced
+    on create, a fixed relation such as a student's subjects this session), or one that
+    `{{unpagedLists}}` names with the developer's statement.
+- **Detect:** an unpaged list the code doesn't bound and `{{unpagedLists}}` doesn't name; a paged list
+  returned as `{{ListWrapper}}`, or page details put in `extraDetails`
   (they are invisible in the OpenAPI schema). A hand-built `PageInfo` that doesn't come from the
   same `Page` as the items is a finding (TEST-12, FLAG-AND-FIELD-DIVERGE).
 - **Cursor lists** (`{{cursorLists}}`): the same principle; the cursor is opaque to clients and

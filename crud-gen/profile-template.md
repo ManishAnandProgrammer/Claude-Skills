@@ -22,7 +22,7 @@ Fill values from the codebase, not from memory.
 | `urlPrefix` | `/api/{version}` | Class-level `@RequestMapping("{{urlPrefix}}/<resource-plural>")`; methods relative with `version = "v1+"` (REST-07) |
 | `ObjectWrapper` | `com.example.dto.ObjectWrapper` | Fully-qualified single-object response wrapper |
 | `objectFactory` | `ObjectWrapper.withObject` | Static factory that wraps one object (must accept `null`) |
-| `ListWrapper` | `com.example.dto.ListWrapper` | Fully-qualified wrapper for lists **bounded by nature** (small fixed sets). Never for paginated lists or dropdowns (cursor-paged) |
+| `ListWrapper` | `com.example.dto.ListWrapper` | Fully-qualified wrapper for unpaged lists: ones the code bounds (an enum's values, a configured maximum enforced on create, a fixed relation such as a student's subjects this session) or ones the review profile's `unpagedLists` names (house-review REST-11). Never for paginated lists or dropdowns (cursor-paged) |
 | `BaseRepository` | `org.springframework.data.jpa.repository.JpaRepository` | Project base repository interface (FQN) |
 | `NotXss` | `none` | FQN of an anti-XSS constraint annotation |
 | `NoEmoji` | `none` | FQN of a no-emoji constraint annotation |
