@@ -1,7 +1,7 @@
 ---
 name: house-review
 description: Review Java / Spring Boot code against the house engineering standards (REST guidelines, code smells, Effective Java, persistence pitfalls, the eight lenses incl. required tests). Works on a branch diff, a commit, uncommitted changes, a path or module, or the whole codebase. Builds and runs the tests, verifies every serious finding, handles deliberate deviations (accept + mark, or fix), reports, then offers to fix. Project conventions come from .claude/review-profile.md, built from the codebase on first use.
-argument-hint: "[diff | commit <sha> | uncommitted | all | <path>]"
+argument-hint: "[diff | commit <sha> | uncommitted | all | <path>] [--focus api|data|tests|security|config|arch]"
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
@@ -24,6 +24,9 @@ The rules are fixed and identical across projects. They live in `references/`:
 | `references/metadata.md` | META-xx | Configuration metadata and counters; only for projects with the `metadata` piece |
 | `references/media.md` | MEDIA-xx | File uploads to S3 (presigned URLs, purposes and policies, claim, verification, cleanup); only for projects with the `media` piece |
 | `references/tenancy.md` | TEN-xx | Multi-tenancy: the tenant from the token, the connection hook, the platform and tenant planes, memberships, jobs per tenant, roles; schema-per-tenant migrations; row mode's policies, keys and leakproof operators; a tenant's data as a closed graph that can move to its own database (members, per-tenant numbers and file prefixes, replica identities). Only when the profile's `tenancy` is `row` or `schema`; its test matrices (token paths × access changes, seeds × tenant statuses) are `references/tenancy-matrices.md` |
+
+A review reads only the references its scope needs (Step 3). `references/deep-passes.md` holds the
+architecture and resilience passes of path and whole-codebase reviews (Steps 3a and 3b).
 
 Everything that differs between projects (conventions, thresholds, pagination style, token
 revocation, accepted deviations) is in the project profile, `.claude/review-profile.md`.
@@ -83,6 +86,7 @@ Parse `$ARGUMENTS`:
 | `all` | Whole codebase | Every source, test, resource and migration file |
 | a path | Path or module | Every file under the path |
 | empty | Ask | Use **AskUserQuestion** with the four modes. Show the changed-file count for diff and uncommitted, so the user can pick |
+| any of the above, then `--focus <area>` | The mode, narrowed | The mode's files; only the rules of `api`, `data`, `tests`, `security`, `config` or `arch` load (Step 3, Gate 3) |
 
 Then add the **related files** the rules need even when unchanged:
 - the API interface (`controller/api/…Api`) of every changed controller, request DTO or
@@ -122,8 +126,62 @@ there), use them instead and say so in the report's header, with the commit they
 
 ## Step 3: Review
 
-Read every reference file before reviewing. Apply each rule to the files in scope, following
-its **Detect** hints and honouring its **Not a finding when** clause and the profile.
+Load the rules by need (below), then apply each loaded rule to the files in scope, following its
+**Detect** hints and honouring its **Not a finding when** clause and the profile. A *section* runs
+from a `## ` heading to the next one; a *rule* from its heading (`###`, or `##` in config-baseline.md
+and error-contract.md) to the next heading.
+
+**Always loaded:** the profile; lenses.md's opening lines and its section *Lens 2: Security (SEC)*;
+REST-10 and CFG-05, which SEC-05 relies on.
+
+**Gate 1, pieces.** A piece's references load only when the project has the piece, and then for every
+file kind and every focus:
+- `tenancy` `row` or `schema` (review profile): tenancy.md without the other mode's section (*Row mode*
+  or *Schema per tenant*), and tenancy-matrices.md;
+- `media` (review profile; a profile without the key: the code has the piece's `media.api.Uploads`):
+  media.md;
+- `metadata` (review profile; a profile without the key: the code has the piece's
+  `metadata.api.Metadata`): metadata.md.
+
+**Gate 2, the kinds of the files in scope.** Path and all load every reference the pieces allow;
+diff, commit and uncommitted load the union of the rows below for the files the scope changed. The
+related files Step 1 adds are read for the rule that added them and add no references. **The core** is
+rest-api.md, error-contract.md, persistence.md, code-smells.md, java.md, architecture.md and lenses.md's
+section *Tests (TEST)*.
+
+| Changed file | Loads |
+|---|---|
+| Java of a feature module: controller, API interface, request, response, filter and view records, entity and domain enums, repository and its implementation, service, facade, Manager, mapper, `*ConstraintErrorCodes` | the core; lenses.md's section *Lens 8: Concurrency (CONC)*; PERF-01 (the profile's `hotPaths` answer it on every change) |
+| Test (`testRoots`) | the core |
+| Changeset (`migrationsDir`), configuration (`application*.yml`, `config/*.yml`, `logback*.xml`) | the core without java.md; config-baseline.md |
+| Messages file (`message_*.properties`) | error-contract.md; lenses.md's section *Tests (TEST)* |
+| A scheduler, an outbound client (S3, HTTP) or a cache, besides its own row | REL-01, REL-08, PERF-05 and the rules they name: REL-02, REL-04, REL-09, OPS-05, OPS-06, CONC-01, ARCH-17, REST-13, REST-15 |
+| Anything else: a class in `config/` or `common/` (security, filters, the exception handler), a listener or executor, a build or deploy file, a kind this table doesn't name | every reference the pieces allow |
+
+When a file's kind, or whether a rule applies to it, is unclear, load the reference.
+
+**Gate 3, `--focus <area>`** (Step 1) replaces Gate 2; the always-loaded rules and the pieces stay:
+
+| Focus | Loads |
+|---|---|
+| `api` | rest-api.md, error-contract.md, REL-10, ARCH-13 |
+| `data` | persistence.md; lenses.md's section *Lens 8: Concurrency (CONC)*; REST-08, REST-09, ERR-03 |
+| `tests` | lenses.md's section *Tests (TEST)*; ERR-06, ERR-07, DATA-06, DATA-10 and DATA-19 (their **Detect** hints name test defects) |
+| `security` | REST-09, REST-14 to REST-18, REST-22, REST-25; TEST-02, TEST-03, TEST-04 |
+| `config` | config-baseline.md; DATA-19 |
+| `arch` | architecture.md, code-smells.md |
+
+In path and all, `arch` also runs Step 3a, which brings persistence.md's section *Transactions and
+connections* (its transaction-semantics item), and `config` runs Step 3b, which brings OPS-07; the other
+focuses run neither. The report's header names the focus. Its verdict is never READY TO MERGE: NOT READY
+while a Critical or High finding is open (Step 6), otherwise its findings, or "no findings in <focus>".
+
+**Rules a loaded file depends on** load with it, whichever gate loaded it: persistence.md brings REL-10
+(DATA-18 merged into it); config-baseline.md brings PERF-03, REL-01, REL-04, REL-14 and OPS-06 (CFG-04,
+CFG-06 and CFG-09 name them as the rules behind their keys). A loaded rule that points to one item of
+a file not loaded reads that item alone: SMELL-10 the change-blast test and REL-04 the timeout table
+(`references/deep-passes.md`, Steps 3a and 3b); SEC-07, without tenancy, the *Suspended account* row of
+tenancy-matrices.md.
 
 **Small scope** (up to `subagentThreshold` files in the profile, default 25): review it
 yourself, file by file.
@@ -132,8 +190,8 @@ yourself, file by file.
 groups and start one reviewer per group with the **Agent** tool, all in one message so they
 run in parallel. Each reviewer must get:
 - the list of files;
-- the paths of every reference file and of the profile, with the instruction to read them
-  first;
+- the paths of the references this review loads and of the profile, with the instruction to read
+  them first;
 - the instruction to be read-only;
 - the exact finding format below;
 - the instruction to group repeated issues and to list "checked and fine" items.
@@ -142,59 +200,8 @@ Run the test-suite lens (TEST-xx, CONC, PERF query counts) as its own reviewer i
 mode. Do the REST pass, including doc drift, yourself across all controllers: it needs one view
 of every endpoint.
 
-### Step 3a: Architecture pass (path and all; do it yourself, it needs one view of every module)
-1. **5-minute scan:** the package tree, cycles, cross-module DTO imports, the 5 biggest
-   services, and a grep for
-   `@Transactional|REQUIRES_NEW|SUPPORTS|AFTER_COMMIT|@Async|@EventListener|@TransactionalEventListener`.
-2. **In order:**
-   1. module map (ARCH-01);
-   2. dependency direction (ARCH-02/03);
-   3. boundary objects (ARCH-05/06);
-   4. orchestration sinks (SMELL-02 collaborator count);
-   5. data ownership: who stores, mutates, validates and exposes each key concept (ARCH-09);
-   6. transaction semantics (DATA);
-   7. `common` / `shared` audit (ARCH-08).
-3. **Trace one critical use case end to end:** entry point, service, domain, writes, events,
-   async work, response. Answer: who owns the workflow, where the transaction boundary is, where
-   the side effects happen, and how many modules took part.
-4. **Change-blast test:** simulate adding one field to the module's main entity (request,
-   response, mapper, changeset) and count the files and modules it touches.
-5. **Output:**
-   - a one- or two-sentence **structural verdict**;
-   - the **deep pattern** (workflow entanglement, boundary contamination, orchestration sink,
-     framework choreography, namespace drift);
-   - the **smallest refactoring move**.
-
-   Priority: cycles, then contracts, ownership, orchestration sinks, transaction choreography,
-   layout drift.
-6. **Questions to ask of each class:**
-   - Who owns this concept?
-   - Why is this dependency allowed?
-   - Why does this DTO cross a boundary?
-   - Why does this service know so much?
-   - Why is this behaviour hidden in transaction timing?
-   - Why is this in `shared`?
-   - If this rule changes tomorrow, what breaks?
-
-### Step 3b: Resilience pass (path and all)
-1. **Timeout and limit table per layer:**
-   - caller or gateway;
-   - this service;
-   - the pool (`connection-timeout`);
-   - SQL (statement, lock, idle);
-   - each outbound client (connect, read, attempts × timeout + backoff).
-
-   Each value comes from configuration, the client builder, or the **framework default when
-   nothing is set** (say which). Check that the timeouts nest (REL-04) and the order holds
-   (DATA-19).
-2. **Safeguards table:** one row per safeguard (pool, rate limiter, bulkhead, scheduler, quota,
-   retry, outbox, breaker), with:
-   - its control action;
-   - what it believes;
-   - its feedback signal;
-   - its flaw: missing feedback, wrong model, or no terminal or corrective action.
-
-   Every mitigation metric must have a consumer (OPS-07).
+### Steps 3a and 3b: the architecture and resilience passes (path and all)
+`references/deep-passes.md`, read only in path and all (with `--focus`, Gate 3 says which).
 
 Finding format (reviewers and you):
 ```
@@ -343,7 +350,8 @@ Build: ok | failed · Tests: x passed, y failed · Duration: …
 ```
 
 The verdict is **NOT READY** while any Critical or High finding is open and not accepted. A
-finding that is tracked is still open: tracking it doesn't make the code ready.
+finding that is tracked is still open: tracking it doesn't make the code ready. A `--focus` review
+never says READY TO MERGE (Step 3, Gate 3).
 
 ---
 

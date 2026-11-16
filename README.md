@@ -103,7 +103,9 @@ live there, not in the skills.
   reference's changesets and entities. `crud-gen/references/bootstrap.md` explains the layout.
 - `house-review/SKILL.md`: the review process.
 - `house-review/references/`: the rules: rest-api, code-smells, java, persistence, lenses,
-  architecture, error-contract, config-baseline, metadata, media, tenancy.
+  architecture, error-contract, config-baseline, metadata, media, tenancy (its test matrices in
+  tenancy-matrices); deep-passes holds the architecture and resilience passes of path and
+  whole-codebase reviews.
 - `house-review/DESIGN.md`: every decision behind the rules, and why.
 - `crud-gen/SKILL.md`: the generation steps; `crud-gen/references/`: bootstrap, tests,
   dropdown, media.
