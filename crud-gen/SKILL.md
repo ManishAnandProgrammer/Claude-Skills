@@ -340,13 +340,10 @@ at its end.
   FK): a nested singleton resource; GET returns a null object when absent, PUT creates or
   replaces.
 - **List kind** (`{{cursorLists}}` / `{{offsetLists}}`, entity names, or the developer's request; else ask
-  **who consumes the list**). The consumer decides, never a guess at the table's size, which only the
-  developer knows:
-  - **cursor** (the default): pages a mobile or end-user app reads, and an admin screen that needs no total
-    and no page numbers and whose filters are simple and non-nullable. `CursorFilter`, `CursorWrapper`,
-    `pageInfo {nextCursor, hasMore}`, no count. Golden: `TodoFilter`, `TodoRepositoryImpl`;
-  - **offset**: an admin screen that needs page numbers or a total, or has complex filters. `PageFilter`,
-    `PaginationWrapper`, the count only on a full page. Golden: `TodoListFilter`,
+  **who consumes the list**): REST-08's rule for that consumer, never a guess at the table's size.
+  - **cursor** (the default): `CursorFilter`, `CursorWrapper`, `pageInfo {nextCursor, hasMore}`, no count.
+    Golden: `TodoFilter`, `TodoRepositoryImpl`;
+  - **offset**: `PageFilter`, `PaginationWrapper`, the count only on a full page. Golden: `TodoListFilter`,
     `TodoListRepositoryImpl.findByFilter`.
 
   The consumer and the kind go in **both** profiles (the crud profile's *Decisions per entity*, and
@@ -407,22 +404,16 @@ when the list's `query` searches more (a name **or** an email), the two predicat
 filter doesn't implement `QueryFilter`.
 
 **A contains search (`query`)** is offered where the developer asks for it, alone or with other filters,
-on any table: never refuse it or tie it to another filter on a guessed table size (golden: the tenancy
-overlay's `TenantFilter`, whose `query` works alone). **Extension point (a use case, not generated):** a
-project whose search gets slow adds the trigram index and the escaped `LIKE` (`TextSearch`'s javadoc),
-never in row mode (TEN-36), and proves it with its own `EXPLAIN` test.
+on any table (DATA-10, its trigram extension point included; golden: the tenancy overlay's `TenantFilter`,
+whose `query` works alone).
 
-**Then the indexes**, now that the orders and filters are chosen, by DATA-10's rules (one per offered order
-and per offered equality filter, the scope first and the id last; NEWEST's `(scope…, created_at, id)`;
-range and overlap filters under their own order only; an order index leading with a foreign key replaces
-the key's own index), in a new changeset if the entity's own one is applied (Step 2). Every offered equality
-filter gets `(<scope>, <filter>, <sort keys>, id)` per offered order, whatever its values (golden
-`0031-filter-indexes.sql`): how many rows a value holds is a fact about the data, which only the developer
-knows. Test row 28 checks that each one exists and that each list's first page is planned on its order's
-index (tests.md, *Index tests*). **Extension point (a use case, not generated):** a project that knows a
-value is rare on a table without a leading scope column adds a partial index for it (`WHERE status =
-'<VALUE>'`, the value a literal so a generic plan still matches it) and proves it with its own
-`EXPLAIN (ANALYZE, BUFFERS)` test; likewise any measured read cost (tests.md, *Index tests*).
+**Then the indexes**, now that the orders and filters are chosen, by DATA-10's rules (one per offered order;
+one per offered equality filter and order, whatever its values: `(<scope>, <filter>, <sort keys>, id)`,
+golden `0031-filter-indexes.sql`; NEWEST's `(scope…, created_at, id)`; range and overlap filters under their
+own order only; an order index leading with a foreign key replaces the key's own index; the rare-value
+partial index is DATA-10's extension point, not generated), in a new changeset if the entity's own one is
+applied (Step 2). Test row 28 checks that each one exists and that each list's first page is planned on its
+order's index (tests.md, *Index tests*).
 
 **Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
 `List<@NotNull ID> ids` with `@ConfiguredMaxSize("cursor-page.max-size")` (offset:
@@ -445,10 +436,9 @@ description and its 400 response name it.
 - **Flags:** the list filters a flag as `status` (`DropdownStatus`, default `ALL`), the dropdown
   defaults to `ACTIVE`; a flag without rules is set by the update (`@Setter`).
 - **Pattern fields:** `@Pattern` with a readable message instead of `@MaxLength`, **only when the
-  pattern bounds the length**: closed classes, every quantifier `{m,n}`, nothing unbounded anywhere
-  (golden `TagColor`: `(#[0-9A-Fa-f]{6})?`; `@Pattern` matches the whole value). Never `\s*` or `.*` around it to tolerate
-  spaces: surrounding spaces of a format-validated value are a 400 (and test row 11 tests case
-  only); if spaces must be accepted, add `@MaxLength` too (REST-09). Normalised in the mapper (case),
+  pattern bounds the length** (REST-09's test, its `\s*` case included; golden `TagColor`:
+  `(#[0-9A-Fa-f]{6})?`). Surrounding spaces of a format-validated value are a 400 (test row 11 tests case
+  only). Normalised in the mapper (case),
   backed by a database `CHECK`. The message names the **exact** character classes and length, never a
   looser word: `[A-Za-z0-9-]{1,20}` is "1 to 20 ASCII letters (A-Z, a-z), digits or hyphens", not
   "letters" (`ÄB1` is a letter and is refused).
@@ -544,7 +534,7 @@ aggregate that clients display is `{id, <the parent's display field under its ow
 `PlanTodoResponse {id, title}`: a student's `{id, fullName}`, a course's `{id, title}`, never a
 field renamed to a literal `name`; one record per referenced aggregate (`<Entity><Parent>Response`),
 a list of them for a many-to-many) for the detail; for list
-rows a `<Entity>SummaryResponse` without heavy columns (long text), still ending with the audit
+rows a `<Entity>SummaryResponse` without the heavy fields (*Conventions*, Naming), still ending with the audit
 fields. Golden: `TodoResponse`, `TodoSummaryResponse`. A list row's displayed parent name comes in
 **two steps**, in the same module as across modules: the batch, then one lookup of the batch's parent
 ids for their names (golden `PlanService`'s facade batch lookup; statement count + 1), never a join in

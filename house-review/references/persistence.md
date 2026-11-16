@@ -472,18 +472,16 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - every foreign key column is indexed;
   - **one index per offered list order**, leading with the scope columns (owner, tenant), then the
     sort keys, **ending with the id** tie-breaker; filtered columns covered (composite or partial).
-    With a tenant column (row tenancy) both it and the owner are leading equality columns: **the owner
-    first when the table has an owner** (`(owner_id, tenant_id, sort…, id)`, which still serves the
-    owner's foreign key), **`tenant_id` first when it has none or a list filters by the tenant alone**
-    (`(tenant_id, sort…, id)`; TEN-33);
+    With row tenancy `tenant_id` joins the leading equality columns, in TEN-33's order;
   - **also per offered equality filter on the list's own columns** (a parent id, a status, a priority, a
     flag), whatever its values: `(scope…, filter, sort keys…, id)` per offered order (`(parent_id,
     owner_id, sort keys…, id)` also serves the foreign key). How many rows a value holds is a fact about
     the data, which the review can't know, so no filter is left to an order's index. A filter through a
     link table (a tag on a todo) is served by the link's key. On a table without a leading scope column the
-    planner may still walk the order's index for a rare value; that plan is a use case (crud-gen SKILL.md
-    4.1's extension point: a partial index for the value, proven with the project's own `EXPLAIN (ANALYZE,
-    BUFFERS)` test), not a finding against the composite;
+    planner may still walk the order's index for a rare value; that plan is a use case, not a finding
+    against the composite. **Extension point:** a project that knows a value is rare adds a partial index
+    (`WHERE status = '<VALUE>'`, the value a literal so a generic plan still matches it), proven with its
+    own `EXPLAIN (ANALYZE, BUFFERS)` test;
   - **a contains search (`query`)** is offered where the developer asks for it, alone or with other
     filters, on any table: how many rows it reads is a fact about the data, so a list that offers `query`
     without another filter is not a finding (reference: the tenancy overlay's `TenantFilter`).
@@ -529,7 +527,6 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     and the test asserts it exists; each list's first page, as the repository issues it, is planned on its
     order's index (`QueryPlan`: plan nodes and index names, never a cost or a row count). Measured read
     costs are a project's own `EXPLAIN (ANALYZE, BUFFERS)` tests, where it knows its data (a use case);
-  - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).
 - **Detect:** an offered equality filter without its index per offered order (a "few values" or "small
   scope" note is no reason: the data decides, not the schema); a list's offered filter or order with no
   index named in its index test, or a list without the first-page plan check; **an index test that asserts
@@ -556,9 +553,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     show), never entities. That includes a page's
     second step (the parents' names for the batch): a constructor projection of the view's columns
     (reference `TodoRepository.findViewsByIdInAndOwnerId`), not the parents' whole rows;
-  - **the list kind follows its recorded consumer** (REST-08: cursor for an end-user or mobile app and a
-    simple admin screen, offset where page numbers, a total or complex filters are needed); OFFSET reads
-    every skipped row, which the consumer's need for page numbers accepts;
+  - **the list kind follows its recorded consumer** (REST-08); OFFSET reads every skipped row, which the
+    consumer's need for page numbers accepts;
   - **outliers:** a loop over one owner's rows (a user's todos, a tenant's orders) that loads them all,
     an export with no page, an in-memory sort or a cap check that counts them all is a finding.
 - **Severity:** High for a load without a page or a `LIMIT`; Medium for N+1.

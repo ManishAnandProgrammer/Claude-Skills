@@ -47,8 +47,8 @@ Fill values from the codebase, not from memory.
 
 | Key | Value | Notes |
 |---|---|---|
-| `cursorLists` | `all lists not in offsetLists` | Keyset paging (the default), for pages an end-user or mobile app reads and admin screens without totals or page numbers whose filters are simple and non-nullable: `CursorFilter`, `CursorWrapper`, `pageInfo {nextCursor, hasMore}`, no count |
-| `offsetLists` | `none` | Admin screens that need page numbers or a total, or have complex filters (SKILL.md Step 3), as **entity class names** (`TodoList`): `PageFilter`, `PaginationWrapper`, count on a full page |
+| `cursorLists` | `all lists not in offsetLists` | Keyset paging, the default (house-review REST-08's consumer rule): `CursorFilter`, `CursorWrapper`, `pageInfo {nextCursor, hasMore}`, no count |
+| `offsetLists` | `none` | Offset lists by REST-08's consumer rule (SKILL.md Step 3), as **entity class names** (`TodoList`), each with its consumer: `PageFilter`, `PaginationWrapper`, count on a full page |
 | `CursorFilter` / `CursorWrapper` / `Cursor` / `Seek` / `CursorBatch` | `com.example.common.pagination.CursorFilter` / `…wrapper.CursorWrapper` / `…pagination.Cursor`, `…pagination.Seek` | Cursor lists |
 | `PageFilter` / `PaginationWrapper` / `OffsetPages` | `com.example.common.pagination.PageFilter` / `…wrapper.PaginationWrapper` / `…pagination.OffsetPages` | Offset lists |
 | `Paging` | `com.example.common.pagination.Paging` | Default sizes from configuration (`offset(filter, sort)`, `cursorSize(filter)`) |
