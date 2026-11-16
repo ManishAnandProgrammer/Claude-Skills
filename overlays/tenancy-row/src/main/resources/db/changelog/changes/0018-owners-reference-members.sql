@@ -50,3 +50,6 @@ ALTER TABLE plans ADD CONSTRAINT fk_plans_owner_id FOREIGN KEY (owner_id, tenant
 --rollback ALTER TABLE todos ADD CONSTRAINT fk_todos_owner_id FOREIGN KEY (owner_id) REFERENCES users (id);
 --rollback ALTER TABLE todo_lists DROP CONSTRAINT fk_todo_lists_owner_id;
 --rollback ALTER TABLE todo_lists ADD CONSTRAINT fk_todo_lists_owner_id FOREIGN KEY (owner_id) REFERENCES users (id);
+--rollback ALTER TABLE members NO FORCE ROW LEVEL SECURITY;
+--rollback DELETE FROM members m WHERE m.left_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM tenant_memberships t WHERE t.tenant_id = m.tenant_id AND t.user_id = m.user_id);
+--rollback ALTER TABLE members FORCE ROW LEVEL SECURITY;

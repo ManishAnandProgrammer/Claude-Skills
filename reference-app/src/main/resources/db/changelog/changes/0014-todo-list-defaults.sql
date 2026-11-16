@@ -18,7 +18,9 @@
 --   FROM tenants t
 --  WHERE NOT EXISTS (SELECT 1 FROM configuration_metadata m WHERE m.tenant_id = t.id AND m.key = 'TODO_LIST_DEFAULTS');
 -- ALTER TABLE configuration_metadata FORCE ROW LEVEL SECURITY;
--- --rollback SELECT 1;
+-- --rollback ALTER TABLE configuration_metadata NO FORCE ROW LEVEL SECURITY;
+-- --rollback DELETE FROM configuration_metadata WHERE key = 'TODO_LIST_DEFAULTS';
+-- --rollback ALTER TABLE configuration_metadata FORCE ROW LEVEL SECURITY;
 -- tenancy-row:else
 --changeset dev:0014-todo-list-defaults
 INSERT INTO configuration_metadata (id, key, value, created_at, updated_at, version)

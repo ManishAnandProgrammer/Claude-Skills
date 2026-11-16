@@ -563,7 +563,10 @@ E1–E3 and the row tests named below, which run as the real application role.
   begins). A migration across existing tenants' rows lifts `FORCE` for its own transaction
   (`docs/tenancy-runbook.md`, section 4; proven in the catalogue test): that is how a default added
   later (a new upload purpose's policy) reaches the tenants that already exist, beside the listener
-  for new ones (golden `0010`'s `…-existing-tenants` changeset and its test). A listener alone leaves
+  for new ones (golden `0010`'s `…-existing-tenants` changeset and its test). **Its rollback lifts `FORCE`
+  the same way** around its `DELETE` (it runs as the owner with no tenant set, where the forced policy hides
+  every row: a plain `--rollback DELETE` deletes nothing; guard `BackfillRollbacksIntegrationTest`, which
+  also runs each backfill's rollback as the owner). A listener alone leaves
   every existing tenant without the row. A failed provisioning leaves the
   tenant PENDING and logs it; approving again retries.
 - **Check:** the backfill gives the row to **every** tenant, a PENDING registration included, so the

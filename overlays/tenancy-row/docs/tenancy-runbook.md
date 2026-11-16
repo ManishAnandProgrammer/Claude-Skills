@@ -105,9 +105,18 @@ lifts the policy for its own transaction only, and says why:
 ALTER TABLE <table> NO FORCE ROW LEVEL SECURITY;
 INSERT INTO <table> (..., tenant_id) SELECT ..., id FROM tenants;
 ALTER TABLE <table> FORCE ROW LEVEL SECURITY;
+--rollback ALTER TABLE <table> NO FORCE ROW LEVEL SECURITY;
+--rollback DELETE FROM <table> WHERE <the rows it added>;
+--rollback ALTER TABLE <table> FORCE ROW LEVEL SECURITY;
 ```
 
-Liquibase runs a formatted-SQL changeset in one transaction, so the table is never left unforced.
+Liquibase runs a formatted-SQL changeset in one transaction, so the table is never left unforced. The
+rollback runs as the owner too, with no tenant set, so it lifts the policy the same way: a plain
+`--rollback DELETE` deletes nothing (the forced policy hides every row), and the previous release then
+meets rows it doesn't know (a policy of a purpose it has no constant for answers 500).
+`BackfillRollbacksIntegrationTest` checks every changeset's rollback, and runs each backfill's as the
+owner. Rollback lines are outside Liquibase's checksum, so an applied changeset's rollback can be
+corrected; a comment line inside it can't (it changes the checksum).
 New tenants get their defaults from their modules' `TenantProvisioned` listeners, never a changeset.
 
 Such a backfill reaches every tenant, a registration still PENDING included; its approval's listener

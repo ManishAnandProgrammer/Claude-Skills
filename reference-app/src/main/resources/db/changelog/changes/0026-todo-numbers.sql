@@ -31,7 +31,9 @@
 --  WHERE NOT EXISTS (SELECT 1 FROM counters c WHERE c.tenant_id = t.id AND c.key = 'TODO_NUMBER');
 -- ALTER TABLE counters FORCE ROW LEVEL SECURITY;
 -- ALTER TABLE todos FORCE ROW LEVEL SECURITY;
+-- --rollback ALTER TABLE counters NO FORCE ROW LEVEL SECURITY;
 -- --rollback DELETE FROM counters WHERE key = 'TODO_NUMBER';
+-- --rollback ALTER TABLE counters FORCE ROW LEVEL SECURITY;
 -- tenancy-row:else
 -- With schema per tenant this runs in every tenant schema and the template: each tenant's own todos and counter.
 --changeset dev:0026-todo-numbers

@@ -17,7 +17,9 @@
 --   FROM tenants t
 --  WHERE NOT EXISTS (SELECT 1 FROM upload_policies p WHERE p.tenant_id = t.id AND p.purpose = 'TODO_ATTACHMENT');
 -- ALTER TABLE upload_policies FORCE ROW LEVEL SECURITY;
--- --rollback SELECT 1;
+-- --rollback ALTER TABLE upload_policies NO FORCE ROW LEVEL SECURITY;
+-- --rollback DELETE FROM upload_policies WHERE purpose = 'TODO_ATTACHMENT';
+-- --rollback ALTER TABLE upload_policies FORCE ROW LEVEL SECURITY;
 -- tenancy-row:else
 --changeset dev:0010-todo-attachment-policy
 -- The TODO_ATTACHMENT purpose's starting limits; an admin changes them through PUT /upload-policies/{purpose}.
