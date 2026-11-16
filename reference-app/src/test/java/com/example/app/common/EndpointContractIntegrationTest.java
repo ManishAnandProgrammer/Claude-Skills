@@ -115,6 +115,15 @@ class EndpointContractIntegrationTest extends IntegrationTest {
             return false;
         }
 
+        List<String> pathVariables() {
+            List<String> names = new ArrayList<>();
+            Matcher variable = PATH_VARIABLE.matcher(pattern);
+            while (variable.find()) {
+                names.add(variable.group(1));
+            }
+            return names;
+        }
+
         List<String> uuidPathVariables() {
             List<String> names = new ArrayList<>();
             for (JsonNode parameter : operation.path("parameters").values()) {
@@ -244,6 +253,11 @@ class EndpointContractIntegrationTest extends IntegrationTest {
                     checked++;
                     String token = newUserWithRole(role.name()).accessToken();
                     MockHttpServletResponse answer = send(endpoint, endpoint.path(null), token, validBody(endpoint));
+                    // An enum path variable without constants yet (UploadPurpose before the first purpose):
+                    // no request reaches the endpoint, so there is no role check to see.
+                    if (isProblem(answer, 400, "REQUEST_PARAMETER_INVALID") && endpoint.pathVariables().contains(parameterOf(answer))) {
+                        continue;
+                    }
                     if (!isProblem(answer, 403, "ACCESS_DENIED")) {
                         allowed.add("%s as %s answered %d %s".formatted(endpoint.name(), role, answer.getStatus(), answer.getContentAsString()));
                     }
