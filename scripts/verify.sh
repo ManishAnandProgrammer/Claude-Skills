@@ -492,7 +492,19 @@ if wants image; then
         || { echo "FAILED: /actuator/prometheus answers on the public port" >&2; exit 1; }
     in_app 'curl -sf localhost:8081/actuator/prometheus' | grep -q '^rate_limit' \
         || { echo "FAILED: no rate-limit metrics on the management port" >&2; exit 1; }
-    echo "container: healthy, rate limited through Redis ($codes), metrics on the management port only"
+    # A path the security firewall refuses gets the house Problem Details with its request id, on the real
+    # server (MockMvc never sends a rejected request to Boot's /error). Tomcat refuses an encoded '/', '\' or
+    # NUL before any filter, with its own 400 page: no setting changes that, so only the status is checked.
+    for path in '/api/v1/users//status' '/api/v1/users/me;x=1' '/api/v1/users/%2e%2e/me'; do
+        answer="$(in_app "curl -s --path-as-is -D - 'localhost:8080$path'")"
+        grep -q '"errorCode":"REQUEST_INVALID"' <<< "$answer" && grep -qi '^x-request-id:' <<< "$answer" \
+            || { echo "FAILED: $path isn't Problem Details REQUEST_INVALID with a request id: $answer" >&2; exit 1; }
+    done
+    for path in '/api/v1/users/a%2Fb' '/api/v1/users/a%5Cb' '/api/v1/users/a%00b'; do
+        [ "$(in_app "curl -s --path-as-is -o /dev/null -w '%{http_code}' 'localhost:8080$path'")" = 400 ] \
+            || { echo "FAILED: $path isn't refused 400 by Tomcat" >&2; exit 1; }
+    done
+    echo "container: healthy, rate limited through Redis ($codes), metrics on the management port only, refused paths 400"
 fi
 
 if [ -n "$only" ]; then

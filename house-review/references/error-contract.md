@@ -64,6 +64,15 @@ the generic text.
 | Any other exception `ResponseEntityExceptionHandler` handles (406, a missing header, an async timeout, `ResponseStatusException`, ...) | its status | a specific code where one exists, else by status class: 404 `RESOURCE_NOT_FOUND`, other 4xx `REQUEST_INVALID`, 5xx `UNEXPECTED_ERROR` with the generic detail; `ConversionNotSupportedException` (a 500) before its parent `TypeMismatchException` | 5xx: ERROR with stack |
 | Anything else, `IllegalArgumentException` included (ERR-04) | 500 | `UNEXPECTED_ERROR`, generic detail | ERROR with stack |
 
+**Errors raised before the handler** are written by `common/web/ProblemResponses`, with the same members:
+the security chain's 401 and 403 (its `AuthenticationEntryPoint` and `AccessDeniedHandler`), a filter's
+refusal (admission control's 503, the session version's 401) and **the firewall's**: a path Spring
+Security's `StrictHttpFirewall` refuses (an empty segment `//`, a `;`, an encoded `.`) is 400
+`REQUEST_INVALID` through a `RequestRejectedHandler` bean (reference: `config/SecurityConfig`). Without that
+bean the refusal is a bare 400 that Boot's `/error` answers as `{timestamp, status, error, path}`. Tomcat
+refuses an encoded `/` or `\` and a NUL (`%2F`, `%5C`, `%00`) in its connector, before any filter, with its
+own 400 page: no setting reaches it, and it is not a finding.
+
 A downstream **4xx** answered to *our* request (for example S3's 403 for our credentials) is our
 fault, so it answers 500, not 503.
 
@@ -190,6 +199,8 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
 - Messages files not read as UTF-8, or no `setAlwaysUseMessageFormat(true)`.
 - `ProblemDetail` / `ResponseEntity` error bodies built outside the handler. `e.getMessage()`
   copied into `detail` for a 5xx or a database exception.
+- No `RequestRejectedHandler` bean: `GET /api/v1/x//y` answers Boot's `/error` JSON without `errorCode`
+  (Medium, ERR-01).
 - Exception classes that differ only by name.
 - No transient-failure classification: pool exhaustion and timeouts answer 500.
 - `@ExceptionHandler(IllegalArgumentException.class)` answering a 4xx; `throw new

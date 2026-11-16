@@ -89,7 +89,9 @@ a finding**. Profile keys are written `{{key}}`.
   - **never** class names, SQL fragments, constraint names or stack traces.
 - **Detect:** the global handler and every `ResponseEntity` / `ProblemDetail` built by hand;
   exception classes that differ only by name (copy-paste hierarchy); `getMessage()` of a
-  database or framework exception copied into `detail`.
+  database or framework exception copied into `detail`; an error raised before the handler (the
+  security chain, a filter, the firewall's refused path) answered in another shape (error-contract.md,
+  *Errors raised before the handler*).
 - **Severity:** High if internals leak, otherwise Medium.
 - **Reference implementation:** `error-contract.md`. Check
   every piece there: ERR-01 members, the ERR-02 mapping table, ERR-03 transient failures, ERR-04

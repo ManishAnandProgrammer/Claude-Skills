@@ -3,6 +3,8 @@ package com.example.app.common;
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -12,6 +14,7 @@ import org.springframework.http.MediaType;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -98,6 +101,18 @@ class ApiContractIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.components.schemas.RequestError.properties.pointer").exists())
                 .andExpect(jsonPath("$.components.schemas.RequestError.properties.parameter").exists())
                 .andExpect(jsonPath("$.components.schemas.RequestError.properties.detail").exists());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"/api/v1/users//status", "/api/v1/users/me;jsessionid=x", "/api/v1/users/%2e%2e/me"})
+    @DisplayName("A path the security firewall refuses (an empty segment, a ';', an encoded '.') is Problem Details 400 REQUEST_INVALID, with the request id")
+    void aPathTheFirewallRefusesIsProblemDetails(String path) throws Exception {
+        mvc.perform(get(URI.create(path)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_INVALID"))
+                .andExpect(jsonPath("$.type").value(problemType("REQUEST_INVALID")))
+                .andExpect(header().exists("X-Request-ID"));
     }
 
     @Test

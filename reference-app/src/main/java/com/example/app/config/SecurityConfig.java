@@ -33,6 +33,7 @@ import org.springframework.security.oauth2.server.resource.web.authentication.Be
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -55,7 +56,8 @@ import java.util.List;
  *       {@code common.security} ({@code @AdminOnly}; method security is on).</li>
  *   <li>{@code DispatcherType.ERROR} is permitted, so an exception that escapes to the container's
  *       error page isn't re-answered as a 401.</li>
- *   <li>Security errors are Problem Details with an {@code errorCode}, like every other error.</li>
+ *   <li>Security errors are Problem Details with an {@code errorCode}, like every other error, the
+ *       firewall's refusals included (an empty segment {@code //}, a {@code ;}, an encoded {@code .}).</li>
  *   <!-- session-version:begin -->
  *   <li>The session version (the session-version piece): a verified token is accepted only while its
  *       {@code sv} claim is current ({@link SessionVersionFilter}), one Redis read per request.</li>
@@ -127,6 +129,12 @@ class SecurityConfig {
     @Bean
     AccessDeniedHandler accessDeniedHandler(ProblemResponses problemResponses) {
         return (request, response, exception) -> problemResponses.write(request, response, ErrorCode.ACCESS_DENIED);
+    }
+
+    /** Without it the firewall's refusal is sent as a bare 400, which Boot's /error answers in its own JSON. */
+    @Bean
+    RequestRejectedHandler requestRejectedHandler(ProblemResponses problemResponses) {
+        return (request, response, rejected) -> problemResponses.write(request, response, ErrorCode.REQUEST_INVALID);
     }
 
     @Bean
