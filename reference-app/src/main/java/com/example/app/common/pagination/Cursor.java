@@ -114,9 +114,14 @@ public final class Cursor {
     }
 
     public LocalDate date(int index) {
+        String key = keys.get(index);
         try {
-            LocalDate day = LocalDate.parse(keys.get(index));
+            LocalDate day = LocalDate.parse(key);
             if (day.isBefore(EARLIEST_DAY) || day.isAfter(LATEST_DAY)) {
+                throw invalid();
+            }
+            // parse also reads a signed, padded year ("+02026-01-10") that write never gives.
+            if (!day.toString().equals(key)) {
                 throw invalid();
             }
             return day;

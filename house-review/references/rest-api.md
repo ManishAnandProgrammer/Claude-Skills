@@ -172,7 +172,8 @@ the path.
      truth; a literal `@Size(max = N)` is a finding where the house limits exist), **element
      Strings included**: `Set<@NotBlank @MaxLength("media.upload-key") String> attachmentKeys`, since
      each key reaches a query and the error text (every String with the house `@MaxLength` is also
-     refused U+0000, which PostgreSQL `text` can't store: a 500 at the insert otherwise; an element
+     refused U+0000, which PostgreSQL `text` can't store: a 500 at the insert otherwise, and a lone
+     surrogate, which UTF-8 can't carry: stored as `?` behind a 201 otherwise; an element
      limit is published as the items' `maxLength` by `ElementLimitsModelConverter`, and
      `LimitsIntegrationTest.everyLimitKeyIsConfigured` checks element keys too); **every date** that
      reaches a column or a query, filters included, has a configured floor and ceiling

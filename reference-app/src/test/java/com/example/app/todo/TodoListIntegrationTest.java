@@ -129,6 +129,18 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("A name with a lone surrogate is 400 VALIDATION_FAILED naming it, never stored as '?' behind a 201")
+    void loneSurrogateIs400() throws Exception {
+        postAs(newUser().accessToken(), LISTS, """
+                {"name": "Lone \\ud83d end"}
+                """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/name")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must not contain half of a character (a lone surrogate)")));
+    }
+
+    @Test
     @DisplayName("Get returns the list")
     void getReturnsTheEntity() throws Exception {
         TestUser user = newUser();

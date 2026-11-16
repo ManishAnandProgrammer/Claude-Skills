@@ -4,17 +4,20 @@ import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 import org.hibernate.validator.constraintvalidation.HibernateConstraintValidatorContext;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 /**
  * A Spring bean (created through the validator factory), so the limit comes from configuration. It also
- * refuses the NUL character: every String with {@link MaxLength} passes here, and PostgreSQL refuses
- * U+0000 in text, which would otherwise surface as a 500 at the insert instead of a 400.
+ * refuses what PostgreSQL can't store as sent, since every String with {@link MaxLength} passes here: the
+ * NUL character (U+0000 in text is a 500 at the insert instead of a 400) and a lone surrogate, half of a
+ * character, which UTF-8 can't carry (the driver would store a '?' in its place, behind a 201).
  */
 class MaxLengthValidator implements ConstraintValidator<MaxLength, String> {
 
     private static final char NUL = '\u0000';
     private static final String NUL_MESSAGE = "{max-length.nul-character}";
+    private static final String LONE_SURROGATE_MESSAGE = "{max-length.lone-surrogate}";
 
     private final Limits limits;
     private String key;
@@ -36,10 +39,17 @@ class MaxLengthValidator implements ConstraintValidator<MaxLength, String> {
             return true;
         }
         if (value.indexOf(NUL) >= 0) {
-            context.disableDefaultConstraintViolation();
-            context.buildConstraintViolationWithTemplate(NUL_MESSAGE).addConstraintViolation();
-            return false;
+            return refused(context, NUL_MESSAGE);
+        }
+        if (!StandardCharsets.UTF_8.newEncoder().canEncode(value)) {
+            return refused(context, LONE_SURROGATE_MESSAGE);
         }
         return value.codePointCount(0, value.length()) <= max;
+    }
+
+    private static boolean refused(ConstraintValidatorContext context, String message) {
+        context.disableDefaultConstraintViolation();
+        context.buildConstraintViolationWithTemplate(message).addConstraintViolation();
+        return false;
     }
 }

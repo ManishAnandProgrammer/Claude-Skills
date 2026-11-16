@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
 /**
  * The text is at most {@code app.limits.text.<value>} characters (Unicode code points, so an emoji
  * or a Gurmukhi letter counts once), and holds no NUL character (U+0000, which PostgreSQL text can't
- * store). Every String in a request carries it, or a reason why not (a password takes
+ * store) and no lone surrogate (half of a character, which UTF-8 can't carry). Every String in a request carries it, or a reason why not (a password takes
  * {@code @MaxUtf8Bytes}: it is hashed, never stored as text); on an element type too
  * ({@code Set<@MaxLength("search-query") String>}).
  */

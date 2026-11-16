@@ -164,13 +164,16 @@ class CursorTest {
     }
 
     @Test
-    @DisplayName("A key Java reads but write never gives is refused: a short or upper-case id, a signed or padded number, a moment with an offset")
+    @DisplayName("""
+            A key Java reads but write never gives is refused: a short or upper-case id, a signed or padded number, \
+            a day with a signed, padded year, a moment with an offset""")
     void aKeyNotAsWrittenIsRefused() {
         assertRefused(() -> keyOf("1-1-1-1-1").uuid(0));
         assertRefused(() -> keyOf(ID.toString().toUpperCase(Locale.ROOT)).uuid(0));
         for (String number : List.of("+45", "045", "-0", "2147483648", " 45")) {
             assertRefused(() -> keyOf(number).number(0));
         }
+        assertRefused(() -> keyOf("+02026-01-10").date(0));
         assertRefused(() -> keyOf("2026-11-14T11:15:30+01:00").instant(0));
         assertRefused(() -> keyOf("high").enumValue(0, Priority.class));
         assertThat(keyOf("2147483647").number(0)).isEqualTo(Integer.MAX_VALUE);

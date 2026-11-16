@@ -203,6 +203,14 @@ class LimitsIntegrationTest extends IntegrationTest {
         assertThat(validator.validate(new SomeTextRequest("a b"))).isEmpty();
     }
 
+    @Test
+    @DisplayName("A lone surrogate fails validation (UTF-8 can't carry half of a character); a whole pair passes")
+    void loneSurrogateFailsValidation() {
+        assertThat(validator.validate(new SomeTextRequest("a\ud83db"))).extracting(ConstraintViolation::getMessage)
+                .containsExactly("must not contain half of a character (a lone surrogate)");
+        assertThat(validator.validate(new SomeTextRequest("a\ud83d\ude00b"))).isEmpty();
+    }
+
     /** A request with a collection limited by a key every project has (offset-page.max-size: 100). */
     record SomeBulkRequest(@ConfiguredMaxSize("offset-page.max-size") List<Integer> items) {
     }
