@@ -776,7 +776,8 @@ no artifact is never made.
 
 ## Step 8: Self-review (house-review)
 Run house-review on the generated and changed files: `/house-review uncommitted` before the commit,
-or `/house-review commit <sha>` for a commit the run made (a range `<a>..<b>` for several). Either
+or `/house-review commit <sha>` for a commit the run made (a range `<a>..<b>` for several), without
+`--focus`: it loads its rules through its gates like any diff review (house-review Step 3). Either
 way the report is written to `reportDir` as `<date>-<entity>.md` (house-review Step 6), so every
 entity of a run leaves one. **The goal is zero findings.** A finding in
 code that follows the golden files means the reference or this skill is wrong: fix the generated
