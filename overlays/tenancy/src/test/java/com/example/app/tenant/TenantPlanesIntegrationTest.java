@@ -1,5 +1,6 @@
 package com.example.app.tenant;
 
+import com.example.app.support.CapturedLog;
 import com.example.app.support.IntegrationTest;
 import com.example.app.support.WithoutTestTenant;
 import com.jayway.jsonpath.JsonPath;
@@ -86,16 +87,25 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A suspended tenant's login and refresh are 403 TENANT_NOT_ACTIVE naming the status; reactivated, both work")
+    @DisplayName("""
+            A suspended tenant's login and refresh are 403 TENANT_NOT_ACTIVE naming the status, and the refused login \
+            isn't logged as a success; reactivated, both work""")
     void suspendedTenantGetsNoTokens() throws Exception {
         TestTenant tenant = newTenant();
         TestUser user = newUserIn(tenant);
         changeStatus(tenant.id(), "SUSPENDED");
+        CapturedLog log = new CapturedLog();
 
-        login(user.email(), PASSWORD)
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("TENANT_NOT_ACTIVE"))
-                .andExpect(jsonPath("$.tenantStatus").value("SUSPENDED"));
+        log.open();
+        try {
+            login(user.email(), PASSWORD)
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.errorCode").value("TENANT_NOT_ACTIVE"))
+                    .andExpect(jsonPath("$.tenantStatus").value("SUSPENDED"));
+        } finally {
+            log.close();
+        }
+        assertThat(log.text()).doesNotContain("Login succeeded: userId=" + user.id());
         refresh(user.refreshToken())
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_NOT_ACTIVE"));

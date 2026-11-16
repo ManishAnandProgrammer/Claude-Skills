@@ -65,8 +65,10 @@ public class AuthService {
         boolean passwordMatches = passwordEncoder.matches(request.password(),
                 found.map(User::getPasswordHash).orElse(unknownUserHash));
         User user = found.filter(account -> passwordMatches).orElseThrow(this::invalidCredentials);
+        // Issuing runs the remaining checks (a suspended account, an inactive tenant): log only once they pass.
+        TokenResponse tokens = tokenService.issue(user);
         log.info("Login succeeded: userId={}", user.getId());
-        return ObjectWrapper.withObject(tokenService.issue(user));
+        return ObjectWrapper.withObject(tokens);
     }
 
     public ObjectWrapper<TokenResponse> refresh(RefreshTokenRequest request, String clientIp) {
