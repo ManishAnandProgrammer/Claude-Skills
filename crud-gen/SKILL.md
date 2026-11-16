@@ -161,7 +161,7 @@ each scoped like the parent's own reads:
   **Only the writes that check the state take it**: a create, and an update that moves the child to
   another parent (it checks the new one). A write that checks nothing of the parent doesn't, even one
   that can trip an exclusion constraint scoped by that parent (a loan's new dates): the constraint
-  holds that rule, and its rare simultaneous overlap answers DATA-35's 503 (document it). The parent's
+  holds that rule, and its rare simultaneous overlap answers DATA-35's 503 (the write's 503 `@ApiResponse` names it). The parent's
   state change and delete then wait for a locked write: the delete answers 409 `<PARENT>_IN_USE`, and
   `<PARENT>_GONE` is unreachable on that write (keep its mapping, don't document it there); an
   exclusion constraint scoped by the locked parent answers 409 only among locked writes, one scoped
@@ -793,8 +793,8 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] The aggregate's row in `AggregateArchTest.AGGREGATES` **and** in both profiles' `aggregates`.
 - [ ] The list's consumer and kind in both profiles (`cursorLists` or `offsetLists`, Step 3).
 - [ ] A changed error shape or pointer (a cross-field error moved to its end field, a new code on an
-      existing call): each consumer in the review profile's `publishedContracts` (a UI, another service)
-      checked and told (REST-20).
+      existing call): an entry, marked *breaking*, in each changelog the review profile's
+      `publishedContracts` names (a UI, another service; ARCH-13, REST-20).
 - [ ] A shared root: writes carry a role, personal-data reads decided, both in the profiles (Step 1).
 - [ ] A convention changed during the run (`controllerSecurity`, what a role means): the class
       javadoc of the services generated earlier, `Role`'s javadoc and the profiles say the new rule

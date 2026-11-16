@@ -144,7 +144,8 @@ is code-smells.md, java.md and architecture.md.
 ## Lens 3: Performance (PERF)
 
 ### PERF-01: Hot paths answer four questions
-- **Check:** every change to an endpoint in `{{hotPaths}}` (or any per-request path) states:
+- **Check:** for every changed endpoint in `{{hotPaths}}` and every changed hot path (any list, dropdown or
+  public endpoint: SKILL.md Step 3), the review report answers:
   1. how many SQL statements per request;
   2. new allocation or retained collections (GC pressure);
   3. blocking or CPU-bound work on virtual threads. CPU-bound work starves carriers. On JDK 24+
@@ -234,8 +235,9 @@ is code-smells.md, java.md and architecture.md.
 - **Severity:** High.
 
 ### REL-03: Dependency outages degrade the feature, not the app
-- **Check:** fail-open or fail-closed is decided and documented per dependency. A fail-open
-  fallback to the database is bounded, or it moves the outage onto the pool. Health is covered in
+- **Check:** fail-open or fail-closed is decided per dependency, and its client's javadoc says which
+  (golden `RedisRateLimiter`). A fail-open fallback to the database is bounded, or it moves the
+  outage onto the pool. Health is covered in
   REL-14.
 - **Severity:** High.
 
