@@ -7,6 +7,7 @@ import com.example.app.metadata.dto.response.MetadataResponse;
 import com.example.app.metadata.service.PlatformMetadataService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,6 +23,12 @@ import java.util.UUID;
 class PlatformMetadataController implements PlatformMetadataApi {
 
     private final PlatformMetadataService service;
+
+    @Override
+    @GetMapping(path = "/{key}", version = "v1+")
+    public ObjectWrapper<MetadataResponse> get(@PathVariable UUID tenantId, @PathVariable String key) {
+        return service.findByName(tenantId, key);
+    }
 
     @Override
     @PutMapping(path = "/{key}", version = "v1+")

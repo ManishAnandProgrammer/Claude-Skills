@@ -3,7 +3,6 @@ package com.example.app.user.service;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.validation.Emails;
-import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 // tenancy:begin
 // tenancy:else
@@ -12,7 +11,6 @@ import com.example.app.user.api.Users;
 import com.example.app.user.domain.User;
 import com.example.app.user.domain.UserStatus;
 import com.example.app.user.dto.request.SignupRequest;
-import com.example.app.user.dto.request.UserFilter;
 import com.example.app.user.dto.response.UserResponse;
 import com.example.app.user.mapper.UserMapper;
 import com.example.app.user.repository.UserRepository;
@@ -85,11 +83,6 @@ public class UserService implements Users {
 
     public ObjectWrapper<UserResponse> me(UUID userId) {
         return ObjectWrapper.withObject(mapper.toResponse(getUser(userId)));
-    }
-
-    /** The account with this address, or none: an operator's read before a status change, which needs its id and version. */
-    public ListWrapper<UserResponse> lookUp(UserFilter filter) {
-        return ListWrapper.fromList(findByEmail(filter.getEmail()).map(mapper::toResponse).stream().toList());
     }
 
     // tenancy:begin

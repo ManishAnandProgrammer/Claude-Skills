@@ -7,7 +7,6 @@ import com.example.app.user.dto.request.UserFilter;
 import com.example.app.user.dto.request.UserStatusRequest;
 import com.example.app.user.dto.response.UserResponse;
 import com.example.app.user.service.AccountStatusService;
-import com.example.app.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
@@ -26,13 +25,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class PlatformUserController implements PlatformUserApi {
 
-    private final UserService users;
     private final AccountStatusService accountStatus;
 
     @Override
     @GetMapping(version = "v1+")
     public ListWrapper<UserResponse> lookUp(@Valid @ParameterObject UserFilter filter) {
-        return users.lookUp(filter);
+        return accountStatus.lookUp(filter);
     }
 
     @Override

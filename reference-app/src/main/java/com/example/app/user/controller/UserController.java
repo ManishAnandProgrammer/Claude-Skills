@@ -103,7 +103,7 @@ class UserController implements UserApi {
     @AdminOnly
     @GetMapping(version = "v1+")
     public ListWrapper<UserResponse> lookUp(@Valid @ParameterObject UserFilter filter) {
-        return service.lookUp(filter);
+        return accountStatus.lookUp(filter);
     }
 
     @Override

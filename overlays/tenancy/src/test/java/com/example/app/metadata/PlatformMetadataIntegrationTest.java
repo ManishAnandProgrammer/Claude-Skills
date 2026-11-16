@@ -37,14 +37,16 @@ class PlatformMetadataIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Staff replace a tenant's key as its admin would; the tenant reads it, the change is audited")
+    @DisplayName("Staff read a tenant's key and replace it with that version, as its admin would; the tenant reads it, the change is audited")
     void staffEditATenantsConfiguration() throws Exception {
         TestUser admin = newAdmin();
         UUID tenantId = testTenant().id();
+        String path = "/api/v1/platform/tenants/" + tenantId + "/metadata/" + MetadataIntegrationTest.FIXED_KEY;
+        Number version = read(getAs(platformToken(), path).andExpect(status().isOk()), "$.response.version");
 
-        putAs(platformToken(), "/api/v1/platform/tenants/" + tenantId + "/metadata/" + MetadataIntegrationTest.FIXED_KEY, """
-                {"value": %s, "version": 0}
-                """.formatted(VALUE))
+        putAs(platformToken(), path, """
+                {"value": %s, "version": %d}
+                """.formatted(VALUE, version.longValue()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.value.reminderMinutesBefore").value(45))
                 .andExpect(jsonPath("$.response.version").value(1));
@@ -59,7 +61,7 @@ class PlatformMetadataIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A tenant token can't reach the platform's edit: 401; an unknown tenant is 403 TENANT_NOT_ACTIVE")
+    @DisplayName("A tenant token can't reach the platform's read or edit: 401; an unknown tenant is 403 TENANT_NOT_ACTIVE")
     void onlyStaffEditAndOnlyKnownTenants() throws Exception {
         TestUser admin = newAdmin();
         String path = "/api/v1/platform/tenants/%s/metadata/" + MetadataIntegrationTest.FIXED_KEY;
@@ -70,6 +72,12 @@ class PlatformMetadataIntegrationTest extends IntegrationTest {
         putAs(admin.accessToken(), path.formatted(testTenant().id()), body)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+        getAs(admin.accessToken(), path.formatted(testTenant().id()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+        getAs(platformToken(), path.formatted(UUID.randomUUID()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("TENANT_NOT_ACTIVE"));
         putAs(platformToken(), path.formatted(UUID.randomUUID()), body)
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_NOT_ACTIVE"));

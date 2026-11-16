@@ -18,6 +18,23 @@ import java.util.UUID;
         recorded in the platform audit trail.""")
 public interface PlatformMetadataApi {
 
+    @Operation(summary = "Read a tenant's fixed configuration key", description = """
+            The value and version as GET /metadata/{key} answers them inside the tenant: the version the \
+            replace takes. A read is not recorded in the audit trail.""")
+    @ApiResponse(responseCode = "200", description = "The key's value")
+    @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (a malformed tenant id)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "METADATA_KEY_UNKNOWN, METADATA_NOT_FOUND",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ObjectWrapper<MetadataResponse> get(@Parameter(description = "Tenant id") UUID tenantId,
+                                        @Parameter(description = "A fixed key's name") String key);
+
     @Operation(summary = "Replace a tenant's fixed configuration key", description = """
             The same rules as PUT /metadata/{key} inside the tenant: the whole value and the version you \
             last read.""")

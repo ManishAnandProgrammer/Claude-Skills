@@ -30,6 +30,15 @@ public class PlatformMetadataService {
     private final Tenants tenants;
     private final PlatformAudit audit;
 
+    /**
+     * The key as the tenant's admin reads it, with the version an edit takes. Not recorded: the audit trail
+     * is of what staff changed, and this changes nothing.
+     */
+    public ObjectWrapper<MetadataResponse> findByName(UUID tenantId, String name) {
+        tenants.requireActive(tenantId);
+        return TenantScope.callAs(tenantId, () -> metadata.findByName(name));
+    }
+
     /** As the tenant's admin would, through {@link MetadataService#updateByName}; recorded first, so a refused edit is on record too. */
     public ObjectWrapper<MetadataResponse> updateByName(UUID tenantId, String name, MetadataUpdateRequest request) {
         tenants.requireActive(tenantId);

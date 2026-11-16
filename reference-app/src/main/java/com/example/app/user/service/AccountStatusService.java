@@ -2,6 +2,7 @@ package com.example.app.user.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 // tenancy:begin
 // tenancy:else
@@ -9,6 +10,7 @@ import com.example.app.user.domain.Role;
 // tenancy:end
 import com.example.app.user.domain.User;
 import com.example.app.user.domain.UserStatus;
+import com.example.app.user.dto.request.UserFilter;
 import com.example.app.user.dto.request.UserStatusRequest;
 import com.example.app.user.dto.response.UserResponse;
 import com.example.app.user.mapper.UserMapper;
@@ -21,7 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Suspends and reactivates accounts (the sign-in piece). A suspension, in one transaction: the account's row
+ * Finds, suspends and reactivates accounts (the sign-in piece). A suspension, in one transaction: the account's row
  * updated first (so a token issue racing it waits, then refuses: {@code UserService.activeForTokenIssue}),
  * every refresh token revoked, and the session version raised with that piece, so the access tokens already
  * out are refused on their next request (without it, they expire within their lifetime). A suspended
@@ -51,6 +53,11 @@ public class AccountStatusService {
     // tenancy:begin
     // private final MembershipService memberships;
     // tenancy:end
+
+    /** The account with this address, or none: the operator's read before a change, which needs its id and version. */
+    public ListWrapper<UserResponse> lookUp(UserFilter filter) {
+        return ListWrapper.fromList(users.findByEmail(filter.getEmail()).map(mapper::toResponse).stream().toList());
+    }
 
     // tenancy:begin
     // /** Platform staff's change. 404 {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}, 409 {@code TENANT_MEMBER_LAST_ADMIN}. */
