@@ -253,7 +253,7 @@ class EndpointContractIntegrationTest extends IntegrationTest {
                     checked++;
                     String token = newUserWithRole(role.name()).accessToken();
                     MockHttpServletResponse answer = send(endpoint, endpoint.path(null), token, validBody(endpoint));
-                    // An enum path variable without constants yet (UploadPurpose before the first purpose):
+                    // An enum path variable without constants yet (a piece's purposes before the project declares one):
                     // no request reaches the endpoint, so there is no role check to see.
                     if (isProblem(answer, 400, "REQUEST_PARAMETER_INVALID") && endpoint.pathVariables().contains(parameterOf(answer))) {
                         continue;
