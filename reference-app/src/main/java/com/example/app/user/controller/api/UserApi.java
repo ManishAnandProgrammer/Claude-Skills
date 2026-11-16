@@ -1,9 +1,14 @@
 package com.example.app.user.controller.api;
 
+// tenancy:begin
+// tenancy:else
+import com.example.app.common.wrapper.ListWrapper;
+// tenancy:end
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.dto.request.PasswordChangeRequest;
 // tenancy:begin
 // tenancy:else
+import com.example.app.user.dto.request.UserFilter;
 import com.example.app.user.dto.request.UserStatusRequest;
 // tenancy:end
 import com.example.app.user.dto.response.TokenResponse;
@@ -75,6 +80,20 @@ public interface UserApi {
     // session-version:end
     // tenancy:begin
     // tenancy:else
+
+    @Operation(summary = "Find an account by its email address (ADMIN)", description = """
+            The account with this exact address (ignoring case and surrounding spaces), or an empty list: its \
+            id, status and version, which a status change takes.""")
+    @ApiResponse(responseCode = "200", description = "The account, or an empty list")
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors: email missing or too long)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an ADMIN)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ListWrapper<UserResponse> lookUp(UserFilter filter);
 
     @Operation(summary = "Suspend or reactivate an account (ADMIN)", description = """
             SUSPENDED ends every session of the account at once (every refresh token revoked; with the \

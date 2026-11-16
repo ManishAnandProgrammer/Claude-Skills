@@ -1,6 +1,8 @@
 package com.example.app.user.controller.api;
 
+import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
+import com.example.app.user.dto.request.UserFilter;
 import com.example.app.user.dto.request.UserStatusRequest;
 import com.example.app.user.dto.response.UserResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,9 +16,22 @@ import org.springframework.http.ProblemDetail;
 import java.util.UUID;
 
 @Tag(name = "Platform: accounts", description = """
-        Platform staff suspending and reactivating accounts. Accounts are global (one person, any number of \
-        tenants), so no tenant ADMIN does this: they add, change and remove memberships.""")
+        Platform staff finding, suspending and reactivating accounts. Accounts are global (one person, any \
+        number of tenants), so no tenant ADMIN does this: they add, change and remove memberships.""")
 public interface PlatformUserApi {
+
+    @Operation(summary = "Find an account by its email address", description = """
+            The account with this exact address (ignoring case and surrounding spaces), or an empty list: its \
+            id, status and version, which a status change and an impersonation take. No role: an account's \
+            roles are its memberships'.""")
+    @ApiResponse(responseCode = "200", description = "The account, or an empty list")
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors: email missing or too long)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token, or a deactivated staff member's)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ListWrapper<UserResponse> lookUp(UserFilter filter);
 
     @Operation(summary = "Suspend or reactivate an account", description = """
             SUSPENDED ends every session of the account in every tenant at once (every refresh token revoked; \

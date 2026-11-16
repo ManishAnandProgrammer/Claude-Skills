@@ -6,11 +6,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -19,6 +21,7 @@ import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,6 +38,11 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
     private static final String ME = "/api/v1/users/me";
     private static final String PASSWORD_PATH = "/api/v1/users/me/password";
     private static final String NEW_PASSWORD = "Battery-Staple-7";
+    // tenancy:begin
+    // private static final String ACCOUNTS = "/api/v1/platform/users";
+    // tenancy:else
+    private static final String ACCOUNTS = "/api/v1/users";
+    // tenancy:end
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -54,8 +62,14 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
                 """.formatted(currentPassword, newPassword));
     }
 
-    private long versionOf(UUID userId) {
-        return jdbc.queryForObject("select version from users where id = ?", Long.class, userId);
+    /** The version as the status changer reads it before a change: through the lookup by email, never SQL. */
+    private long versionOf(TestUser account) throws Exception {
+        Number version = read(lookUp(statusChanger(), account.email()).andExpect(status().isOk()), "$.response[0].version");
+        return version.longValue();
+    }
+
+    private ResultActions lookUp(String token, String email) throws Exception {
+        return mvc.perform(get(ACCOUNTS).param("email", email).header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
     }
 
     /** A token that changes account statuses: staff's with tenancy, an application ADMIN's without. */
@@ -67,23 +81,19 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
         // tenancy:end
     }
 
-    private ResultActions changeStatus(UUID userId, String status) throws Exception {
-        return changeStatus(statusChanger(), userId, status, versionOf(userId));
+    private ResultActions changeStatus(TestUser account, String status) throws Exception {
+        return changeStatus(statusChanger(), account.id(), status, versionOf(account));
     }
 
-    private ResultActions changeStatus(UUID userId, String status, long version) throws Exception {
-        return changeStatus(statusChanger(), userId, status, version);
+    private ResultActions changeStatus(TestUser account, String status, long version) throws Exception {
+        return changeStatus(statusChanger(), account.id(), status, version);
     }
 
     private ResultActions changeStatus(String token, UUID userId, String status, long version) throws Exception {
         String body = """
                 {"status": "%s", "version": %d}
                 """.formatted(status, version);
-        // tenancy:begin
-        // return patchAs(token, "/api/v1/platform/users/" + userId + "/status", body);
-        // tenancy:else
-        return patchAs(token, "/api/v1/users/" + userId + "/status", body);
-        // tenancy:end
+        return patchAs(token, ACCOUNTS + "/" + userId + "/status", body);
     }
 
     private int liveRefreshTokensOf(UUID userId) {
@@ -182,7 +192,7 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
         TestUser phone = newUser();
         TestUser laptop = signIn(phone);
 
-        changeStatus(phone.id(), "SUSPENDED")
+        changeStatus(phone, "SUSPENDED")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.status").value("SUSPENDED"));
 
@@ -214,7 +224,7 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
     @DisplayName("A refresh token a suspension didn't revoke (one issued in a race) is still refused: 403 AUTH_ACCOUNT_SUSPENDED")
     void aSuspendedAccountsLiveRefreshTokenIsRefused() throws Exception {
         TestUser user = newUser();
-        changeStatus(user.id(), "SUSPENDED").andExpect(status().isOk());
+        changeStatus(user, "SUSPENDED").andExpect(status().isOk());
         assertThat(sql("update refresh_tokens set revoked_at = null, revocation_reason = null where user_id = ?", user.id()))
                 .isPositive();
 
@@ -228,9 +238,9 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
     @DisplayName("A reactivated account signs in again; the sessions its suspension ended stay ended")
     void aReactivationRevivesNoSession() throws Exception {
         TestUser user = newUser();
-        changeStatus(user.id(), "SUSPENDED").andExpect(status().isOk());
+        changeStatus(user, "SUSPENDED").andExpect(status().isOk());
 
-        changeStatus(user.id(), "ACTIVE")
+        changeStatus(user, "ACTIVE")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.status").value("ACTIVE"));
 
@@ -249,14 +259,14 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
     @DisplayName("A stale version is 409 OPTIMISTIC_LOCK_CONFLICT; the current status again is 200 and moves nothing")
     void versionsAndNoOps() throws Exception {
         TestUser user = newUser();
-        long before = versionOf(user.id());
+        long before = versionOf(user);
 
-        changeStatus(user.id(), "ACTIVE", before)
+        changeStatus(user, "ACTIVE", before)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.version").value(before));
         refresh(user.refreshToken()).andExpect(status().isOk());
-        changeStatus(user.id(), "SUSPENDED", before).andExpect(status().isOk());
-        changeStatus(user.id(), "ACTIVE", before)
+        changeStatus(user, "SUSPENDED", before).andExpect(status().isOk());
+        changeStatus(user, "ACTIVE", before)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("OPTIMISTIC_LOCK_CONFLICT"));
     }
@@ -268,7 +278,7 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
     void aSuspensionRacingARefreshLeavesNoToken() throws Exception {
         TestUser user = newUser();
 
-        List<ResultActions> answers = whileASuspensionIsInProgress(user.id(), () -> refresh(user.refreshToken()));
+        List<ResultActions> answers = whileASuspensionIsInProgress(user, () -> refresh(user.refreshToken()));
 
         answers.getFirst().andExpect(status().isOk());
         answers.getLast()
@@ -284,7 +294,7 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
     void aSuspensionRacingALoginLeavesNoToken() throws Exception {
         TestUser user = newUser();
 
-        List<ResultActions> answers = whileASuspensionIsInProgress(user.id(), () -> login(user.email(), PASSWORD));
+        List<ResultActions> answers = whileASuspensionIsInProgress(user, () -> login(user.email(), PASSWORD));
 
         answers.getFirst().andExpect(status().isOk());
         answers.getLast()
@@ -294,17 +304,17 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * Starts the suspension of {@code userId} and holds it after its account update, at its revocation (a
+     * Starts the suspension of {@code account} and holds it after its account update, at its revocation (a
      * SHARE lock on refresh_tokens), then sends {@code tokenRequest} and waits until it waits on a lock too:
      * the account's row, which the issue share-locks first. Without that lock the request would read the
      * account as still ACTIVE and get past it. Then lets both go; returns the suspension's answer, then the
      * request's.
      */
-    private List<ResultActions> whileASuspensionIsInProgress(UUID userId, Callable<ResultActions> tokenRequest) throws Exception {
+    private List<ResultActions> whileASuspensionIsInProgress(TestUser account, Callable<ResultActions> tokenRequest) throws Exception {
         // The changer signs in before the gate shuts: its own sign-in writes a refresh token.
         String changer = statusChanger();
-        long version = versionOf(userId);
-        Callable<ResultActions> suspension = () -> changeStatus(changer, userId, "SUSPENDED", version);
+        long version = versionOf(account);
+        Callable<ResultActions> suspension = () -> changeStatus(changer, account.id(), "SUSPENDED", version);
         CountDownLatch gateClosed = new CountDownLatch(1);
         CountDownLatch openGate = new CountDownLatch(1);
         try (ExecutorService executor = newExecutor()) {
@@ -330,8 +340,61 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
             return List.of(within(suspended), within(requested));
         }
     }
+    @Test
+    @DisplayName("""
+            The status changer finds an account by its address, ignoring case and surrounding spaces: id, status and \
+            version; an address nobody has finds an empty list""")
+    void anAccountIsFoundByItsAddress() throws Exception {
+        TestUser user = newUser();
+        String changer = statusChanger();
+
+        lookUp(changer, "  " + user.email().toUpperCase(Locale.ROOT) + " ")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.length()").value(1))
+                .andExpect(jsonPath("$.response[0].id").value(user.id().toString()))
+                .andExpect(jsonPath("$.response[0].email").value(user.email()))
+                .andExpect(jsonPath("$.response[0].status").value("ACTIVE"))
+                .andExpect(jsonPath("$.response[0].version").isNumber());
+        changeStatus(user, "SUSPENDED").andExpect(status().isOk());
+        lookUp(changer, user.email()).andExpect(jsonPath("$.response[0].status").value("SUSPENDED"));
+        lookUp(changer, "nobody-" + user.email())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response").isEmpty());
+    }
+
+    @Test
+    @DisplayName("The lookup needs an address of at most the configured length: missing or one longer is 400 naming email")
+    void theLookupsAddressIsBounded() throws Exception {
+        String changer = statusChanger();
+        String longest = "a".repeat(64) + "@" + "b".repeat(63) + "." + "c".repeat(63) + "." + "d".repeat(58) + ".io";
+
+        lookUp(changer, longest).andExpect(status().isOk()).andExpect(jsonPath("$.response").isEmpty());
+        lookUp(changer, "x" + longest)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[0].parameter").value("email"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 254 characters"));
+        mvc.perform(get(ACCOUNTS).header(HttpHeaders.AUTHORIZATION, "Bearer " + changer))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[0].parameter").value("email"));
+    }
     // tenancy:begin
     // tenancy:else
+
+    @Test
+    @DisplayName("The lookup is an ADMIN's: a USER's is 403 ACCESS_DENIED, none without a token")
+    void onlyAnAdminLooksUpAnAccount() throws Exception {
+        TestUser user = newUser();
+
+        lookUp(user.accessToken(), user.email())
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+        mvc.perform(get(ACCOUNTS).param("email", user.email()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+        lookUp(newAdmin().accessToken(), user.email()).andExpect(status().isOk());
+    }
 
     @Test
     @DisplayName("A USER's status change is 403 ACCESS_DENIED; an unknown account 404 USER_NOT_FOUND")
@@ -341,7 +404,7 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
 
         patchAs(user.accessToken(), "/api/v1/users/" + other.id() + "/status", """
                 {"status": "SUSPENDED", "version": %d}
-                """.formatted(versionOf(other.id())))
+                """.formatted(versionOf(other)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
         patchAs(newAdmin().accessToken(), "/api/v1/users/" + UUID.randomUUID() + "/status", """
@@ -359,7 +422,7 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
 
         patchAs(admin.accessToken(), "/api/v1/users/" + admin.id() + "/status", """
                 {"status": "SUSPENDED", "version": %d}
-                """.formatted(versionOf(admin.id())))
+                """.formatted(versionOf(admin)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("USER_OWN_STATUS_CHANGE"));
         refresh(admin.refreshToken()).andExpect(status().isOk());
@@ -374,10 +437,10 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
         TestUser second = newAdmin();
         String firstBody = """
                 {"status": "SUSPENDED", "version": %d}
-                """.formatted(versionOf(second.id()));
+                """.formatted(versionOf(second));
         String secondBody = """
                 {"status": "SUSPENDED", "version": %d}
-                """.formatted(versionOf(first.id()));
+                """.formatted(versionOf(first));
         CountDownLatch start = new CountDownLatch(1);
         List<Answer> answers;
         try (ExecutorService executor = newExecutor()) {

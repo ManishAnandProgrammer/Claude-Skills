@@ -412,8 +412,16 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     moves neither (DATA-24): the version is what a user saw, and a stamp is no edit they could have seen;
   - user actions on reviewed records take the version the user saw (409 when stale);
   - user 409s are **not** retried server-side; only machine writers that re-read state may retry;
-  - background writers re-check status under a lock.
-- **Severity:** High.
+  - background writers re-check status under a lock;
+  - **the version a write takes is readable through the API by whoever makes the write**: a GET on the
+    write's own path, on the resource it acts on, or on that resource's collection answers it (an
+    operator's `PATCH /users/{id}/status` comes with `GET /users?email=`). A version only SQL can read
+    makes the endpoint unusable (and a test reading it with `jdbc` hides that). Enforced by the reference's
+    `ApiContractIntegrationTest.everyVersionedWriteHasAReadOfTheVersion` over the OpenAPI document.
+- **Detect:** a request record with `version` (or a `version` query parameter) whose resource has no GET
+  answering it, or whose only GET needs a role the writer lacks; a test helper `versionOf` reading the
+  version with `jdbc` for an endpoint whose callers have no such read.
+- **Severity:** High; Medium for an endpoint unusable without the database (no data at risk).
 
 ### DATA-07: Deletes
 - **Check:**

@@ -5,11 +5,16 @@ package com.example.app.user.controller;
 import com.example.app.common.security.AdminOnly;
 // tenancy:end
 import com.example.app.common.security.CurrentUser;
+// tenancy:begin
+// tenancy:else
+import com.example.app.common.wrapper.ListWrapper;
+// tenancy:end
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.controller.api.UserApi;
 import com.example.app.user.dto.request.PasswordChangeRequest;
 // tenancy:begin
 // tenancy:else
+import com.example.app.user.dto.request.UserFilter;
 import com.example.app.user.dto.request.UserStatusRequest;
 // tenancy:end
 import com.example.app.user.dto.response.TokenResponse;
@@ -23,6 +28,10 @@ import com.example.app.user.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+// tenancy:begin
+// tenancy:else
+import org.springdoc.core.annotations.ParameterObject;
+// tenancy:end
 // session-version:begin
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -51,7 +60,7 @@ import java.util.UUID;
  *   <!-- tenancy:begin -->
  * Accounts are suspended by platform staff (PlatformUserController), never through this tenant-plane API.
  *   <!-- tenancy:else -->
- * The one exception, an ADMIN's: suspending or reactivating another account.
+ * The one exception, an ADMIN's: finding another account by its address, and suspending or reactivating it.
  *   <!-- tenancy:end -->
  */
 @RestController
@@ -89,6 +98,13 @@ class UserController implements UserApi {
     // session-version:end
     // tenancy:begin
     // tenancy:else
+
+    @Override
+    @AdminOnly
+    @GetMapping(version = "v1+")
+    public ListWrapper<UserResponse> lookUp(@Valid @ParameterObject UserFilter filter) {
+        return service.lookUp(filter);
+    }
 
     @Override
     @AdminOnly

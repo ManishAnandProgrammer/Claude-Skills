@@ -120,7 +120,8 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   from the next request on), and the impersonation issue re-reads it again. A platform token is never trusted
   for its lifetime. Tests: `StaffDeactivationIntegrationTest`.
 - **Check (accounts):** with tenancy accounts are global, so only platform staff suspend or reactivate one
-  (`PATCH /platform/users/{id}/status`, `AccountStatusService`, kept off the tenant plane by `TenancyArchTest`);
+  (`GET /platform/users?email=` to find it, `PATCH /platform/users/{id}/status`, `AccountStatusService`, kept
+  off the tenant plane by `TenancyArchTest`);
   never a tenant ADMIN. A suspension keeps every open tenant's last ACTIVE ADMIN (409
   `TENANT_MEMBER_LAST_ADMIN`, the tenant locked as a member change locks it). SEC-07 and TEN-08 for the rest.
 - **Detect:** one decoder for both audiences; a `ROLE_SUPER_ADMIN` that bypasses tenant checks;

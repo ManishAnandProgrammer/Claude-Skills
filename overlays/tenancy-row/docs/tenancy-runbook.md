@@ -67,7 +67,8 @@ the owner role: `update platform_users set deactivated_at = now() where email = 
 request (every platform request re-reads the row); no restart, no cache. Reactivating is the same
 statement with `deactivated_at = null`.
 
-**An account** (a person, global across tenants) is suspended or reactivated by staff through
+**An account** (a person, global across tenants) is suspended or reactivated by staff: find it with
+`GET /api/v1/platform/users?email=<address>` (its `id`, `status` and `version`), then
 `PATCH /api/v1/platform/users/{id}/status` (`{"status": "SUSPENDED", "version": n}`), never by SQL: the
 endpoint also revokes every refresh token and, with the session version, ends the access tokens at once.
 The last active ADMIN of an open tenant is refused (409): make another member ADMIN first, or suspend the

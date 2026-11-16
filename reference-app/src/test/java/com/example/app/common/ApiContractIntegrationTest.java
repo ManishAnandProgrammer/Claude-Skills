@@ -9,6 +9,13 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -165,5 +172,80 @@ class ApiContractIntegrationTest extends IntegrationTest {
         } finally {
             MDC.remove("requestId");
         }
+    }
+
+    @Test
+    @DisplayName("""
+            Every write that takes a version has a read on its resource that answers the version: without one a \
+            client can send it only after reading the database""")
+    void everyVersionedWriteHasAReadOfTheVersion() throws Exception {
+        JsonNode docs = JsonMapper.builder().build().readTree(getAs(null, "/v3/api-docs")
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        List<String> unreadable = new ArrayList<>();
+        for (Map.Entry<String, JsonNode> path : docs.path("paths").properties()) {
+            for (Map.Entry<String, JsonNode> operation : path.getValue().properties()) {
+                if (!operation.getKey().equals("get") && takesAVersion(docs, operation.getValue())
+                        && !aReadAnswersTheVersion(docs, path.getKey())) {
+                    unreadable.add(operation.getKey().toUpperCase(Locale.ROOT) + " " + path.getKey());
+                }
+            }
+        }
+        assertThat(unreadable).as("versioned writes no read of their resource answers the version of").isEmpty();
+    }
+
+    /** A {@code version} in the JSON body or as a query parameter ({@code {version}} in the path is the API's). */
+    private static boolean takesAVersion(JsonNode docs, JsonNode operation) {
+        for (JsonNode parameter : operation.path("parameters").values()) {
+            if (parameter.path("in").asString().equals("query") && parameter.path("name").asString().equals("version")) {
+                return true;
+            }
+        }
+        JsonNode body = operation.path("requestBody").path("content").path("application/json").path("schema");
+        return hasVersion(docs, body, 0);
+    }
+
+    /**
+     * A GET on the write's own path, on the resource it acts on (the path up to its last id), or on that
+     * resource's collection, whose answer holds a {@code version}.
+     */
+    private static boolean aReadAnswersTheVersion(JsonNode docs, String writePath) {
+        List<String> candidates = new ArrayList<>();
+        candidates.add(writePath);
+        int lastId = writePath.lastIndexOf("/{");
+        if (lastId > 0 && !writePath.substring(lastId).startsWith("/{version}")) {
+            String resource = writePath.substring(0, writePath.indexOf('}', lastId) + 1);
+            candidates.add(resource);
+            candidates.add(resource.substring(0, lastId));
+        }
+        for (String candidate : candidates) {
+            JsonNode answer = docs.path("paths").path(candidate).path("get").path("responses").path("200")
+                    .path("content").path("*/*").path("schema");
+            JsonNode json = docs.path("paths").path(candidate).path("get").path("responses").path("200")
+                    .path("content").path("application/json").path("schema");
+            if (hasVersion(docs, answer, 0) || hasVersion(docs, json, 0)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The schema, its references, properties and items followed a few levels deep (a wrapper around a record). */
+    private static boolean hasVersion(JsonNode docs, JsonNode schema, int depth) {
+        if (schema.isMissingNode() || depth > 4) {
+            return false;
+        }
+        if (schema.has("$ref")) {
+            String name = schema.path("$ref").asString().substring("#/components/schemas/".length());
+            return hasVersion(docs, docs.path("components").path("schemas").path(name), depth + 1);
+        }
+        if (schema.path("properties").has("version")) {
+            return true;
+        }
+        for (JsonNode property : schema.path("properties").values()) {
+            if (hasVersion(docs, property, depth + 1)) {
+                return true;
+            }
+        }
+        return hasVersion(docs, schema.path("items"), depth + 1);
     }
 }

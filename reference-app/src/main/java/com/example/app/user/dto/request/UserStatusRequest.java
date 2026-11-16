@@ -13,7 +13,7 @@ public record UserStatusRequest(
         @NotNull
         UserStatus status,
 
-        @Schema(description = "The version you last read; a stale one is refused with 409", example = "0")
+        @Schema(description = "The version you last read (the lookup by email answers it); a stale one is refused with 409", example = "0")
         @NotNull
         Long version) {
 }

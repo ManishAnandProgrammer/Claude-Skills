@@ -1,9 +1,6 @@
 package com.example.app.common.exception;
 
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.classic.spi.IThrowableProxy;
-import ch.qos.logback.core.read.ListAppender;
+import com.example.app.support.CapturedLog;
 import com.example.app.support.IntegrationTest;
 import jakarta.persistence.EntityManager;
 import org.hibernate.Session;
@@ -11,15 +8,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.PreparedStatement;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,19 +35,16 @@ class RefusedWriteLoggingIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    private final ListAppender<ILoggingEvent> captured = new ListAppender<>();
+    private final CapturedLog log = new CapturedLog();
 
-    /** On the root logger itself, so every event arrives here on the logging thread, before any async appender. */
     @BeforeEach
     void captureTheLog() {
-        captured.start();
-        rootLogger().addAppender(captured);
+        log.open();
     }
 
     @AfterEach
     void stopCapturing() {
-        rootLogger().detachAppender(captured);
-        captured.stop();
+        log.close();
     }
 
     @Test
@@ -67,7 +57,7 @@ class RefusedWriteLoggingIntegrationTest extends IntegrationTest {
                         .setParameter("email", email).executeUpdate()));
 
         assertThat(refused).isNotNull();
-        assertThat(loggedText()).contains(CONSTRAINT).doesNotContain(email);
+        assertThat(log.text()).contains(CONSTRAINT).doesNotContain(email);
     }
 
     @Test
@@ -85,7 +75,7 @@ class RefusedWriteLoggingIntegrationTest extends IntegrationTest {
                 })));
 
         assertThat(refused).isNotNull();
-        assertThat(loggedText()).contains(CONSTRAINT).doesNotContain(email);
+        assertThat(log.text()).contains(CONSTRAINT).doesNotContain(email);
     }
 
     /** Creates the table, stores {@code email} once, then runs the write that repeats it. */
@@ -100,21 +90,5 @@ class RefusedWriteLoggingIntegrationTest extends IntegrationTest {
                     .setParameter("email", email).executeUpdate();
             repeat.run();
         });
-    }
-
-    /** Every captured line with every message of its logged exception chain. */
-    private String loggedText() {
-        List<String> lines = new ArrayList<>();
-        for (ILoggingEvent event : captured.list) {
-            lines.add(event.getFormattedMessage());
-            for (IThrowableProxy cause = event.getThrowableProxy(); Objects.nonNull(cause); cause = cause.getCause()) {
-                lines.add(cause.getMessage());
-            }
-        }
-        return String.join("\n", lines);
-    }
-
-    private static Logger rootLogger() {
-        return (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     }
 }

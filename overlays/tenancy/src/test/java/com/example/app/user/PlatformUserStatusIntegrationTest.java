@@ -5,13 +5,16 @@ import com.example.app.support.WithoutTestTenant;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Locale;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -24,15 +27,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PlatformUserStatusIntegrationTest extends IntegrationTest {
 
     private static final String SWITCH = "/api/v1/auth/switch-tenant";
+    private static final String ACCOUNTS = "/api/v1/platform/users";
 
-    private long versionOf(UUID userId) {
-        return jdbc.queryForObject("select version from users where id = ?", Long.class, userId);
+    private ResultActions lookUp(String token, String email) throws Exception {
+        return mvc.perform(get(ACCOUNTS).param("email", email).header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
     }
 
-    private ResultActions changeStatus(String token, UUID userId, String status) throws Exception {
-        return patchAs(token, "/api/v1/platform/users/" + userId + "/status", """
+    /** As staff change a status: the account's id and version from the lookup by email (the runbook's way), then the change. */
+    private ResultActions changeStatus(String token, String email, String status) throws Exception {
+        ResultActions found = lookUp(platformToken(), email).andExpect(status().isOk());
+        String userId = read(found, "$.response[0].id");
+        Number version = read(found, "$.response[0].version");
+        return patchAs(token, ACCOUNTS + "/" + userId + "/status", """
                 {"status": "%s", "version": %d}
-                """.formatted(status, versionOf(userId)));
+                """.formatted(status, version.longValue()));
     }
 
     private ResultActions switchTenant(String refreshToken, UUID tenantId) throws Exception {
@@ -41,14 +49,46 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
                 """.formatted(refreshToken, tenantId));
     }
 
-    private UUID ownerOf(TestTenant tenant) {
-        return jdbc.queryForObject("select user_id from tenant_memberships where tenant_id = ? and role = 'ADMIN' order by id limit 1",
-                UUID.class, tenant.id());
+    /** The email of the tenant's first ADMIN, whom newTenant() created. */
+    private String ownerOf(TestTenant tenant) {
+        return jdbc.queryForObject("""
+                select u.email from tenant_memberships m join users u on u.id = m.user_id
+                where m.tenant_id = ? and m.role = 'ADMIN' order by m.id limit 1""", String.class, tenant.id());
     }
 
     private static String tenantOf(String accessToken) {
         String payload = new String(Base64.getUrlDecoder().decode(accessToken.split("\\.")[1]), StandardCharsets.UTF_8);
         return JsonPath.read(payload, "$.tenant_id");
+    }
+
+    @Test
+    @DisplayName("""
+            Staff find an account by its address, ignoring case and surrounding spaces: id, status and version, no \
+            role (a role is a membership's); an address nobody has finds an empty list""")
+    void staffFindAnAccountByItsAddress() throws Exception {
+        TestUser member = newUserIn(newTenant(), "ADMIN");
+
+        lookUp(platformToken(), " " + member.email().toUpperCase(Locale.ROOT) + " ")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.length()").value(1))
+                .andExpect(jsonPath("$.response[0].id").value(member.id().toString()))
+                .andExpect(jsonPath("$.response[0].status").value("ACTIVE"))
+                .andExpect(jsonPath("$.response[0].version").isNumber())
+                .andExpect(jsonPath("$.response[0].role").doesNotExist());
+        lookUp(platformToken(), "nobody-" + member.email())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response").isEmpty());
+    }
+
+    @Test
+    @DisplayName("A tenant token can't look up accounts: the platform path is 401 for it, an ADMIN's too")
+    void onlyStaffLookUpAnAccount() throws Exception {
+        TestUser admin = newUserIn(newTenant(), "ADMIN");
+
+        lookUp(admin.accessToken(), admin.email())
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+        lookUp(platformToken(), admin.email()).andExpect(status().isOk());
     }
 
     @Test
@@ -58,7 +98,7 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
         TestUser admin = newUserIn(tenant, "ADMIN");
         TestUser member = newUserIn(tenant);
 
-        changeStatus(admin.accessToken(), member.id(), "SUSPENDED").andExpect(status().isUnauthorized());
+        changeStatus(admin.accessToken(), member.email(), "SUSPENDED").andExpect(status().isUnauthorized());
 
         assertThat(jdbc.queryForObject("select status from users where id = ?", String.class, member.id())).isEqualTo("ACTIVE");
     }
@@ -69,14 +109,14 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
             with another active ADMIN they are, and that ADMIN then is the last""")
     void aTenantKeepsAnActiveAdmin() throws Exception {
         TestTenant tenant = newTenant();
-        UUID owner = ownerOf(tenant);
+        String owner = ownerOf(tenant);
 
         changeStatus(platformToken(), owner, "SUSPENDED")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_LAST_ADMIN"));
         TestUser second = newUserIn(tenant, "ADMIN");
         changeStatus(platformToken(), owner, "SUSPENDED").andExpect(status().isOk());
-        changeStatus(platformToken(), second.id(), "SUSPENDED")
+        changeStatus(platformToken(), second.email(), "SUSPENDED")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_LAST_ADMIN"));
     }
@@ -85,7 +125,7 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
     @DisplayName("A CLOSED tenant's only ADMIN may be suspended: a closed tenant needs no manager")
     void aClosedTenantsAdminIsSuspended() throws Exception {
         TestTenant tenant = newTenant();
-        UUID owner = ownerOf(tenant);
+        String owner = ownerOf(tenant);
         sql("update tenants set status = 'CLOSED' where id = ?", tenant.id());
 
         changeStatus(platformToken(), owner, "SUSPENDED")
@@ -103,7 +143,7 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
         TestUser member = newUserIn(first);
         addMember(second, member.id(), "USER");
 
-        changeStatus(platformToken(), member.id(), "SUSPENDED").andExpect(status().isOk());
+        changeStatus(platformToken(), member.email(), "SUSPENDED").andExpect(status().isOk());
 
         switchTenant(member.refreshToken(), second.id())
                 .andExpect(status().isUnauthorized())
@@ -119,7 +159,7 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
     void aSuspendedMemberIsNotImpersonated() throws Exception {
         TestTenant tenant = newTenant();
         TestUser member = newUserIn(tenant);
-        changeStatus(platformToken(), member.id(), "SUSPENDED").andExpect(status().isOk());
+        changeStatus(platformToken(), member.email(), "SUSPENDED").andExpect(status().isOk());
 
         postAs(platformToken(), "/api/v1/platform/tenants/" + tenant.id() + "/impersonations", """
                 {"userId": "%s", "reason": "SUP-1"}

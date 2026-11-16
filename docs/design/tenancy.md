@@ -815,12 +815,13 @@ as groundwork. Golden code in the reference (no tenancy) and the tenancy overlay
   hash, revoke every refresh token (`PASSWORD_CHANGED`), raise the session version(s), tokens for the
   calling device (with tenancy: the token's own tenant). An impersonation token is refused (403).
 - **Suspension and reactivation** (`users.status` ACTIVE / SUSPENDED, `0027-users-status`, with the two new
-  revocation reasons): without tenancy an application ADMIN (`PATCH /users/{id}/status`, `@AdminOnly`),
+  revocation reasons): without tenancy an application ADMIN (`GET /users?email=` finds the account's id,
+  status and version, `PATCH /users/{id}/status`, both `@AdminOnly`),
   never their own account (403 `USER_OWN_STATUS_CHANGE`), and only while an ACTIVE ADMIN now: the caller and
   the target are locked together in id order and the caller re-read, so the last ADMIN can't be suspended
   (only another active ADMIN suspends one) and of two ADMINs suspending each other the second is refused
   (`twoAdminsSuspendingEachOtherLeaveOne`). With tenancy accounts are global and staff do it
-  (`PATCH /platform/users/{id}/status`, `PlatformUserController`; ArchUnit keeps `AccountStatusService` off the
+  (`GET /platform/users?email=`, `PATCH /platform/users/{id}/status`, `PlatformUserController`; ArchUnit keeps `AccountStatusService` off the
   tenant plane); a tenant keeps an ACTIVE ADMIN (409 `TENANT_MEMBER_LAST_ADMIN`; a CLOSED or REJECTED
   tenant needs none). The ADMIN role now comes with sign-in itself (`0007`, `newAdmin()`): suspension is its
   first admin endpoint.
