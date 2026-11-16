@@ -36,7 +36,10 @@ but no `@DropdownCandidate`, ask whether to add one.
 
 ## Tests (golden: `TodoListIntegrationTest`)
 - Default order and shape: fixtures in an order different from the expected one; only the caller's
-  items; exactly `value` and `label`.
+  items; exactly `value` and `label`. On a **shared root** (no owner: every caller sees every item, other
+  tests' rows included) every dropdown test scopes its calls by a `query` token only its own items' labels
+  carry, as the list tests do (tests.md *Shared tables*), and "only the caller's items" becomes "another
+  tenant's items never appear" (the cross-tenant test).
 - `sortDirection=DESC` reverses it.
 - `query` matches part of the label ignoring case (searchable), or is 400 (not searchable).
 - Batches: walk `size=2` with `after` to the end (`hasMore` false, no `nextCursor`).

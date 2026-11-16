@@ -183,8 +183,10 @@ Within a module as well as across modules.
     request writes **several aggregates**: it owns that transaction boundary and calls the aggregate
     services, which join it; it uses no repository. A use case that writes one aggregate needs no
     Manager (SMELL-11, SMELL-12: no layer for the pattern's sake);
-  - **read models may join**: a read-only Criteria projection may join another aggregate's table to
-    show its data (a list's name on a todo row), within the module; loading or writing another
+  - **read models may read another aggregate's data**, within the module, without its entity: a
+    detail's parent through an entity graph, a list page's parent names in **a second statement** for the
+    batch's ids (never a join in the keyset query: with tenancy it carries the tenant predicate twice and
+    its plan turns on the cursor's position; crud-gen 4.3, reference `TodoService`'s list names); loading or writing another
     aggregate's entity goes through its service. **Across modules** (ARCH-04 forbids the join), a list
     scoped by another module's data (a manager's team) takes the ids from the owner's facade
     (`Employees.reportIds(managerId)`), **with a configured bound on their number enforced where the

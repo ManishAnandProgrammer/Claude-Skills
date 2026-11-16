@@ -36,7 +36,7 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
 | `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
 | `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@CrossField(reportedOn = "<x>To") boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
-| `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getOwnedTodoWithItsList`, `toResponse`), `TodoRepository.findWithTodoListByIdAndOwnerId`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`; the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` at the create; shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) |
+| `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getOwnedTodoWithItsList`, `toResponse`), `TodoRepository.findWithTodoListByIdAndOwnerId`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`; the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` whenever a write names someone new (an update only when the id changes); shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) and on list rows (`TodoListName`, `TodoService.withTodoLists`: a second statement per batch) |
 | `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`) of a **configured maximum length** (`getLengthInDays`, `plan.max-days`), an **overlap filter with a lower index bound** (`plannedFrom`/`plannedTo`: `ends_on >= from`, `starts_on <= to` and the derived `starts_on >= from - (max - 1)`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 
 The rules behind the shape are the house-review references, which are the source of truth:
@@ -78,7 +78,8 @@ Look for `.claude/crud-profile.md` at the project root. If it exists, read it: i
 *Deviations* take precedence. Also read `.claude/review-profile.md` if it exists; its conventions
 apply to generated code too. When this skill says "record it in the profiles", a review-profile
 **Conventions** row is only for a departure from a house rule, with the owner's reason (it reads as an
-override); a choice no rule forbids is recorded in the javadoc or the changeset comment instead.
+override); a choice no rule forbids is recorded in the crud profile's *Decisions per entity* (a section per
+entity) and in the javadoc or the changeset comment instead.
 
 If it doesn't exist, build it before generating anything:
 1. Copy `~/.claude/skills/crud-gen/profile-template.md`.
@@ -107,7 +108,7 @@ without it (member), or does it have its own lifecycle (root)?". Record the answ
 **Owned or shared** (SEC-01): does each row belong to one user (an owner column: golden `Todo`), or
 is the table **shared** (a catalogue, reference data, staff records: nobody owns a row)? For a shared
 root, ask **who may write** (create, update, actions, delete, its upload purposes) and **who may
-read**, and record both in the profiles' conventions. **Without tenancy**, while signup is public
+read**, and record both in the crud profile's *Decisions per entity* and the service's javadoc. **Without tenancy**, while signup is public
 (the `sign-in` piece), every internet account is a USER: refuse `controllerSecurity: none` for a shared
 root's writes; they carry a role (`@AdminOnly`, or the project's own role annotation, REST-25). **With
 tenancy** the public signup reaches no tenant data: a tenant token needs a membership that an ADMIN of
@@ -128,7 +129,8 @@ exists, while the answer is cheapest:
 - **retired or deleted?** A catalogue entry (a course, a product) that children reference is either
   retired with an active flag (it leaves the dropdown, `activeField`, and old children keep pointing at
   it: the golden `Tag` shape, REST-13) or hard-deleted, and then refused while referenced (409
-  `<ENTITY>_IN_USE`, DATA-34). Record the choice;
+  `<ENTITY>_IN_USE`, DATA-34). Record the choice in the crud profile's *Decisions per entity* and the
+  entity's javadoc;
 - **how is a person erased?** A root with personal fields (name, email, photo) that children will
   reference can no longer simply be deleted (DATA-07 says personal data is truly deletable; DATA-33's
   `*_IN_USE` refuses it): ask the erasure path (delete the children first, anonymise the person's
@@ -254,7 +256,11 @@ before the write: no key leaves the tenant schema (TEN-16, `SchemaCatalogIntegra
 can move to a database of its own. Ownership checks are unchanged: they separate users inside one tenant.
 A display number is a per-tenant counter (`Counters`, TEN-18): a **fixed** counter name (`TICKET_NUMBER`),
 seeded at 0 by an insert in the entity's tenant changeset (it runs in every tenant schema and the
-template), never `perContext` with the tenant id.
+template), never `perContext` with the tenant id. A tenant still PENDING when the changeset ships has no
+schema yet; its approval creates the schema from the template or runs every tenant changeset, the seed
+included, so it numbers from #1 with nothing added: test it (a tenant registered before the upgrade,
+approved after it, numbers its first record #1; golden schema overlay
+`UpgradeFromPreviousReleaseIntegrationTest`).
 
 **With `{{tenancy}}` = `row`** (house-review `tenancy.md`, TEN-16…19 and TEN-30…38; golden: the `tenancy-row` blocks of
 the reference's `0002`–`0006` changesets and its todo entities, which bootstrap uncommented in the
@@ -266,7 +272,7 @@ names as such; it joins `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES` with
 | The entity extends `TenantOwnedEntity` (`@TenantId`), never `{{AuditBase}}` directly; no `tenantId` in its builder calls, requests, filters, repositories or services | TEN-32, TEN-01 |
 | `tenant_id uuid NOT NULL` with **no default** and `fk_<table>_tenant_id → tenants (id)`: every insert names its tenant, so a forgotten one fails at once. The golden `0002`–`0011` blocks still show a `current_setting` default; it predates the rule and the row overlay's `0016` drops it (an applied changeset is never edited): never copy it into a new changeset | TEN-30 |
 | `ENABLE` + `FORCE ROW LEVEL SECURITY` and the one `tenant_isolation` policy (`USING` and `WITH CHECK`, the same predicate) **in the changeset that creates the table** | TEN-30 |
-| Every unique constraint, exclusion constraint (`tenant_id WITH =`) and list index has `tenant_id` among its leading equality columns: the owner (or a parent column) first when the table has one (`(owner_id, tenant_id, sort…, id)`, `(customer_id, tenant_id, id)`: it also serves the key's check), `tenant_id` first when it has none or a list filters by the tenant alone (`(tenant_id, sort…, id)`); names as in single-tenant. A scope column that determines the tenant (an owner, a member) gets `CREATE STATISTICS st_<table>_<column>_tenant_id (dependencies) ON <column>, tenant_id` in the same changeset (golden row overlay `0023-owner-tenant-statistics.sql`): without it the planner estimates a person's rows at one once other tenants fill the table | TEN-33, DATA-10 |
+| Every unique constraint, exclusion constraint (`tenant_id WITH =`) and list index has `tenant_id` among its leading equality columns: the owner (or a parent column) first when the table has one (`(owner_id, tenant_id, sort…, id)`, `(customer_id, tenant_id, id)`: it also serves the key's check), `tenant_id` first when it has none or a list filters by the tenant alone (`(tenant_id, sort…, id)`). Names: with an owner as in single-tenant (`idx_todos_owner_id_due_sort_id`: `tenant_id` after the owner is left out of the name, as the golden row blocks do); without one `tenant_id` is the scope and is named (`idx_customers_tenant_id_name_id`). A scope column that determines the tenant (an owner, a member) gets `CREATE STATISTICS st_<table>_<column>_tenant_id (dependencies) ON <column>, tenant_id` in the same changeset (golden row overlay `0023-owner-tenant-statistics.sql`): without it the planner estimates a person's rows at one once other tenants fill the table | TEN-33, DATA-10 |
 | A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually applied by then; the key exists for the child). A reference to a person (an owner, an assignee) is to the tenant's own members, never to `users` or `tenant_memberships` (platform tables): `(owner_id, tenant_id) → members (user_id, tenant_id)` as `fk_<table>_<column>` (golden: the row overlay's `0018-owners-reference-members`); a person the request names (an assignee) is checked through `Members` (Step 1) before the write, since the key also accepts a member who left. A member's row is never deleted (a removal marks it left), so the key never blocks a removal and the record keeps its owner; a project whose records must be reassigned before a removal says so (an open item: the members API has no such check) | TEN-33, TEN-16, TEN-17 |
 | The replica identity: `ALTER TABLE <t> REPLICA IDENTITY USING INDEX <uq_…>` **in the changeset that creates the table**, on a unique key that includes `tenant_id` (the parent key `(id, …, tenant_id)` of its composite references, or `(tenant_id, key)`); a table without one gets `uq_<table>_id_tenant_id (id, tenant_id)` | TEN-38 |
 | A display number (an invoice or order number) is a per-tenant counter (the metadata piece's `Counters`), never an identity column or a sequence: one sequence serves every tenant. `counters` is tenant data, so it is a **fixed** name (`TICKET_NUMBER`), not `perContext` with the tenant id; it needs the TEN-34 seed pair (a listener with `Counters.createIfAbsent(name, 0)` plus a backfill changeset for every tenant whatever its status, after its highest number), and the create calls `createIfAbsent` before `next` too (a tenant activated by an instance without the listener, during a rolling deploy, still numbers from 1). A `uq_<table>_number (tenant_id, number)` backs it up. Golden: `Todo.number`, `0026-todo-numbers.sql`'s row block, `TodoNumberSeed`. Tests: rows 27b–27d, 30 | TEN-18, TEN-34 |
@@ -315,6 +321,11 @@ at its end.
     `pageInfo {nextCursor, hasMore}`, no count. Golden: `TodoFilter`, `TodoRepositoryImpl`;
   - **offset**: bounded admin tables that need page numbers. `PageFilter`, `PaginationWrapper`,
     the count only on a full page. Golden: `TodoListFilter`, `TodoListRepositoryImpl.findByFilter`.
+    An entity in the profile's `offsetLists` whose table grows with use (a tenant's customers, every
+    order) is asked once: "offset paging counts the rows on every full page and reads every skipped row;
+    is the table bounded (how many rows at most), or should it be a cursor list?" The answer and its reason
+    go in the crud profile's *Decisions per entity* (house-review REST-08 then has it). The entity goes in
+    **both** profiles' `cursorLists` / `offsetLists` (the review profile's lists are REST-08's source).
 
 - **A feature that needs configuration, not an entity** (rules an admin chooses per tenant or per
   context, read often, changed rarely): with the `metadata` piece, generate no entity. Rules:
@@ -360,7 +371,9 @@ leave out heavy fields (a `text` column with a limit over 1,000 characters, or a
 ### 4.1 Filter
 Cursor: `extends {{CursorFilter}}` (golden `TodoFilter`). Offset: `extends {{PageFilter}}` (golden
 `TodoListFilter`). One field per filterable attribute: FK ids (named like the request field,
-`todoListId`), enums typed as enums, a `query` with `@MaxLength("search-query")`, a `sort` enum with
+`todoListId`), enums typed as enums, a `query` with `@MaxLength("search-query")` (over the record's own
+name-like text: a title, a name, a code; a free-form note or description is not a search target unless the
+owner asks, recorded in *Decisions per entity*), a `sort` enum with
 a default; `requireXPredicate()` per optional field (the repository builds predicates only from
 these). A filter whose `query` predicate is shared with the entity's dropdown implements
 `QueryFilter` (golden `TodoListFilter`, `TagFilter`), so one helper serves both; a list without a
@@ -374,14 +387,17 @@ which bounds its contains search and its offset count) and each enum value's sha
 (a status a later decision sets is absent from the newest rows). Record them in the index test's javadoc.
 
 **Then the indexes** (DATA-10), now that the orders and filters are chosen: one per offered order
-and per scoping filter, ending with the id (none when the sort column is unique and not null), in a
+and per scoping filter, ending with the id (none when the sort column is unique and not null; NEWEST's is
+`(scope…, created_at, id)`, golden `0029-newest-by-created-at.sql`), in a
 new changeset if the entity's own one is applied (Step 2). Write the list's **cell matrix** while you
 choose them (tests.md, *Index tests*): each order × each filter (each value of an enum filter), a later
 batch or page, the `ids` lookup, each second step, each delete-side key check, each naming the index
 that serves it and the most rows it may read; test row 28 runs it. A cell no index serves gets one or is
 not offered: **a range filter is offered under its own column's order only** (under another order it is a
 400 naming the rule, golden `TodoFilter.isDueOnOrBeforeSortedByDueDate`), unless a bounded scope holds it
-(one todo's time entries), recorded. An order index
+(one todo's time entries), recorded. The exception is an **overlap filter** with its derived lower bound:
+the start's index serves it under every order (golden `PlanFilter`'s planned days under NEWEST), as its
+bounds hold the range on both sides. An order index
 that leads with a foreign key column (`(author_id, id)`) also serves that key's checks: it
 **replaces** the key's own index from the pre-flight (`idx_books_author_id`), never sits beside it
 (golden `0003-todos.sql`'s comment). **A low-cardinality enum filter** (a status, a priority) is
@@ -440,7 +456,9 @@ description and its 400 response name it.
   `PATCH /<entities>/{id}/<scope>` (`PATCH /on-call-shifts/{id}/member`) with a
   `<Entity><Scope>Request {<scope>Id, version}`; a person is checked through `Members` (404
   `TENANT_MEMBER_NOT_FOUND` for a removed one), and moving to the current value is a no-op answering
-  200 with the version unchanged.
+  200 with the version unchanged. The version is checked **first** (a stale one is 409 even for a no-op),
+  then the no-op; the person is checked only when the value changes, so a hand-over to the member the
+  record already names, removed since, is that no-op too (4.3's updatable reference).
 - **A filter for "what is on during [from, to]"** is an overlap, not the range `&&` operator (not
   leakproof under row-level security, TEN-36). Two comparisons alone (`endsOn >= :from AND startsOn
   <= :to`) give the index **no lower bound**: every index orders by the start, so `endsOn >= :from`
@@ -478,7 +496,8 @@ description and its 400 response name it.
 - **"None" is null:** optional text and pattern fields store blank as `null`; the `@Schema` says
   "null, absent or blank for none (returned as null)".
 - **Calendar dates:** every date that reaches a column or a query, filters included, carries
-  `@EarliestDate("<entity>.<field>")` (`app.limits.earliest-date`): a `LocalDate` reaches years
+  `@EarliestDate("<entity>.<field>")` (one key may serve a range's two ends, golden `plan.dates`;
+  `app.limits.earliest-date`): a `LocalDate` reaches years
   PostgreSQL's `date` can't hold, and `-300000-01-01` is otherwise a 500 at the database (REST-09).
   A date that records the past (a day worked, a birth date) also takes `@NotAfterToday`, never
   `@PastOrPresent` (JAVA-25); a filter on it a sanity `@LatestDate`. **A state action that records a
@@ -495,7 +514,8 @@ description and its 400 response name it.
 
 ### 4.2 Requests (records)
 `<Entity>Create{{requestSuffix}}`, `<Entity>Update{{requestSuffix}}` (with `@NotNull Long version`),
-one per state action (`<Entity>Status{{requestSuffix}}`). **Every String carries `@MaxLength("<entity>.<field>")`**, the
+one per state action (`<Entity>Status{{requestSuffix}}`). **Every String carries `@MaxLength("<entity>.<field>")`**
+(except a closed `@Pattern` field that bounds its own length, 4.1 *Pattern fields*: golden `TagColor`), the
 elements of a String collection too (`Set<@NotBlank @MaxLength("…") String>`), and its
 number is added to `app.limits.text` in `config/limits.yml`; collections carry a configured size
 limit (`@ConfiguredMaxSize("<entity>.<field>")`) and `@NotNull` elements, plus `@NotEmpty` only when
@@ -508,7 +528,8 @@ the field's key to `LimitsIntegrationTest.CURSOR_TEXT_KEYS`; otherwise the next 
 value is a 400 on the cursor the server handed out (tests.md rows 16, 24).
 
 ### 4.3 Responses (records)
-`<Entity>Response` (every field, FKs as ids, ending with `{{auditFields}}`; a reference to another
+`<Entity>Response` (every field, FKs as ids, which stay beside a displayed parent's `{id, name}` record for
+clients that only link (golden `TodoResponse`: `todoListId` and `todoList`), ending with `{{auditFields}}`; a reference to another
 aggregate that clients display is `{id, <the parent's display field under its own name>}`, golden
 `PlanTodoResponse {id, title}`: a student's `{id, fullName}`, a course's `{id, title}`, never a
 field renamed to a literal `name`; one record per referenced aggregate (`<Entity><Parent>Response`),
@@ -529,12 +550,22 @@ parent (an id column and a facade). Three more shapes, golden on `Todo` (tests.m
 - **a same-module parent on the detail** (a `@ManyToOne(fetch = LAZY)`): `todoList {id, name}` read with
   the child in one statement (`TodoRepository.findWithTodoListByIdAndOwnerId`, an `@EntityGraph`), also
   for a write that may hold no row lock (a status change to the status it has); the writes that lock the
-  child read the parent afterwards (`TodoService`'s javadoc says why that is safe). List rows keep the
-  batch lookup above;
+  child read the parent afterwards (`TodoService`'s javadoc says why that is safe). **List rows** carry it
+  too, through the batch lookup above in the same module: a `dto/internal/<Parent>Name(id, name)` record
+  (never on the wire), the parent's repository `find<Parent>NamesByIdIn…` as a JPQL constructor query of the
+  two columns, the parent's service `findOwned<Parent>Names(ids, ownerId)` (`List.of()` for no ids), the
+  mapper's `with<Parent>s(rows, names)` leaving out a row whose parent it misses; statement count + 1 (golden
+  `TodoListName`, `TodoListRepository.findNamesByIdInAndOwnerId`, `TodoListService.findOwnedTodoListNames`,
+  `TodoService.withTodoLists`, `TodoSummaryResponse.todoList`);
 - **a reference to a person** (an owner, an assignee, who asked): an id with a foreign key (to `users`;
   with tenancy to the tenant's `members`, which a removal marks left and never deletes), checked through
-  the person's module at the write that names them (`TodoService.requireRequester`: `Users`, with tenancy
-  `Members.isMember`, 404 `TENANT_MEMBER_NOT_FOUND`). With tenancy the detail shows `{id, fullName}` while
+  the person's module **whenever a write names someone new** (`TodoService.requireRequester`: `Users`, with
+  tenancy `Members.isMember`, 404 `TENANT_MEMBER_NOT_FOUND`): the create, and an update only when the id
+  changes. A PUT is a full replace and re-sends the person it read, who may have left since: checked again,
+  every record of a former member would refuse every later edit, so the one it already names is kept
+  (and can be cleared with `null`), golden `TodoService.update`, `TodoUpdateRequest.requesterId`. List rows
+  carry the person as the id (`requesterId`); a screen that needs the name on rows gets it through one
+  `Members.getMemberViews` per page (statement count + 1), never per row. With tenancy the detail shows `{id, fullName}` while
   they are a member and the id alone once they left (every record still listed and editable); without
   tenancy the id alone, as every internet account is a USER and a name is personal data (Step 1). Ask
   how a former member's records show if the owner wants more than the default (a `left` flag), and record
@@ -554,11 +585,13 @@ entity's; `ErrorCodeContractTest.everyErrorCodeHasAStatus` catches a missing one
 `{{messagesFile}}`; the handler's
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
 `*_IN_USE` for the parent's delete, and `ERROR_PREFIX_GONE`, a 404 without placeholders, for a
-child's insert or update after it: `byForeignKeyOnWrite`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02), except a key that can't trip once the service checked its target first: a person's key to `members` (checked through `Members`, whose row is never deleted) stays unmapped, with that reason in the module's `ConstraintErrorCodes` javadoc. A state
+child's insert or update after it: `byForeignKeyOnWrite`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02), except a key that can't trip once the service checked its target first: a person's key to `members` (checked through `Members`, whose row is never deleted) and a `CHECK` that the mapper's own normalisation always satisfies (`ck_<table>_email_normalized`) stay unmapped, with that reason in the module's `ConstraintErrorCodes` javadoc. Every later write that names the person calls the same check; one that forgets it answers 500, which its guard proof shows (never map the key to hide a missing check). A state
 conflict is 409, a wrong value 400 (ERR-05). A child's foreign key adds the parent's `*_IN_USE` to
 **the parent's** delete docs (`@ApiResponse(409)`) in the same change, asserted in **the child's**
 test class (with the parent's `deleteWhileReferencedIs409`): the parent's existing tests stay unchanged
-(*Updating an entity* rule 4). Never document a code before the constraint that raises it exists (no
+(*Updating an entity* rule 4), except a line that pins the parent's old delete docs (an assertion that its
+`409` doesn't exist): the new documented code is the same contract change, so that line goes and the
+child's class asserts the code instead. Never document a code before the constraint that raises it exists (no
 `*_IN_USE` on a delete nothing references yet).
 **Bootstrap brings no feature codes**: every code, mapping, message, constraint entry and limit key
 is added here. Constraint mappings go in the module's own `ConstraintErrorCodes` bean (the handler
@@ -571,6 +604,9 @@ code answered from a constraint gets a message without `{0}` (the handler has no
 an apostrophe is written `''`, and a year or an id passed as a number `{0,number,#}` (ERR-06). No
 overlapping ranges: an exclusion constraint mapped to `<ENTITY>_OVERLAPS`, with no scope lock (a
 simultaneous overlap answers a retryable 503; DATA-35, golden `0011-plans.sql`, `PlanService.create`).
+An exclusion constraint with a plain column (`owner_id WITH =`) needs the `btree_gist` extension: the
+project's first one creates it in a changeset of its own, before the table's (`CREATE EXTENSION IF NOT
+EXISTS btree_gist;`, golden `0011-plans.sql`'s first changeset); without it the migration fails.
 A lock a write already takes for a state rule (Step 1) queues the writes it covers, so their overlaps
 answer 409; never take a lock only to turn that 503 into a 409 (DATA-29).
 
@@ -604,7 +640,11 @@ Golden: `TodoRepositoryImpl` (cursor), `TodoListRepositoryImpl` (offset + dropdo
   static method of the entity, which the entity and the projection's constructor both call; never
   the formula written twice.
 - Cursor: `Cursor cursor = Cursor.read(filter.getAfter(), sort)`; `if (cursor.isPresent())` add
-  `Seek.after(builder, descending, key1, cursor.text(0), …, id, cursor.uuid(n))`;
+  `Seek.after(builder, descending, key1, cursor.text(0), …, id, cursor.uuid(n))` (one row-value
+  comparison, never a hand-written seek: DATA-10); **NEWEST is `createdAt` then the id**
+  (`Seek.after(builder, true, root.get(X_.createdAt), cursor.instant(0), root.get(X_.id), cursor.uuid(1))`,
+  an offset list's `Sort.by(desc("createdAt"), desc("id"))`, the index `(scope…, created_at, id)`), never
+  the id alone, whose primary key competes with the scope's index (DATA-10, golden `TodoRepositoryImpl`);
   `query.orderBy(Seek.order(builder, descending, key1, …, id))` on **the same columns, id last**
   (no id after a sort column that is itself unique and not null: DATA-10);
   `setMaxResults(size + 1)`; `CursorBatch.of(rows, size, row -> Cursor.write(sort, row.key1(), …,
@@ -643,9 +683,9 @@ golden `Todos.getOwnedTodoViews` over `TodoRepository.findViewsByIdInAndOwnerId`
 `List.of()` for no ids without a statement. These methods change **the parent's generated
 service**: its private `get<Parent>` becomes public (with a javadoc saying who calls it), and the
 batch lookup is added beside it. Name both in the report's changed shared files, and review that
-service with the child (Step 8). No golden module has a same-module parent shown on a list: follow
-`TodoListService.getOwnedTodoList` and `TagService.getOwnedTags` (a shared root: `get<Parent>` /
-`get<Parent>s`, without the owner). **A rule from configuration** (a maximum loan
+service with the child (Step 8). A same-module parent's names on a list page: golden
+`TodoListService.findOwnedTodoListNames` (4.3); a shared root's lookups are the same without the owner
+(`get<Parent>` / `get<Parent>s` / `find<Parent>Names`). **A rule from configuration** (a maximum loan
 length, an upload policy's file count) on an update runs only when the fields it reads change, so a
 lowered limit never blocks correcting another field of an existing record (golden
 `TodoService.changeAttachments`: the file count is checked only when the files change; tests.md
@@ -740,6 +780,10 @@ checklist's review item stays open until that reviewer's report is clean.
 ### Final checklist
 - [ ] No `{{…}}` left in the generated files.
 - [ ] The aggregate's row in `AggregateArchTest.AGGREGATES` **and** in both profiles' `aggregates`.
+- [ ] The entity in both profiles' `cursorLists` or `offsetLists` (Step 3's list kind).
+- [ ] A changed error shape or pointer (a cross-field error moved to its end field, a new code on an
+      existing call): each consumer in the review profile's `publishedContracts` (a UI, another service)
+      checked and told (REST-20).
 - [ ] A shared root: writes carry a role, personal-data reads decided, both in the profiles (Step 1).
 - [ ] A convention changed during the run (`controllerSecurity`, what a role means): the class
       javadoc of the services generated earlier, `Role`'s javadoc and the profiles say the new rule
@@ -752,7 +796,8 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] Row 28: the list's cell matrix in its index test (every order × every filter, every enum value,
       later batches, lookups), each cell's index existing and its read bound asserted (4.1); a range
       filter offered under its own order only; row 18b: the `ids` filter's statement count.
-- [ ] A changeset that backfills existing rows: row 30 on the upgraded database (tests.md, *Upgrading a
+- [ ] A changeset that backfills existing rows, once the project has a release in production: row 30 on
+      the upgraded database (until the first release the upgrade path is inert: record it; tests.md, *Upgrading a
       used database*).
 - [ ] A review-profile Conventions row only for a departure from a house rule, with the owner's reason;
       a choice no rule forbids goes in the javadoc or the changeset comment.

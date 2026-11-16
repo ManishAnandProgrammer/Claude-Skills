@@ -350,8 +350,11 @@ an extraction is an operation, not a migration project (the tooling itself is "L
   `tenant_memberships` stays the authority on who belongs and with which role. Test fixtures that add a
   membership add the row too (`IntegrationTest.addMember`). Tests:
   `TenantMemberIntegrationTest.theTenantsMembersFollowTheMemberships`, `provisioningAddsTheOwnersRow`.
-  A record naming a member (golden `Todo.requesterId`) checks them through `Members.isMember` at the write
-  and shows a former member by id alone (`TodoRequesterTenancyIntegrationTest`).
+  A record naming a member (golden `Todo.requesterId`) checks them through `Members.isMember` whenever a write
+  names someone new (an update only when the id changes: a PUT re-sends a former member, who stays) and
+  shows a former member by id alone (`TodoRequesterTenancyIntegrationTest`).
+- **Detect:** an update that re-checks the person it already names (`requireMember(request.assigneeId())`
+  unconditionally): every record of a person who left then refuses every edit with 404.
 - **Extension point (a members picker every member reads):** `GET /tenant-members` is ADMIN-only and
   searches emails. A project whose screens let every member pick a person generates a members dropdown in
   the user module with crud-gen (label the full name, `query` on it, read through `Members`, the current

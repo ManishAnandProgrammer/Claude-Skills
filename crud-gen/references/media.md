@@ -157,4 +157,15 @@ its `errorCode` (TEST-08):
 - a rule of the record on its files: both sides of its threshold, its inputs changing alone;
   an approval gate: IN_REVIEW refused, MISSING refused, all UPLOADED accepted, no files passes;
 - the API docs list the attachment fields and their codes, `UPLOAD_POLICY_NOT_FOUND` on create and
-  update included.
+  update included; and the code itself: with the purpose's policy row deleted (in the test's own
+  transaction, or deleted and restored under the class's lock), the create and an update that adds a file
+  answer 404 `UPLOAD_POLICY_NOT_FOUND`, nothing stored;
+- **a single-file purpose** (`maxFiles` 1: a profile photo, a signed form): a second file on create or
+  update is 400 `UPLOAD_FILE_COUNT_OUT_OF_RANGE`; a replacement is a remove and an add in one update
+  (`remove<X>Ids` with the old id, `add<X>Keys` with the new key), the old file RELEASED. The golden claim
+  refusals send a good key beside the refused one, which a 0..1 policy refuses on the count first (400
+  before the claim's 409): send the refused key alone. **A test that needs more files than the purpose
+  allows sets its own policy** (`setUploadPolicy`) under the class's lock and restores it;
+- **with tenancy**: every stored key starts with the tenant's id (`<tenantId>/<PURPOSE>/<uuid>`, golden
+  `MediaKeysPerTenantTest`), so the longest-key arithmetic includes the prefix; another tenant's upload key
+  in a create or update is 409 `UPLOAD_NOT_AVAILABLE` and another tenant's file id 404 (tests.md row 15b).

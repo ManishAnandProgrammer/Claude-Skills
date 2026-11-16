@@ -133,7 +133,8 @@ the path.
     400, never a silent clamp;
   - **filters:** validated fail-fast (400 `REQUEST_PARAMETER_INVALID` on an unknown value, naming
     the parameter and nothing else), typed as enums, not free strings;
-  - **free-text search** is the `query` parameter in every list and dropdown (not a finding when the
+  - **free-text search** is the `query` parameter in every list and dropdown, over the record's own
+    name-like text (a free-form note is no search target unless the owner asked) (not a finding when the
     entity has no text column of its own: an enrollment between a student and a course, the
     reference's `PlanFilter`; its parents' text is searched in their own lists);
   - **sorting:** a sort enum (allow-list), a stable tie-breaker (id); a cursor carries its sort, and
