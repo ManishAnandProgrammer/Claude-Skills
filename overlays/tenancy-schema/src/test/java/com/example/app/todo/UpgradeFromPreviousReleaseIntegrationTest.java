@@ -80,7 +80,7 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The deploy brought every seeded schema up: the new changesets recorded, no todo lost; PENDING and REJECTED have none")
+    @DisplayName("The deploy brought every seeded schema up to the release's changesets, no todo lost; PENDING and REJECTED have none")
     void theDeployMigratedEverySeededSchema() {
         JdbcTemplate owner = migratedOwner();
 

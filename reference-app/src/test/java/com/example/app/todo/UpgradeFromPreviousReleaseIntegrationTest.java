@@ -45,9 +45,9 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            The new release's changesets ran over the seeded rows: the rows are all there, the requesters kept, NEWEST's \
-            indexes on the creation time replaced the id ones (0029)""")
-    void theNewChangesetsRanOverTheSeededRows() {
+            On the upgraded database the seeded rows are all there, the requesters kept, NEWEST's indexes on the \
+            creation time in place of the id ones (0029)""")
+    void theSeededRowsAreAllThere() {
         assertThat(jdbc.queryForList("select id from databasechangelog", String.class)).contains("0029-newest-by-created-at");
         assertThat(jdbc.queryForObject("select count(*) from todos where owner_id = ?", Integer.class, HEAVY)).isGreaterThanOrEqualTo(1_200);
         assertThat(jdbc.queryForObject("select count(*) from todos where owner_id = ? and requester_id = ?", Integer.class, HEAVY, LIGHT))

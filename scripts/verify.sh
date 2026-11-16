@@ -60,7 +60,7 @@ STAGES="reference 2 2b 2c 2e 2f 2g 2h 2i 2j 2d image"
 # The highest changeset number of the release in production (main): the upgrade path starts from it.
 # Raise it, and extend the previous-release seeds, when a release ships. The pieces' range alone (0001-0099):
 # the reference has no project changesets (a project passes <pieces>,<project>, PreviousReleaseDatabase).
-PREVIOUS_RELEASE=28
+PREVIOUS_RELEASE=30
 UPGRADE="-Dapp.test.upgrade.previous-release=$PREVIOUS_RELEASE"
 only=""
 case "${1:-}" in

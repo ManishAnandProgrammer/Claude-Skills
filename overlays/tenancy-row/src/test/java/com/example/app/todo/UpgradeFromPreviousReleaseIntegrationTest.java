@@ -87,9 +87,9 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            The new release's changesets ran over the seeded tenants (0029, 0030): no todo lost, the requesters kept, \
-            the member who left among them""")
-    void theNewChangesetsRanOverTheSeededTenants() throws SQLException {
+            On the upgraded database (0029 and 0030 recorded) the seeded tenants keep every todo and requester, the \
+            member who left among them""")
+    void theSeededTenantsKeepTheirRows() throws SQLException {
         // The owner's table: the application role can't read it.
         assertThat(textInTenant(ALPHA, "select string_agg(id, ',') from databasechangelog"))
                 .contains("0029-newest-by-created-at", "0030-platform-list-indexes");
