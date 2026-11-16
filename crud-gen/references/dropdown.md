@@ -28,7 +28,7 @@ subclasses `{{DropdownFilter}}` as `<Entity>DropdownFilter`, one field per dot-p
    lists the defaults and the batching; `@ApiResponse` 200, 400, 401, 503 (403 only when
    `{{dropdownSecurity}}` checks a role).
 4. **Controller:** `dropdown(@Valid <Filter> filter)` returning the service result;
-   `{{dropdownSecurity}}` (normally `isAuthenticated()`; ask when the resource is more restricted).
+   `{{dropdownSecurity}}` (default `isAuthenticated()`; ask when the resource's reads need a role).
    A dropdown never lists items the caller couldn't fetch.
 
 When the pre-flight finds a resource that other screens pick from (another entity references it)

@@ -115,8 +115,8 @@ the path.
     (`apiVersion`) and a tag on `http.server.requests`;
   - path patterns elsewhere use a version wildcard, so a new version needs no change there and
     inherits their protection: security public paths `/api/*/auth/**`; admission groups name only
-    the expensive endpoints (`/api/*/auth/login`, `/api/*/auth/signup`), never a whole prefix that
-    would also throttle cheap calls such as token refresh;
+    the endpoints that hash or verify a password (`/api/*/auth/login`, `/api/*/auth/signup`; golden
+    `app.admission.groups`), never a whole prefix that would also throttle token refresh;
   - deprecating a version: an `ApiVersionDeprecationHandler` bean (RFC 9745 `Deprecation` /
     `Sunset` headers), not hand-written headers.
 - **Detect:** a full path on a method; a method without `version`; `/api/v1/` written into a security
@@ -274,7 +274,7 @@ types.
     value, with indexes `(scope columns, sortField, valueField)`;
   - results are scoped like the resource's reads: a dropdown never lists items the caller couldn't
     fetch;
-  - security per `{{dropdownSecurity}}` (normally `isAuthenticated()`);
+  - security per `{{dropdownSecurity}}` (default `isAuthenticated()`);
   - `cacheable` only where the developer asked for it (the crud profile's *Decisions per entity*),
     with eviction on writes, and a shared cache (or a confirmed reason) when `{{instances}}` is
     `multiple`;
