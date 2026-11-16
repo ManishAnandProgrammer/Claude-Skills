@@ -19,5 +19,5 @@ d63483c18ae6affa68c408fb3f5089c3bbb1ec62852c50fec13804867b8f6b8c  reference-app/
 dc753cd4479df79131184a6fa3d777e90faf993a5ea45484288b73f2206a116e  reference-app/src/test/java/com/example/app/todo/UpgradeFromPreviousReleaseIntegrationTest.java
 d9d11a9f1604519851f2bd9dbaabb8db6ab02f32ee032fd6c20f48cca10f776c  reference-app/src/test/java/com/example/app/user/service/RefreshTokenPurgeJobIntegrationTest.java
 fd7d7db54567443c3c209ee2c63a90613d0828b61aaf34b52992599d7c154770  reference-app/src/test/java/com/example/app/user/service/SessionVersionServiceIntegrationTest.java
-4c97703781cfda71edff19a0763e7e7f1fc01aef493fed4fe7bd9b82be9b3b5b  reference-app/src/test/java/com/example/app/user/TokenPathIntegrationTest.java
+7efd1562e9fb82b154a9ae62ccbe52b65726afb0c305b1f88c95872c01e76a55  reference-app/src/test/java/com/example/app/user/TokenPathIntegrationTest.java
 bfcd6a30352e8fe140a98745690052c852d5261a08cd9f314386585fbae4a265  reference-app/src/test/resources/db/upgrade/previous-release-seed.sql

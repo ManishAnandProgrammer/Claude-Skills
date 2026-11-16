@@ -39,7 +39,7 @@ class TokenPathIntegrationTest extends IntegrationTest {
             SUSPENDED_USER | NEXT_REQUEST | 401 | SESSION_VERSION_STALE
             """)
     // session-version:else
-    // // Without the session version an access token lives out its lifetime (at most app.jwt.access-token-ttl).
+    // // An access token issued before the change lives out its lifetime (at most app.jwt.access-token-ttl).
     // @ParameterizedTest(name = "{0} × {1}: {2} {3}")
     // @CsvSource(delimiter = '|', textBlock = """
     //         SUSPENDED_USER | LOGIN        | 403 | AUTH_ACCOUNT_SUSPENDED
