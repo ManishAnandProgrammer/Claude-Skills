@@ -90,6 +90,10 @@ If it doesn't exist, build it before generating anything:
 4. Keys with no equivalent: `none` (see *Fallbacks* in the template).
 5. Write the profile, show a short summary, and get confirmation **once**.
 
+**Read every golden file as the project's mode sees it:** `~/Documents/claude-skills/scripts/bootstrap-copy.sh
+--render <{{tenancy}}> <golden file>` prints it with the mode's overlay version and its piece markers
+applied, so no marker line or commented-out block reaches the project.
+
 ---
 
 ## Step 1: Read and analyse the entity

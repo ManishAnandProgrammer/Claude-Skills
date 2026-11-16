@@ -147,6 +147,17 @@ grep -rnE "(help|campus|library)-desk|\bround [0-9]" "$REPO/crud-gen" "$REPO/hou
         "$REFERENCE/src" "$REFERENCE/docs" "$REFERENCE/README.md" --exclude=DESIGN.md \
     && { echo "FAILED: field-test history (a project name or a round number) in the skill texts or the reference" >&2; exit 1; }
 
+# --render shows a golden file as a mode's project gets it: row mode's tenant lines live, no marker left, and
+# none of them without tenancy.
+golden_todos="src/main/resources/db/changelog/changes/0003-todos.sql"
+row_todos="$("$REPO/scripts/bootstrap-copy.sh" --render row "$golden_todos")"
+plain_todos="$("$REPO/scripts/bootstrap-copy.sh" --render none "$golden_todos")"
+if ! grep -q "^CREATE POLICY tenant_isolation ON todos" <<< "$row_todos" || grep -qE ":(begin|else|end)" <<< "$row_todos$plain_todos" \
+        || grep -q "tenant_id" <<< "$plain_todos"; then
+    echo "FAILED: bootstrap-copy.sh --render doesn't show 0003 as row mode and a plain project read it" >&2
+    exit 1
+fi
+
 if wants reference; then
     echo "[1/3] reference-app: build and tests"
     mvn_verify "$REFERENCE" "$WORK/reference.log" "$UPGRADE"

@@ -6,6 +6,10 @@
 #   the dependencies each piece needs are printed, to be added after the owner approves them).
 #
 # Usage: bootstrap-copy.sh --target <project dir> --package <root package> [--with <pieces>] [--dry-run]
+#        bootstrap-copy.sh --render <none|row|schema> <golden file>
+#   --render prints one golden file (a path under reference-app/, or ~/.claude/skills-reference/) as a
+#   project of that tenancy mode with every other piece gets it: the mode's overlay version when there is
+#   one, the markers applied. Generators read golden files through it instead of reasoning about markers.
 #   pieces (comma-separated, default core,sign-in):
 #     core     error contract, wrappers, paging, limits, logging, admission, security config,
 #              persistence base, config files, test base, ArchUnit, the incident runbook (docs/)
@@ -73,9 +77,10 @@ REFERENCE_PACKAGE="com.example.app"
 
 die() { echo "error: $*" >&2; exit 1; }
 
-target="" package="" pieces="core,sign-in" dry_run=false
+target="" package="" pieces="core,sign-in" dry_run=false render_mode="" render_file=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        --render) render_mode="${2:-}"; render_file="${3:-}"; shift $(( $# < 3 ? $# : 3 )) ;;
         --target) target="${2:-}"; shift 2 ;;
         --package) package="${2:-}"; shift 2 ;;
         --with) pieces="${2:-}"; shift 2 ;;
@@ -84,12 +89,24 @@ while [ $# -gt 0 ]; do
         *) die "unknown option: $1 (see --help)" ;;
     esac
 done
-[ -n "$target" ] || die "--target is required"
-[ -n "$package" ] || die "--package is required"
-[[ "$package" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]] || die "--package must be a lower-case Java package such as com.acme.orders"
 [ -d "$REFERENCE/src" ] || die "no reference application at $REFERENCE"
-target="$(cd "$target" 2>/dev/null && pwd)" || die "target $target doesn't exist"
-[ -f "$target/pom.xml" ] || [ -f "$target/build.gradle" ] || [ -f "$target/build.gradle.kts" ] || die "$target has no build file"
+if [ -n "$render_mode" ]; then
+    [ -n "$render_file" ] || die "--render needs a mode and a golden file"
+    # Every piece but the other tenancy modes: the golden code as a project of that mode reads it.
+    everything="core,sign-in,example,metadata,media,session-version"
+    case "$render_mode" in
+        none) pieces="$everything" ;;
+        row) pieces="$everything,tenancy-row,tenant-registration" ;;
+        schema) pieces="$everything,tenancy-schema,tenant-registration" ;;
+        *) die "--render takes none, row or schema, not $render_mode" ;;
+    esac
+else
+    [ -n "$target" ] || die "--target is required"
+    [ -n "$package" ] || die "--package is required"
+    [[ "$package" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]] || die "--package must be a lower-case Java package such as com.acme.orders"
+    target="$(cd "$target" 2>/dev/null && pwd)" || die "target $target doesn't exist"
+    [ -f "$target/pom.xml" ] || [ -f "$target/build.gradle" ] || [ -f "$target/build.gradle.kts" ] || die "$target has no build file"
+fi
 
 reference_path="${REFERENCE_PACKAGE//.//}"
 package_path="${package//.//}"
@@ -431,6 +448,24 @@ replaces_earlier() {
     done
     return 1
 }
+
+if [ -n "$render_mode" ]; then
+    # The file's project path, whichever copy of it was named.
+    relative="$render_file"
+    case "$relative" in
+        */skills-reference/*) relative="${relative##*/skills-reference/}" ;;
+        */reference-app/*|reference-app/*) relative="${relative##*reference-app/}" ;;
+        */overlays/*|overlays/*) relative="$(project_path "overlays/${relative##*overlays/}")" ;;
+    esac
+    source="$(source_for "$relative")"
+    [ -n "$source" ] || die "no golden file $relative in reference-app/ or the $render_mode mode's overlays"
+    mode=layer
+    if [[ "$source" == reference-app/* ]]; then
+        mode=reference
+    fi
+    piece_filter "$mode" < "$REPO/$source"
+    exit 0
+fi
 
 copied=() skipped=()
 copy_file() {
