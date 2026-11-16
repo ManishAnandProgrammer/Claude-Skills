@@ -138,9 +138,10 @@ REST-10 and CFG-05, which SEC-05 relies on.
 file kind and every focus:
 - `tenancy` `row` or `schema` (review profile): tenancy.md without the other mode's section (*Row mode*
   or *Schema per tenant*), and tenancy-matrices.md;
-- media (the crud profile's `mediaApi` isn't `none`, or the code has the piece's `media.api.Uploads`):
+- `media` (review profile; a profile without the key: the code has the piece's `media.api.Uploads`):
   media.md;
-- metadata (the code has the piece's `metadata.api.Metadata`): metadata.md.
+- `metadata` (review profile; a profile without the key: the code has the piece's
+  `metadata.api.Metadata`): metadata.md.
 
 **Gate 2, the kinds of the files in scope.** Path and all load every reference the pieces allow;
 diff, commit and uncommitted load the union of the rows below for the files the scope changed. The
@@ -154,7 +155,8 @@ section *Tests (TEST)*.
 | Test (`testRoots`) | the core |
 | Changeset (`migrationsDir`), configuration (`application*.yml`, `config/*.yml`, `logback*.xml`) | the core without java.md; config-baseline.md |
 | Messages file (`message_*.properties`) | error-contract.md; lenses.md's section *Tests (TEST)* |
-| Anything else: a class in `config/` or `common/` (security, filters, the exception handler), a scheduler, listener, outbound client or executor, a build or deploy file, a kind this table doesn't name | every reference the pieces allow |
+| A scheduler, an outbound client (S3, HTTP) or a cache, besides its own row | REL-01, REL-08, PERF-05 and the rules they name: REL-02, REL-04, REL-09, OPS-05, OPS-06, CONC-01, ARCH-17, REST-13, REST-15 |
+| Anything else: a class in `config/` or `common/` (security, filters, the exception handler), a listener or executor, a build or deploy file, a kind this table doesn't name | every reference the pieces allow |
 
 When a file's kind, or whether a rule applies to it, is unclear, load the reference.
 
@@ -171,7 +173,8 @@ When a file's kind, or whether a rule applies to it, is unclear, load the refere
 
 In path and all, `arch` also runs Step 3a, which brings persistence.md's section *Transactions and
 connections* (its transaction-semantics item), and `config` runs Step 3b, which brings OPS-07; the other
-focuses run neither. The report's header names the focus, and its verdict covers the loaded rules only.
+focuses run neither. The report's header names the focus. Its verdict is never READY TO MERGE: NOT READY
+while a Critical or High finding is open (Step 6), otherwise its findings, or "no findings in <focus>".
 
 **Rules a loaded file depends on** load with it, whichever gate loaded it: persistence.md brings REL-10
 (DATA-18 merged into it); config-baseline.md brings PERF-03, REL-01, REL-04, REL-14 and OPS-06 (CFG-04,
@@ -347,7 +350,8 @@ Build: ok | failed · Tests: x passed, y failed · Duration: …
 ```
 
 The verdict is **NOT READY** while any Critical or High finding is open and not accepted. A
-finding that is tracked is still open: tracking it doesn't make the code ready.
+finding that is tracked is still open: tracking it doesn't make the code ready. A `--focus` review
+never says READY TO MERGE (Step 3, Gate 3).
 
 ---
 

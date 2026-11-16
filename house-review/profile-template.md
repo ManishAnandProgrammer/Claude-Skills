@@ -36,6 +36,8 @@ project doesn't have.
 | `archTests` | `none` | Existing ArchUnit classes; their carve-outs go in the deviation register |
 | `publishedContracts` | `none` | Non-OpenAPI contracts and consumers: webhook docs, frontend changelog, k6 scripts |
 | `tenancy` | `none` | `none`, `row` or `schema` (the bootstrap piece `tenancy-schema`). Anything but `none` loads `references/tenancy.md` (TEN-xx) and the profile-optional tenant rules; `[schema]` / `[row]` rules apply to their mode only |
+| `media` | `none` | `on` when the project has the bootstrap piece `media`: the code has `<rootPackage>.media.api.Uploads` (the crud profile's `mediaApi` names that package). `on` loads `references/media.md` (MEDIA-xx) |
+| `metadata` | `none` | `on` when the project has the bootstrap piece `metadata`: the code has `<rootPackage>.metadata.api.Metadata` and `Counters`. `on` loads `references/metadata.md` (META-xx) |
 
 ## API
 
