@@ -75,6 +75,14 @@ spring:
     # Schema per tenant replaces it with platform.yaml (config/tenancy.yml).
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
+logging:
+  level:
+    # Hibernate logs every refused statement at WARN, twice (its SQL state, then the driver's message): a WARN
+    # per ordinary 409. The handler decides what is worth a line (GlobalExceptionHandler: an unmapped
+    # constraint or any 500 at ERROR with the exception), so Hibernate's own lines are left out. The values
+    # stay out of every message anyway (logServerErrorDetail above).
+    org.hibernate.orm.jdbc.error: ERROR
+
 app:
   liquibase:
     # Liquibase opens its own connection (config/LiquibaseConnectionConfig), so the pool's

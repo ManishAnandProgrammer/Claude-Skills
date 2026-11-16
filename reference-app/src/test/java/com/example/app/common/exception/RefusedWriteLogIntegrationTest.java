@@ -9,10 +9,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,10 +27,11 @@ import static org.assertj.core.api.Assertions.catchThrowable;
  * A write a constraint refuses is logged without the row's values: no bound parameter of the failed
  * statement and no server DETAIL ("Key (email)=(...) already exists") in any log line or logged
  * exception (SEC-04; {@code logServerErrorDetail: false} in {@code config/db.yml}). Every unique, foreign
- * key and check refusal of every entity takes this path, and most of them are ordinary 409s. The table is
- * temporary: it lives only in the test's own transaction.
+ * key and check refusal of every entity takes this path, and most of them are ordinary 409s. Checked twice:
+ * in the exception's own messages (what any logger of it prints) and in the log with Hibernate's lines on. The
+ * table is temporary: it lives only in the test's own transaction.
  */
-class RefusedWriteLoggingIntegrationTest extends IntegrationTest {
+class RefusedWriteLogIntegrationTest extends IntegrationTest {
 
     private static final String CONSTRAINT = "uq_people_email";
 
@@ -36,6 +42,9 @@ class RefusedWriteLoggingIntegrationTest extends IntegrationTest {
     private PlatformTransactionManager transactionManager;
 
     private final CapturedLog log = new CapturedLog();
+
+    @Value("${logging.level.org.hibernate.orm.jdbc.error}")
+    private String hibernateErrorLevel;
 
     @BeforeEach
     void captureTheLog() {
@@ -48,6 +57,12 @@ class RefusedWriteLoggingIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("Hibernate's own lines about a refused statement are off: the handler logs what is worth a line")
+    void hibernatesErrorLinesAreOff() {
+        assertThat(hibernateErrorLevel).isEqualTo("ERROR");
+    }
+
+    @Test
     @DisplayName("A refused single statement is logged with its constraint, never the value it refused")
     void aRefusedStatementLogsNoValue() {
         String email = "refused-" + UUID.randomUUID() + "@example.test";
@@ -56,7 +71,7 @@ class RefusedWriteLoggingIntegrationTest extends IntegrationTest {
                 entityManager.createNativeQuery("insert into people (email) values (:email)")
                         .setParameter("email", email).executeUpdate()));
 
-        assertThat(refused).isNotNull();
+        assertThat(messagesOf(refused)).contains(CONSTRAINT).doesNotContain(email);
         assertThat(log.text()).contains(CONSTRAINT).doesNotContain(email);
     }
 
@@ -74,7 +89,7 @@ class RefusedWriteLoggingIntegrationTest extends IntegrationTest {
                     }
                 })));
 
-        assertThat(refused).isNotNull();
+        assertThat(messagesOf(refused)).contains(CONSTRAINT).doesNotContain(email);
         assertThat(log.text()).contains(CONSTRAINT).doesNotContain(email);
     }
 
@@ -90,5 +105,19 @@ class RefusedWriteLoggingIntegrationTest extends IntegrationTest {
                     .setParameter("email", email).executeUpdate();
             repeat.run();
         });
+    }
+
+    /** Every message of the exception, its causes and a batch's next exceptions: what a logger of it prints. */
+    private static String messagesOf(Throwable refused) {
+        List<String> messages = new ArrayList<>();
+        for (Throwable cause = refused; Objects.nonNull(cause); cause = cause.getCause()) {
+            messages.add(cause.getMessage());
+            if (cause instanceof SQLException failure) {
+                for (SQLException next = failure.getNextException(); Objects.nonNull(next); next = next.getNextException()) {
+                    messages.add(next.getMessage());
+                }
+            }
+        }
+        return String.join("\n", messages);
     }
 }

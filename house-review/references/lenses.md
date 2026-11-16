@@ -68,8 +68,9 @@ is code-smells.md, java.md and architecture.md.
   `data-source-properties`, a data source built in code such as Liquibase's: CFG-01); a test log of a
   409 path showing `Key (` or `Batch entry 0 insert`; `log.*(…, exception)` or `exception.getMessage()`
   logged where the exception carries a request's values (a JSON parse error with the body, a
-  `ConstraintViolationException`'s invalid value); Hibernate's `org.hibernate.orm.jdbc.bind` or SQL
-  parameter logging outside dev.
+  `ConstraintViolationException`'s invalid value; a 503 line with `exception.toString()`: the class and SQL
+  state only); `org.hibernate.orm.jdbc.error` left at WARN (two lines per refused statement, CFG-07);
+  Hibernate's `org.hibernate.orm.jdbc.bind` or SQL parameter logging outside dev.
 - **Severity:** High (Critical for login codes in logs).
 
 ### SEC-05: Injection and hostile input

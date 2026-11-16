@@ -55,11 +55,11 @@ the generic text.
 | `HttpMediaTypeNotSupportedException` | 415 | `REQUEST_MEDIA_TYPE_UNSUPPORTED` | |
 | `AccessDeniedException` | 403 | `ACCESS_DENIED` | WARN |
 | `AuthenticationException` | 401 | `AUTHENTICATION_REQUIRED` | WARN |
-| `DataIntegrityViolationException`, unique violation | 409 | `DUPLICATE_RECORD`, or **the domain code** when the constraint name maps to one | DEBUG |
+| `DataIntegrityViolationException`, unique violation | 409 | `DUPLICATE_RECORD`, or **the domain code** when the constraint name maps to one | DEBUG; Hibernate's own two WARN lines per refused statement are off (`org.hibernate.orm.jdbc.error: ERROR`, CFG-07), and no message carries the row's values (`logServerErrorDetail: false`, CFG-01) |
 | `DataIntegrityViolationException`, foreign key (23503), told apart by the statement that tripped it (`JDBCException.getSQL()`: the server's error names the child table on both sides) | a **delete**: 409; an **insert or update**: 404; unmapped: 500 | the delete: the module's `byConstraintName` code (`<PARENT>_IN_USE`); the insert or update: its `byForeignKeyOnWrite` code (`<PARENT>_GONE`, the parent deleted after the service read it, DATA-33) | DEBUG (500: ERROR) |
 | `DataIntegrityViolationException`, other | 500 | `DATA_INTEGRITY_ERROR` | ERROR |
 | `ObjectOptimisticLockingFailureException` (or a known version constraint) | 409 | `OPTIMISTIC_LOCK_CONFLICT` | DEBUG |
-| Transient database failure (ERR-03) | 503 + `Retry-After` | per kind | WARN (ERROR + stack for query timeout) |
+| Transient database failure (ERR-03) | 503 + `Retry-After` | per kind | WARN with the cause's class and SQL state, never its message (ERROR + stack for query timeout) |
 | A downstream service didn't answer (SDK client error or 5xx, AI provider, circuit breaker open) | 503 + jittered `Retry-After` | `<DEPENDENCY>_UNAVAILABLE` | WARN without stack, and counted on a metric |
 | Any other exception `ResponseEntityExceptionHandler` handles (406, a missing header, an async timeout, `ResponseStatusException`, ...) | its status | a specific code where one exists, else by status class: 404 `RESOURCE_NOT_FOUND`, other 4xx `REQUEST_INVALID`, 5xx `UNEXPECTED_ERROR` with the generic detail; `ConversionNotSupportedException` (a 500) before its parent `TypeMismatchException` | 5xx: ERROR with stack |
 | Anything else, `IllegalArgumentException` included (ERR-04) | 500 | `UNEXPECTED_ERROR`, generic detail | ERROR with stack |

@@ -26,7 +26,7 @@ Check these in whole-codebase mode, and in diff mode whenever configuration file
 | `…data-source-properties.reWriteBatchedInserts` | `true` | One round trip per insert batch |
 | `…data-source-properties.tcpKeepAlive` | `true` | Finds connections a NAT or load balancer dropped |
 | `…data-source-properties.ApplicationName` | `<app>-<env>` | Finds the app's sessions in `pg_stat_activity` |
-| `…data-source-properties.logServerErrorDetail` | `false` | pgjdbc otherwise copies the server's `DETAIL` (`Key (email)=(…) already exists`) and a failed batch's **bound values** (`Batch entry 0 insert into … values ('ann@…', …)`) into the exception message, which Hibernate logs at WARN (`org.hibernate.orm.jdbc.error`, kept by a prod `root: WARN`): every refused write, an ordinary 409 included, writes the row's personal data to the logs (SEC-04, High). The constraint name the error mapping reads stays in the message. Liquibase's own data source sets it too (`setLogServerErrorDetail(false)`, reference `config/LiquibaseConnectionConfig`). Test: reference `RefusedWriteLoggingIntegrationTest` (a refused statement and a refused batch log the constraint, never the value) |
+| `…data-source-properties.logServerErrorDetail` | `false` | pgjdbc otherwise copies the server's `DETAIL` (`Key (email)=(…) already exists`) and a failed batch's **bound values** (`Batch entry 0 insert into … values ('ann@…', …)`) into the exception message, which Hibernate logs at WARN (`org.hibernate.orm.jdbc.error`, kept by a prod `root: WARN`): every refused write, an ordinary 409 included, writes the row's personal data to the logs (SEC-04, High). The constraint name the error mapping reads stays in the message. Liquibase's own data source sets it too (`setLogServerErrorDetail(false)`, reference `config/LiquibaseConnectionConfig`). Test: reference `RefusedWriteLogIntegrationTest` (a refused statement and a refused batch log the constraint, never the value) |
 
 MySQL-only driver properties (`cachePrepStmts`, `useServerPrepStmts`,
 `rewriteBatchedStatements`) on PostgreSQL are a finding: they do nothing.
@@ -135,6 +135,10 @@ scrape is secured, `{{metricsAuth}}`).
   - Exactly one root and one appender per profile, plus a fallback console appender for when no
     profile is active (so the fail-fast startup error is visible). Not declared at top level, or
     every line is written twice.
+- **Hibernate's SQL error lines off:** `logging.level.org.hibernate.orm.jdbc.error: ERROR` (reference
+  `config/db.yml`): Hibernate logs every refused statement at WARN twice, so every ordinary 409 wrote two
+  lines with the driver's message; the handler logs what is worth a line (ERR-02). A WARN that prints a
+  database exception's message or `toString()` (a 503's cause) is a finding: the class and SQL state only.
 - **Request completion line:** one line per request ("Request done: status, durationMs"), WARN
   past a configured slow threshold. Switched by `app.logging.request-completion.enabled` and
   `…slow-threshold`. In prod the app logger level is WARN except this filter.

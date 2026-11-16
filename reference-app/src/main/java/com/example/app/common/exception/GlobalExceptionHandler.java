@@ -32,6 +32,7 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -75,7 +76,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         HttpStatus status = ErrorCodeHttpStatusMapper.resolve(code);
         if (status == HttpStatus.SERVICE_UNAVAILABLE) {
             // A dependency that didn't answer (ERR-02): the client comes back after Retry-After; no stack.
-            log.warn("Unavailable: code={}, cause={}", code, String.valueOf(exception.getCause()));
+            // The cause's class only: a message may carry the request's values (SEC-04).
+            log.warn("Unavailable: code={}, cause={}", code, causeName(exception.getCause()));
             return withOwnMessage(code, request);
         }
         if (status.is5xxServerError()) {
@@ -238,9 +240,25 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (failure == TransientDatabaseFailure.QUERY_TIMEOUT) {
             log.error("Database query timed out", exception);
         } else {
-            log.warn("Database busy or unavailable: code={}, cause={}", failure.errorCode(), exception.toString());
+            // The cause's class and SQL state only: a message may carry the statement's values (SEC-04).
+            log.warn("Database busy or unavailable: code={}, cause={}, sqlState={}", failure.errorCode(),
+                    exception.getClass().getSimpleName(), sqlStateOf(exception));
         }
         return withOwnMessage(failure.errorCode(), request);
+    }
+
+    private static String causeName(Throwable cause) {
+        return Objects.isNull(cause) ? "none" : cause.getClass().getSimpleName();
+    }
+
+    /** The first SQL state in the exception's causes, or "none" (no connection: no statement ran). */
+    private static String sqlStateOf(Throwable exception) {
+        for (Throwable cause = exception; Objects.nonNull(cause); cause = cause.getCause()) {
+            if (cause instanceof SQLException failure && Objects.nonNull(failure.getSQLState())) {
+                return failure.getSQLState();
+            }
+        }
+        return "none";
     }
 
     private ResponseEntity<Object> withErrors(ErrorCode code, List<RequestError> errors, WebRequest request) {
