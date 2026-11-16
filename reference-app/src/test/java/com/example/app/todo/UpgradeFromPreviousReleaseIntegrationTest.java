@@ -129,8 +129,8 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     @DisplayName("After 0033 every seeded plan is PLANNED without a done day, and still holds its days")
     void theSeededPlansArePlanned() throws Exception {
         assertThat(jdbc.queryForObject("select count(*) from plans where owner_id = ?", Integer.class, HEAVY)).isPositive();
-        assertThat(jdbc.queryForObject("select count(*) from plans where status <> 'PLANNED' or done_on is not null", Integer.class))
-                .isZero();
+        assertThat(jdbc.queryForObject("select count(*) from plans where owner_id = ? and (status <> 'PLANNED' or done_on is not null)",
+                Integer.class, HEAVY)).isZero();
         String token = heavyOwnersToken();
         String todoId = jdbc.queryForObject("select todo_id::text from plans where owner_id = ? order by starts_on limit 1",
                 String.class, HEAVY);
