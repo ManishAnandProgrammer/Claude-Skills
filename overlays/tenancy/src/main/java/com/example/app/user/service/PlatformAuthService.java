@@ -60,7 +60,7 @@ public class PlatformAuthService implements StaffAccounts {
         return ObjectWrapper.withObject(tokenService.issuePlatform(staff));
     }
 
-    /** One read by primary key: platform requests are few, and a deactivation must reach the next one. */
+    /** One read by primary key, so a deactivation reaches the next request. */
     @Override
     public boolean isActive(UUID staffId) {
         return repository.findById(staffId).filter(PlatformUser::isActive).isPresent();

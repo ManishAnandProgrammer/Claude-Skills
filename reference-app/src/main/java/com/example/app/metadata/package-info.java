@@ -2,8 +2,8 @@
  * Configuration metadata and counters (the bootstrap piece {@code metadata}).
  *
  * <ul>
- *   <li><b>Configuration only:</b> one value per key, read often, changed rarely. Records that grow,
- *       are listed or filtered are tables of their own.</li>
+ *   <li><b>Configuration only:</b> a key holds one value, set by an admin. Records that are added over
+ *       time, listed or filtered are tables of their own.</li>
  *   <li><b>One record per key</b> ({@code api}), its defaults in the compact constructor; keys are
  *       declared in {@code api.MetadataKeys}, nowhere else.</li>
  *   <li><b>A fixed key</b> is changed by an admin through {@code GET/PUT /metadata/{key}}; <b>a

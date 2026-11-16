@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Runs an offset page: the rows of the page, and the count only when the page itself can't tell the
- * total (a full page), so most small lists cost one statement.
+ * total (a full page), so a partial page costs one statement.
  */
 public final class OffsetPages {
 

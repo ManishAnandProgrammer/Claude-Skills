@@ -13,12 +13,14 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * A list that is bounded by nature (a dropdown, a small fixed set). Paginated lists use
- * {@link PaginationWrapper}, never this.
+ * An unpaged list: only one the code bounds (an enum's values, a configured maximum enforced on create, a
+ * fixed relation such as a student's subjects this session), or one the review profile's
+ * {@code unpagedLists} names with the developer's statement. Paged lists use {@link PaginationWrapper} or
+ * {@link CursorWrapper}, never this.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-@Schema(description = "A bounded list")
+@Schema(description = "A whole list, without pages")
 public class ListWrapper<T> {
 
     @Schema(description = "The items")

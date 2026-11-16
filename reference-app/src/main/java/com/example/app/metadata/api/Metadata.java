@@ -1,8 +1,8 @@
 package com.example.app.metadata.api;
 
 /**
- * Configuration metadata for other modules: one typed value per declared key, read often and
- * changed rarely.
+ * Configuration metadata for other modules: one typed value per declared key, set by an admin (or by
+ * the module that owns the key's context).
  *
  * <p>Who writes what: a fixed key's value is replaced by an admin through
  * {@code PUT /api/v1/metadata/{key}}. A per-context value belongs to the module that owns the

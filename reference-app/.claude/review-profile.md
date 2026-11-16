@@ -44,6 +44,7 @@ nothing: it is the code the skills copy.
 | `errorCodeType` | `com.example.app.common.exception.ErrorCode` | |
 | `cursorLists` | `Todo`, `TimeEntry`, dropdowns | Keyset; `pageInfo {nextCursor, hasMore}`; no counts |
 | `offsetLists` | `TodoList`, `Tag` | Admin-style screens that need page numbers and a total |
+| `unpagedLists` | `MembershipService.mine` (tenancy overlay, `GET /users/me/tenants`) | Developer's statement: the tenant switcher shows every tenant a person belongs to, and a person belongs to a few; no code caps it |
 | `NotXss` | `escape-on-output` | JSON API; clients render text |
 | `noEmojiFields` | `none` | |
 | `tokenRevocation` | `session-version` | The reference runs with the session-version piece on (`short-lived(15)` stays its access-token bound); copies without it are `short-lived(15)` |
