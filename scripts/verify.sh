@@ -141,6 +141,12 @@ echo "[0/3] overlays: replacements pinned to the reference's files"
 grep -rnE "TenantContext|TenantScope|tenant_memberships" "$REFERENCE/src/main/java" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' \
     && { echo "FAILED: tenancy code in the reference outside a commented tenancy block (it belongs in overlays/)" >&2; exit 1; }
 
+# Generators and reviewers read the skill texts and the reference: they say why in general terms, never which
+# field test found what or when (house-review/DESIGN.md, the design log, is exempt).
+grep -rnE "(help|campus|library)-desk|\bround [0-9]" "$REPO/crud-gen" "$REPO/house-review" "$REPO/overlays" \
+        "$REFERENCE/src" "$REFERENCE/docs" "$REFERENCE/README.md" --exclude=DESIGN.md \
+    && { echo "FAILED: field-test history (a project name or a round number) in the skill texts or the reference" >&2; exit 1; }
+
 if wants reference; then
     echo "[1/3] reference-app: build and tests"
     mvn_verify "$REFERENCE" "$WORK/reference.log" "$UPGRADE"

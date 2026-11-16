@@ -504,9 +504,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     **never the id alone**, whatever the scope: the primary key leads with the id, so an id order gives
     every scoped list a competitor, and with UUIDv7 ids in heap order the planner costs walking `pk_<table>`
     backward as cheap whenever the scope looks like a big share of the table; for a scope whose rows are old
-    (an owner or a tenant that stopped writing) a page then reads every newer row of everyone else first
-    (help-desk, round 4: 16,400 rows for a page of 20; the reference's old, big owner then: 10,540 with
-    `(owner_id, id)` in place). No index leads with `created_at`, so the scope's own index has no
+    (an owner or a tenant that stopped writing) a page then reads every newer row of everyone else first,
+    even with an `(owner_id, id)` index in place. No index leads with `created_at`, so the scope's own index has no
     competitor. OLDEST likewise. An unscoped NEWEST (a platform's tenants) gets its `(created_at, id)` index;
   - **a keyset sort key is never null.** A nullable column (a due date) sorts through a stored
     generated column (`coalesce(due_date, date '9999-12-31')`) that the index and the keyset use;

@@ -3,8 +3,8 @@
 -- NEWEST orders by the creation time, then the id, never by the id alone. The primary key leads with the
 -- id, so an id order gives every scoped list a competitor: with UUIDv7 ids in heap order the planner
 -- costs a backward walk of pk_<table> as cheap and takes it whenever the scope looks like a big share of
--- the table, and a page then reads every newer row of every other owner (or tenant) first (help-desk
--- round 4: 16,400 rows read for a page of 20). No index leads with created_at, so the scope's own index
+-- the table, and for a scope whose rows are old a page then reads every newer row of every other owner
+-- (or tenant) first. No index leads with created_at, so the scope's own index
 -- has no competitor. Each NEWEST index becomes (scope..., created_at, id), still leading with the same
 -- columns, so the foreign keys it served stay served (house-review DATA-10; TodoIndexIntegrationTest,
 -- TagIndexIntegrationTest, PlanIndexIntegrationTest). An index build blocks writes to its table while it
