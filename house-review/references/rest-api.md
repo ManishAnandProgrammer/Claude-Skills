@@ -350,8 +350,10 @@ types.
     `<ENTITY>_DECISION_NOT_ALLOWED`). A relationship that grants the right (the requester's
     manager) is read under the same lock as the record it decides, or a reassignment between the
     read and the write lets the former party act. The tests cover each party × each action, plus a
-    stranger (404) and the relationship changing (TEST-02). No golden code yet: ask for the parties
-    and their actions before generating.
+    stranger (404) and the relationship changing (TEST-02). Reference: a todo's requester reads it
+    (`TodoService.findById`, `TodoRepository.findVisibleWithTodoList`) and gets 403 `TODO_NOT_YOURS` on
+    every other call (`TodoService.notOwned`), `TodoRequesterIntegrationTest`. Ask for the parties and
+    their actions before generating.
 - **Detect:** endpoints that take an id and load a user-owned record without comparing it to
   the caller; `/users/{id}/...` where `/users/me/...` is meant.
 - **Severity:** Critical (IDOR) or High.

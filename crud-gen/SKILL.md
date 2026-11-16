@@ -38,6 +38,8 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@CrossField(reportedOn = "<x>To") boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
 | `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getOwnedTodoWithItsList`, `toResponse`), `TodoRepository.findWithTodoListByIdAndOwnerId`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`; the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` whenever a write names someone new (an update only when the id changes); shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) and on list rows (`TodoListName`, `TodoService.withTodoLists`: a second statement per batch) |
 | `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`) of a **configured maximum length** (`getLengthInDays`, `plan.max-days`), an **overlap filter with a lower index bound** (`plannedFrom`/`plannedTo`: `ends_on >= from`, `starts_on <= to` and the derived `starts_on >= from - (max - 1)`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
+| `<ref>/todo/service/TagMergeManager.java` + `TagService.lockForMerge` / `finishMerge`, `TodoService.moveTagLinks`, `TagRepository.findForKeyUpdateByIdAndOwnerId`, `TodoRepository.lockAllCarryingTag`, `TodoTagRepository.addTargetWhereSourceIs`, `POST /tags/{id}/merge`; test `TagMergeIntegrationTest` | **A Manager** writing two aggregates in one transaction (`MANDATORY` halves, one lock order, a key lock, bulk statements, both rolled back on a failure) |
+| `<ref>/todo/service/TodoService.java` (`findById`, `notOwned`) + `TodoRepository.findVisibleWithTodoList`, `existsByIdAndRequesterId`, `TodoApi.NOT_YOURS`; test `TodoRequesterIntegrationTest` | **A record two parties see with different rights**: the owner does everything, the requester reads (403 `TODO_NOT_YOURS` on the rest), anyone else 404 |
 
 The rules behind the shape are the house-review references: `rest-api.md`, `error-contract.md`,
 `persistence.md`, `java.md`, `code-smells.md`, `lenses.md` (TEST-xx), `architecture.md`,
@@ -356,9 +358,20 @@ at its end.
   is an endpoint of the module that owns the context (`GET/PUT /todo-lists/{id}/settings`, with
   `version`), generated here with its tests (tests.md).
 
-**Shapes without golden code yet** (money, exactly one current, month values, a record two parties
-see with different rights (REST-16), a use case writing two aggregates (a `<UseCase>Manager`,
-ARCH-15's shape)): follow the house-review rules and ask; don't invent a shape. A **status workflow**
+**A use case writing two aggregates** (a `<UseCase>Manager`, ARCH-15's shape) copies golden
+`TagMergeManager` (`POST /tags/{id}/merge`, `TagMergeRequest`; its `MANDATORY` halves
+`TagService.lockForMerge` and `finishMerge`, `TodoService.moveTagLinks`; `TagMergeIntegrationTest`): one
+documented lock order (two rows of one table by id; a row whose new references must wait for the use case
+takes the key lock, a native `FOR UPDATE`, since JPA's write lock is `FOR NO KEY UPDATE`), the many rows of
+the other aggregate locked in id order and changed by bulk statements whose count doesn't grow with them.
+Tests: each refusal changing nothing, a failure after the first half rolling both back, the use case racing
+itself in every direction (no 503), a write racing it, the statement count. **A record two parties see
+with different rights** (REST-16) copies golden `TodoService.findById` over
+`TodoRepository.findVisibleWithTodoList` (one visibility rule: the owner or the requester) and
+`TodoService.notOwned` (403 `TODO_NOT_YOURS` for the requester, 404 for anyone else), tested by
+`TodoRequesterIntegrationTest` (each party by each call, a stranger, the relationship changing); ask for
+the parties and their actions. **Money, exactly one current, month values** are use cases: no golden code,
+the house-review rules are the bar; ask. A **status workflow**
 (several states, only some moves allowed) copies golden `PlanStatus` and `Plan.changeStatus`
 (`PATCH /plans/{id}/status`, `PlanStatusRequest`, `PlanStatusIntegrationTest`): the moves as one
 `canBecome(target)` switch on the status enum (with tenancy also `TenantStatus`), the
@@ -375,8 +388,7 @@ member and file writes) or deleted? When it is frozen, the entity's edit method 
 after the version check**, before any other rule (a configured maximum, a parent's state): 409
 `<ENTITY>_<STATUS>` (`ENROLLMENT_WITHDRAWN`, ERR-04's names; golden `Plan.requirePlanned`, first in
 `Plan.reschedule` and called by `PlanService.update` before its todo's state: 409 `PLAN_DONE`, `PLAN_CANCELLED`), documented on each refused write, with
-tests.md row 26b (golden `PlanStatusIntegrationTest.aFinalPlanIsFrozen`, `aFinalPlanIsRefusedBeforeItsTodosState`) (whose write would also break another rule, so the order is tested); when only the delete stays open, say so in the API text. Their tests take each
-party × each action, and for a Manager each aggregate's refusal rolling both back.
+tests.md row 26b (golden `PlanStatusIntegrationTest.aFinalPlanIsFrozen`, `aFinalPlanIsRefusedBeforeItsTodosState`) (whose write would also break another rule, so the order is tested); when only the delete stays open, say so in the API text.
 
 ---
 
@@ -674,7 +686,8 @@ Golden: `TodoRepositoryImpl` (cursor), `TodoListRepositoryImpl` (offset + dropdo
 Golden `TodoService` / `TodoListService`. **Add the aggregate's row to the project's
 `AggregateArchTest.AGGREGATES`** (a member: add it to its root's members). Another aggregate is
 reached only through its service's entity methods, never its repository (ARCH-15); a use case that
-writes several aggregates goes in a `<UseCase>Manager` that owns the transaction. Class
+writes several aggregates goes in a `<UseCase>Manager` that owns the transaction (golden
+`TagMergeManager`, Step 3). Class
 `@Transactional(readOnly = true)`, `@Transactional`
 writes; create `saveAndFlush`; update/actions change the managed entity after
 `entity.checkVersion(request.version())` (409 `OPTIMISTIC_LOCK_CONFLICT`), then `flush()`; a write

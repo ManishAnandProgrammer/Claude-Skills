@@ -195,11 +195,13 @@ Within a module as well as across modules.
     round, a list whose rows show another module's data (a plan's todo title) reads its page, then
     that data for the whole page in one facade call (reference: `PlanService.findByFilter` with
     `Todos.getOwnedTodoViews`), never one call per row;
-  - **a Manager's shape** (no golden code yet): `@Transactional` on the Manager method; each aggregate
-    service exposes a `MANDATORY` half that checks, locks, changes and flushes its own aggregate and
-    returns the entity; locks are taken in one documented order (no path takes them in reverse);
-    the owning service of the request's resource builds the response; the controller calls the
-    Manager. Tests: each aggregate's refusal rolls both back;
+  - **a Manager's shape** (reference: `TagMergeManager`): `@Transactional` on the Manager method; each
+    aggregate service exposes a `MANDATORY` half that checks, locks, changes and flushes its own aggregate and
+    returns the entity (an aggregate whose change must come last is split into a locking and a finishing
+    half: `TagService.lockForMerge`, `finishMerge`); locks are taken in one documented order (no path takes
+    them in reverse); the owning service of the request's resource builds the response; the controller calls
+    the Manager. Tests: each aggregate's refusal rolls both back (a refusal before any write changes nothing;
+    a failure after a half wrote rolls it back: `TagMergeIntegrationTest.aMergeFailingAfterItsTodoHalfRollsBackBoth`);
   - no interface for a single implementation (SMELL-11): services are concrete classes.
 - **Detect:** a `*Repository` import in a service of another aggregate, a mapper or a Manager; a
   member entity with its own service or controller; a Manager that writes one aggregate; entity
