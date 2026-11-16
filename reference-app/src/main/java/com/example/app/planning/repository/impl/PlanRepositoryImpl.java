@@ -35,8 +35,11 @@ class PlanRepositoryImpl implements CustomPlanRepository {
     }
 
     /**
-     * STARTS_ON in calendar order, NEWEST by the id alone. One owner's plans never share a day, so
-     * {@code starts_on} alone would order them; the id stays last so the keyset holds for every scope.
+     * STARTS_ON in calendar order, NEWEST by the creation time, newest first. One owner's plans never share
+     * a day, so {@code starts_on} alone would order them; the id stays last so the keyset holds for every
+     * scope. NEWEST is never the id alone: the primary key, which leads with the id, would then compete with
+     * the owner's index, and with UUIDv7 ids in heap order the planner walks it backward through every newer
+     * row of every owner (house-review DATA-10).
      */
     @Override
     public CursorBatch<PlanRow> findByFilter(PlanFilter filter, UUID ownerId, int size) {
@@ -58,7 +61,7 @@ class PlanRepositoryImpl implements CustomPlanRepository {
         List<PlanRow> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();
         return switch (filter.getSort()) {
             case STARTS_ON -> CursorBatch.of(rows, size, row -> Cursor.write(sort, row.startsOn(), row.id()));
-            case NEWEST -> CursorBatch.of(rows, size, row -> Cursor.write(sort, row.id()));
+            case NEWEST -> CursorBatch.of(rows, size, row -> Cursor.write(sort, row.createdAt(), row.id()));
         };
     }
 
@@ -101,7 +104,8 @@ class PlanRepositoryImpl implements CustomPlanRepository {
         return switch (sort) {
             case STARTS_ON -> Seek.after(builder, false,
                     root.get(Plan_.startsOn), cursor.date(0), root.get(Plan_.id), cursor.uuid(1));
-            case NEWEST -> builder.lessThan(root.get(Plan_.id), cursor.uuid(0));
+            case NEWEST -> Seek.after(builder, true,
+                    root.get(Plan_.createdAt), cursor.instant(0), root.get(Plan_.id), cursor.uuid(1));
         };
     }
 
@@ -109,7 +113,7 @@ class PlanRepositoryImpl implements CustomPlanRepository {
     private static List<Order> orderOf(CriteriaBuilder builder, Root<Plan> root, PlanSort sort) {
         return switch (sort) {
             case STARTS_ON -> Seek.order(builder, false, root.get(Plan_.startsOn), root.get(Plan_.id));
-            case NEWEST -> List.of(builder.desc(root.get(Plan_.id)));
+            case NEWEST -> Seek.order(builder, true, root.get(Plan_.createdAt), root.get(Plan_.id));
         };
     }
 }

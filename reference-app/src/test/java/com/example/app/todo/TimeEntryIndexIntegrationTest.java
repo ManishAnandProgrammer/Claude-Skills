@@ -118,9 +118,8 @@ class TimeEntryIndexIntegrationTest extends IntegrationTest {
                         scope + " order by spent_on desc, id desc limit 21", TWO_PAGES),
                 cell("MINUTES", "idx_time_entries_todo_id_owner_id_minutes_id",
                         scope + " order by minutes desc, id desc limit 21", TWO_PAGES),
-                cell("SPENT_ON, a later batch", "idx_time_entries_todo_id_owner_id_spent_on_id", scope + """
-                         and spent_on <= :seekDay and (spent_on < :seekDay or (spent_on = :seekDay and id < :seekId))
-                        order by spent_on desc, id desc limit 21""", TWO_PAGES),
+                cell("SPENT_ON, a later batch", "idx_time_entries_todo_id_owner_id_spent_on_id",
+                        scope + " and (spent_on, id) < (:seekDay, :seekId) order by spent_on desc, id desc limit 21", TWO_PAGES),
                 cell("SPENT_ON within spentOnFrom/To (a range of its index)", "idx_time_entries_todo_id_owner_id_spent_on_id",
                         scope + " and spent_on >= :from and spent_on <= :to order by spent_on desc, id desc limit 21", TWO_PAGES),
                 cell("MINUTES within minMinutes/maxMinutes (a range of its index)", "idx_time_entries_todo_id_owner_id_minutes_id",
@@ -133,7 +132,9 @@ class TimeEntryIndexIntegrationTest extends IntegrationTest {
                         scope + " and billable = :billable order by spent_on desc, id desc limit 21", TODO_ENTRIES),
                 cell("MINUTES, billable (the todo's entries at most)", "idx_time_entries_todo_id_owner_id_minutes_id",
                         scope + " and billable = :billable order by minutes desc, id desc limit 21", TODO_ENTRIES),
-                cell("by ids", "pk_time_entries", scope + " and id in (:ids) order by spent_on desc, id desc limit 21", TWO_PAGES));
+                // The ids filter under every order: the asked rows through the primary key, then sorted.
+                cell("by ids, SPENT_ON", "pk_time_entries", scope + " and id in (:ids) order by spent_on desc, id desc limit 21", TWO_PAGES),
+                cell("by ids, MINUTES", "pk_time_entries", scope + " and id in (:ids) order by minutes desc, id desc limit 21", TWO_PAGES));
     }
 
     @ParameterizedTest(name = "{0} ({1}): at most {3} rows")

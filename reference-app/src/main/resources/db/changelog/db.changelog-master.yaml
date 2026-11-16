@@ -51,3 +51,6 @@ databaseChangeLog:
   - include:
       file: changes/0027-users-status.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/0029-newest-by-created-at.sql
+      relativeToChangelogFile: true

@@ -24,8 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Row mode: a page of the owner's plans reads at most two pages with the table filled as production fills
  * it (crud-gen tests.md, index tests in row mode, row 28). The tested owner's 100 plans sit beside a bigger
- * sibling owner's 200 in the tenant, among four other tenants' 20,000, interleaved in id order (random
- * ids). An owner lives in one tenant, but without the dependency statistics of changeset 0023 the planner
+ * sibling owner's 200 in the tenant, among four other tenants' 20,000, seeded tenant after tenant with
+ * UUIDv7 ids as the application writes them, so the tested tenant's plans are the oldest (the tenant whose
+ * rows are old is the one an id order would walk every newer tenant's rows for). An owner lives in one tenant, but without the dependency statistics of changeset 0023 the planner
  * multiplies the owner's share of the table by the tenant's, estimates a row or two, and reads the
  * exclusion constraint's GiST index (the same leading columns) plus a sort of all the owner's plans
  * instead. The seeded rows are deleted afterwards, so the other index tests keep the table they seed for.
@@ -97,7 +98,7 @@ class PlanRowIndexIntegrationTest extends IntegrationTest {
                 """.formatted(TODO_NUMBER_COLUMN, TODO_NUMBER), plans, owner);
         sql("""
                 insert into plans (id, tenant_id, todo_id, owner_id, starts_on, ends_on, created_at, updated_at, version)
-                select gen_random_uuid(), todo.tenant_id, todo.id, todo.owner_id, date '2020-01-01' + todo.rank,
+                select uuidv7(), todo.tenant_id, todo.id, todo.owner_id, date '2020-01-01' + todo.rank,
                        date '2020-01-01' + todo.rank, now(), now(), 0
                   from (select id, tenant_id, owner_id, (row_number() over (order by id))::integer as rank
                           from todos where owner_id = ?) todo
@@ -123,7 +124,7 @@ class PlanRowIndexIntegrationTest extends IntegrationTest {
                 """.formatted(TODO_NUMBER_COLUMN, TODO_NUMBER), PLANS_PER_OTHER_OWNER, tenant.id());
         sqlIn(tenant, """
                 insert into plans (id, tenant_id, todo_id, owner_id, starts_on, ends_on, created_at, updated_at, version)
-                select gen_random_uuid(), todo.tenant_id, todo.id, todo.owner_id, date '2020-01-01' + todo.rank,
+                select uuidv7(), todo.tenant_id, todo.id, todo.owner_id, date '2020-01-01' + todo.rank,
                        date '2020-01-01' + todo.rank, now(), now(), 0
                   from (select id, tenant_id, owner_id, (row_number() over (partition by owner_id order by id))::integer as rank
                           from todos where tenant_id = ? and title like 'Seeded %') todo
@@ -133,7 +134,7 @@ class PlanRowIndexIntegrationTest extends IntegrationTest {
     static Stream<Arguments> ownerOrders() {
         return Stream.of(
                 Arguments.of("the owner's plans, STARTS_ON", "idx_plans_owner_id_starts_on_id", "order by starts_on, id"),
-                Arguments.of("the owner's plans, NEWEST", "idx_plans_owner_id_id", "order by id desc"));
+                Arguments.of("the owner's plans, NEWEST", "idx_plans_owner_id_created_at_id", "order by created_at desc, id desc"));
     }
 
     /**

@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -82,35 +83,44 @@ class PlatformAuditIntegrationTest extends IntegrationTest {
 
     /**
      * The audit list's two batch shapes (crud-gen tests.md row 28): the index exists and a batch reads at most
-     * two pages, for a tenant's 500 entries beside another tenant's 10,000, interleaved in id order.
+     * two pages, for a tenant's 500 entries beside another tenant's 10,000, written as the application writes them
+     * (UUIDv7 ids and clock times, in rounds, so the heap follows the ids).
      */
     @Test
-    @DisplayName("Both batch shapes have idx_platform_audit_tenant_id_id and read at most two pages")
+    @DisplayName("Both batch shapes have idx_platform_audit_tenant_id_created_at_id and read at most two pages")
     void batchesReadAtMostTwoPages() throws Exception {
         UUID tenant = newTenant().id();
         UUID other = newTenant().id();
         // The staff account the platform token signs in, an author every audit row needs.
         platformToken();
         UUID actor = jdbc.queryForObject("select id from platform_users order by id limit 1", UUID.class);
-        for (UUID seeded : List.of(tenant, other)) {
-            sql("""
-                    insert into platform_audit (id, actor_id, tenant_id, action, created_at, updated_at, version)
-                    select gen_random_uuid(), ?, ?, 'SEEDED', now(), now(), 0 from generate_series(1, ?)
-                    """, actor, seeded, seeded.equals(tenant) ? 500 : 10_000);
+        // Twenty rounds, the tenant's entries then the other's: rows reach the heap in id order, as in production.
+        for (int round = 0; round < 20; round++) {
+            for (UUID seeded : List.of(tenant, other)) {
+                sql("""
+                        insert into platform_audit (id, actor_id, tenant_id, action, created_at, updated_at, version)
+                        select uuidv7(), ?, ?, 'SEEDED', clock_timestamp(), now(), 0 from generate_series(1, ?)
+                        """, actor, seeded, seeded.equals(tenant) ? 500 / 20 : 10_000 / 20);
+            }
         }
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze platform_audit"));
+        UUID after = jdbc.queryForObject(
+                "select id from platform_audit where tenant_id = ? order by created_at desc, id desc offset 250 limit 1", UUID.class, tenant);
         MapSqlParameterSource parameters = new MapSqlParameterSource()
                 .addValue("tenant", tenant)
-                .addValue("after", jdbc.queryForObject(
-                        "select id from platform_audit where tenant_id = ? order by id desc offset 250 limit 1", UUID.class, tenant));
+                .addValue("after", after)
+                // As an OffsetDateTime: a java.sql.Timestamp would be bound in the JVM's time zone.
+                .addValue("afterCreated", jdbc.queryForObject("select created_at from platform_audit where id = ?", OffsetDateTime.class, after));
 
         for (String statement : List.of(
-                "select id from platform_audit where tenant_id = :tenant order by id desc limit 21",
-                "select id from platform_audit where tenant_id = :tenant and id < :after order by id desc limit 21")) {
+                "select id from platform_audit where tenant_id = :tenant order by created_at desc, id desc limit 21",
+                """
+                select id from platform_audit where tenant_id = :tenant and (created_at, id) < (:afterCreated, :after)
+                order by created_at desc, id desc limit 21""")) {
             ReadCost cost = ReadCost.of(jdbc, transactionManager, statement, parameters);
 
             assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
         }
-        assertThat(ReadCost.indexExists(jdbc, "idx_platform_audit_tenant_id_id")).isTrue();
+        assertThat(ReadCost.indexExists(jdbc, "idx_platform_audit_tenant_id_created_at_id")).isTrue();
     }
 }

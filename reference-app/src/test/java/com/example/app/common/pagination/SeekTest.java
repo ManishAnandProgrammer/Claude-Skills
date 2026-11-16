@@ -1,9 +1,11 @@
 package com.example.app.common.pagination;
 
-import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Order;
-import jakarta.persistence.criteria.Predicate;
+import org.hibernate.query.criteria.HibernateCriteriaBuilder;
+import org.hibernate.query.criteria.JpaExpression;
+import org.hibernate.query.criteria.JpaOrder;
+import org.hibernate.query.criteria.JpaPredicate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -12,83 +14,70 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** The predicate's shape against a stub builder; the cursor-walk integration tests run it on PostgreSQL. */
+/**
+ * The predicate's shape against a stub builder: one row-value comparison over every seek column, the cursor's
+ * values bound as parameters. The expanded form bounds the index on the first key alone, so a later batch
+ * inside a tie group rereads the group (the index tests' tie-group cells); the cursor-walk integration tests
+ * run it on PostgreSQL.
+ */
 class SeekTest {
 
     private static final LocalDate DAY = LocalDate.of(2026, 11, 14);
     private static final Integer MINUTES = 45;
     private static final UUID ID = UUID.fromString("0190a9c2-6c43-7cc1-9f2a-1d1e5a6b7c8d");
 
-    private final CriteriaBuilder builder = mock(CriteriaBuilder.class);
+    private final HibernateCriteriaBuilder builder = mock(HibernateCriteriaBuilder.class);
     @SuppressWarnings("unchecked")
     private final Expression<LocalDate> day = mock(Expression.class);
     @SuppressWarnings("unchecked")
     private final Expression<Integer> minutes = mock(Expression.class);
     @SuppressWarnings("unchecked")
     private final Expression<UUID> id = mock(Expression.class);
-
-    private final Predicate dayAfter = mock(Predicate.class);
-    private final Predicate dayBefore = mock(Predicate.class);
-    private final Predicate dayTie = mock(Predicate.class);
-    private final Predicate minutesBefore = mock(Predicate.class);
-    private final Predicate minutesTie = mock(Predicate.class);
-    private final Predicate idAfter = mock(Predicate.class);
-    private final Predicate idBefore = mock(Predicate.class);
-    private final Predicate tieThenId = mock(Predicate.class);
-    private final Predicate tieThenMinutes = mock(Predicate.class);
-    private final Predicate alternatives = mock(Predicate.class);
-    private final Predicate dayFrom = mock(Predicate.class);
-    private final Predicate dayUpTo = mock(Predicate.class);
-    private final Predicate seek = mock(Predicate.class);
+    @SuppressWarnings("unchecked")
+    private final JpaExpression<Object> dayValue = mock(JpaExpression.class);
+    @SuppressWarnings("unchecked")
+    private final JpaExpression<Object> minutesValue = mock(JpaExpression.class);
+    @SuppressWarnings("unchecked")
+    private final JpaExpression<Object> idValue = mock(JpaExpression.class);
+    @SuppressWarnings("unchecked")
+    private final JpaExpression<Boolean> comparison = mock(JpaExpression.class);
+    private final JpaPredicate seek = mock(JpaPredicate.class);
 
     @Test
-    @DisplayName("Ascending: from the first key on (the index's start), a later first key, or a tie and a later id")
+    @DisplayName("Ascending: (first, id) > (the cursor's first, the cursor's id), the values bound, never inlined")
     void ascendingSeek() {
-        when(builder.greaterThan(day, DAY)).thenReturn(dayAfter);
-        when(builder.equal(day, DAY)).thenReturn(dayTie);
-        when(builder.greaterThan(id, ID)).thenReturn(idAfter);
-        when(builder.and(dayTie, idAfter)).thenReturn(tieThenId);
-        when(builder.or(dayAfter, tieThenId)).thenReturn(alternatives);
-        when(builder.greaterThanOrEqualTo(day, DAY)).thenReturn(dayFrom);
-        when(builder.and(dayFrom, alternatives)).thenReturn(seek);
+        givenTheValues();
+        when(builder.sql("(?, ?) > (?, ?)", Boolean.class, day, id, dayValue, idValue)).thenReturn(comparison);
+        when(builder.isTrue(comparison)).thenReturn(seek);
 
         assertThat(Seek.after(builder, false, day, DAY, id, ID)).isSameAs(seek);
-        verify(builder, never()).lessThan(day, DAY);
+        verify(builder, never()).literal(any());
     }
 
     @Test
-    @DisplayName("Descending: up to the first key, an earlier first key, or a tie and an earlier id")
+    @DisplayName("Descending: (first, id) < (the cursor's first, the cursor's id)")
     void descendingSeek() {
-        when(builder.lessThan(day, DAY)).thenReturn(dayBefore);
-        when(builder.equal(day, DAY)).thenReturn(dayTie);
-        when(builder.lessThan(id, ID)).thenReturn(idBefore);
-        when(builder.and(dayTie, idBefore)).thenReturn(tieThenId);
-        when(builder.or(dayBefore, tieThenId)).thenReturn(alternatives);
-        when(builder.lessThanOrEqualTo(day, DAY)).thenReturn(dayUpTo);
-        when(builder.and(dayUpTo, alternatives)).thenReturn(seek);
+        givenTheValues();
+        when(builder.sql("(?, ?) < (?, ?)", Boolean.class, day, id, dayValue, idValue)).thenReturn(comparison);
+        when(builder.isTrue(comparison)).thenReturn(seek);
 
         assertThat(Seek.after(builder, true, day, DAY, id, ID)).isSameAs(seek);
-        verify(builder, never()).greaterThan(day, DAY);
+        verify(builder, never()).literal(any());
     }
 
     @Test
-    @DisplayName("Three keys: each tie falls through to the next key, the id last")
+    @DisplayName("Three keys: one row of three, the id last")
     void threeKeySeek() {
-        when(builder.lessThan(day, DAY)).thenReturn(dayBefore);
-        when(builder.equal(day, DAY)).thenReturn(dayTie);
-        when(builder.lessThan(minutes, MINUTES)).thenReturn(minutesBefore);
-        when(builder.equal(minutes, MINUTES)).thenReturn(minutesTie);
-        when(builder.lessThan(id, ID)).thenReturn(idBefore);
-        when(builder.and(dayTie, minutesBefore)).thenReturn(tieThenMinutes);
-        when(builder.and(dayTie, minutesTie, idBefore)).thenReturn(tieThenId);
-        when(builder.or(dayBefore, tieThenMinutes, tieThenId)).thenReturn(alternatives);
-        when(builder.lessThanOrEqualTo(day, DAY)).thenReturn(dayUpTo);
-        when(builder.and(dayUpTo, alternatives)).thenReturn(seek);
+        givenTheValues();
+        when(builder.sql("(?, ?, ?) < (?, ?, ?)", Boolean.class, day, minutes, id, dayValue, minutesValue, idValue))
+                .thenReturn(comparison);
+        when(builder.isTrue(comparison)).thenReturn(seek);
 
         assertThat(Seek.after(builder, true, day, DAY, minutes, MINUTES, id, ID)).isSameAs(seek);
     }
@@ -96,10 +85,10 @@ class SeekTest {
     @Test
     @DisplayName("The order is every seek column, in order, in one direction")
     void orderFollowsTheColumns() {
-        Order dayDesc = mock(Order.class);
-        Order idDesc = mock(Order.class);
-        Order dayAsc = mock(Order.class);
-        Order idAsc = mock(Order.class);
+        JpaOrder dayDesc = mock(JpaOrder.class);
+        JpaOrder idDesc = mock(JpaOrder.class);
+        JpaOrder dayAsc = mock(JpaOrder.class);
+        JpaOrder idAsc = mock(JpaOrder.class);
         when(builder.desc(day)).thenReturn(dayDesc);
         when(builder.desc(id)).thenReturn(idDesc);
         when(builder.asc(day)).thenReturn(dayAsc);
@@ -110,5 +99,11 @@ class SeekTest {
 
         assertThat(descending).containsExactly(dayDesc, idDesc);
         assertThat(ascending).containsExactly(dayAsc, idAsc);
+    }
+
+    private void givenTheValues() {
+        when(builder.value((Object) DAY)).thenReturn(dayValue);
+        when(builder.value((Object) MINUTES)).thenReturn(minutesValue);
+        when(builder.value((Object) ID)).thenReturn(idValue);
     }
 }

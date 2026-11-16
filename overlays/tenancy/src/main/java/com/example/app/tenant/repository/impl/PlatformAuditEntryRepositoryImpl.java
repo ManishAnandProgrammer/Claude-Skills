@@ -2,6 +2,7 @@ package com.example.app.tenant.repository.impl;
 
 import com.example.app.common.pagination.Cursor;
 import com.example.app.common.pagination.CursorBatch;
+import com.example.app.common.pagination.Seek;
 import com.example.app.tenant.domain.PlatformAuditEntry;
 import com.example.app.tenant.domain.PlatformAuditEntry_;
 import com.example.app.tenant.dto.request.PlatformAuditFilter;
@@ -22,7 +23,10 @@ import java.util.UUID;
 @Repository
 class PlatformAuditEntryRepositoryImpl implements CustomPlatformAuditEntryRepository {
 
-    /** The one order: newest first, by the time-ordered id (idx_platform_audit_tenant_id_id). */
+    /**
+     * The one order: newest first, by the creation time, then the id (idx_platform_audit_tenant_id_created_at_id).
+     * Never the id alone: the primary key would compete with the tenant's index (DATA-10).
+     */
     private static final String SORT = "NEWEST";
 
     private final EntityManager entityManager;
@@ -42,13 +46,14 @@ class PlatformAuditEntryRepositoryImpl implements CustomPlatformAuditEntryReposi
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(builder.equal(root.get(PlatformAuditEntry_.tenantId), tenantId));
         if (cursor.isPresent()) {
-            predicates.add(builder.lessThan(root.get(PlatformAuditEntry_.id), cursor.uuid(0)));
+            predicates.add(Seek.after(builder, true, root.get(PlatformAuditEntry_.createdAt), cursor.instant(0),
+                    root.get(PlatformAuditEntry_.id), cursor.uuid(1)));
         }
         query.where(predicates.toArray(new Predicate[0]));
-        query.orderBy(builder.desc(root.get(PlatformAuditEntry_.id)));
+        query.orderBy(Seek.order(builder, true, root.get(PlatformAuditEntry_.createdAt), root.get(PlatformAuditEntry_.id)));
 
         List<PlatformAuditResponse> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();
-        return CursorBatch.of(rows, size, row -> Cursor.write(SORT, row.id()));
+        return CursorBatch.of(rows, size, row -> Cursor.write(SORT, row.createdAt(), row.id()));
     }
 
     private static CompoundSelection<PlatformAuditResponse> rowOf(CriteriaBuilder builder, Root<PlatformAuditEntry> root) {

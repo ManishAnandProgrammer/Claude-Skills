@@ -44,7 +44,9 @@ class TodoRepositoryImpl implements CustomTodoRepository {
 
     /**
      * DUE_DATE sorts by the generated {@code due_sort} column (the due date, or 9999-12-31): a seek
-     * key must never be null. NEWEST sorts by the id alone, newest first.
+     * key must never be null. NEWEST sorts by the creation time, newest first, the id last: never the id
+     * alone, or the primary key (which leads with the id) competes with the owner's index, and with UUIDv7
+     * ids in heap order the planner walks it backward through every newer row of every owner (DATA-10).
      */
     @Override
     public CursorBatch<TodoSummaryResponse> findByFilter(TodoFilter filter, UUID ownerId, int size) {
@@ -66,7 +68,7 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         List<TodoSummaryResponse> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();
         return switch (filter.getSort()) {
             case DUE_DATE -> CursorBatch.of(rows, size, row -> Cursor.write(sort, dueSortOf(row), row.id()));
-            case NEWEST -> CursorBatch.of(rows, size, row -> Cursor.write(sort, row.id()));
+            case NEWEST -> CursorBatch.of(rows, size, row -> Cursor.write(sort, row.createdAt(), row.id()));
         };
     }
 
@@ -75,7 +77,8 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         return switch (sort) {
             case DUE_DATE -> Seek.after(builder, false,
                     root.get(Todo_.dueSort), cursor.date(0), root.get(Todo_.id), cursor.uuid(1));
-            case NEWEST -> builder.lessThan(root.get(Todo_.id), cursor.uuid(0));
+            case NEWEST -> Seek.after(builder, true,
+                    root.get(Todo_.createdAt), cursor.instant(0), root.get(Todo_.id), cursor.uuid(1));
         };
     }
 
@@ -83,7 +86,7 @@ class TodoRepositoryImpl implements CustomTodoRepository {
     private static List<Order> orderOf(CriteriaBuilder builder, Root<Todo> root, TodoSort sort) {
         return switch (sort) {
             case DUE_DATE -> Seek.order(builder, false, root.get(Todo_.dueSort), root.get(Todo_.id));
-            case NEWEST -> List.of(builder.desc(root.get(Todo_.id)));
+            case NEWEST -> Seek.order(builder, true, root.get(Todo_.createdAt), root.get(Todo_.id));
         };
     }
 

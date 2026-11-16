@@ -46,9 +46,13 @@ class TenantMemberIndexIntegrationTest extends IntegrationTest {
     @BeforeAll
     void seedOneTenantAmongBiggerOnes() throws Exception {
         tenantId = newTenant().id();
-        seedMembers(tenantId, TENANT_MEMBERS);
-        for (int other = 0; other < 3; other++) {
-            seedMembers(newTenant().id(), 2000);
+        List<UUID> others = List.of(newTenant().id(), newTenant().id(), newTenant().id());
+        // Twenty rounds of joins, the tenant's then the others': rows reach the heap in id order, as in production.
+        for (int round = 0; round < 20; round++) {
+            seedMembers(tenantId, TENANT_MEMBERS / 20);
+            for (UUID other : others) {
+                seedMembers(other, 2000 / 20);
+            }
         }
         someMembers = jdbc.queryForList("select user_id from tenant_memberships where tenant_id = ? limit 3", UUID.class, tenantId);
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
@@ -57,20 +61,20 @@ class TenantMemberIndexIntegrationTest extends IntegrationTest {
         });
     }
 
-    /** {@code count} accounts in the tenant, one in a hundred an ADMIN. */
+    /** {@code count} more accounts joining the tenant now, one in a hundred an ADMIN: UUIDv7 ids and clock times. */
     private void seedMembers(UUID tenant, int count) {
         String marker = UUID.randomUUID().toString();
         sql("""
                 insert into users (id, email, full_name, password_hash, role, created_at, updated_at, version)
-                select gen_random_uuid(), 'seeded-' || n || '-' || ? || '@example.com', 'Seeded', 'not-a-hash', 'USER',
+                select uuidv7(), 'seeded-' || n || '-' || ? || '@example.com', 'Seeded', 'not-a-hash', 'USER',
                        now(), now(), 0
                   from generate_series(1, ?) n
                 """, marker, count);
         sql("""
                 insert into tenant_memberships (id, tenant_id, user_id, role, created_at, updated_at, version)
-                select gen_random_uuid(), ?, u.id,
+                select uuidv7(), ?, u.id,
                        case when row_number() over (order by u.id) % 100 = 0 then 'ADMIN' else 'USER' end,
-                       now(), now(), 0
+                       clock_timestamp(), now(), 0
                   from users u
                  where u.email like 'seeded-%-' || ? || '@example.com'
                 """, tenant, marker);
@@ -87,23 +91,25 @@ class TenantMemberIndexIntegrationTest extends IntegrationTest {
     static Stream<Arguments> cells() {
         List<Arguments> cells = new ArrayList<>();
         for (String direction : List.of("desc", "asc")) {
-            String order = " order by m.id " + direction;
-            cells.add(cell("members, " + direction, "idx_tenant_memberships_tenant_id_id",
+            String order = " order by m.created_at " + direction + ", m.id " + direction;
+            cells.add(cell("members, " + direction, "idx_tenant_memberships_tenant_id_created_at_id",
                     MEMBER_ROWS + " where m.tenant_id = :tenant" + order + " limit 20", 2 * TWO_PAGES));
-            cells.add(cell("members, " + direction + ", a later page", "idx_tenant_memberships_tenant_id_id",
+            cells.add(cell("members, " + direction + ", a later page", "idx_tenant_memberships_tenant_id_created_at_id",
                     MEMBER_ROWS + " where m.tenant_id = :tenant" + order + " limit 20 offset 40", 2 * (40 + TWO_PAGES)));
             for (Role role : Role.values()) {
-                cells.add(cell("members " + role + ", " + direction, "idx_tenant_memberships_tenant_id_role_id",
+                cells.add(cell("members " + role + ", " + direction, "idx_tenant_memberships_tenant_id_role_created_at_id",
                         MEMBER_ROWS + " where m.tenant_id = :tenant and m.role = :role" + role + order + " limit 20", 2 * TWO_PAGES));
             }
             // query is a contains search on the email, no btree serves it: it reads the tenant's members (a team: the
             // seeded ones and the tenant's owner), no more.
-            cells.add(cell("members matching a query, " + direction + " (the tenant's members at most)", "idx_tenant_memberships_tenant_id_id",
+            cells.add(cell("members matching a query, " + direction + " (the tenant's members at most)",
+                    "idx_tenant_memberships_tenant_id_created_at_id",
                     MEMBER_ROWS + " where m.tenant_id = :tenant and strpos(lower(u.email), :query) > 0" + order + " limit 20",
                     2 * (TENANT_MEMBERS + 1)));
+            // The ids filter under every order: the asked memberships through their key, then sorted.
+            cells.add(cell("members by account ids, " + direction, "uq_tenant_memberships_user_id_tenant_id",
+                    MEMBER_ROWS + " where m.tenant_id = :tenant and m.user_id in (:ids)" + order + " limit 20", 2 * TWO_PAGES));
         }
-        cells.add(cell("members by account ids", "uq_tenant_memberships_user_id_tenant_id",
-                MEMBER_ROWS + " where m.tenant_id = :tenant and m.user_id in (:ids) order by m.id desc limit 20", 2 * TWO_PAGES));
         return cells.stream();
     }
 

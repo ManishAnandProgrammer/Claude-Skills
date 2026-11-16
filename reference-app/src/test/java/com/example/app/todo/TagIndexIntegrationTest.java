@@ -46,8 +46,12 @@ class TagIndexIntegrationTest extends IntegrationTest {
     @BeforeAll
     void seedAnOwnerBesideABiggerOne() throws Exception {
         UUID ownerId = newUser().id();
-        seedTags(ownerId, OWNER_TAGS);
-        seedTags(newUser().id(), 10_000);
+        UUID siblingId = newUser().id();
+        // Twenty rounds of the owner's share, then the sibling's: rows reach the heap in id order, as in production.
+        for (int round = 0; round < 20; round++) {
+            seedTags(ownerId, round, OWNER_TAGS / 20);
+            seedTags(siblingId, round, 10_000 / 20);
+        }
         parameters.addValue("owner", ownerId)
                 .addValue("active", true)
                 .addValue("inactive", false)
@@ -59,18 +63,19 @@ class TagIndexIntegrationTest extends IntegrationTest {
         });
     }
 
-    private void seedTags(UUID owner, int tags) {
+    /** {@code count} more tags of the owner, one in five inactive, created now: UUIDv7 ids and clock times. */
+    private void seedTags(UUID owner, int round, int count) {
         // tenancy-row:begin
         // // Row mode: every insert names its tenant (tenant_id has no default).
         // sql("""
         //         insert into tags (id, tenant_id, owner_id, name, active, created_at, updated_at, version)
-        //         select gen_random_uuid(), ?, ?, 'Seeded ' || n, n % 5 <> 0, now(), now(), 0 from generate_series(1, ?) n
-        //         """, testTenant().id(), owner, tags);
+        //         select uuidv7(), ?, ?, 'Seeded ' || ? || '-' || n, n % 5 <> 0, clock_timestamp(), now(), 0 from generate_series(1, ?) n
+        //         """, testTenant().id(), owner, round, count);
         // tenancy-row:else
         sql("""
                 insert into tags (id, owner_id, name, active, created_at, updated_at, version)
-                select gen_random_uuid(), ?, 'Seeded ' || n, n % 5 <> 0, now(), now(), 0 from generate_series(1, ?) n
-                """, owner, tags);
+                select uuidv7(), ?, 'Seeded ' || ? || '-' || n, n % 5 <> 0, clock_timestamp(), now(), 0 from generate_series(1, ?) n
+                """, owner, round, count);
         // tenancy-row:end
     }
 
@@ -85,14 +90,17 @@ class TagIndexIntegrationTest extends IntegrationTest {
                 TAG_ROW + " where owner_id = :owner order by name, id limit 20", TWO_PAGES));
         cells.add(cell("tags, NAME, a later page", "idx_tags_owner_id_name_id",
                 TAG_ROW + " where owner_id = :owner order by name, id limit 20 offset 40", 40 + TWO_PAGES));
-        cells.add(cell("tags, NEWEST", "idx_tags_owner_id_id",
-                TAG_ROW + " where owner_id = :owner order by id desc limit 20", TWO_PAGES));
+        cells.add(cell("tags, NEWEST", "idx_tags_owner_id_created_at_id",
+                TAG_ROW + " where owner_id = :owner order by created_at desc, id desc limit 20", TWO_PAGES));
+        cells.add(cell("tags, NEWEST, a later page", "idx_tags_owner_id_created_at_id",
+                TAG_ROW + " where owner_id = :owner order by created_at desc, id desc limit 20 offset 40", 40 + TWO_PAGES));
         for (DropdownStatus status : List.of(DropdownStatus.ACTIVE, DropdownStatus.INACTIVE)) {
             String flag = status == DropdownStatus.ACTIVE ? ":active" : ":inactive";
             cells.add(cell("tags " + status + ", NAME", "idx_tags_owner_id_active_name_id",
                     TAG_ROW + " where owner_id = :owner and active = " + flag + " order by name, id limit 20", TWO_PAGES));
-            cells.add(cell("tags " + status + ", NEWEST", "idx_tags_owner_id_active_id",
-                    TAG_ROW + " where owner_id = :owner and active = " + flag + " order by id desc limit 20", TWO_PAGES));
+            cells.add(cell("tags " + status + ", NEWEST", "idx_tags_owner_id_active_created_at_id",
+                    TAG_ROW + " where owner_id = :owner and active = " + flag + " order by created_at desc, id desc limit 20",
+                    TWO_PAGES));
             cells.add(cell("tag dropdown " + status + ", ASC", "idx_tags_owner_id_active_name_id",
                     DROPDOWN_ITEM + " where owner_id = :owner and active = " + flag + " order by name, id limit 21", TWO_PAGES));
             cells.add(cell("tag dropdown " + status + ", DESC", "idx_tags_owner_id_active_name_id",
@@ -106,10 +114,14 @@ class TagIndexIntegrationTest extends IntegrationTest {
         // query is a contains search no btree serves (0004): it reads the owner's tags, never anyone else's.
         cells.add(cell("tags matching a query, NAME (the owner's tags at most)", "idx_tags_owner_id_name_id",
                 TAG_ROW + " where owner_id = :owner and strpos(lower(name), :query) > 0 order by name, id limit 20", OWNER_TAGS));
-        cells.add(cell("tags matching a query, NEWEST (the owner's tags at most)", "idx_tags_owner_id_id",
-                TAG_ROW + " where owner_id = :owner and strpos(lower(name), :query) > 0 order by id desc limit 20", OWNER_TAGS));
-        cells.add(cell("tags by ids", "pk_tags", TAG_ROW + " where owner_id = :owner and id in (:ids) order by name, id limit 20",
+        cells.add(cell("tags matching a query, NEWEST (the owner's tags at most)", "idx_tags_owner_id_created_at_id",
+                TAG_ROW + " where owner_id = :owner and strpos(lower(name), :query) > 0 order by created_at desc, id desc limit 20",
+                OWNER_TAGS));
+        // The ids filter under every order: the asked rows through the primary key, then sorted.
+        cells.add(cell("tags by ids, NAME", "pk_tags", TAG_ROW + " where owner_id = :owner and id in (:ids) order by name, id limit 20",
                 TWO_PAGES));
+        cells.add(cell("tags by ids, NEWEST", "pk_tags",
+                TAG_ROW + " where owner_id = :owner and id in (:ids) order by created_at desc, id desc limit 20", TWO_PAGES));
         return cells.stream();
     }
 

@@ -486,9 +486,20 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     null (a code), which is already a total order (`code, id` on a unique `code` adds a sort step
     the index can't serve);
   - **keyset code:** `Seek.order` names the same columns as `Seek.after`, in the same order, id
-    last; the query fetches `size + 1`. A hand-written seek in OR form (`a > x OR (a = x AND id > y)`)
-    also carries the leading `a >= x`: the OR alone is no index condition, so batch N reads N batches;
-    `Seek.after` adds it;
+    last; the query fetches `size + 1`. The seek is **one row-value comparison**, `(a, id) > (x, y)`
+    (`Seek.after`, the cursor's values bound as parameters): PostgreSQL makes it one index condition, so
+    the scan starts exactly at the cursor. The OR form (`a > x OR (a = x AND id > y)`) is no index
+    condition at all (batch N reads N batches), and even with the leading `a >= x` it bounds the index on
+    `a` alone: a later batch inside a tie group (a term's start day shared by a thousand enrollments)
+    rereads the group's rows before the cursor on every batch (measured: 172 rows for a page of 21);
+  - **NEWEST is the creation time, then the id** (`(created_at, id)`, index `(scope…, created_at, id)`),
+    **never the id alone**, whatever the scope: the primary key leads with the id, so an id order gives
+    every scoped list a competitor, and with UUIDv7 ids in heap order the planner costs walking `pk_<table>`
+    backward as cheap whenever the scope looks like a big share of the table; for a scope whose rows are old
+    (an owner or a tenant that stopped writing) a page then reads every newer row of everyone else first
+    (help-desk: 16,400 rows for a page of 20; reference `TodoIndexIntegrationTest`'s old, big owner: 10,540
+    with `(owner_id, id)` in place). No index leads with `created_at`, so the scope's own index has no
+    competitor. OLDEST likewise. An unscoped NEWEST (a platform's tenants) gets its `(created_at, id)` index;
   - **a keyset sort key is never null.** A nullable column (a due date) sorts through a stored
     generated column (`coalesce(due_date, date '9999-12-31')`) that the index and the keyset use;
   - **an overlap filter has a lower bound.** "What is on during [from, to]" is `ends_on >= from AND
@@ -517,9 +528,16 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   `Index Cond`) instead of the cell's read bound and its index's existence: the plan turns on the
   statistics, so it passes alone and fails in a full run (or the reverse), and an in-order walk that
   filters away the table passes "index by name, no Sort"; a list cell (an order × a filter) in no index
-  test, or with neither an index nor a recorded bound; a range filter offered under another column's order
+  test, or with neither an index nor a recorded bound; **an order by the id alone** (`NEWEST` as `id desc`,
+  `Sort.Order.desc("id")`) on any list; a seek in OR form, hand-written or in a cell's SQL; **an index test
+  seeded with random ids or one block per scope** (production's UUIDv7 ids follow the heap: seed
+  `uuidv7()` and `clock_timestamp()` in rounds of each scope in turn, or a walk of the primary key looks
+  expensive on the seed and cheap in production); no cell for a later batch inside a tie group of the
+  leading key; **a rare value's cell bounded by the walking bound**
+  (it passes without its index) or a status set by a later decision seeded uniformly over every id (it
+  then sits among the newest rows, where production never has it, and the planner walks); a range filter offered under another column's order
   on an unbounded scope; an index test seeded with the tested scope as most of its table, or not
-  interleaved in id order (a missing index then reads few rows); an overlap filter written as two
+  interleaved in creation order (a missing index then reads few rows); an overlap filter written as two
   comparisons with nothing bounding `starts_on` from below; an index on
   `updated_at` or `version` (or on any column every update changes): every
   update then writes new index entries and is never a HOT update (measured 2026-11-14 on a
