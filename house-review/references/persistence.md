@@ -272,8 +272,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Principle:** a lock names the rule it protects that **no constraint, foreign key or `@Version`
   already holds** (its repository method's one-line javadoc says which). A lock that only turns a
   rare race's 503 or 409 into a nicer code is not added, provided the data stays correct, the answer
-  is never 500 and a retry is safe. The exception is a race that is normal traffic (two tabs
-  refreshing one token, a double-clicked submit): there the answer must be the documented one.
+  is never 500 and a retry is safe. The exception is a race one client makes on its own (two tabs
+  refreshing one token, a double-clicked submit), or one the developer says is normal traffic
+  (recorded, never assumed): there the answer must be the documented one.
   Measured 2026-11-14 (lock audit of the reference, every lock removed in turn): the owner-scope
   advisory lock and the three `FOR KEY SHARE` delete guards protected nothing the database didn't
   already hold, and were removed; the todo's `findForUpdate…` and the token's single-winner rotation

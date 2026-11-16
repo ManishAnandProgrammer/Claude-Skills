@@ -450,7 +450,7 @@ an extraction is an operation, not a migration project (the tooling itself is no
 - **Check:** schema per tenant suits thousands of tenants that want their data apart (export, delete,
   restore one with `pg_dump -n`, `DROP SCHEMA … CASCADE` after retention). Tens of thousands strain the
   catalog, `pg_dump` and autovacuum: row mode is the answer there. The bootstrap question says so;
-  a review records the expected tenant count.
+  a review records the tenant count the developer gives, never an estimate.
 - **Severity:** Medium (an architecture decision to revisit, not a code defect).
 
 ## Row mode

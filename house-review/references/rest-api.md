@@ -275,8 +275,9 @@ types.
   - results are scoped like the resource's reads: a dropdown never lists items the caller couldn't
     fetch;
   - security per `{{dropdownSecurity}}` (normally `isAuthenticated()`);
-  - `cacheable` only for static master data, with eviction on writes, and a shared cache (or a
-    confirmed reason) when `{{instances}}` is `multiple`;
+  - `cacheable` only where the developer asked for it (the crud profile's *Decisions per entity*),
+    with eviction on writes, and a shared cache (or a confirmed reason) when `{{instances}}` is
+    `multiple`;
   - documented in the API interface and tested.
 - **Also:** a screen that needs a picker has its dropdown (an assignee picker for "reassign"); a
   resource other screens pick from (another entity references it) without `@DropdownCandidate` is

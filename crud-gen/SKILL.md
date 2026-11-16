@@ -208,9 +208,11 @@ wire:** the consuming module maps it into a response record of its own (golden `
 
 **Ask, don't guess.** Ask the developer once per entity, in one batch with the questions above, unless the
 request or the profile already says. Record each answer in the crud profile's *Decisions per entity*:
-- **text limits**: each String field's maximum length (4.2's `@MaxLength` number);
+- **text and collection limits**: each String field's maximum length (4.2's `@MaxLength` number); each
+  collection's maximum size and whether it may be empty (4.2);
 - **date bounds**: each date's earliest and latest day (4.1's `@EarliestDate` / `@LatestDate` values);
-- **dropdown**: per dropdown, whether it is searchable (`searchable`, the `query` parameter) and its label;
+- **dropdown**: per dropdown, whether it is searchable (`searchable`, the `query` parameter), its label,
+  and whether it is cached (`cacheable`);
 - **parent by name**: whether the detail and the list rows show each referenced parent or person by name
   (4.3; without tenancy a person stays an id), or by id only;
 - **upload limits**: per upload purpose, the file sizes, file counts and content types (Step 5);
@@ -527,8 +529,8 @@ one per state action (`<Entity>Status{{requestSuffix}}`). **Every String carries
 elements of a String collection too (`Set<@NotBlank @MaxLength("…") String>`), and its
 number (the developer's, Step 1's *Ask, don't guess*) is added to `app.limits.text` in `config/limits.yml`; collections carry a configured size
 limit (`@ConfiguredMaxSize("<entity>.<field>")`) and `@NotNull` elements, plus `@NotEmpty` only when
-an empty collection is meaningless (an optional set of tags may be empty); a date with a meaningful upper bound carries `@LatestDate("<entity>.<field>")`
-(`app.limits.latest-date`), e.g. below a sort sentinel. `@Schema` on every component. Golden:
+the developer says it may not be empty (an optional set of tags may be empty); a date carries `@LatestDate("<entity>.<field>")`
+(`app.limits.latest-date`) when the developer gives it a latest day or a sort sentinel lies above it. `@Schema` on every component. Golden:
 `TodoCreateRequest`. **A text field a cursor carries** (a cursor list's text sort key, a dropdown's
 label) sizes the cursor: `app.limits.text.cursor` must hold `(6 × its @MaxLength + 100) × 4/3`
 (Base64url JSON, a control character escaped in six bytes), so raise it when that is larger, and add

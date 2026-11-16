@@ -21,8 +21,8 @@ subclasses `{{DropdownFilter}}` as `<Entity>DropdownFilter`, one field per dot-p
    resource's reads (ownership, tenant). Indexes `(scope columns, sortField, valueField)`.
 2. **Service:** `CursorWrapper<DropdownItem> dropdown(<Filter> filter)` builds the wrapper from the
    repository's `CursorBatch`; refuses an inapplicable
-   `status`; the batch size from `Paging.cursorSize(filter)`. `cacheable = true` only for static
-   master data, with `@CacheEvict` on writes and a shared cache when `{{instances}}` is
+   `status`; the batch size from `Paging.cursorSize(filter)`. `cacheable = true` only when the
+   developer asked for it (SKILL.md Step 1, *Ask, don't guess*), with `@CacheEvict` on writes and a shared cache when `{{instances}}` is
    `multiple`.
 3. **API interface:** `@Operation(summary = "Options for the <label> dropdown")`, the description
    lists the defaults and the batching; `@ApiResponse` 200, 400, 401, 503 (403 only when

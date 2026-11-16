@@ -213,13 +213,14 @@ is code-smells.md, java.md and architecture.md.
     timeout greater than the attempt timeout);
   - retries only for retryable failures (network errors, timeouts, 5xx, 408, 429), with backoff,
     inside the deadline budget (REL-04);
-  - a circuit breaker where it pays off.
+  - a circuit breaker.
 
   Clients are built from Boot's builders (OPS-06), configured through the resilience library's
   registry, never inside a transaction. For user-defined destinations: cap concurrency per
   destination, bound the response size, honour `Retry-After`.
 - **Not a finding (no breaker needed):** the only database (Hikari's wait + 503 already fails
-  fast); low-volume calls (a timeout plus a quota is enough); paths where an open breaker would
+  fast); a call the developer records as low-volume in the profile's Conventions (a timeout plus a
+  quota is enough); paths where an open breaker would
   turn a failure into silent data loss.
 - **Severity:** High.
 
