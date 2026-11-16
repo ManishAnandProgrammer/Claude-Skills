@@ -25,7 +25,8 @@ import java.util.UUID;
 
 @Tag(name = "Todos", description = """
         The signed-in user's todos, the time logged on them (/todos/{todoId}/time-entries) and the tags \
-        they carry (/todos/{id}/tags). Another user's todo, list or tag answers 404.""")
+        they carry (/todos/{id}/tags). Another user's todo, list or tag answers 404, except a todo you are \
+        the requester of: you may read it (GET /todos/{id}), and every other call on it is 403 TODO_NOT_YOURS.""")
 public interface TodoApi {
 
     // A piece marker can't sit inside a text block, so the create's 404 text starts with this constant:
@@ -35,6 +36,8 @@ public interface TodoApi {
     // tenancy:else
     String REQUESTER_NOT_FOUND = "USER_NOT_FOUND (requesterId is no account); ";
     // tenancy:end
+    /** Every write of a todo, and its time entries, refuse its requester, who may read the todo itself. */
+    String NOT_YOURS = "TODO_NOT_YOURS (you are its requester: you may read the todo, only its owner acts on it)";
 
     @Operation(summary = "Your todos, in batches", description = """
             Cursor-paged: the first call returns a batch and pageInfo.nextCursor; send it as after to \
@@ -57,13 +60,14 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     CursorWrapper<TodoSummaryResponse> all(@ParameterObject TodoFilter filter);
 
-    @Operation(summary = "One of your todos", description = "With its list's name and who asked for it.")
+    @Operation(summary = "One of your todos, or one you asked for", description = """
+            With its list's name and who asked for it. Its requester reads it too; only its owner changes it.""")
     @ApiResponse(responseCode = "200", description = "The todo")
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's)",
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's you didn't ask for)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:begin
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY, MEDIA_STORAGE_UNAVAILABLE (the files' read URLs)",
@@ -147,6 +151,8 @@ public interface TodoApi {
     // media:end
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = NOT_YOURS,
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:begin
     @ApiResponse(responseCode = "404", description = REQUESTER_NOT_FOUND + """
             TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_GONE (the new list deleted while the todo was being \
@@ -185,6 +191,8 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = NOT_YOURS,
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
@@ -212,6 +220,8 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = NOT_YOURS,
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TAG_NOT_FOUND (missing, or another user's); TAG_GONE (deleted while the tags were being saved)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT (a stale version, or a dropped tag deleted meanwhile)",
@@ -232,6 +242,8 @@ public interface TodoApi {
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = NOT_YOURS,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -262,6 +274,8 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = NOT_YOURS,
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
@@ -273,6 +287,8 @@ public interface TodoApi {
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (an id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = NOT_YOURS,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TIME_ENTRY_NOT_FOUND (missing, or not on this todo)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -290,6 +306,8 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = NOT_YOURS,
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's); TODO_GONE (deleted while the entry was being saved)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
@@ -304,6 +322,8 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = NOT_YOURS,
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TIME_ENTRY_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
@@ -317,6 +337,8 @@ public interface TodoApi {
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (an id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = NOT_YOURS,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TIME_ENTRY_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

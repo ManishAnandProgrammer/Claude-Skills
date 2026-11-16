@@ -123,6 +123,8 @@ public enum ErrorCode {
 
     // ── Todo ─────────────────────────────────────────────────────────────
     TODO_NOT_FOUND,
+    /** A write of a todo by its requester, who may read it (so 403, not 404) but not change it: the todo's id. */
+    TODO_NOT_YOURS,
     TODO_IN_USE,
     /** Deleted between the write's read of it and the insert of a row onto it (a time entry, a plan, a tag link). */
     TODO_GONE,

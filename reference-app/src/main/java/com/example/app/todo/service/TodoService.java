@@ -69,7 +69,8 @@ import java.util.stream.Collectors;
 
 /**
  * Every read and write is scoped to the caller: another user's todo, or list, answers 404 like a
- * missing one. The todo's aggregate includes its time entries and its tag rows (which tags it
+ * missing one. A todo's requester is the one exception, a second party with fewer rights: they read the
+ * todo (findById), and every other call on it is 403 {@code TODO_NOT_YOURS} (notOwned). The todo's aggregate includes its time entries and its tag rows (which tags it
  * carries): they are read and written only here, always through their todo. The tags themselves are
  * another aggregate's, reached through {@link TagService}. Other modules reach a todo only through
  * {@link Todos}, which this service implements.
@@ -140,8 +141,11 @@ public class TodoService implements Todos {
         return ObjectWrapper.withObject(toResponse(saved));
     }
 
+    /** Its owner's, or its requester's to read: the only call a requester may make on a todo. */
     public ObjectWrapper<TodoResponse> findById(UUID id) {
-        return ObjectWrapper.withObject(toResponse(getOwnedTodoWithItsList(id, currentUser.id())));
+        Todo todo = repository.findVisibleWithTodoList(id, currentUser.id())
+                .orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+        return ObjectWrapper.withObject(toResponse(todo));
     }
 
     public CursorWrapper<TodoSummaryResponse> findByFilter(TodoFilter filter) {
@@ -401,15 +405,29 @@ public class TodoService implements Todos {
     }
 
     private Todo getOwnedTodoForUpdate(UUID id, UUID ownerId) {
-        return repository.findForUpdateByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+        return repository.findForUpdateByIdAndOwnerId(id, ownerId).orElseThrow(() -> notOwned(id, ownerId));
     }
 
     private Todo getOwnedTodo(UUID id, UUID ownerId) {
-        return repository.findByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+        return repository.findByIdAndOwnerId(id, ownerId).orElseThrow(() -> notOwned(id, ownerId));
     }
 
     private Todo getOwnedTodoWithItsList(UUID id, UUID ownerId) {
-        return repository.findWithTodoListByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+        return repository.findWithTodoListByIdAndOwnerId(id, ownerId).orElseThrow(() -> notOwned(id, ownerId));
+    }
+
+    /**
+     * Why a call only the owner may make found no todo of the caller's: 403 {@code TODO_NOT_YOURS} for its
+     * requester, who may read it and so knows it exists, 404 {@code TODO_NOT_FOUND} for anyone else, as for a
+     * missing one. One more statement, on the refused path only; the requester's row is never locked. Who the
+     * requester is changes only through the owner's update, and this path writes nothing, so no lock is needed
+     * to read it.
+     */
+    private AppException notOwned(UUID id, UUID callerId) {
+        if (repository.existsByIdAndRequesterId(id, callerId)) {
+            return AppException.of(ErrorCode.TODO_NOT_YOURS, id);
+        }
+        return AppException.of(ErrorCode.TODO_NOT_FOUND, id);
     }
 
     /**

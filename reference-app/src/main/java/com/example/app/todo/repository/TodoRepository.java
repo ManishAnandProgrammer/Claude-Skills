@@ -30,6 +30,21 @@ public interface TodoRepository extends JpaRepository<Todo, UUID>, CustomTodoRep
     Optional<Todo> findWithTodoListByIdAndOwnerId(UUID id, UUID ownerId);
 
     /**
+     * The todo with its list, for a caller who may see it: its owner or its requester (the one visibility
+     * rule; everyone else gets the 404 of a missing todo). Only the detail reads through it: every other call
+     * is the owner's.
+     */
+    @EntityGraph(attributePaths = "todoList")
+    @Query("""
+            select todo from Todo todo
+             where todo.id = :id
+               and (todo.ownerId = :callerId or todo.requesterId = :callerId)""")
+    Optional<Todo> findVisibleWithTodoList(UUID id, UUID callerId);
+
+    /** True when {@code callerId} asked for the todo: a call only its owner may make is 403 for them, not 404. */
+    boolean existsByIdAndRequesterId(UUID id, UUID requesterId);
+
+    /**
      * The views of a page's todos (another module's names for its rows), the view's columns only: a page's
      * lookup never loads whole rows for a name (house-review DATA-11).
      */

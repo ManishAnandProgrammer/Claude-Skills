@@ -16,7 +16,8 @@ public interface Todos {
      * state (a plan is only for an open todo). The todo's own writes (its status change, its delete) wait
      * for that write, so the state it checked still holds when it commits: they need no lock of their own,
      * as their UPDATE or DELETE waits for this row lock when it is flushed. Joins the caller's
-     * transaction, which must exist. 404 {@code TODO_NOT_FOUND} when it is missing or another owner's.
+     * transaction, which must exist. 404 {@code TODO_NOT_FOUND} when it is missing or another owner's; 403
+     * {@code TODO_NOT_YOURS} when the caller is its requester, who may read the todo but not act on it.
      */
     TodoView getOwnedTodoViewForUpdate(UUID id, UUID ownerId);
 
