@@ -27,7 +27,8 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
    starting limits (min/max size, min/max files, content types from `AllowedContentTypes` only,
    MEDIA-09) reach **every** tenant, the existing ones included: the owner's write reads the count
    range, so a tenant without the row answers every create 404 `UPLOAD_POLICY_NOT_FOUND`. Per mode:
-   - no tenancy: a changeset (next free number) seeds the `upload_policies` row (golden `0010`);
+   - no tenancy: a changeset (the project's next number, from 0100) seeds the `upload_policies` row
+     (golden `0010`);
    - `schema`: the same changeset, in the tenant changelog: the deploy-time migrations run it in every
      existing tenant schema, provisioning in every new one (TEN-24);
    - `row`: a changeset can't seed a tenant's row. New tenants get it from a `TenantProvisioned`

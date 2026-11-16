@@ -39,11 +39,13 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getOwnedTodoWithItsList`, `toResponse`), `TodoRepository.findWithTodoListByIdAndOwnerId`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`; the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` whenever a write names someone new (an update only when the id changes); shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) and on list rows (`TodoListName`, `TodoService.withTodoLists`: a second statement per batch) |
 | `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`) of a **configured maximum length** (`getLengthInDays`, `plan.max-days`), an **overlap filter with a lower index bound** (`plannedFrom`/`plannedTo`: `ends_on >= from`, `starts_on <= to` and the derived `starts_on >= from - (max - 1)`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 
-The rules behind the shape are the house-review references, which are the source of truth:
-`rest-api.md`, `error-contract.md`, `persistence.md`, `java.md`, `code-smells.md`, `lenses.md`
-(TEST-xx), `architecture.md`, `config-baseline.md`. When the golden code and a reference disagree,
-**report it** (one of them is wrong and must be fixed in the skills repo). Step 8 runs house-review
-on the generated files, and it must come back clean.
+The rules behind the shape are the house-review references: `rest-api.md`, `error-contract.md`,
+`persistence.md`, `java.md`, `code-smells.md`, `lenses.md` (TEST-xx), `architecture.md`,
+`config-baseline.md`. **Precedence, stated once for every file of this skill:** the house-review rules win
+over `references/tests.md`, which wins over the golden code (the rules are what the review checks). On a
+conflict, generate what the higher one says, report the conflict (file and line of both sides) and
+**offer** a fix of the skills repo; never change or push the skills during a project run. Step 8 runs
+house-review on the generated files, and it must come back clean.
 
 Everything that differs between projects is a **profile key**, written `{{key}}`.
 
@@ -70,7 +72,7 @@ steps are the same; these rules come first:
    changing a test: that list is data, edited by design (Step 4.8). New behaviour gets a **new test
    class** named for the feature (`TodoTagsIntegrationTest`), reusing the existing class's fixture
    helpers via the test base or a shared support class, not copies.
-5. **Guard proof** (Step 7): prove a guard of the *new* behaviour fails without its fix.
+5. **Guard mirrors** (Step 7): each guard test of the *new* behaviour names the golden test it mirrors.
 
 ## Step 0: Load the project profile
 
@@ -321,16 +323,18 @@ at its end.
 - **Variant A: list CRUD** (no FK with `unique = true`). **Variant B: one per parent** (a unique
   FK): a nested singleton resource; GET returns a null object when absent, PUT creates or
   replaces.
-- **List kind** (`{{cursorLists}}` / `{{offsetLists}}`, entity names; else ask):
-  - **cursor** (the default): user-facing or growing lists. `CursorFilter`, `CursorWrapper`,
+- **List kind** (`{{cursorLists}}` / `{{offsetLists}}`, entity names, or the developer's request; else ask
+  **who consumes the list**). The consumer decides, never a guess at the table's size, which only the
+  developer knows:
+  - **cursor** (the default): pages a mobile or end-user app reads, and an admin screen that needs no total
+    and no page numbers and whose filters are simple and non-nullable. `CursorFilter`, `CursorWrapper`,
     `pageInfo {nextCursor, hasMore}`, no count. Golden: `TodoFilter`, `TodoRepositoryImpl`;
-  - **offset**: bounded admin tables that need page numbers. `PageFilter`, `PaginationWrapper`,
-    the count only on a full page. Golden: `TodoListFilter`, `TodoListRepositoryImpl.findByFilter`.
-    An entity in the profile's `offsetLists` whose table grows with use (a tenant's customers, every
-    order) is asked once: "offset paging counts the rows on every full page and reads every skipped row;
-    is the table bounded (how many rows at most), or should it be a cursor list?" The answer and its reason
-    go in the crud profile's *Decisions per entity* (house-review REST-08 then has it). The entity goes in
-    **both** profiles' `cursorLists` / `offsetLists` (the review profile's lists are REST-08's source).
+  - **offset**: an admin screen that needs page numbers or a total, or has complex filters. `PageFilter`,
+    `PaginationWrapper`, the count only on a full page. Golden: `TodoListFilter`,
+    `TodoListRepositoryImpl.findByFilter`.
+
+  The consumer and the kind go in **both** profiles (the crud profile's *Decisions per entity*, and
+  `cursorLists` / `offsetLists` in each: the review profile's lists are REST-08's source).
 
 - **A feature that needs configuration, not an entity** (rules an admin chooses per tenant or per
   context, read often, changed rarely): with the `metadata` piece, generate no entity. Rules:
@@ -386,49 +390,21 @@ dropdown needs no interface (golden `TodoFilter`). The dropdown's `query` search
 when the list's `query` searches more (a name **or** an email), the two predicates differ, and the
 filter doesn't implement `QueryFilter`.
 
-**Ask the domain facts the indexes need** while choosing them: each enum filter value's expected share
-(it decides the value's index, below) and, for an **unscoped shared root**, the table's expected size (a
-contains search on it is offered only on a bounded, recorded size: DATA-10). Record them in the
-changeset's comment.
+**A contains search (`query`) on an unscoped root** (no owner or tenant column) is offered only together
+with a scoping filter: alone it is a 400 naming `query`, the `@CrossField` shape (golden: the tenancy
+overlay's `TenantFilter.isQueryScopedByStatus`; DATA-10).
 
-**Then the indexes** (DATA-10), now that the orders and filters are chosen: one per offered order
-and per scoping filter, ending with the id (none when the sort column is unique and not null; NEWEST's is
-`(scope…, created_at, id)`, golden `0029-newest-by-created-at.sql`), in a
-new changeset if the entity's own one is applied (Step 2). Test row 28 checks that each one exists and
-that each list's first page is planned on its order's index (tests.md, *Index tests*). A filter no index
-serves gets one or is not offered: **a range filter is offered under its own column's order only** (under another order it is a
-400 naming the rule, golden `TodoFilter.isDueOnOrBeforeSortedByDueDate`), unless a bounded scope holds it
-(one todo's time entries), recorded. An **overlap filter** is no exception: it is a range of its start's
-index, so it is offered under the start's order only, each end alone too, one rule per end reported on that
-end (golden `PlanFilter.isPlannedFromSortedByStartsOn`, `isPlannedToSortedByStartsOn`): under another order
-an end alone leaves the walk unbounded (newest first, filtered by days in the past, reads the scope's
-history), and both ends bound it only by the range's width, which the client picks. An order index
-that leads with a foreign key column (`(author_id, id)`) also serves that key's checks: it
-**replaces** the key's own index from the pre-flight (`idx_books_author_id`), never sits beside it
-(golden `0003-todos.sql`'s comment). **A low-cardinality enum filter** (a status, a priority) is
-judged per value and per offered order, over the rows its scope leaves (the owner's rows; on a shared
-root, the whole table): a value is **rare** when it holds a small share of them (about one in ten or
-fewer: the owner's open todos among years of done ones, a book catalogue's withdrawn books, the active
-loans among the history). A filter with a rare value is **scoping**, and gets one index per offered
-order (`(<scope>, status, <sort keys>, id)`; golden `idx_todos_owner_id_status_due_sort_id` and
-`…_status_created_at_id`): walking the order's index with the filter reads every other row that comes first, and
-the rare rows come last under some order (active loans have the latest days, so `STARTS_ON` walks the
-whole history first; measured 165 ms against 0.06 ms with the index). Leave it to the order's index
-only when (record which and why, so the review doesn't ask again):
-- no value is rare (golden `0003`: priority, three values, none rare); or
-- the scope bounds the walk to a few pages whatever the value (status within one list: a list is
-  small); or
-- every offered order brings the rare value's rows first (the newest-first order for the newest
-  status), checked per order, never for the default one alone.
-
-That shape is the convention: every offered filter and order gets its index, the scope (owner or tenant)
-first and the id last. **Extension point (a use case, not generated):** on a table without a leading
-scope column the planner may walk the order's index instead of the composite (it costs the composite by
-its leading column's heap correlation). If the project knows one filter value is rare there, it adds a
-partial index for that value (`WHERE status = '<VALUE>'`), writes the value as a literal so a generic plan
-still matches it, and proves it with its own `EXPLAIN (ANALYZE, BUFFERS)` test; the skill does not generate
-this. Likewise any measured read cost: a project with a known data distribution or a latency target adds
-its own `EXPLAIN (ANALYZE, BUFFERS)` tests on a seed that models it (tests.md, *Index tests*).
+**Then the indexes**, now that the orders and filters are chosen, by DATA-10's rules (one per offered order
+and per offered equality filter, the scope first and the id last; NEWEST's `(scope…, created_at, id)`;
+range and overlap filters under their own order only; an order index leading with a foreign key replaces
+the key's own index), in a new changeset if the entity's own one is applied (Step 2). Every offered equality
+filter gets `(<scope>, <filter>, <sort keys>, id)` per offered order, whatever its values (golden
+`0031-filter-indexes.sql`): how many rows a value holds is a fact about the data, which only the developer
+knows. Test row 28 checks that each one exists and that each list's first page is planned on its order's
+index (tests.md, *Index tests*). **Extension point (a use case, not generated):** a project that knows a
+value is rare on a table without a leading scope column adds a partial index for it (`WHERE status =
+'<VALUE>'`, the value a literal so a generic plan still matches it) and proves it with its own
+`EXPLAIN (ANALYZE, BUFFERS)` test; likewise any measured read cost (tests.md, *Index tests*).
 
 **Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
 `List<@NotNull ID> ids` with `@ConfiguredMaxSize("cursor-page.max-size")` (offset:
@@ -787,7 +763,10 @@ with the new table).
 
 ## Step 7: Build and test
 Run `{{buildCommand}}`. Fix every compile error or test failure in the generated code; never report
-done on a red build. Then prove one guard can fail (tests.md).
+done on a red build. **The red proof of a guard is the reference's**: each golden guard (a race, a lock, an
+index, a scope) was proven red when it was written. The report names, for each generated guard test, the
+golden test it mirrors, so a reviewer checks the shape against a proven one; a claim of a red run that left
+no artifact is never made.
 
 ## Step 8: Self-review (house-review)
 Run house-review on the generated and changed files: `/house-review uncommitted` before the commit,
@@ -795,8 +774,7 @@ or `/house-review commit <sha>` for a commit the run made (a range `<a>..<b>` fo
 way the report is written to `reportDir` as `<date>-<entity>.md` (house-review Step 6), so every
 entity of a run leaves one. **The goal is zero findings.** A finding in
 code that follows the golden files means the reference or this skill is wrong: fix the generated
-file, then offer to fix `~/Documents/claude-skills` (reference-app and skill text together, verified
-with `scripts/verify.sh`). **A run of several entities** reviews each entity as soon as it is
+file, then offer the skills fix (the precedence above). **A run of several entities** reviews each entity as soon as it is
 generated and green (its own files and the shared files it touched), not all of them at the end:
 findings in the first shape the next ones. When the review is delegated to a separate reviewer, the
 checklist's review item stays open until that reviewer's report is clean.
@@ -804,7 +782,7 @@ checklist's review item stays open until that reviewer's report is clean.
 ### Final checklist
 - [ ] No `{{…}}` left in the generated files.
 - [ ] The aggregate's row in `AggregateArchTest.AGGREGATES` **and** in both profiles' `aggregates`.
-- [ ] The entity in both profiles' `cursorLists` or `offsetLists` (Step 3's list kind).
+- [ ] The list's consumer and kind in both profiles (`cursorLists` or `offsetLists`, Step 3).
 - [ ] A changed error shape or pointer (a cross-field error moved to its end field, a new code on an
       existing call): each consumer in the review profile's `publishedContracts` (a UI, another service)
       checked and told (REST-20).
@@ -818,8 +796,8 @@ checklist's review item stays open until that reviewer's report is clean.
       the record (Step 3), a unique code's shape (Step 2).
 - [ ] A same-module parent's service changed (4.8): listed among the changed shared files.
 - [ ] Row 28: every offered filter and order names its index, which exists, and each list's first page
-      is planned on its order's index (4.1); a range filter offered under its own order only; row 18b:
-      the `ids` filter's statement count.
+      is planned on its order's index (4.1); a range filter offered under its own order only; a `query`
+      on an unscoped root needs its scoping filter; row 18b: the `ids` filter's statement count.
 - [ ] A changeset that backfills existing rows, once the project has a release in production: row 30 on
       the upgraded database (until the first release the upgrade path is inert: record it; tests.md, *Upgrading a
       used database*).
@@ -827,5 +805,5 @@ checklist's review item stays open until that reviewer's report is clean.
       a choice no rule forbids goes in the javadoc or the changeset comment.
 - [ ] With the session version: every generated write that changes access bumps it in its transaction
       and has its 401-then-refresh test (4.8, SEC-07).
-- [ ] Build green, and one guard proven to fail (Step 7).
+- [ ] Build green; each guard test names the golden test it mirrors (Step 7).
 - [ ] house-review clean (Step 8).
