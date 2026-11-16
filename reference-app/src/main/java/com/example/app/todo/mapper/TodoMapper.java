@@ -8,6 +8,7 @@ import com.example.app.todo.domain.Tag;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.domain.TodoList;
 import com.example.app.todo.domain.TodoStatus;
+import com.example.app.todo.dto.internal.TodoListName;
 import com.example.app.todo.dto.internal.TodoTagRow;
 import com.example.app.todo.dto.request.TodoCreateRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
@@ -57,6 +58,7 @@ public class TodoMapper {
         todo.setNotes(notesOrNone(request.notes()));
         todo.setPriority(request.priority());
         todo.setDueDate(request.dueDate());
+        todo.setRequesterId(request.requesterId());
     }
 
     /** The todo's list must be loaded: TodoService reads it with the todo, or under the todo's lock. */
@@ -105,6 +107,22 @@ public class TodoMapper {
     }
 
     // media:end
+    /**
+     * Each row gets its list's name; a row whose list {@code names} misses (deleted with its todos between
+     * the batch's statement and this one) is left out, never shown without its list.
+     */
+    public List<TodoSummaryResponse> withTodoLists(List<TodoSummaryResponse> rows, List<TodoListName> names) {
+        Map<UUID, TodoListName> byId = names.stream().collect(Collectors.toMap(TodoListName::id, name -> name));
+        return rows.stream()
+                .filter(row -> byId.containsKey(row.todoListId()))
+                .map(row -> row.withTodoList(toTodoListResponse(byId.get(row.todoListId()))))
+                .toList();
+    }
+
+    private static TodoTodoListResponse toTodoListResponse(TodoListName name) {
+        return new TodoTodoListResponse(name.id(), name.name());
+    }
+
     /** Each row gets its todo's tags, in the order of {@code tagRows} (tag id order). */
     public List<TodoSummaryResponse> withTags(List<TodoSummaryResponse> rows, List<TodoTagRow> tagRows) {
         Map<UUID, List<TodoTagResponse>> tagsByTodo = tagRows.stream().collect(Collectors.groupingBy(TodoTagRow::todoId,

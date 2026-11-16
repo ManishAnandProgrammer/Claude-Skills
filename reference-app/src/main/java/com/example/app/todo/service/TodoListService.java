@@ -13,6 +13,7 @@ import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.todo.domain.TodoList;
+import com.example.app.todo.dto.internal.TodoListName;
 import com.example.app.todo.dto.request.TodoListCreateRequest;
 import com.example.app.todo.dto.request.TodoListFilter;
 import com.example.app.todo.dto.request.TodoListUpdateRequest;
@@ -23,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -77,6 +79,17 @@ public class TodoListService {
         }
         CursorBatch<DropdownItem> batch = repository.findDropdownItems(filter, currentUser.id(), paging.cursorSize(filter));
         return CursorWrapper.of(batch.items(), batch.nextCursor());
+    }
+
+    /**
+     * The names of the owner's lists among {@code ids}, for a page of todos (TodoService.findByFilter): one
+     * statement, absent ids simply absent (a list deleted since the page was read), none for no ids.
+     */
+    public List<TodoListName> findOwnedTodoListNames(Collection<UUID> ids, UUID ownerId) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return repository.findNamesByIdInAndOwnerId(ids, ownerId);
     }
 
     /**

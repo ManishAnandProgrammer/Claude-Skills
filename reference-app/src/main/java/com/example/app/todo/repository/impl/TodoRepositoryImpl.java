@@ -96,7 +96,7 @@ class TodoRepositoryImpl implements CustomTodoRepository {
                 // metadata:begin
                 root.get(Todo_.number),
                 // metadata:end
-                root.get(Todo_.title),
+                root.get(Todo_.requesterId), root.get(Todo_.title),
                 root.get(Todo_.status), root.get(Todo_.priority), root.get(Todo_.dueDate), root.get(Todo_.completedAt),
                 root.get(Todo_.createdAt), root.get(Todo_.updatedAt), root.get(Todo_.createdBy), root.get(Todo_.updatedBy),
                 root.get(Todo_.version));

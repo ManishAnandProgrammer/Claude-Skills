@@ -61,6 +61,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Every read and write is scoped to the caller: another user's todo, or list, answers 404 like a
@@ -72,9 +73,9 @@ import java.util.UUID;
  * <p>A response shows the todo's list by name, so it is read with the todo in one statement where the
  * todo isn't locked (the detail, a status change that may change nothing); a locked todo's list can't go
  * while the lock is held (the list's delete is refused while it has todos, and the todo's delete waits),
- * so the writes that lock it read the list afterwards. The requester is another module's person: an id,
- * checked through that module's facade at the create, and (with tenancy) shown by name while they are a
- * member.</p>
+ * so the writes that lock it read the list afterwards; a list page reads its lists' names in one more
+ * statement. The requester is another module's person: an id, checked through that module's facade when a
+ * write names someone new, and (with tenancy) shown by name while they are a member.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -140,8 +141,9 @@ public class TodoService implements Todos {
     }
 
     public CursorWrapper<TodoSummaryResponse> findByFilter(TodoFilter filter) {
-        CursorBatch<TodoSummaryResponse> batch = repository.findByFilter(filter, currentUser.id(), paging.cursorSize(filter));
-        return CursorWrapper.of(withTags(batch.items()), batch.nextCursor());
+        UUID ownerId = currentUser.id();
+        CursorBatch<TodoSummaryResponse> batch = repository.findByFilter(filter, ownerId, paging.cursorSize(filter));
+        return CursorWrapper.of(withTags(withTodoLists(batch.items(), ownerId)), batch.nextCursor());
     }
 
     /**
@@ -158,6 +160,10 @@ public class TodoService implements Todos {
         Todo todo = getOwnedTodoForUpdate(id, ownerId);
         todo.checkVersion(request.version());
         TodoList todoList = todoListService.getOwnedTodoList(request.todoListId(), ownerId);
+        // Only someone new: a PUT re-sends the person it read, who may have left since (4.3).
+        if (Objects.nonNull(request.requesterId()) && !request.requesterId().equals(todo.getRequesterId())) {
+            requireRequester(request.requesterId());
+        }
         // media:begin
         // Before any other change: the claim's statement flushes what is pending, and a change flushed
         // there and another at the end would increment the version twice.
@@ -335,6 +341,18 @@ public class TodoService implements Todos {
     }
     // media:end
 
+    /**
+     * The batch's lists by name in one more statement, never a join in the keyset query (4.3). A row whose list
+     * went meanwhile (deleted with its todos) is left out; the cursor still goes on after the batch's last row.
+     */
+    private List<TodoSummaryResponse> withTodoLists(List<TodoSummaryResponse> rows, UUID ownerId) {
+        if (rows.isEmpty()) {
+            return rows;
+        }
+        Set<UUID> listIds = rows.stream().map(TodoSummaryResponse::todoListId).collect(Collectors.toSet());
+        return mapper.withTodoLists(rows, todoListService.findOwnedTodoListNames(listIds, ownerId));
+    }
+
     /** Two steps, never a collection fetch (DATA-26): the batch, then one query for all its tags. */
     private List<TodoSummaryResponse> withTags(List<TodoSummaryResponse> rows) {
         if (rows.isEmpty()) {
@@ -364,8 +382,9 @@ public class TodoService implements Todos {
     }
 
     /**
-     * A person the create names: an account (with tenancy, a member now: 404 {@code TENANT_MEMBER_NOT_FOUND}
-     * for a removed one, whose row in {@code members} the foreign key would still accept).
+     * A person a write newly names: an account (with tenancy, a member now: 404 {@code TENANT_MEMBER_NOT_FOUND}
+     * for a removed one, whose row in {@code members} the foreign key would still accept). The update calls it
+     * only when the person changes, so a todo whose requester left stays editable.
      */
     private void requireRequester(UUID requesterId) {
         // tenancy:begin

@@ -39,6 +39,18 @@ public record TodoUpdateRequest(
         @EarliestDate("todo.due-date") @LatestDate("todo.due-date")
         LocalDate dueDate,
 
+        // tenancy:begin
+        // @Schema(description = """
+        //         The member who asked for it; null or absent for none. The person it names already is kept even \
+        //         after they left the organisation; someone new must be a member now.""",
+        //         example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
+        // tenancy:else
+        @Schema(description = """
+                The account that asked for it; null or absent for none. The account it names already is kept; \
+                a new one must exist.""", example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
+        // tenancy:end
+        UUID requesterId,
+
         // media:begin
         @Schema(description = """
                 uploadKeys from POST /upload-urls (purpose TODO_ATTACHMENT) of files to attach; null, absent \

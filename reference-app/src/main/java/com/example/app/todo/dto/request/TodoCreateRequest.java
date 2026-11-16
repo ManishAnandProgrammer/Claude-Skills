@@ -37,10 +37,10 @@ public record TodoCreateRequest(
         // tenancy:begin
         // @Schema(description = """
         //         The member of your organisation who asked for it (their account id); null or absent for none. \
-        //         It can't be changed later.""",
+        //         A PUT replaces it.""",
         //         example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
         // tenancy:else
-        @Schema(description = "The account that asked for it (its id); null or absent for none. It can't be changed later.",
+        @Schema(description = "The account that asked for it (its id); null or absent for none. A PUT replaces it.",
                 example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
         // tenancy:end
         UUID requesterId,

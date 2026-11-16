@@ -879,7 +879,7 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A batch of todos is two statements, for 1 row and for a full batch")
+    @DisplayName("A batch of todos is three statements (the batch, its lists' names, its tags), for 1 row and for a full batch")
     void listRunsAConstantNumberOfQueries() throws Exception {
         TestUser one = newUser();
         createTodo(one, createList(one, "Single"), "Only", "LOW", null);
@@ -891,11 +891,11 @@ class TodoIntegrationTest extends IntegrationTest {
         long forOne = statementsFor(one, TODOS);
         long forPage = statementsFor(many, TODOS);
 
-        assertThat(forPage).isEqualTo(forOne).isEqualTo(2);
+        assertThat(forPage).isEqualTo(forOne).isEqualTo(3);
     }
 
     @Test
-    @DisplayName("A batch found by ids is the same two statements, for 1 id and for many")
+    @DisplayName("A batch found by ids is the same three statements, for 1 id and for many")
     void filterByIdsRunsAConstantNumberOfQueries() throws Exception {
         TestUser user = newUser();
         String listId = createList(user, "Counted");
@@ -905,7 +905,7 @@ class TodoIntegrationTest extends IntegrationTest {
         long forOne = statementsFor(user, TODOS + "?ids=" + first);
         long forMany = statementsFor(user, TODOS + "?ids=" + String.join(",", first, second, randomIds(50)));
 
-        assertThat(forMany).isEqualTo(forOne).isEqualTo(2);
+        assertThat(forMany).isEqualTo(forOne).isEqualTo(3);
     }
 
     /**

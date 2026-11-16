@@ -472,7 +472,7 @@ class TodoTagsIntegrationTest extends IntegrationTest {
      * (two steps instead of a collection fetch, DATA-26). The tagId filter is an exists inside the first.
      */
     @Test
-    @DisplayName("A batch of tagged todos is two statements, for 1 row and for a full batch, filtered by tag or not")
+    @DisplayName("A batch of tagged todos is three statements (the batch, its lists, its tags), for 1 row and for a full batch, filtered by tag or not")
     void listWithTagsRunsAConstantNumberOfQueries() throws Exception {
         TestUser one = newUser();
         String oneTag = createTag(one, "Single");
@@ -489,7 +489,7 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         long forPage = statementsFor(many, TODOS);
         long forFilteredPage = statementsFor(many, TODOS + "?tagId=" + first);
 
-        assertThat(forPage).isEqualTo(forOne).isEqualTo(forFilteredPage).isEqualTo(2);
+        assertThat(forPage).isEqualTo(forOne).isEqualTo(forFilteredPage).isEqualTo(3);
     }
 
     private long statementsFor(TestUser user, String path) throws Exception {

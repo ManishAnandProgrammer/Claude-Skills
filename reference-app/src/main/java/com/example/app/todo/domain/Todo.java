@@ -69,10 +69,12 @@ public class Todo extends AuditableEntity {
     // metadata:end
 
     /**
-     * Who asked for it: an account (with tenancy, a member of the tenant), chosen at the create and never
-     * changed. Another module's person, so an id with a foreign key, checked through that module's facade.
+     * Who asked for it: an account (with tenancy, a member of the tenant), set by the create and replaced by
+     * the update. Another module's person, so an id with a foreign key, checked through that module's facade
+     * whenever a write names someone new (a former member it already names stays: TodoService.update).
      */
-    @Column(name = "requester_id", updatable = false)
+    @Setter
+    @Column(name = "requester_id")
     private UUID requesterId;
 
     @Setter

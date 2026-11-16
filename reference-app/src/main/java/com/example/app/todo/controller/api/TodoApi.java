@@ -76,8 +76,8 @@ public interface TodoApi {
 
     @Operation(summary = "Create a todo", description = """
             Created OPEN, in one of your lists, carrying the tags in tagIds (your own tags, up to a \
-            configured number; none when absent), with requesterId (who asked for it; optional, fixed once \
-            created). Its response shows the list by name.""")
+            configured number; none when absent), with requesterId (who asked for it; optional). Its response \
+            shows the list by name.""")
     @ApiResponse(responseCode = "201", description = "Created")
     // media:begin
     @ApiResponse(responseCode = "400", description = """
@@ -122,15 +122,17 @@ public interface TodoApi {
 
     // media:begin
     @Operation(summary = "Edit a todo", description = """
-            Replaces title, notes, priority, due date and list (a different list moves it). The \
-            status changes only through PATCH .../status, the tags only through PUT .../tags. Send the \
+            Replaces title, notes, priority, due date, list (a different list moves it) and requesterId (absent \
+            or null: nobody; the person it names already is kept even after they left, a new one is checked). \
+            The status changes only through PATCH .../status, the tags only through PUT .../tags. Send the \
             version you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT. Files are added \
             (addAttachmentKeys) and removed (removeAttachmentIds) here; a change of its files alone also \
             increments the version.""")
     // media:else
     // @Operation(summary = "Edit a todo", description = """
-    //         Replaces title, notes, priority, due date and list (a different list moves it). The \
-    //         status changes only through PATCH .../status, the tags only through PUT .../tags. Send the \
+    //         Replaces title, notes, priority, due date, list (a different list moves it) and requesterId (absent \
+    //         or null: nobody; the person it names already is kept even after they left, a new one is checked). \
+    //         The status changes only through PATCH .../status, the tags only through PUT .../tags. Send the \
     //         version you last read; a stale one is refused with 409 OPTIMISTIC_LOCK_CONFLICT.""")
     // media:end
     @ApiResponse(responseCode = "200", description = "Updated; the version increments when something changed")
@@ -146,13 +148,13 @@ public interface TodoApi {
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:begin
-    @ApiResponse(responseCode = "404", description = """
+    @ApiResponse(responseCode = "404", description = REQUESTER_NOT_FOUND + """
             TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_GONE (the new list deleted while the todo was being \
             saved), TODO_ATTACHMENT_NOT_FOUND (a removeAttachmentIds entry is not one of its files); \
             UPLOAD_POLICY_NOT_FOUND (no upload policy for the todos' attachments: an operator's setup is missing)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:else
-    // @ApiResponse(responseCode = "404", description = """
+    // @ApiResponse(responseCode = "404", description = REQUESTER_NOT_FOUND + """
     //         TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_GONE (the new list deleted while the todo was being \
     //         saved)""",
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
