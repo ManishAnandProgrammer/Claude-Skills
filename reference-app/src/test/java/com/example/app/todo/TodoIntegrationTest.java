@@ -251,6 +251,38 @@ class TodoIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.version").value(1));
     }
 
+    /** A create with one value in another form than the documented one: refused naming that field. */
+    private void assertCreateIsUnreadable(TestUser user, String body, String field) throws Exception {
+        postAs(user.accessToken(), TODOS, body)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/" + field)));
+    }
+
+    @Test
+    @DisplayName("""
+            A body value in another form than the documented one is 400 REQUEST_UNREADABLE naming its field, and \
+            nothing is stored: an id without its hyphens, a priority's position, a moment or a number for the due date""")
+    void bodyValuesInAnotherFormAre400() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user, "Forms");
+        String list = "\"" + listId + "\"";
+        String low = "\"LOW\"";
+        String day = "\"2026-12-01\"";
+        String body = """
+                {"todoListId": %s, "title": "Task", "priority": %s, "dueDate": %s}""";
+
+        assertCreateIsUnreadable(user, body.formatted(list.replace("-", ""), low, day), "todoListId");
+        assertCreateIsUnreadable(user, body.formatted(list, "0", day), "priority");
+        assertCreateIsUnreadable(user, body.formatted(list, low, "\"2026-12-01T10:00:00\""), "dueDate");
+        // What a browser's toISOString() gives for a day picked east of UTC: read leniently, the day before is stored.
+        assertCreateIsUnreadable(user, body.formatted(list, low, "\"2026-12-01T18:30:00Z\""), "dueDate");
+        assertCreateIsUnreadable(user, body.formatted(list, low, "20788"), "dueDate");
+        getAs(user.accessToken(), TODOS + "?todoListId=" + listId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response").isEmpty());
+    }
+
     @Test
     @DisplayName("An unknown status or priority in the body is 400 REQUEST_UNREADABLE")
     void unknownEnumInTheBodyIs400() throws Exception {

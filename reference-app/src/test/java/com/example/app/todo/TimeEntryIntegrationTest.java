@@ -731,6 +731,40 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"));
     }
 
+    /** An update with one value in another form than the documented one: refused naming that field. */
+    private void assertUpdateIsUnreadable(TestUser user, String path, String body, String field) throws Exception {
+        putAs(user.accessToken(), path, body)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/" + field)));
+    }
+
+    @Test
+    @DisplayName("""
+            A body value in another form than the documented one is 400 REQUEST_UNREADABLE naming its field, and \
+            nothing is changed: a quoted or decimal number, a moment for the day, a quoted boolean or a number for one""")
+    void bodyValuesInAnotherFormAre400() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user);
+        String path = entry(todoId, createEntry(user, todoId, 10, "2026-11-01", false));
+        String day = "\"2026-11-01\"";
+        String body = """
+                {"minutes": %s, "spentOn": %s, "note": null, "billable": %s, "version": %s}""";
+
+        assertUpdateIsUnreadable(user, path, body.formatted("\"25\"", day, "true", "0"), "minutes");
+        assertUpdateIsUnreadable(user, path, body.formatted("25.0", day, "true", "0"), "minutes");
+        assertUpdateIsUnreadable(user, path, body.formatted("25", "\"2026-11-01T10:00:00\"", "true", "0"), "spentOn");
+        assertUpdateIsUnreadable(user, path, body.formatted("25", "\"2026-11-01T18:30:00Z\"", "true", "0"), "spentOn");
+        assertUpdateIsUnreadable(user, path, body.formatted("25", day, "\"true\"", "0"), "billable");
+        assertUpdateIsUnreadable(user, path, body.formatted("25", day, "1", "0"), "billable");
+        assertUpdateIsUnreadable(user, path, body.formatted("25", day, "true", "\"0\""), "version");
+        assertUpdateIsUnreadable(user, path, body.formatted("25", day, "true", "0.0"), "version");
+        getAs(user.accessToken(), path)
+                .andExpect(jsonPath("$.response.minutes").value(10))
+                .andExpect(jsonPath("$.response.billable").value(false))
+                .andExpect(jsonPath("$.response.version").value(0));
+    }
+
     @Test
     @DisplayName("An unknown JSON field is 400 REQUEST_UNREADABLE")
     void unknownJsonFieldIs400() throws Exception {

@@ -89,10 +89,17 @@ spring.jackson.deserialization.accept-float-as-int=false
 spring.jackson.deserialization.wrap-exceptions=true
 spring.jackson.mapper.allow-coercion-of-scalars=false
 spring.jackson.mapper.accept-case-insensitive-enums=false
+spring.jackson.default-leniency=false
+spring.jackson.datatype.enum.fail-on-numbers-for-enums=true
 ```
 Why: a misspelt field is a 400 `REQUEST_UNREADABLE`, not silently ignored (it was how six tests
-"passed" with the wrong field name, SETUP-THAT-SILENTLY-FAILED). Stored JSON read back by
-Hibernate is the exception: tolerant, DATA-27.
+"passed" with the wrong field name, SETUP-THAT-SILENTLY-FAILED), and a value is read only in its
+documented form (REST-22). Without `default-leniency=false` Jackson takes the day out of a date-time
+sent for a `LocalDate`: `"2026-04-01T18:30:00Z"`, 2 April east of UTC, is stored as 1 April behind a
+201. Without the enum key `0` is read as the first constant. Guarded by the reference's
+`StrictJsonInputIntegrationTest` (one field per type, on the application's mapper). Settings only, never
+a custom deserializer for a standard type. Stored JSON read back by Hibernate is the exception:
+tolerant, DATA-27.
 
 ## CFG-06: Actuator, health and metrics
 The keys; the rules behind them are REL-14 (health, probes, management surface) and SEC-03 (the

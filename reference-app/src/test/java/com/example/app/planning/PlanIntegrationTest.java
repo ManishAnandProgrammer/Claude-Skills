@@ -246,18 +246,27 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A malformed todoId or date in the body is 400 REQUEST_UNREADABLE without internals")
+    @DisplayName("""
+            A malformed todoId or date in the body, or a moment sent for a day, is 400 REQUEST_UNREADABLE without \
+            internals; nothing is stored""")
     void unconvertibleBodyValuesAre400() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user, "Strict");
+        List<String> bodies = List.of(
+                planPayload("not-a-uuid", "2026-11-20", "2026-11-22"),
+                planPayload(todoId, "20-11-2026", "2026-11-22"),
+                // What a browser's toISOString() gives for a day picked east of UTC: read leniently, the day before is stored.
+                planPayload(todoId, "2026-11-20T18:30:00Z", "2026-11-22"),
+                planPayload(todoId, "2026-11-20", "2026-11-22T10:00:00"));
 
-        for (String body : List.of(planPayload("not-a-uuid", "2026-11-20", "2026-11-22"), planPayload(todoId, "20-11-2026", "2026-11-22"))) {
+        for (String body : bodies) {
             String answer = postAs(user.accessToken(), PLANS, body)
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
                     .andReturn().getResponse().getContentAsString();
             assertNoInternals(answer);
         }
+        assertThat(plansOf(user)).isZero();
     }
 
     @Test

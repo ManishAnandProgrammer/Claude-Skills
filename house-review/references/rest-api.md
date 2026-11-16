@@ -403,7 +403,15 @@ types.
 ### REST-22: Strict JSON input
 - **Check:** unknown properties, coerced scalars, floats as ints and case-insensitive enums are
   refused (CFG-05), so a misspelt field is a 400 `REQUEST_UNREADABLE` and is never silently
-  ignored.
+  ignored. A body value is read only in its documented form: a date is `yyyy-MM-dd`, never a date-time
+  (read leniently, a moment sent for a day stores the day before east of UTC) or a number; an enum is
+  its name, never its position; a number and a boolean are never quoted; an id is the 36-character
+  UUID. Another form is the same 400, pointing at the field, wherever a Jackson setting refuses it
+  (CFG-05 lists them).
+- **Detect:** a `spring.jackson` key of CFG-05 missing or relaxed; `@JsonFormat(lenient = …)` or a
+  hand-written deserializer on a request field of a standard type. Not a finding: a form no setting
+  refuses (a date as a `[year, month, day]` array or with surrounding spaces, a UUID as Base64, a number
+  sent for a text field).
 - **Why strict, not "tolerant reader":** tolerance is for data we read back, which we didn't just
   receive from the caller: stored JSON (DATA-27, META-04) and other services' responses are read
   leniently. A request is never read leniently: the caller is right there to be told about the
