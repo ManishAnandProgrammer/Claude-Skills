@@ -521,10 +521,11 @@ E1–E3 and the row tests named below, which run as the real application role.
 ### TEN-33: [row] Keys carry the tenant; references between tenant tables are composite
 - **Check:**
   - every unique constraint and list index has `tenant_id` among its **leading equality columns**
-    (DATA-10). The order between `tenant_id` and the owner is plain: **the owner first when the table
-    has an owner** (`(owner_id, tenant_id, name, id)`: it still serves the owner's foreign key, and an
-    owner lives in one tenant, so the pair is as selective either way); **`tenant_id` first when the
-    table has no owner, or when a list filters by the tenant alone** (a tenant-shared customer list
+    (DATA-10). The order between `tenant_id` and the owner is plain: **the owner or a parent column first
+    when the table has one** (`(owner_id, tenant_id, name, id)`, `(todo_list_id, owner_id, tenant_id, …)`:
+    it still serves that column's foreign key, and an owner or a parent lives in one tenant, so the pair is
+    as selective either way); **`tenant_id` first when the table has neither, or when a list filters by
+    the tenant alone** (a tenant-shared customer list
     `(tenant_id, name, id)`, the media jobs' `(tenant_id, upload_expires_at, id)`, `(tenant_id, key)`).
     The sort keys and `id` follow. The single-tenant names stay, so the modules' `ConstraintErrorCodes`
     serve every mode;
