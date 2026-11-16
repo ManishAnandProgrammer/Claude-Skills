@@ -6,7 +6,7 @@
 -- still there). One owner with most of the rows, statuses skewed. The policies are forced on the owner
 -- too, so each tenant table's is lifted for its inserts and restored. And what the release's last changesets
 -- added: each tenant's todos numbered with its counter after the highest (0026), requesters, one of them the
--- member who left (0025), a suspended account (0027), a deactivated staff member (0028); 0029 and 0030
+-- member who left (0025), a suspended account (0027), a deactivated staff member (0028); 0029 to 0032
 -- added indexes only. Its fixed ids are
 -- the ones UpgradeFromPreviousReleaseIntegrationTest reads.
 

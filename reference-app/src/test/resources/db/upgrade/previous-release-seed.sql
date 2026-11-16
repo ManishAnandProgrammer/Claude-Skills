@@ -3,7 +3,7 @@
 -- release's tables only, and realistic rather than tidy: one owner with most of the rows, statuses
 -- skewed (one todo in twenty OPEN, the latest due), every table of the example filled, and what the release's
 -- last changesets added: numbered todos and the counter after the highest (0026), requesters (0025), a
--- suspended account (0027); 0029 added indexes only. Its fixed ids are the ones UpgradeFromPreviousReleaseIntegrationTest reads. Raise app.test.upgrade.previous-release (verify.sh)
+-- suspended account (0027); 0029 and 0031 added indexes only. Its fixed ids are the ones UpgradeFromPreviousReleaseIntegrationTest reads. Raise app.test.upgrade.previous-release (verify.sh)
 -- and extend this file when a release ships.
 
 INSERT INTO users (id, email, full_name, password_hash, role, created_at, updated_at, version) VALUES

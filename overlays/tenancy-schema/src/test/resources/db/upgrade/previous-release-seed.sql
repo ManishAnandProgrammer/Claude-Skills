@@ -4,7 +4,7 @@
 -- with no last changeset yet: PreviousReleaseDatabase then creates each one's schema at the previous
 -- release and seeds it (previous-release-tenant-seed.sql). The PENDING tenant has no schema (provisioning
 -- comes with its approval), the REJECTED one never will (CANCELLED). Members in two tenants, one who left; a
--- suspended account (0027) and a deactivated staff member (0028); 0029 and 0030 added indexes only.
+-- suspended account (0027) and a deactivated staff member (0028); 0029 to 0032 added indexes only.
 -- Its fixed ids are the ones UpgradeFromPreviousReleaseIntegrationTest reads.
 
 INSERT INTO platform.tenants (id, name, status, created_at, updated_at, version) VALUES
