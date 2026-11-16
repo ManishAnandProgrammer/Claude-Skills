@@ -658,6 +658,34 @@ text copies them as a claim. Each was one run on the reference's shapes, not a b
 - `TextSearch`, a contains search on 50,000 rows: 54 ms as `position()`, 1 ms with a trigram index and an
   escaped `LIKE`.
 - TEN-32, Hibernate's `tenant_id = ?` makes the policy's predicate a one-time filter (the todo index shapes).
+- DATA-17, the security filter chain under pool saturation: 1,004 of 1,275 requests answered 401, and the UI
+  signed everyone out.
+- DATA-19 / CFG-01, `statement_timeout` and `socketTimeout` both at 30 s: they raced, and 29 of 35 requests
+  answered 500.
+- DATA-24, a machine-written stamp written through the entity: a membership at version 3 after three
+  sign-ins, and every ADMIN's role change then answered 409.
+- DATA-25, a one-row write that loaded the whole aggregate read-write: 21.6 ms against 8.8 ms, about 16× the
+  allocation.
+- DATA-27, one extra key in one stored document under Hibernate's own Jackson 2 mapper: the application
+  didn't boot.
+- DATA-28, a backfill at startup: 38 s before the application was up.
+- DATA-29, the lock audit (every lock of the reference removed in turn): the owner-scope advisory lock and
+  three `FOR KEY SHARE` delete guards protected nothing the database didn't already hold and were removed;
+  the todo's `findForUpdate…` and the token's single-winner rotation hold the error contract and stayed.
+- DATA-29, `IN (SELECT … LIMIT … FOR UPDATE SKIP LOCKED)`: a lease with a batch of 2 took 5 rows.
+- DATA-05, an expression index `lower(trim(email))` beside a lookup on the bare column: the login read the
+  whole `users` table; `UNIQUE (email, deleted_at)` accepted two `('a@x', NULL)` rows.
+- DATA-08, `set_config` at session level: 61% of all statements were redundant `set_config` calls.
+- DATA-35, a 6-way race of overlapping inserts under an exclusion constraint: about 1 answer in 6 a
+  deadlock's 503, never 500, never two rows.
+- PERF-03, virtual threads without admission control: a load test left 1,995 requests waiting on the pool.
+- PERF-04, exact counts on every page: a p50 of 3.4 s.
+- CFG-01, `readOnly` transactions without `LazyConnectionDataSourceProxy`: an active connection before any
+  SQL; with the proxy none.
+- JAVA-25, two clock reads for one boundary: a 1.3 ms gap with the microsecond `Clock`.
+- TEST-08, status-only negative tests: 36 passed with value validation switched off.
+- TEST-10, fixtures that never checked their own 2xx: six specs posted `formFieldIds` instead of
+  `fieldIds`, got 400, and passed.
 
 ## Versioned documents (DATA-36): the shape kept out of the rule
 

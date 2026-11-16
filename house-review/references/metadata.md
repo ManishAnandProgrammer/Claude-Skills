@@ -1,7 +1,7 @@
 # Configuration metadata (META-xx): optional, for projects with the `metadata` piece
 
 Per-tenant, per-feature configuration stored as one row per key with a JSON value: the owner's
-design, proven in a schema-per-tenant SaaS (2026-11-14). Golden code:
+design, proven in a schema-per-tenant SaaS. Golden code:
 `~/.claude/skills-reference/src/main/java/com/example/app/metadata/` (its `package-info.java` has
 the short rules; this file has them with their reasons and the tenancy guide). Apply these rules
 only when the project has that piece.

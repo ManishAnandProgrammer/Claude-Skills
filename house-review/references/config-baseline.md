@@ -20,9 +20,9 @@ Check these in whole-codebase mode, and in diff mode whenever configuration file
 | `…hikari.idle-timeout` / `max-lifetime` | `120000` / `1800000` | |
 | `…hikari.leak-detection-threshold` | `30000` | Logs any connection held longer than a transaction should be |
 | `…hikari.transaction-isolation` | `TRANSACTION_READ_COMMITTED` | Set once on the pool, never per method (DATA-20/21) |
-| `…hikari.auto-commit` | `false` | **Together with** `hibernate.connection.provider_disables_autocommit=true` and Spring's `LazyConnectionDataSourceProxy` around the pool (reference `config/LazyConnectionConfig`): the connection is borrowed at the first SQL statement, not at transaction begin. Without the proxy, **read-only** transactions still borrow at begin: Spring's `HibernateJpaDialect` takes the connection then to call `setReadOnly` (measured 2026-11-14: active 1 before any SQL; with the proxy 0, and PostgreSQL still runs them read-only). Missing either setting, or the proxy, is a finding. Code that must hold a real connection without a statement (a pool-exhaustion test) borrows from the unwrapped `HikariDataSource` |
+| `…hikari.auto-commit` | `false` | **Together with** `hibernate.connection.provider_disables_autocommit=true` and Spring's `LazyConnectionDataSourceProxy` around the pool (reference `config/LazyConnectionConfig`): the connection is borrowed at the first SQL statement, not at transaction begin. Without the proxy, **read-only** transactions still borrow at begin: Spring's `HibernateJpaDialect` takes the connection then to call `setReadOnly` (with the proxy, PostgreSQL still runs them read-only). Missing either setting, or the proxy, is a finding. Code that must hold a real connection without a statement (a pool-exhaustion test) borrows from the unwrapped `HikariDataSource` |
 | `…data-source-properties.options` | `-c statement_timeout=25s -c lock_timeout=3s -c idle_in_transaction_session_timeout=30s` | Server-side limits on the **app pool only**. Liquibase builds its own connection and sets its own `lock_timeout` (about 5 s, no `statement_timeout`). DATA-19 |
-| `…data-source-properties.socketTimeout` | `30` | Must be **greater** than `statement_timeout`, so the server cancels first and the connection survives (PA-16) |
+| `…data-source-properties.socketTimeout` | `30` | Must be **greater** than `statement_timeout`, so the server cancels first and the connection survives (DATA-19) |
 | `…data-source-properties.reWriteBatchedInserts` | `true` | One round trip per insert batch |
 | `…data-source-properties.tcpKeepAlive` | `true` | Finds connections a NAT or load balancer dropped |
 | `…data-source-properties.ApplicationName` | `<app>-<env>` | Finds the app's sessions in `pg_stat_activity` |
@@ -77,7 +77,7 @@ query plan cache size left at its default.
 | `server.tomcat.max-connections` / `accept-count` / `keep-alive-timeout` / `max-keep-alive-requests` | set for prod (5000 / 1000 / 15s / 1000) | Don't lower `max-connections` to "cap load": it counts idle keep-alive sockets |
 | `server.tomcat.max-http-form-post-size`, `max-swallow-size`, `max-http-response-header-size`, multipart `max-file-size` / `max-request-size` | set | Bounded input |
 | Scheduler | a `TaskScheduler` bean with N named platform threads, `waitForTasksToCompleteOnShutdown`, `awaitTerminationSeconds` | `spring.task.scheduling.pool.size` is ignored under virtual threads (REL-08) |
-| `spring.task.execution.mode` | `force` (whenever a `TaskScheduler` bean exists) | A scheduler is an `Executor`, so Boot otherwise skips its `applicationTaskExecutor`, and the MDC `TaskDecorator` with it (verified 2026-11-13) |
+| `spring.task.execution.mode` | `force` (whenever a `TaskScheduler` bean exists) | A scheduler is an `Executor`, so Boot otherwise skips its `applicationTaskExecutor`, and the MDC `TaskDecorator` with it |
 | `spring.task.execution.thread-name-prefix` | set | Readable thread dumps |
 | Admission control | PERF-03 | Never the thread-pool bulkhead: it undoes virtual threads |
 
@@ -169,7 +169,7 @@ scrape is secured, `{{metricsAuth}}`).
 - `application.yml` only names the app and imports **one file per concern**:
   `config/{db,server,security,observability,limits,jobs}.yml`, each with profile variants beside it
   (`db-prod.yml`, `server-dev.yml`). Spring Boot applies a `<name>-<profile>.yml` variant of an
-  imported file on top of it (verified 2026-11-13).
+  imported file on top of it.
 - Every tunable is in configuration (SMELL-17); `spring.application.name` is the one name the rest
   derives from.
 - No default profile; **startup fails** on a missing or unknown active profile (an allow-list),

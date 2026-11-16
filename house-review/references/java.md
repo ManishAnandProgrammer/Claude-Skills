@@ -187,8 +187,7 @@ The backend handles no time zone.
   refused, and the client enforces the exact local rule.
 - **One boundary, one clock read:** a write that ends one period and starts the next (close a
   version, open its successor; DATA-36) reads the clock **once** at the top of the service method
-  and passes that value to both. Two reads leave a gap (measured 2026-11-14: 1.3 ms with the
-  microsecond `Clock`), and reads taken in the wrong order overlap (23P01). Never mix the
+  and passes that value to both. Two reads leave a gap, and reads taken in the wrong order overlap (23P01). Never mix the
   application `Clock` and the database's `now()` in one boundary: `now()` is the transaction's
   start, earlier than a later application read, so a close with one and an open with the other
   overlapped; `clock_timestamp()` differs per statement. The application `Clock` is the house source

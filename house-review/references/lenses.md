@@ -167,8 +167,8 @@ is code-smells.md, java.md and architecture.md.
 - **Severity:** High.
 
 ### PERF-03: Under virtual threads, bound concurrency explicitly
-- **Check:** with virtual threads, `server.tomcat.threads.max` bounds nothing (k6: 1,995 requests
-  waiting on the pool). Admission control does the bounding:
+- **Check:** with virtual threads, `server.tomcat.threads.max` bounds nothing (a load test left
+  requests waiting on the pool). Admission control does the bounding:
   - a Resilience4j **semaphore** bulkhead per route group (the `api` group at least 2× the pool,
     checked at startup, golden `app.admission`; a report or export group's limit is the developer's
     number), or Spring 7 `@ConcurrencyLimit`;
@@ -184,7 +184,7 @@ is code-smells.md, java.md and architecture.md.
   - CPU work and uploads run with no transaction;
   - an offset list counts only on a full page, a cursor list never (DATA-11). **Extension point (a
     use case):** a project whose counts get slow caps them ("10,000+") and computes them once per
-    filter set (F-079: p50 of 3.4 s from exact counts);
+    filter set;
   - export and report row caps exist;
   - CSV is written with a library (Commons CSV, Jackson CSV), never hand-quoted, and a cell
     starting with `=`, `+`, `-`, `@`, tab or CR is neutralised (prefixed with `'`): a spreadsheet
@@ -567,7 +567,7 @@ resilience or failure-injection test is Medium).
 ### TEST-08: A status code is not a reason (`STATUS-IS-NOT-A-REASON`)
 - **Check:** every negative test asserts *why* it was refused (the `errorCode`, or the field in
   `errors`: its `pointer` or `parameter`, ERR-07), not only the status. A test aimed at a service rule must not be stopped earlier by
-  bean validation. Incident: 36 tests passed with value validation switched off.
+  bean validation: a status-only test passes with value validation switched off.
 - **Severity:** Medium (High for SEC checks).
 
 ### TEST-09: Prove the guard can fail
@@ -580,8 +580,7 @@ resilience or failure-injection test is Medium).
 
 ### TEST-10: Setup that silently failed (`SETUP-THAT-SILENTLY-FAILED`)
 - **Check:** every fixture built through the API asserts its own 2xx, or goes through a helper
-  that throws. Incident: six specs posted `formFieldIds` instead of `fieldIds`, got 400, and
-  passed.
+  that throws: a fixture posted with a wrong field name gets 400, and the test passes on nothing.
 - **Also:** with `auto-commit: false` on the pool (CFG-01), a direct `jdbc.update` fixture outside a
   transaction is rolled back when its connection returns: the test silently runs on data that isn't
   there. Fixture writes go through a helper that commits (`sql(...)` on the test base).

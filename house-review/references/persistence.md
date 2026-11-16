@@ -97,8 +97,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Check:**
   - no `@Transactional` on controllers;
   - code in the servlet or security filter chain opens no transaction on the cache-hit path;
-  - an infrastructure failure there answers **503, never 401** (incident F-080: under pool
-    saturation 1,004 of 1,275 requests answered 401 and the UI signed everyone out);
+  - an infrastructure failure there answers **503, never 401** (a 401 signs the client out);
   - `DispatcherType.ERROR` is permitted in the `SecurityFilterChain`, so an escaped exception
     isn't re-dispatched to `/error` and answered 401.
 - **Severity:** High.
@@ -110,8 +109,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - `statement_timeout`, `lock_timeout` and `idle_in_transaction_session_timeout` are set for the
     app pool (pgjdbc `options`, or the role);
   - `statement_timeout` is **strictly smaller** than `socketTimeout`, so the server cancels first
-    and the connection survives. Incident PA-16: with both at 30 s they raced and 29 of 35
-    requests answered 500;
+    and the connection survives (equal, the two race and the request answers 500);
   - **migrations get their own `lock_timeout` (about 5 s) and no `statement_timeout`.** Liquibase
     opens its own connection, so the app pool's `options` don't reach it. An `ALTER TABLE` waiting
     for a lock blocks every later query on that table behind it, and a rolling deploy migrates while
@@ -134,7 +132,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   class-level `readOnly` default.
 - **Without the proxy:** `readOnly = true` and an explicit `isolation` borrow **at begin**, because
   Spring's `HibernateJpaDialect` prepares the connection then. A plain transaction and one with a
-  `timeout` stay lazy (measured 2026-11-14, Spring 7.0 / Hibernate 7.4). In such a project, a
+  `timeout` stay lazy (Spring 7.0 / Hibernate 7.4). In such a project, a
   cache-first method under a `readOnly` class default needs `Propagation.SUPPORTS` or
   `NOT_SUPPORTED`.
 - **With the proxy,** both attributes still reach PostgreSQL when the connection is borrowed
@@ -201,9 +199,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - the one exception, **a machine-written stamp** (last used, last seen, last synced) on a record users
     edit with a version: it is written by a bulk update that sets the stamp alone, neither `version`
     nor `updated_at`, and the entity has no setter for it. Written through the entity, it moves the
-    version a user sends back (measured: a membership at version 3 after three sign-ins, every ADMIN's
-    role change 409) and two writers of the stamp conflict. `@OptimisticLock(excluded = true)` doesn't
-    help: auditing still changes `updated_at`, which moves the version anyway. Reference:
+    version a user sends back (every sign-in, so the next edit answers 409) and two writers of the stamp
+    conflict. `@OptimisticLock(excluded = true)` doesn't help: auditing still changes `updated_at`, which moves the version anyway. Reference:
     `TenantMembershipRepository.markUsed`, tested by `TenantMemberIntegrationTest.tokenIssuesKeepTheVersion`.
     The session version (SEC-07) is such a stamp too, with one more rule: its column is mapped read-only
     (`insertable = false, updatable = false`), so its bulk bump needs no `clearAutomatically`: no
@@ -215,8 +212,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 
 ### DATA-25: Write paths load only what they change; persist vs merge
 - **Check:**
-  - a write that changes one row loads that row, not the whole aggregate read-write. Measured:
-    21.6 ms vs 8.8 ms, and about 16× the allocation (F-083);
+  - a write that changes one row loads that row, not the whole aggregate read-write;
   - no `save()` / `merge()` on an already-managed entity;
   - new rows with **application-assigned ids** (UUIDv7, TSID) use `persist`, or an `isNew()`
     signal (`Persistable`, null `@Version`), not `save()`, which merges: an extra SELECT
@@ -248,7 +244,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - no classpath module discovery.
 
   Otherwise Hibernate builds its own strict Jackson 2 mapper beside Jackson 3, and one extra key
-  in one stored document makes the row unloadable; one application didn't boot (F-082). Each stored
+  in one stored document makes the row unloadable. Each stored
   JSON type gets a test that loads a document with an extra key. Ordered data in `jsonb` is
   stored as a list, never as object keys (`jsonb` re-sorts keys; `DISPLAY-OPTIONS-ORDER-LOST`).
 - **Also:** a JSON column's content is a typed record where possible. Where a
@@ -258,14 +254,13 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   mapped explicitly: when one type served as two, renaming a wire field orphaned every stored
   document that used the old name.
 - **Not a finding when:** every `SqlTypes.JSON` attribute is a `String` the application maps with its
-  own `JsonMapper` (Hibernate 7.4 passes a `String` through its format mapper untouched; verified
-  2026-11-14): the reference's metadata piece does this.
+  own `JsonMapper` (Hibernate 7.4 passes a `String` through its format mapper untouched): the reference's metadata piece does this.
 - **Severity:** High on Jackson 3 projects.
 
 ### DATA-28: No heavy data work at startup
 - **Check:** backfills and bulk updates run as a migration or a batched one-off job, never in
   `ApplicationRunner`, `CommandLineRunner`, `@PostConstruct` or `SmartInitializingSingleton`.
-  They grow with the data until the app can't boot (F-081: a 38 s backfill).
+  They grow with the data until the app can't boot.
 - **Severity:** High.
 
 ### DATA-29: Locks, pollers and caps
@@ -275,10 +270,6 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   is never 500 and a retry is safe. The exception is a race one client makes on its own (two tabs
   refreshing one token, a double-clicked submit), or one the developer says is normal traffic
   (recorded, never assumed): there the answer must be the documented one.
-  Measured 2026-11-14 (lock audit of the reference, every lock removed in turn): the owner-scope
-  advisory lock and the three `FOR KEY SHARE` delete guards protected nothing the database didn't
-  already hold, and were removed; the todo's `findForUpdate…` and the token's single-winner rotation
-  hold the error contract, and stayed (the token's as a conditional update).
 - **Check:**
   - **the lock vocabulary has three entries**, chosen by purpose:
     - `findForUpdate…` (`@Lock(PESSIMISTIC_WRITE)`, which Hibernate issues as `FOR NO KEY UPDATE` on
@@ -339,8 +330,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     LIMIT :batch FOR UPDATE SKIP LOCKED))` (an uncorrelated `ARRAY` sublink is an init plan) or a
     `MATERIALIZED` CTE, never `WHERE id IN (SELECT … LIMIT … FOR UPDATE SKIP LOCKED)`: the planner may
     put that subquery on the inner side of a join and run it again per outer row, each run skipping the
-    rows the earlier ones locked and returning others, so one lease takes more than its batch (measured:
-    a batch of 2 leased 5) and "disjoint, bounded batches" rests on plan luck. The test takes the
+    rows the earlier ones locked and returning others, so one lease takes more than its batch and "disjoint, bounded batches" rests on plan luck. The test takes the
     statement the repository runs (a constant, not a copy), asserts its text (`= ANY (ARRAY(`, no
     `IN (SELECT`: the guarantee is the shape, and the planner may run an `IN` once on the test's data)
     and bounds what it reads to twice its batch on rows that all qualify (reference
@@ -381,7 +371,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Check:** "exists? then insert", "anything in progress? then start" and "count then insert"
   need a (partial) unique index with the violation translated to **the domain code**, or
   `INSERT … ON CONFLICT`, or a lock. Idempotent operations (pin, follow) use
-  `ON CONFLICT DO NOTHING` and answer 2xx, not 409 (F-084).
+  `ON CONFLICT DO NOTHING` and answer 2xx, not 409.
 - **Unique text:** case and surrounding spaces must not make a different value
   ("Groceries" vs " groceries", two accounts for one email). Two correct shapes:
   - the code **stores the normalised form** (enforced by `CHECK (col = lower(trim(col)))`) and the
@@ -391,13 +381,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     store a value no request can send back;
   - the stored text **keeps its case** (a display name) and gets a unique **index on
     `lower(trim(col))`**. PostgreSQL uses an expression index **only for a query naming the same
-    expression**: a lookup `WHERE col = ?` beside it is a sequential scan (measured 2026-11-13:
-    the reference's login read the whole `users` table).
+    expression**: a lookup `WHERE col = ?` beside it is a sequential scan.
 
   A nullable one is partial: `WHERE col IS NOT NULL`.
 - **NULLs are distinct in a unique key:** `UNIQUE (email, deleted_at)` (or any unique key with a
-  nullable column meant as "only one live row") admits any number of rows with `deleted_at` NULL
-  (measured 2026-11-14: two `('a@x', NULL)` rows accepted). Use a partial unique index
+  nullable column meant as "only one live row") admits any number of rows with `deleted_at` NULL.
+  Use a partial unique index
   (`WHERE deleted_at IS NULL`), or `UNIQUE NULLS NOT DISTINCT` where NULL must count as a value.
 - **Detect:** an expression index next to a repository lookup on the bare column (`findByEmail`); a
   unique constraint or index including a nullable column, without `NULLS NOT DISTINCT` or a
@@ -448,8 +437,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - tables in `{{auditedTables}}` get history from one generic trigger function writing to an
     append-only `audit_log` (old and new rows as `jsonb`);
   - the app passes the acting user with `set_config('app.user_id', …, true)`: transaction-local,
-    **once per transaction**, never at session level on pooled connections (F-075: 61% of all
-    statements were redundant `set_config` calls);
+    **once per transaction**, never at session level on pooled connections;
   - audit tables are for compliance only, never queried by business logic.
 - **Severity:** Medium.
 
@@ -663,8 +651,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - **no scope lock for the constraint's sake** (DATA-29): two overlapping inserts at the same instant
     each wait in the exclusion check for the other's uncommitted row, and PostgreSQL ends it as a
     deadlock. The victim answers 503 `DATABASE_CONTENTION`, exactly one row is stored, and its retry
-    answers 409 (measured 2026-11-14: about 1 answer in 6 of a 6-way race, never 500, never two
-    rows). Serialise the scope only when the developer says that 503 is normal traffic for the
+    answers 409. Serialise the scope only when the developer says that 503 is normal traffic for the
     endpoint (recorded in the crud profile, never assumed), or when the write spans several rows of
     the scope (a version chain's close-and-open, DATA-36: lock the
     referent row);
@@ -704,8 +691,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - writing the chain (close the open version and insert the next) locks the referent row first
     (DATA-36): unlike a single insert, it spans two rows of the scope.
 
-  Measured 2026-11-14 on PostgreSQL 18.6 and Hibernate 7.4 (house-review DESIGN.md, temporal
-  experiments).
+  Evidence: DESIGN.md, *Temporal rules* (PostgreSQL 18.6, Hibernate 7.4).
 - **Detect:** a `exists…Overlapping` / `count…Between` query before an insert; an overlap rule only in
   Java; a daterange without stated bounds; a version chain on `'[]'` or closed with `minusDays(1)`;
   a version table with no `CHECK (from < to)`; `'infinity'`, `LocalDate.MAX` or `Instant.MAX` as an
