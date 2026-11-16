@@ -15,6 +15,7 @@ import com.jayway.jsonpath.JsonPath;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -88,6 +89,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>Fixture helpers assert their own success, so a setup that fails fails the test.</p>
  *
+ * <p>Every test runs under {@link TransactionGuards}: a read-only transaction left with changes, a GET
+ * that opens a write transaction or a remote call inside a transaction fails it.</p>
+ *
  * <p>With tenancy, the tests run as the reference's do, inside one test tenant shared by the run (the
  * reference's tests already share one database): every account {@link #signup} creates joins it, and
  * each test method (with its {@code @BeforeEach} and {@code @AfterEach}) runs under
@@ -101,7 +105,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMetrics
 @ActiveProfiles("test")
 @Import({TestcontainersConfiguration.class, StubBreachedPasswords.class, DistinctClientAddresses.class,
-        SupportAccessPolicies.class, TenantProvisioningForTests.class, PreviousReleaseDatabase.class})
+        SupportAccessPolicies.class, TenantProvisioningForTests.class, PreviousReleaseDatabase.class,
+        TransactionGuards.class})
 public abstract class IntegrationTest {
 
     protected static final String PASSWORD = "Correct-Horse-9";
@@ -228,6 +233,17 @@ public abstract class IntegrationTest {
     /** Hibernate's counters (on in the test profile): clear them, run a request, read the statement count. */
     protected Statistics statistics() {
         return entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+    }
+
+    /** A broken check from before this test (startup, another class's leftovers) isn't this test's. */
+    @BeforeEach
+    void forgetEarlierTransactionChecks() {
+        TransactionGuards.takeViolations();
+    }
+
+    @AfterEach
+    void transactionBoundariesHeld() {
+        assertThat(TransactionGuards.takeViolations()).as("transaction boundaries the test's requests and calls broke").isEmpty();
     }
 
     /** A signed-up user and their access token. */

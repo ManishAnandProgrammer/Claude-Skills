@@ -58,7 +58,7 @@ public class TimeEntryFilter extends CursorFilter {
     private Boolean billable;
 
     @NotNull
-    @Schema(description = "Order of the list; a cursor only continues the order it came from", defaultValue = "SPENT_ON")
+    @Schema(description = "Order of the list; a cursor only continues the order it came from", defaultValue = "SPENT_ON", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     private TimeEntrySort sort = TimeEntrySort.SPENT_ON;
 
     public boolean requireIdsPredicate() {

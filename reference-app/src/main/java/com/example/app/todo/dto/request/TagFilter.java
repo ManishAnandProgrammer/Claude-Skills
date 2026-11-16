@@ -32,7 +32,7 @@ public class TagFilter extends PageFilter implements QueryFilter {
     private List<@NotNull UUID> ids;
 
     @NotNull
-    @Schema(description = "ACTIVE or INACTIVE tags only, or ALL", defaultValue = "ALL")
+    @Schema(description = "ACTIVE or INACTIVE tags only, or ALL", defaultValue = "ALL", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     private DropdownStatus status = DropdownStatus.ALL;
 
     @MaxLength("search-query")
@@ -40,7 +40,7 @@ public class TagFilter extends PageFilter implements QueryFilter {
     private String query;
 
     @NotNull
-    @Schema(description = "Order of the page", defaultValue = "NAME")
+    @Schema(description = "Order of the page", defaultValue = "NAME", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     private TagSort sort = TagSort.NAME;
 
     public boolean requireIdsPredicate() {

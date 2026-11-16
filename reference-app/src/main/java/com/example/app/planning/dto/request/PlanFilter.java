@@ -45,7 +45,7 @@ public class PlanFilter extends CursorFilter {
     private LocalDate plannedTo;
 
     @NotNull
-    @Schema(description = "Order of the list; a cursor only continues the order it came from", defaultValue = "STARTS_ON")
+    @Schema(description = "Order of the list; a cursor only continues the order it came from", defaultValue = "STARTS_ON", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     private PlanSort sort = PlanSort.STARTS_ON;
 
     public boolean requireIdsPredicate() {

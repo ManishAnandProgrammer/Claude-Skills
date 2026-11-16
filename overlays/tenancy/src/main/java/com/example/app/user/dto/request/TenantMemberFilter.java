@@ -34,7 +34,7 @@ public class TenantMemberFilter extends PageFilter {
     private Role role;
 
     @NotNull
-    @Schema(description = "Order of the page", defaultValue = "NEWEST")
+    @Schema(description = "Order of the page", defaultValue = "NEWEST", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     private TenantMemberSort sort = TenantMemberSort.NEWEST;
 
     public boolean requireIdsPredicate() {

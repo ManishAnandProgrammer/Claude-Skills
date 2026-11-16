@@ -25,7 +25,7 @@ public class TenantFilter extends PageFilter implements QueryFilter {
     private String query;
 
     @NotNull
-    @Schema(description = "Order of the page", defaultValue = "NEWEST")
+    @Schema(description = "Order of the page", defaultValue = "NEWEST", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     private TenantSort sort = TenantSort.NEWEST;
 
     public boolean requireStatusPredicate() {

@@ -30,7 +30,7 @@ public class TodoListFilter extends PageFilter implements QueryFilter {
     private String query;
 
     @NotNull
-    @Schema(description = "Order of the page", defaultValue = "NAME")
+    @Schema(description = "Order of the page", defaultValue = "NAME", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     private TodoListSort sort = TodoListSort.NAME;
 
     public boolean requireIdsPredicate() {

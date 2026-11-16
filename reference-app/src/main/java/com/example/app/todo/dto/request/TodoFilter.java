@@ -54,7 +54,7 @@ public class TodoFilter extends CursorFilter {
     private String query;
 
     @NotNull
-    @Schema(description = "Order of the list; a cursor only continues the order it came from", defaultValue = "DUE_DATE")
+    @Schema(description = "Order of the list; a cursor only continues the order it came from", defaultValue = "DUE_DATE", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     private TodoSort sort = TodoSort.DUE_DATE;
 
     public boolean requireIdsPredicate() {
