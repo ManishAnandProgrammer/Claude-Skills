@@ -152,5 +152,9 @@ public enum ErrorCode {
     PLAN_STATUS_CHANGE_INVALID,
     /** A done day before the plan's first: the day and the first day. */
     PLAN_DONE_ON_BEFORE_STARTS_ON,
+    /** An edit of a DONE plan, which is final: the plan's id. */
+    PLAN_DONE,
+    /** An edit of a CANCELLED plan, which is final: the plan's id. */
+    PLAN_CANCELLED,
     // example:end
 }

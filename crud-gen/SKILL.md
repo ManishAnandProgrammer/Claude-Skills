@@ -373,8 +373,9 @@ with that code: the move is valid in itself, the lifecycle refuses it (ERR-05). 
 terminal statuses** (WITHDRAWN, CANCELLED, CLOSED): may a record in one still be edited (PUT, the
 member and file writes) or deleted? When it is frozen, the entity's edit method guards it (or, when a rule the service checks comes before the edit, a public `require<Live>()` the service calls right after the version check) **first
 after the version check**, before any other rule (a configured maximum, a parent's state): 409
-`<ENTITY>_<STATUS>` (`ENROLLMENT_WITHDRAWN`, ERR-04's names), documented on each refused write, with
-tests.md row 26b (whose write would also break another rule, so the order is tested); when only the delete stays open, say so in the API text. Their tests take each
+`<ENTITY>_<STATUS>` (`ENROLLMENT_WITHDRAWN`, ERR-04's names; golden `Plan.requirePlanned`, first in
+`Plan.reschedule`: 409 `PLAN_DONE`, `PLAN_CANCELLED`), documented on each refused write, with
+tests.md row 26b (golden `PlanStatusIntegrationTest.aFinalPlanIsFrozen`) (whose write would also break another rule, so the order is tested); when only the delete stays open, say so in the API text. Their tests take each
 party × each action, and for a Manager each aggregate's refusal rolling both back.
 
 ---
@@ -682,8 +683,8 @@ that changes member rows (files, links) or deletes the root loads it `findForUpd
 can remove by cascade (a tag's delete removes its `todo_tags` rows) are deleted with one statement
 before the root's own delete (golden `TodoTagRepository.deleteAllOfTodo`), since a versioned delete
 per row misses the removed ones (409); delete loads (404) then flushes; a state change on an entity
-goes through a method that guards the state (an `edit(...)` calling `requirePending()`; no golden
-code), never public setters a later caller can use in the wrong state; ownership through
+goes through a method that guards the state (an `edit(...)` calling `requirePending()`; golden
+`Plan.reschedule` calling `requirePlanned()`, `Plan.changeStatus` through `PlanStatus.canBecome`), never public setters a later caller can use in the wrong state; ownership through
 `findByIdAndOwnerId` (another user's record is 404); parents written into are read with the plain
 owned lookup (`getOwned<Parent>`, not locked, unless the write checks the parent's state: Step 1); list sizes from `{{Paging}}`. **A parent in the same
 module** is reached through its service, public once a child needs it: `getOwned<Parent>(id)` returns

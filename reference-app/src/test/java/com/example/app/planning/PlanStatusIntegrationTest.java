@@ -238,6 +238,36 @@ class PlanStatusIntegrationTest extends IntegrationTest {
         assertThat(jdbc.queryForObject("select version from plans where id = ?::uuid", Long.class, id)).isOne();
     }
 
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(delimiter = '|', textBlock = """
+            DONE      | PLAN_DONE
+            CANCELLED | PLAN_CANCELLED
+            """)
+    @DisplayName("""
+            A final plan is frozen: a PUT is 409 with its status's code, before the overlap it would also trip, the plan \
+            unchanged (version included); the same PUT on a PLANNED plan works; a delete still does""")
+    void aFinalPlanIsFrozen(String status, String errorCode) throws Exception {
+        TestUser user = newUser();
+        String id = createPlan(user, STARTS_ON, "2026-01-12");
+        createPlan(user, "2026-04-01", "2026-04-02");
+        String live = createPlan(user, "2026-05-01", "2026-05-01");
+        changeStatus(user, id, status, dayFor(status)).andExpect(status().isOk());
+        long version = versionOf(user, id);
+
+        putAs(user.accessToken(), PLANS + "/" + id, """
+                {"startsOn": "2026-04-02", "endsOn": "2026-04-03", "version": %d}
+                """.formatted(version))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(errorCode));
+        getAs(user.accessToken(), PLANS + "/" + id)
+                .andExpect(jsonPath("$.response.startsOn").value(STARTS_ON))
+                .andExpect(jsonPath("$.response.version").value(version));
+        putAs(user.accessToken(), PLANS + "/" + live, """
+                {"startsOn": "2026-05-02", "endsOn": "2026-05-03", "version": 0}
+                """).andExpect(status().isOk());
+        deleteAs(user.accessToken(), PLANS + "/" + id).andExpect(status().isNoContent());
+    }
+
     @Test
     @DisplayName("The API docs name the status change's codes")
     void apiDocsNameTheStatusCodes() throws Exception {
@@ -245,6 +275,8 @@ class PlanStatusIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/plans/{id}/status'].patch.responses['409'].description",
                         containsString("PLAN_STATUS_CHANGE_INVALID")))
                 .andExpect(jsonPath("$.paths['/api/v1/plans/{id}/status'].patch.responses['400'].description",
-                        containsString("PLAN_DONE_ON_BEFORE_STARTS_ON")));
+                        containsString("PLAN_DONE_ON_BEFORE_STARTS_ON")))
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{id}'].put.responses['409'].description", containsString("PLAN_DONE")))
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{id}'].put.responses['409'].description", containsString("PLAN_CANCELLED")));
     }
 }

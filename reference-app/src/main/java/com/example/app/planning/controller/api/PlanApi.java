@@ -80,7 +80,8 @@ public interface PlanApi {
     @Operation(summary = "Move a plan's days", description = """
             Both ends at once, with the version you last read, under the same rules as the create: between \
             the configured dates, at most a configured number of days, and free of your other plans (409 \
-            PLAN_OVERLAPS; the plan's own old days don't count). Its todo stays the same.""")
+            PLAN_OVERLAPS; the plan's own old days don't count). Its todo stays the same. A DONE or CANCELLED plan \
+            is final: 409 PLAN_DONE or PLAN_CANCELLED, whatever the new days.""")
     @ApiResponse(responseCode = "200", description = "The plan with its new days and version")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (a missing field, a date outside the configured earliest and latest ones, or \
@@ -92,8 +93,8 @@ public interface PlanApi {
     @ApiResponse(responseCode = "404", description = "PLAN_NOT_FOUND (missing, or another user's)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = """
-            OPTIMISTIC_LOCK_CONFLICT (the version is stale); PLAN_OVERLAPS (the new days share one with another \
-            of your plans)""",
+            OPTIMISTIC_LOCK_CONFLICT (the version is stale); PLAN_DONE, PLAN_CANCELLED (the plan is final); \
+            PLAN_OVERLAPS (the new days share one with another of your plans)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -122,7 +123,7 @@ public interface PlanApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<PlanResponse> changeStatus(UUID id, PlanStatusRequest request);
 
-    @Operation(summary = "Delete a plan", description = "Its days are free again at once.")
+    @Operation(summary = "Delete a plan", description = "In any status. Its days are free again at once.")
     @ApiResponse(responseCode = "204", description = "Deleted")
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

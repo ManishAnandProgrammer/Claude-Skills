@@ -83,4 +83,21 @@ class PlanTest {
         plan.changeStatus(PlanStatus.DONE, LocalDate.of(2026, 11, 20));
         assertThat(plan.getDoneOn()).isEqualTo(LocalDate.of(2026, 11, 20));
     }
+
+    @Test
+    @DisplayName("A final plan's reschedule is refused with its status's code, the days unchanged")
+    void aFinalPlanIsNotRescheduled() {
+        Plan done = plan();
+        done.changeStatus(PlanStatus.DONE, LocalDate.of(2026, 11, 21));
+        Plan cancelled = plan();
+        cancelled.changeStatus(PlanStatus.CANCELLED, null);
+
+        assertThatExceptionOfType(AppException.class)
+                .isThrownBy(() -> done.reschedule(LocalDate.of(2026, 12, 1), LocalDate.of(2026, 12, 2)))
+                .satisfies(refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.PLAN_DONE));
+        assertThatExceptionOfType(AppException.class)
+                .isThrownBy(() -> cancelled.reschedule(LocalDate.of(2026, 12, 1), LocalDate.of(2026, 12, 2)))
+                .satisfies(refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.PLAN_CANCELLED));
+        assertThat(done.getStartsOn()).isEqualTo(LocalDate.of(2026, 11, 20));
+    }
 }

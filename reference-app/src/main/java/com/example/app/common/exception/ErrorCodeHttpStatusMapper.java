@@ -104,6 +104,8 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.PLAN_TODO_DONE, HttpStatus.CONFLICT);
         MAPPING.put(ErrorCode.PLAN_STATUS_CHANGE_INVALID, HttpStatus.CONFLICT);
         MAPPING.put(ErrorCode.PLAN_DONE_ON_BEFORE_STARTS_ON, HttpStatus.BAD_REQUEST);
+        MAPPING.put(ErrorCode.PLAN_DONE, HttpStatus.CONFLICT);
+        MAPPING.put(ErrorCode.PLAN_CANCELLED, HttpStatus.CONFLICT);
         // example:end
     }
 
