@@ -264,7 +264,8 @@ is code-smells.md, java.md and architecture.md.
   201). Either do the read checks *before* the transaction and commit everything together, or
   write a pending row in the transaction for a poller. An idempotent replay repairs the side
   effect.
-- **Severity:** Critical when user data is lost on a core path; otherwise High.
+- **Severity:** Critical when user data is lost on a hot path (any list, dropdown or public endpoint);
+  otherwise High.
 
 ### REL-07: No inert limits
 - **Check:** every configured limit is really applied, and no comment claims a limit that
