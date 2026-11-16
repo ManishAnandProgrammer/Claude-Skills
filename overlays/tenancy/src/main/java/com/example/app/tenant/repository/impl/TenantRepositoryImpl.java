@@ -49,15 +49,10 @@ class TenantRepositoryImpl implements CustomTenantRepository {
         return OffsetPages.page(entityManager.createQuery(query), entityManager.createQuery(countQuery), pageable);
     }
 
-    /**
-     * The status as a SQL literal ({@code status = 'PENDING'}), not a bound parameter: each rare value has a
-     * partial index per order ({@code WHERE status = 'PENDING'}, changeset 0030), which only a literal matches
-     * once pgjdbc's prepared statement switches to a generic plan. Safe to inline: an enum constant's name.
-     */
     private static List<Predicate> matching(CriteriaBuilder builder, Root<Tenant> root, TenantFilter filter) {
         List<Predicate> predicates = new ArrayList<>();
         if (filter.requireStatusPredicate()) {
-            predicates.add(builder.equal(root.get(Tenant_.status), builder.literal(filter.getStatus())));
+            predicates.add(builder.equal(root.get(Tenant_.status), filter.getStatus()));
         }
         if (filter.requireQueryPredicate()) {
             predicates.add(TextSearch.contains(builder, root.get(Tenant_.name), filter.getQuery()));

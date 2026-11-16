@@ -408,17 +408,7 @@ loans among the history). A filter with a rare value is **scoping**, and gets on
 order (`(<scope>, status, <sort keys>, id)`; golden `idx_todos_owner_id_status_due_sort_id` and
 `…_status_id`): walking the order's index with the filter reads every other row that comes first, and
 the rare rows come last under some order (active loans have the latest days, so `STARTS_ON` walks the
-whole history first; measured 165 ms against 0.06 ms with the index). **On a table without a leading
-scope column** (a shared root, a platform register) that composite doesn't serve: the planner costs it
-by its leading status column's heap correlation and walks the order's own index through the common rows
-instead (library-desk: 28,503 rows for a page past the recent block). There each rare value gets a
-**partial index per offered order**, `(<sort keys>, id) WHERE status = '<VALUE>'`, and the repository
-writes that value as a SQL literal, `builder.equal(root.get(X_.status), builder.literal(filter.getStatus()))`
-(an enum constant's name: safe to inline), because a partial index matches a bound parameter only in a
-custom plan and pgjdbc's prepared statements switch to a generic plan after five runs. The common value
-walks the order's index (`(<sort keys>, id)`). Golden: the tenancy overlay's `TenantRepositoryImpl.matching`,
-`0030-platform-list-indexes.sql`, `PlatformTenantIndexIntegrationTest` (its cells under
-`ReadCost.ofGenericPlan`). A scoped table keeps the composite. Leave it to the order's index
+whole history first; measured 165 ms against 0.06 ms with the index). Leave it to the order's index
 only when (record which and why, so the review doesn't ask again):
 - no value is rare (golden `0003`: priority, three values, none rare); or
 - the scope bounds the walk to a few pages whatever the value (status within one list: a list is

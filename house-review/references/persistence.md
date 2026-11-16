@@ -481,13 +481,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     offered order (`(scope…, status, sort keys…, id)`), unless the scope bounds the walk to a few pages
     or every offered order brings the rare rows first (recorded per order, never for the default order
     alone). Without it, an order under which the rare rows come last walks the scope past every other
-    row: on a shared root the whole table (measured: 165–202 ms against under 0.1 ms with the index).
-    **Without a leading scope column** the composite isn't used (the planner costs it by the status column's
-    heap correlation and walks the order's index): a rare value gets a partial index per order,
-    `(sort keys…, id) WHERE status = '<VALUE>'`, and the query names the value as a literal (a bound
-    parameter matches a partial index only in a custom plan; pgjdbc's prepared statements go generic after
-    five runs). Reference: the tenancy overlay's tenants list (`0030-platform-list-indexes.sql`,
-    `TenantRepositoryImpl`, `PlatformTenantIndexIntegrationTest` under `ReadCost.ofGenericPlan`);
+    row: on a shared root the whole table (measured: 165–202 ms against under 0.1 ms with the index);
   - **a contains search (`query`) on a table without a scope column** reads the whole table, which grows:
     the house convention is that it is offered only on a table whose size is bounded and recorded (the most
     rows it will hold, crud-gen *Decisions per entity*, the cell's bound), or together with a filter that
@@ -539,8 +533,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   `Index Cond`) instead of the cell's read bound and its index's existence: the plan turns on the
   statistics, so it passes alone and fails in a full run (or the reverse), and an in-order walk that
   filters away the table passes "index by name, no Sort"; a list cell (an order × a filter) in no index
-  test, or with neither an index nor a recorded bound; a rare value of a table without a scope column served
-  by a composite `(status, …)` or matched by a bound parameter (its cell red under a generic plan); a contains
+  test, or with neither an index nor a recorded bound; a contains
   search on an unscoped growing table with neither a recorded size nor a required scoping filter; **an order by the id alone** (`NEWEST` as `id desc`,
   `Sort.Order.desc("id")`) on any list; a seek in OR form, hand-written or in a cell's SQL; **an index test
   seeded with random ids or one block per scope** (production's UUIDv7 ids follow the heap: seed

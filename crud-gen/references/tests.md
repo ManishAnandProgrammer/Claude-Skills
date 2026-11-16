@@ -126,7 +126,6 @@ index doesn't serve read more.
 | a second step (`<parents> where id in (...)`, a batch's tags) | the batch's rows per table it reads |
 | a parent's delete-side foreign key check, a cascade | the parent's own children |
 | a job's `LIMIT ... FOR UPDATE SKIP LOCKED` lease | twice the batch; the statement's own text is asserted too (`= ANY (ARRAY(...))`, DATA-29): no bound can tell an `IN (...)` that the planner happens to run once |
-| a rare value on a table **without a scope column** (a partial index per order, the value a literal) | two pages, measured under `ReadCost.ofGenericPlan` (the plan a prepared statement ends up with): a bound parameter there reads past the partial index. One cell is a later page or batch **past the rare value's recent block** (the cursor or offset inside it, older rows of the value further on), red without its index |
 | a contains search on a table without a scope column | the table's recorded maximum size (*Decisions per entity*), or, required with a scoping filter, that filter's rows |
 | an index the policy can't use under row mode (`&&`, `LIKE`: TEN-36) | the scope's rows (recorded in the cell) |
 
@@ -136,9 +135,8 @@ own index, a count of the whole table), which rest on the index's existence chec
 drops an index of each other kind once. Ids are assigned **in a declared order**: within one statement
 `uuidv7()` follows the statement's output order, which a join or a cross join doesn't fix, so a claim such
 as "the active loans are the newest" is made true by rounds (one statement per round, in time order) or a
-single series `order by n`, and **checked before the cells** (golden `PlatformTenantIndexIntegrationTest`
-asserts its old PENDING tenants are older than the recent block; `TodoIndexIntegrationTest` its old owner's
-lists older than every other's). Also: the tested
+single series `order by n`, and **checked before the cells** (golden `TodoIndexIntegrationTest` asserts its old owner's lists are
+older than every other's). Also: the tested
 scope a small share of its table (a sibling owner with twenty times the rows, another tenant's members),
 **written as the application writes them**: `uuidv7()` ids and `clock_timestamp()` as `created_at`, in
 rounds of each scope's share in turn, so the rows reach the heap in id order and the scopes interleave.
