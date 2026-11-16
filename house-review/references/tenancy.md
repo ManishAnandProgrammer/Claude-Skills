@@ -382,7 +382,8 @@ an extraction is an operation, not a migration project (the tooling itself is no
 - **Detect:** `GENERATED … AS IDENTITY`, `serial`, `CREATE SEQUENCE` or `nextval` for tenant data in row
   mode; a display number derived from a global id; `perContext(…, tenantId)`; `next` called before the
   create's own checks.
-- **Severity:** Medium (High when the number is a legal sequence, such as an invoice number).
+- **Severity:** Medium (High when the developer says the number is a legal sequence, such as an invoice
+  number).
 
 ### TEN-19: Stored files sit under their tenant's prefix
 - **Check:** every object key starts with the tenant's id: `<tenantId>/<PURPOSE>/<uuid>` (the tenancy

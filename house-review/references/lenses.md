@@ -155,7 +155,8 @@ is code-smells.md, java.md and architecture.md.
   A cache hit takes no connection (the lazy proxy, DATA-20).
 - **Detect:** a new index on `updated_at` or `version`: every update of that table stops being a HOT
   update (DATA-10).
-- **Severity:** Medium (High when it is unbounded).
+- **Severity:** Medium (High when the statement count or the memory a request holds grows with the
+  number of rows).
 
 ### PERF-02: Connection pool
 - **Check:**
@@ -174,7 +175,7 @@ is code-smells.md, java.md and architecture.md.
   - a short max-wait, then 503 `SERVER_BUSY` + `Retry-After`;
   - a rejected-count metric per group;
   - placed before the security chain; the actuator is never capped.
-- **Severity:** High on heavy or public endpoints.
+- **Severity:** High on a hot path, a report or an export.
 
 ### PERF-04: Long reads and exports
 - **Check:**

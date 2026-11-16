@@ -166,7 +166,7 @@ Lines are counted without blank or comment lines.
   - a manual or runbook in code.
 - **Also:** enum constants in a module's `api/` package (a published contract) carry Javadoc.
   Remove stale Javadoc, and fix broken `{@link}`s.
-- **Severity:** Low; Medium when misleading.
+- **Severity:** Low; Medium when the comment says what the code doesn't do.
 
 ### SMELL-20: Names
 - **Check:** names are descriptive, pronounceable and searchable, with no encodings or
@@ -179,7 +179,7 @@ Lines are counted without blank or comment lines.
   - one name per concept across layers (a filter's `todoListId`, not `listId`, when the payloads
     and responses say `todoListId`);
   - **package names are lower-case words** (`transportstaff`, not `transportStaff`).
-- **Severity:** Low (Medium when misleading).
+- **Severity:** Low (Medium when a name says what the code doesn't do, as `resolvedBy` for a dismissal).
 
 ### SMELL-21: Flag arguments
 - **Check:** a `boolean` parameter that selects behaviour (`setEnabled(id, false)`,
