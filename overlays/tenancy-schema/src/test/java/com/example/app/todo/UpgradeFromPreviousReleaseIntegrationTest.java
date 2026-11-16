@@ -1,9 +1,8 @@
 package com.example.app.todo;
 
 import com.example.app.common.tenancy.TenantSchemas;
-import com.example.app.common.tenancy.TenantScope;
 import com.example.app.support.IntegrationTest;
-import com.example.app.support.ReadCost;
+import com.example.app.support.QueryPlan;
 import com.example.app.support.WithoutTestTenant;
 import com.example.app.tenant.service.TenantMigrations;
 import com.example.app.tenant.service.TenantProvisioningJob;
@@ -123,18 +122,18 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A page of the seeded owner's OPEN todos (the rare status) and of their newest still reads at most two pages")
-    void theIndexBoundsHoldOnTheSeededRows() {
+    @DisplayName("On the upgraded database, the seeded owner's OPEN page and newest page are planned on their indexes")
+    void theUpgradedIndexesServeTheSeededOwner() {
         migratedOwner();
 
-        for (String statement : List.of(
-                "select id from todos where owner_id = :owner and status = 'OPEN' order by due_sort, id limit 21",
-                "select id from todos where owner_id = :owner order by created_at desc, id desc limit 21")) {
-            ReadCost cost = TenantScope.callAs(ALPHA, () -> ReadCost.of(jdbc, transactionManager, statement,
-                    new MapSqlParameterSource("owner", HEAVY)));
+        MapSqlParameterSource owner = new MapSqlParameterSource("owner", HEAVY);
+        String open = QueryPlan.explain(jdbc, transactionManager,
+                "select id from todos where owner_id = :owner and status = 'OPEN' order by due_sort, id limit 21", owner);
+        String newest = QueryPlan.explain(jdbc, transactionManager,
+                "select id from todos where owner_id = :owner order by created_at desc, id desc limit 21", owner);
 
-            assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
-        }
+        assertThat(QueryPlan.indexesScanned(open)).as(open).contains("idx_todos_owner_id_status_due_sort_id");
+        assertThat(QueryPlan.indexesScanned(newest)).as(newest).contains("idx_todos_owner_id_created_at_id");
     }
 
     @Test

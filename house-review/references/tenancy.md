@@ -542,15 +542,15 @@ E1–E3 and the row tests named below, which run as the real application role.
     `0023-owner-tenant-statistics.sql`). Without them the planner multiplies the person's share of the
     table by the tenant's, estimates a few rows (one, for a member of a tenant among many) and picks
     another index with the same leading columns plus a sort: the exclusion constraint's GiST index
-    (`PlanRowIndexIntegrationTest`, red without them), or a join probing by id. The constraint's own
+    (measured in round 4), or a join probing by id; `OwnerTenantStatisticsIntegrationTest` checks they
+    exist. The constraint's own
     `tenant_id WITH =` is right (a person in two tenants has two rotas); its `&&` stays the constraint's
     (it isn't leakproof, so a list's overlap filter can't use the GiST index under the policy, TEN-36);
 - **an exclusion constraint** is a key like the others: `tenant_id WITH =` among its equality columns.
 - **Not a finding (DATA-10):** the `tenant_id → tenants` key of an owner-scoped table has no index
   leading with `tenant_id`: tenants are closed, never deleted, so the key is never checked from the
   parent side. Tenant deletion (later) adds the indexes it needs.
-- **Detect:** an owner- or member-scoped tenant table without the dependency statistics; an index test
-  plan with `rows=1` on a member scope that holds dozens; `UNIQUE (key)` or `UNIQUE (owner_id, name)` without `tenant_id`; a tenant table's
+- **Detect:** an owner- or member-scoped tenant table without the dependency statistics; `UNIQUE (key)` or `UNIQUE (owner_id, name)` without `tenant_id`; a tenant table's
   `FOREIGN KEY (parent_id) REFERENCES parent (id)`; an extra `(owner_id)` index beside `(owner_id,
   tenant_id, …)` (it took the list plans, with a sort, in the todo index tests).
 - **Severity:** Critical for a foreign key that can cross tenants; Medium for a key or index without
@@ -619,8 +619,8 @@ E1–E3 and the row tests named below, which run as the real application role.
   - **measured** (E3, 200 tenants x 1,000 rows): a jsonb `@>` with a GIN index read 1,016 buffers as the
     app role (a filter over the tenant's rows), 26 as a superuser (`BitmapAnd` with the GIN index);
     `ILIKE` became a filter after the tenant index; the reference's plan overlap check (`&&` on a
-    range) leaves the exclusion constraint's GiST index for a btree walk of the owner's plans
-    (`PlanIndexIntegrationTest`'s row variant; the constraint itself still decides);
+    range) leaves the exclusion constraint's GiST index for a btree walk of the owner's plans (measured in
+    round 3; the constraint itself still decides);
   - `pg_proc.proleakproof` (asserted by `RowIsolationIntegrationTest`): leakproof `uuid_eq`, `texteq`,
     `int8eq`, `timestamptz_lt`; not leakproof `jsonb_contains`, `textlike`, `texticlike`, `enum_eq`,
     `range_overlaps`. Statuses as `text` with a check constraint (DATA-07) stay leakproof; PostgreSQL

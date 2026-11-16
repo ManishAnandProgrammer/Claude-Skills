@@ -218,8 +218,7 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   reads the ranges below).
 - The answers of step 0: signup policy, external IdP (`SecurityConfig`), client-IP mode,
   `app.limits.*` values, pool and admission sizes (admission ≥ 2× pool, checked at startup).
-- The upgrade path (core's `support/PreviousReleaseDatabase`, `support/ReadCost` for the index tests'
-  read bounds) is inert until the project has a release in production: then it writes
+- The upgrade path (core's `support/PreviousReleaseDatabase`) is inert until the project has a release in production: then it writes
   `src/test/resources/db/upgrade/previous-release-seed.sql` (with the example, the reference's is there to
   follow) and runs `./mvnw verify -Dapp.test.upgrade.previous-release=<pieces>,<project>` (the highest
   number of each range in production, `26,105`) before each release that

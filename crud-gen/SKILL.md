@@ -272,7 +272,7 @@ names as such; it joins `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES` with
 | The entity extends `TenantOwnedEntity` (`@TenantId`), never `{{AuditBase}}` directly; no `tenantId` in its builder calls, requests, filters, repositories or services | TEN-32, TEN-01 |
 | `tenant_id uuid NOT NULL` with **no default** and `fk_<table>_tenant_id → tenants (id)`: every insert names its tenant, so a forgotten one fails at once. The golden `0002`–`0011` blocks still show a `current_setting` default; it predates the rule and the row overlay's `0016` drops it (an applied changeset is never edited): never copy it into a new changeset | TEN-30 |
 | `ENABLE` + `FORCE ROW LEVEL SECURITY` and the one `tenant_isolation` policy (`USING` and `WITH CHECK`, the same predicate) **in the changeset that creates the table** | TEN-30 |
-| Every unique constraint, exclusion constraint (`tenant_id WITH =`) and list index has `tenant_id` among its leading equality columns: the owner (or a parent column) first when the table has one (`(owner_id, tenant_id, sort…, id)`, `(customer_id, tenant_id, id)`: it also serves the key's check), `tenant_id` first when it has none or a list filters by the tenant alone (`(tenant_id, sort…, id)`). Names: with an owner as in single-tenant (`idx_todos_owner_id_due_sort_id`: `tenant_id` after the owner is left out of the name, as the golden row blocks do); without one `tenant_id` is the scope and is named (`idx_customers_tenant_id_name_id`). A scope column that determines the tenant (an owner, a member) gets `CREATE STATISTICS st_<table>_<column>_tenant_id (dependencies) ON <column>, tenant_id` in the same changeset (golden row overlay `0023-owner-tenant-statistics.sql`): without it the planner estimates a person's rows at one once other tenants fill the table | TEN-33, DATA-10 |
+| Every unique constraint, exclusion constraint (`tenant_id WITH =`) and list index has `tenant_id` among its leading equality columns: the owner (or a parent column) first when the table has one (`(owner_id, tenant_id, sort…, id)`, `(customer_id, tenant_id, id)`: it also serves the key's check), `tenant_id` first when it has none or a list filters by the tenant alone (`(tenant_id, sort…, id)`). Names: with an owner as in single-tenant (`idx_todos_owner_id_due_sort_id`: `tenant_id` after the owner is left out of the name, as the golden row blocks do); without one `tenant_id` is the scope and is named (`idx_customers_tenant_id_name_id`). A scope column that determines the tenant (an owner, a member) gets `CREATE STATISTICS st_<table>_<column>_tenant_id (dependencies) ON <column>, tenant_id` in the same changeset (golden row overlay `0023-owner-tenant-statistics.sql`, checked by `OwnerTenantStatisticsIntegrationTest`): without it the planner estimates a person's rows at one once other tenants fill the table | TEN-33, DATA-10 |
 | A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually applied by then; the key exists for the child). A reference to a person (an owner, an assignee) is to the tenant's own members, never to `users` or `tenant_memberships` (platform tables): `(owner_id, tenant_id) → members (user_id, tenant_id)` as `fk_<table>_<column>` (golden: the row overlay's `0018-owners-reference-members`); a person the request names (an assignee) is checked through `Members` (Step 1) before the write, since the key also accepts a member who left. A member's row is never deleted (a removal marks it left), so the key never blocks a removal and the record keeps its owner; a project whose records must be reassigned before a removal says so (an open item: the members API has no such check) | TEN-33, TEN-16, TEN-17 |
 | The replica identity: `ALTER TABLE <t> REPLICA IDENTITY USING INDEX <uq_…>` **in the changeset that creates the table**, on a unique key that includes `tenant_id` (the parent key `(id, …, tenant_id)` of its composite references, or `(tenant_id, key)`); a table without one gets `uq_<table>_id_tenant_id (id, tenant_id)` | TEN-38 |
 | A display number (an invoice or order number) is a per-tenant counter (the metadata piece's `Counters`), never an identity column or a sequence: one sequence serves every tenant. `counters` is tenant data, so it is a **fixed** name (`TICKET_NUMBER`), not `perContext` with the tenant id; it needs the TEN-34 seed pair (a listener with `Counters.createIfAbsent(name, 0)` plus a backfill changeset for every tenant whatever its status, after its highest number), and the create calls `createIfAbsent` before `next` too (a tenant activated by an instance without the listener, during a rolling deploy, still numbers from 1). A `uq_<table>_number (tenant_id, number)` backs it up. Golden: `Todo.number`, `0026-todo-numbers.sql`'s row block, `TodoNumberSeed`. Tests: rows 27b–27d, 30 | TEN-18, TEN-34 |
@@ -381,19 +381,17 @@ dropdown needs no interface (golden `TodoFilter`). The dropdown's `query` search
 when the list's `query` searches more (a name **or** an email), the two predicates differ, and the
 filter doesn't implement `QueryFilter`.
 
-**Ask the domain facts the seed needs** while choosing them (tests.md, *The seed*): each scope's
-expected size (rows per owner, per parent, per tenant; for an **unscoped shared root** the whole table's,
-which bounds its contains search and its offset count) and each enum value's share and where it sits
-(a status a later decision sets is absent from the newest rows). Record them in the index test's javadoc.
+**Ask the domain facts the indexes need** while choosing them: each enum filter value's expected share
+(it decides the value's index, below) and, for an **unscoped shared root**, the table's expected size (a
+contains search on it is offered only on a bounded, recorded size: DATA-10). Record them in the
+changeset's comment.
 
 **Then the indexes** (DATA-10), now that the orders and filters are chosen: one per offered order
 and per scoping filter, ending with the id (none when the sort column is unique and not null; NEWEST's is
 `(scope…, created_at, id)`, golden `0029-newest-by-created-at.sql`), in a
-new changeset if the entity's own one is applied (Step 2). Write the list's **cell matrix** while you
-choose them (tests.md, *Index tests*): each order × each filter (each value of an enum filter), a later
-batch or page, the `ids` lookup, each second step, each delete-side key check, each naming the index
-that serves it and the most rows it may read; test row 28 runs it. A cell no index serves gets one or is
-not offered: **a range filter is offered under its own column's order only** (under another order it is a
+new changeset if the entity's own one is applied (Step 2). Test row 28 checks that each one exists and
+that each list's first page is planned on its order's index (tests.md, *Index tests*). A filter no index
+serves gets one or is not offered: **a range filter is offered under its own column's order only** (under another order it is a
 400 naming the rule, golden `TodoFilter.isDueOnOrBeforeSortedByDueDate`), unless a bounded scope holds it
 (one todo's time entries), recorded. An **overlap filter** is no exception: it is a range of its start's
 index, so it is offered under the start's order only, each end alone too, one rule per end reported on that
@@ -408,7 +406,7 @@ root, the whole table): a value is **rare** when it holds a small share of them 
 fewer: the owner's open todos among years of done ones, a book catalogue's withdrawn books, the active
 loans among the history). A filter with a rare value is **scoping**, and gets one index per offered
 order (`(<scope>, status, <sort keys>, id)`; golden `idx_todos_owner_id_status_due_sort_id` and
-`…_status_id`): walking the order's index with the filter reads every other row that comes first, and
+`…_status_created_at_id`): walking the order's index with the filter reads every other row that comes first, and
 the rare rows come last under some order (active loans have the latest days, so `STARTS_ON` walks the
 whole history first; measured 165 ms against 0.06 ms with the index). Leave it to the order's index
 only when (record which and why, so the review doesn't ask again):
@@ -423,7 +421,9 @@ first and the id last. **Extension point (a use case, not generated):** on a tab
 scope column the planner may walk the order's index instead of the composite (it costs the composite by
 its leading column's heap correlation). If the project knows one filter value is rare there, it adds a
 partial index for that value (`WHERE status = '<VALUE>'`), writes the value as a literal so a generic plan
-still matches it, and proves it with `EXPLAIN` against the read bound; the skill does not generate this.
+still matches it, and proves it with its own `EXPLAIN (ANALYZE, BUFFERS)` test; the skill does not generate
+this. Likewise any measured read cost: a project with a known data distribution or a latency target adds
+its own `EXPLAIN (ANALYZE, BUFFERS)` tests on a seed that models it (tests.md, *Index tests*).
 
 **Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
 `List<@NotNull ID> ids` with `@ConfiguredMaxSize("cursor-page.max-size")` (offset:
@@ -808,9 +808,9 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] Asked, and recorded: each picked parent's dropdown (Step 1), whether a terminal status freezes
       the record (Step 3), a unique code's shape (Step 2).
 - [ ] A same-module parent's service changed (4.8): listed among the changed shared files.
-- [ ] Row 28: the list's cell matrix in its index test (every order × every filter, every enum value,
-      later batches, lookups), each cell's index existing and its read bound asserted (4.1); a range
-      filter offered under its own order only; row 18b: the `ids` filter's statement count.
+- [ ] Row 28: every offered filter and order names its index, which exists, and each list's first page
+      is planned on its order's index (4.1); a range filter offered under its own order only; row 18b:
+      the `ids` filter's statement count.
 - [ ] A changeset that backfills existing rows, once the project has a release in production: row 30 on
       the upgraded database (until the first release the upgrade path is inert: record it; tests.md, *Upgrading a
       used database*).

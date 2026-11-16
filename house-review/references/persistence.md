@@ -484,10 +484,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     row (measured: 165–202 ms against under 0.1 ms with the index). On a table without a leading scope
     column the planner may still walk the order's index; a rare value's plan there is a use case
     (crud-gen SKILL.md 4.1's extension point: a partial index for that value, the value a literal, proven
-    with `EXPLAIN` against the read bound), not a finding against the composite;
+    with the project's own `EXPLAIN (ANALYZE, BUFFERS)` test), not a finding against the composite;
   - **a contains search (`query`) on a table without a scope column** reads the whole table, which grows:
     the house convention is that it is offered only on a table whose size is bounded and recorded (the most
-    rows it will hold, crud-gen *Decisions per entity*, the cell's bound), or together with a filter that
+    rows it will hold, crud-gen *Decisions per entity*), or together with a filter that
     scopes it through its own index (the list refuses `query` alone, 400 naming the rule, the
     `@CrossField` shape); a project that needs it unbounded adds the trigram remedy (`TextSearch`'s javadoc);
   - every sort has a unique tie-breaker: the id, unless the sort column is itself unique and not
@@ -505,8 +505,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     every scoped list a competitor, and with UUIDv7 ids in heap order the planner costs walking `pk_<table>`
     backward as cheap whenever the scope looks like a big share of the table; for a scope whose rows are old
     (an owner or a tenant that stopped writing) a page then reads every newer row of everyone else first
-    (help-desk: 16,400 rows for a page of 20; reference `TodoIndexIntegrationTest`'s old, big owner: 10,540
-    with `(owner_id, id)` in place). No index leads with `created_at`, so the scope's own index has no
+    (help-desk, round 4: 16,400 rows for a page of 20; the reference's old, big owner then: 10,540 with
+    `(owner_id, id)` in place). No index leads with `created_at`, so the scope's own index has no
     competitor. OLDEST likewise. An unscoped NEWEST (a platform's tenants) gets its `(created_at, id)` index;
   - **a keyset sort key is never null.** A nullable column (a due date) sorts through a stored
     generated column (`coalesce(due_date, date '9999-12-31')`) that the index and the keyset use;
@@ -516,8 +516,7 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     A configured maximum range length gives the bound: a range ending on or after `from` started no
     earlier than `from - (max - 1)`, so the query adds `starts_on >= from - (max - 1)` and the index
     range is bounded on both sides (golden `PlanRepositoryImpl.filterPredicates`, `plan.max-days`,
-    checked on create; `PlanIndexIntegrationTest`'s planned-days cells read at most the maximum length
-    plus the range's days). Without a maximum, it is a recorded decision that the filter scans the scope's
+    checked on create). Without a maximum, it is a recorded decision that the filter scans the scope's
     history. These bounds hold under the start's order only: the overlap is a range filter like any other
     (next point), each end alone included (golden `PlanFilter.isPlannedFromSortedByStartsOn`,
     `isPlannedToSortedByStartsOn`);
@@ -526,33 +525,22 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     owner's history), so the filter refuses that sort with a 400 naming the rule (golden
     `TodoFilter.isDueOnOrBeforeSortedByDueDate`), unless a bounded scope holds it (a todo's time entries),
     recorded;
-  - **every list has its cell matrix in its index test** (crud-gen tests.md, *Index tests*): each order ×
-    each filter (each value of an enum), a later batch or page, the `ids` lookup, the second steps, the
-    delete-side key checks, the job leases, each naming the index meant to serve it and the most rows it
-    may read; the test asserts the index exists and the statement reads at most the bound
-    (`ReadCost`, `EXPLAIN ANALYZE` rows); a claim that a cell fails without its index only where it was
-    proven so (the index dropped in a rolled-back transaction, the read past the bound), every other cell
-    named as resting on the existence check;
+  - **every list has its index test** (crud-gen tests.md, *Index tests*): each offered filter and order,
+    the `ids` lookup, the second steps, the delete-side key checks and the job leases name their index,
+    and the test asserts it exists; each list's first page, as the repository issues it, is planned on its
+    order's index (`QueryPlan`: plan nodes and index names, never a cost or a row count). Measured read
+    costs are a project's own `EXPLAIN (ANALYZE, BUFFERS)` tests, where it knows its data (a use case);
   - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).
 - **Detect:** a status filter on a list with no status index and no recorded reason per offered order
-  (a "rarely listed" note is not one: the UI offers the value); an index test that binds one status
-  value; **an index test that asserts a plan's shape** (an index name in the plan, no `Sort`, a column in
-  `Index Cond`) instead of the cell's read bound and its index's existence: the plan turns on the
-  statistics, so it passes alone and fails in a full run (or the reverse), and an in-order walk that
-  filters away the table passes "index by name, no Sort"; a list cell (an order × a filter) in no index
-  test, or with neither an index nor a recorded bound; an index test's "every unserved cell reads ten times
-  its bound" (or any "fails without its index") that no per-cell proof backs; a contains
-  search on an unscoped growing table with neither a recorded size nor a required scoping filter; **an order by the id alone** (`NEWEST` as `id desc`,
-  `Sort.Order.desc("id")`) on any list; a seek in OR form, hand-written or in a cell's SQL; **an index test
-  seeded with random ids or one block per scope** (production's UUIDv7 ids follow the heap: seed
-  `uuidv7()` and `clock_timestamp()` in rounds of each scope in turn, or a walk of the primary key looks
-  expensive on the seed and cheap in production); no cell for a later batch inside a tie group of the
-  leading key; **a rare value's cell bounded by the walking bound**
-  (it passes without its index) or a status set by a later decision seeded uniformly over every id (it
-  then sits among the newest rows, where production never has it, and the planner walks); a range filter offered under another column's order
-  on an unbounded scope, an overlap filter's end (alone or with the other) under NEWEST included; an index test seeded with the tested scope as most of its table, or not
-  interleaved in creation order (a missing index then reads few rows); an overlap filter written as two
-  comparisons with nothing bounding `starts_on` from below; an index on
+  (a "rarely listed" note is not one: the UI offers the value); a list's offered filter or order with no
+  index named in its index test, or a list without the first-page plan check; **an index test that asserts
+  a cost or a row count** (a read bound, buffers) or makes a claim it doesn't assert (a javadoc saying a
+  cell "fails without its index", a seed shaped to make it so): costs turn on the data, which is a
+  project's own measured test; a contains search on an unscoped growing table with neither a recorded size
+  nor a required scoping filter; **an order by the id alone** (`NEWEST` as `id desc`,
+  `Sort.Order.desc("id")`) on any list; a seek in OR form; a range filter offered under another column's
+  order on an unbounded scope, an overlap filter's end (alone or with the other) under NEWEST included; an
+  overlap filter written as two comparisons with nothing bounding `starts_on` from below; an index on
   `updated_at` or `version` (or on any column every update changes): every
   update then writes new index entries and is never a HOT update (measured 2026-11-14 on a
   todos-shaped table: 0% HOT with the index, about 72% without it at the default fillfactor, 97% at

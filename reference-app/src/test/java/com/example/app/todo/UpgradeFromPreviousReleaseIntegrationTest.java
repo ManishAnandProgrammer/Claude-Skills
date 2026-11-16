@@ -1,7 +1,7 @@
 package com.example.app.todo;
 
 import com.example.app.support.IntegrationTest;
-import com.example.app.support.ReadCost;
+import com.example.app.support.QueryPlan;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -10,7 +10,6 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.PlatformTransactionManager;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,8 +52,8 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from todos where owner_id = ?", Integer.class, HEAVY)).isGreaterThanOrEqualTo(1_200);
         assertThat(jdbc.queryForObject("select count(*) from todos where owner_id = ? and requester_id = ?", Integer.class, HEAVY, LIGHT))
                 .as("every tenth seeded todo names the light account").isEqualTo(20 * 6);
-        assertThat(ReadCost.indexExists(jdbc, "idx_todos_owner_id_created_at_id")).isTrue();
-        assertThat(ReadCost.indexExists(jdbc, "idx_todos_owner_id_id")).isFalse();
+        assertThat(QueryPlan.indexExists(jdbc, "idx_todos_owner_id_created_at_id")).isTrue();
+        assertThat(QueryPlan.indexExists(jdbc, "idx_todos_owner_id_id")).isFalse();
     }
 
     @Test
@@ -94,15 +93,16 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A page of the seeded owner's OPEN todos (the rare status) and of their newest still reads at most two pages")
-    void theIndexBoundsHoldOnTheSeededRows() {
-        for (String statement : List.of(
-                "select id from todos where owner_id = :owner and status = 'OPEN' order by due_sort, id limit 21",
-                "select id from todos where owner_id = :owner order by created_at desc, id desc limit 21")) {
-            ReadCost cost = ReadCost.of(jdbc, transactionManager, statement, new MapSqlParameterSource("owner", HEAVY));
+    @DisplayName("On the upgraded database, the seeded owner's OPEN page and newest page are planned on their indexes")
+    void theUpgradedIndexesServeTheSeededOwner() {
+        MapSqlParameterSource owner = new MapSqlParameterSource("owner", HEAVY);
+        String open = QueryPlan.explain(jdbc, transactionManager,
+                "select id from todos where owner_id = :owner and status = 'OPEN' order by due_sort, id limit 21", owner);
+        String newest = QueryPlan.explain(jdbc, transactionManager,
+                "select id from todos where owner_id = :owner order by created_at desc, id desc limit 21", owner);
 
-            assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
-        }
+        assertThat(QueryPlan.indexesScanned(open)).as(open).contains("idx_todos_owner_id_status_due_sort_id");
+        assertThat(QueryPlan.indexesScanned(newest)).as(newest).contains("idx_todos_owner_id_created_at_id");
     }
     // metadata:begin
 

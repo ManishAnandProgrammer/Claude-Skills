@@ -43,153 +43,48 @@ golden "a list shows only yours" test has no counterpart: drop it (with tenancy,
 `TenantIsolationIntegrationTest` covers who sees what). Row 14
 carries the access decision: a plain USER gets 403 `ACCESS_DENIED` **with a valid body** on every
 write (and on every read the decision restricts), the record unchanged; the writing role succeeds
-(golden `MetadataIntegrationTest.onlyAdminsReachTheApi`, `UploadPolicyIntegrationTest`). Row 28 on a
-shared table: seeded rows are seen by every unscoped list and dropdown, so give them a unique name prefix
-and delete them in an `@AfterAll`. Seed the other scopes beside the tested one as the *Index tests* section
-below says (the tested scope a small share of its table: well under 1% for an equality scope of a UUIDv7 table, whose heap follows its ids, so the planner may rightly walk the primary key for a scope of 1 in 50; written in creation order with the others'
-rows: `uuidv7()` ids and `clock_timestamp()`, in rounds). A **table with no scope column at
-all** (a tenant-wide table under schema tenancy: the schema is the scope) bounds each cell the same way:
-a page of the table read in order is two pages, whatever else the table holds.
+(golden `MetadataIntegrationTest.onlyAdminsReachTheApi`, `UploadPolicyIntegrationTest`).
 
-**Index tests in row mode** (`{{tenancy}}` = `row`): every tenant's rows share one table, so a second
-tenant seeded in one block before or after the tested rows doesn't model production. Seed it the way
-production fills the table:
-- **other tenants in creation order** with the tested one (rounds: a chunk per tenant, in turn, each
-  round newer than the last), and together 20–200 times bigger; plus, for a NEWEST cell, a scope whose rows
-  are all older than the others' (*The seed*);
-- **a bigger sibling for every equality scope** of the tested tenant (another member beside the
-  tested member, another customer beside the tested customer), else the planner estimates one row and
-  picks another index (the exclusion constraint's GiST index) plus a sort;
-- a sibling is not enough for a scope that **determines the tenant** (an owner, a member): with the
-  tenants interleaved, the planner multiplies the person's share by the tenant's (40 rows × 1.2% = one
-  row). The table's changeset gives the pair dependency statistics (TEN-33; golden
-  `0023-owner-tenant-statistics.sql`, `PlanRowIndexIntegrationTest`), and the test proves it red without
-  them once. **The red proof needs the misestimate to bite**: the tested person's rows × their tenant's
-  share of the table must come to about one row, so size that cell's seed like the golden
-  `PlanRowIndexIntegrationTest` (a tested member with about 100 rows, a sibling about ten times that,
-  other tenants 50 times the tenant and more): for these cells the per-cell proof (*The seed*) is that
-  without the statistics a sort of the person's whole scope exceeds the bound.
-  The proof exists only where **another index competes** for the scope (an exclusion constraint's GiST
-  index, a second order's index that also leads with the person): when none does, every cell is green
-  with and without the statistics; keep them (TEN-33) and write in the test's javadoc why no cell can
-  prove them;
-- a class that seeds other tenants into shared tables deletes its rows in an `@AfterAll`
-  (`PlanRowIndexIntegrationTest`): the next index class's analysis must see the table it seeds for;
-- another tenant's rows through `sqlIn(tenant, …)` (the test base: its own transaction, on a
-  connection told that tenant), each insert naming its `tenant_id`; never `set_config('app.tenant_id',
-  …)` by hand (TEN-31 reserves it for the hook);
-- a `@BeforeAll` that seeds through a `TransactionTemplate` of its own calls `testTenant()` first:
-  created inside that transaction the tenant's after-commit provisioning never runs, and it stays
-  PENDING (`sql()` does it for you);
-- `analyze` under `set local default_statistics_target = 1000` after seeding: in a full run the table
-  holds every other class's rows too, and the default target misestimated the tested member's 1,000
-  rows as about 60 (green alone, red in `./mvnw verify`). The same holds without tenancy for a shared
-  table every class writes (golden `TodoIndexIntegrationTest`, `PlanIndexIntegrationTest` analyze so).
+**Fixtures in row mode** (`{{tenancy}}` = `row`): another tenant's rows through `sqlIn(tenant, …)` (the
+test base: its own transaction, on a connection told that tenant), each insert naming its `tenant_id`; never
+`set_config('app.tenant_id', …)` by hand (TEN-31 reserves it for the hook). A `@BeforeAll` that writes
+through a `TransactionTemplate` of its own calls `testTenant()` first: created inside that transaction the
+tenant's after-commit provisioning never runs, and it stays PENDING (`sql()` does it for you).
 
-## Index tests: the cell matrix and the read bound (row 28)
+## Index tests (row 28)
 
-An index test is a **matrix**: for a generated list, every cell (each offered order × each filter, the
-filter's every value for an enum; a later batch; an offset list's later page; the `ids` lookup; each
-second step that fetches the rows' parents or tags; each parent's delete-side foreign key check; each
-job's lease) names **the index meant to serve it** and **the most rows it may read**. Write the matrix
-first (a table in the test class's javadoc or its `cells()` list), then one parameterized test runs every
-cell. Golden: `TodoIndexIntegrationTest`, `TagIndexIntegrationTest`, `TimeEntryIndexIntegrationTest`,
+Every offered filter and order has a matching index, the scope first and the id last (SKILL.md 4.1,
+DATA-10). An index test checks the schema side of that convention, with two kinds of assertion, and
+nothing about costs:
+1. **Each offered filter and order has its index**: one parameterized test over `(what it serves, index
+   name)` pairs, `QueryPlan.indexExists` for each: every order, every filter (a filter the order's index
+   serves by a recorded decision names that index, golden `0003`'s priority), the `ids` lookup (the
+   primary key), each second step's and each parent's delete-side foreign key check, each job's lease.
+2. **The first page is planned on its index**: per list (a dropdown is a list of its own), one `EXPLAIN` of
+   the first page in the default order, written as the repository issues it (same select list, predicates,
+   order, `limit`; `size + 1` for a cursor list): `QueryPlan.explain(jdbc, transactionManager, sql,
+   parameters)` plans it without running it, with sequential and bitmap scans off (a test database's small
+   tables would rightly be read whole), and the test asserts `doesNotContain("Seq Scan")` and that
+   `QueryPlan.indexesScanned(plan)` holds the expected index, or one of the expected ones when another is an
+   equally good plan (golden `TagIndexIntegrationTest`'s ACTIVE dropdown). A scope id that matches nothing
+   is enough: no seed, the plan comes from the statement.
+
+Golden: `TodoIndexIntegrationTest`, `TagIndexIntegrationTest`, `TimeEntryIndexIntegrationTest`,
 `PlanIndexIntegrationTest`, `MediaFileIndexIntegrationTest`, the tenancy overlay's
-`TenantMemberIndexIntegrationTest`, the row overlay's `PlanRowIndexIntegrationTest`.
+`TenantMemberIndexIntegrationTest`. With row tenancy the statements run on the test tenant's `jdbc` (the
+policy adds the tenant); the dependency statistics (TEN-33) get an existence check (golden
+`OwnerTenantStatisticsIntegrationTest`).
 
-**What each cell asserts: two checks, neither of which turns on statistics.**
-1. **The index exists** under its name (`ReadCost.indexExists`): a schema check. It is what catches a
-   dropped or never-created index that another index happens to serve cheaply on the seed (a composite
-   key `(id, owner_id)` walked for the owner's newest filters inside the index, which no count shows).
-2. **The statement reads at most the cell's bound** (`ReadCost.of(jdbc, transactionManager, sql,
-   parameters).rowsRead()`), written as the repository issues it, `limit` included: a cursor list fetches
-   `size + 1` rows (`limit 21` for the default 20), an offset page `size`: `EXPLAIN ANALYZE` runs the statement (rolled back, so a lease's `UPDATE`
-   changes nothing) and adds up, over every table scan, the rows it handed on plus the rows its filter
-   threw away, times its loops. Assert it with `.as(cost.plan())`, so a failure prints the plan.
+**No claims a test doesn't assert**: no javadoc saying a cell "fails without its index", no "reads N times
+its bound", no seed shaped to make a missing index expensive. What the data looks like in production is not
+known here. **Extension point (a use case, not generated):** a project with a known data distribution or a
+latency target adds its own `EXPLAIN (ANALYZE, BUFFERS)` tests on a seed that models it.
 
-Never assert a plan's shape (an index name in the plan, no `Sort`, a column in `Index Cond`): which plan
-wins turns on the statistics, so such a test passes alone and fails in a full run, or the other way round.
-The bound holds whichever plan the planner picks; other classes' rows in the table only make a plan the
-index doesn't serve read more.
-
-**The bounds** (constants in the test, each with its reason):
-
-| Cell | Bound |
-|---|---|
-| served by its index: a first page, a later batch (the seek exactly as `Seek.after` writes it: one row-value comparison, `(a, id) > (:a, :id)`), a later batch whose cursor sits inside a tie group of the leading key, a status value with its own index, a range of the order's own column | two pages (`2 × (size + 1)`) |
-| an offset list's later page | the offset plus two pages |
-| a filter **applied while walking** the order's index (a recorded reason, SKILL.md 4.1: no value rare, a tag) | two pages ÷ the share of the rarest value the reason allows (seeded at that share), times two when each walked row probes another index |
-| a filter left to **a bounded scope** (a todo's time entries: "one todo's entries are few") | the scope's rows, as seeded |
-| a contains search (`query`, no btree serves it) | the scope's rows (the owner's, the tenant's): never anyone else's |
-| an overlap filter with its derived lower bound, under its start's order | both ends: the configured maximum length plus the range's days, times the ranges the scope holds per day (1 for a scope whose ranges never overlap, a person's plans; a tenant's rota holds one per member on call each day); `from` alone: the maximum length times the ranges per day, plus a page; `to` alone: two pages. Under another order it isn't offered (SKILL.md 4.1): a 400, no cell |
-| an `ids` lookup | the asked rows (two pages at most) |
-| a second step (`<parents> where id in (...)`, a batch's tags) | the batch's rows per table it reads |
-| a parent's delete-side foreign key check, a cascade | the parent's own children |
-| a job's `LIMIT ... FOR UPDATE SKIP LOCKED` lease | twice the batch; the statement's own text is asserted too (`= ANY (ARRAY(...))`, DATA-29): no bound can tell an `IN (...)` that the planner happens to run once |
-| a contains search on a table without a scope column | the table's recorded maximum size (*Decisions per entity*), or, required with a scoping filter, that filter's rows |
-| an index the policy can't use under row mode (`&&`, `LIKE`: TEN-36) | the scope's rows (recorded in the cell) |
-
-**The seed** aims to make every cell its index doesn't serve read well past its bound, but **a claim is
-made per cell, only where it is proven**: drop the cell's index in a transaction that is rolled back
-(PostgreSQL's DDL is transactional), run the cell's statement under `EXPLAIN ANALYZE`, compare with the
-bound. The class javadoc then names the cells proven red that way and the ones that rest on the index's
-existence check alone: a common value the scope's other index serves as cheaply, a bounded scope, an index
-behind a constraint (a primary key, a unique pair), a cell another index also holds within its bound (golden
-`TodoIndexIntegrationTest`, `TagIndexIntegrationTest`, `PlanIndexIntegrationTest`,
-`TimeEntryIndexIntegrationTest`). Never "every unserved cell reads ten times its bound" without that proof.
-Ids are assigned **in a declared order**: within one statement
-`uuidv7()` follows the statement's output order, which a join or a cross join doesn't fix, so a claim such
-as "the active loans are the newest" is made true by rounds (one statement per round, in time order) or a
-single series `order by n`, and **checked before the cells** (golden `TodoIndexIntegrationTest` asserts its old owner's lists are
-older than every other's). Also: the tested
-scope a small share of its table (a sibling owner with twenty times the rows, another tenant's members),
-**written as the application writes them**: `uuidv7()` ids and `clock_timestamp()` as `created_at`, in
-rounds of each scope's share in turn, so the rows reach the heap in id order and the scopes interleave.
-Random ids, or one block per scope, hide a backward walk of the primary key: on such a seed the walk looks
-expensive to the planner, in production (time-ordered ids in heap order) it looks cheap. Each scope big enough that a sort
-of all its rows exceeds two pages, the rare value at the share it really has and **where it really sits**
-(open todos are the latest due, active loans the latest days), every value of an enum filter bound as a
-parameter as the repository binds it (an inlined literal gets a plan the real query never gets).
-**A status a later decision sets** (DONE, WITHDRAWN, CANCELLED, RETURNED) **is absent from the newest
-rows**: a record is created in its first status and moves on afterwards, so seed it among the older rows
-(none in the newest quarter by creation), never uniformly over every id; the first, live status sits with
-the newest. **Each scope at its production share**, from the domain facts Step 2 asks (members per
-tenant, enrollments per course, the share of each status value), written in the test's javadoc: a share
-picked to make the cells pass proves nothing. A later
-batch's cursor is **a seeded row inside the order's key range** (read after seeding, from the middle):
-a constant outside the seed leaves nothing past the seek. Two more seeded shapes, each with its cell
-(golden `TodoIndexIntegrationTest`): **a tie group**, several pages of rows sharing one value of the
-order's leading key (200 todos due on one day), with a later batch's cursor inside it (an index bounded on
-the leading key alone rereads the group); and for NEWEST **an old, big scope**, many rows all created
-before everyone else's (3,000 lists), the scope an id order walks the primary key for. A cursor's
-`created_at` is read as an `OffsetDateTime` (a `java.sql.Timestamp` is bound in the JVM's time zone). `analyze` the tables under `set local
-default_statistics_target = 1000` after seeding (in a full run they hold every other class's rows too).
-A fixture that inserts rows of a table with a display number splices in a number (golden
-`TODO_NUMBER_COLUMN`, `TODO_NUMBER` in the test base).
-
-**A rare value's cell is two pages, never the walking bound** (on a table with a leading scope column; on one
-without, a rare value's plan is a use case: SKILL.md 4.1's extension point). The walking bound is for a filter
-without a rare value (a recorded reason, SKILL.md 4.1); a rare value has an index per order, so its cells
-are served. When such a cell fails two pages, the seed is wrong (the value placed where it doesn't sit:
-a later-decision status among the newest rows) or the index isn't needed (every offered order brings the
-value first: record that and drop the index). A rare value's cell loosened to the walking bound can't
-fail under any plan, so the index it was written for may go missing unnoticed.
-
-**A table with no scope column at all** (a tenant-wide table under schema tenancy, a platform catalogue)
-gives a contains search (`query`) a bound of the whole table, which no plan can exceed: such a cell
-records the decision instead of an assertion that can't fail (the table's expected size, asked in
-SKILL.md 4.1, and "no index serves a contains search"), keeping only the index existence checks of the
-cells beside it; the offset list's count statement is a cell of its own (bounded by that size). **A
-tenant-wide table in row mode** shares the test tenant with every other class's rows: count the scope's
-rows at run time after seeding (`select count(*) from <table> where tenant_id = ?`) for a bound that is
-"the scope's rows", or seed the cell's rows into a `newTenant()` of its own (golden
-`TenantMemberIndexIntegrationTest`).
-
-**A cell no index serves** is either given its index (golden `0024-tags-status-newest.sql`: tags by
+**A filter no index serves** is either given its index (golden `0024-tags-status-newest.sql`: tags by
 status under NEWEST) or not offered: a range filter is offered under its own column's order only, unless
 a bounded scope holds it (golden `TodoFilter.isDueOnOrBeforeSortedByDueDate`: `dueOnOrBefore` with sort
-NEWEST is a 400 naming the rule). Prove the matrix red once: drop one index from its changeset (the
-existence check and the bound both fail), and remove one seek bound (the bound fails).
+NEWEST is a 400 naming the rule; `PlanFilter`'s planned days likewise). Prove the test red once: drop one
+index from its changeset (its existence check and its list's first-page check both fail).
 
 The table is the contract; test method names may follow the golden classes. When the golden tests
 and this table disagree, the table wins (and the golden class is a bug to report).
@@ -240,7 +135,7 @@ and this table disagree, the table wins (and the golden class is a bug to report
 | 27b | A **display number** (a counter, SKILL.md Step 2's TEN-18 row; golden `Todo.number`) | consecutive creates get consecutive numbers, shown on the detail and the list's rows; another tenant's first record is #1; concurrent creates get distinct consecutive numbers, never a duplicate or a 500 (the counter's row queues them); a refused create takes no number (golden `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest.eachTenantNumbersFromOne`) | TEN-18, TEN-05 |
 | 27c | Row mode: the display number's seed pair (TEN-34) | the counters backfill run for a tenant without the counter gives it its highest number (0 for none); a PENDING tenant approved after the backfill is ACTIVE with one counter and numbers its first record #1 (golden `TodoSeedsBackfillIntegrationTest.existingTenantsGetTheirCounter`, `aPendingTenantThroughTheBackfillsIsActivated`); on a used database every tenant, whatever its status, numbers its own rows from 1 in id order (row 30) | TEN-34 |
 | 27d | Row mode: a tenant without its counter (activated by an instance without the listener) | delete the counter row in a tenant, then create: #1, then #2 (the create's `createIfAbsent`), never a 500 (golden `TodoSeedsBackfillIntegrationTest.aTenantWithoutItsCounterNumbersFromOne`) | TEN-34 |
-| 28 | `everyCellReadsAtMostItsBound` | the list's cell matrix (*Index tests* above): every offered order × every filter (every value of an enum filter, the rare one included), a later batch, an offset list's later page, the `ids` lookup, each second step (`<parents> where id in (...)` with the repository's own select list), each parent's delete-side foreign key check (`select 1 from <children> where <fk> = ?`), an overlap filter under its start's order with both ends and with each end alone (its derived lower bound with `from`): the cell's index exists by name, and the statement as the repository issues it (same select list, predicates, order and seek) reads at most the cell's bound. Golden: `TodoIndexIntegrationTest` | DATA-10 |
+| 28 | `everyOfferedFilterAndOrderHasItsIndex`, `theFirstPageIsPlannedOnItsIndex` | (*Index tests* above) every offered order and filter, the `ids` lookup, each second step's and delete-side key check names its index, which exists; each list's first page in its default order, as the repository issues it, is planned on that index, no sequential scan. Golden: `TodoIndexIntegrationTest` | DATA-10 |
 | 28b | No overlapping ranges (an exclusion constraint, DATA-35; golden `PlanIntegrationTest`) | overlap on the first day, the last day, inside and around an existing range: 409 `<ENTITY>_OVERLAPS` without internals; the day before and after accepted; another scope's same range accepted; concurrent overlapping creates store exactly one, the others 409 `<ENTITY>_OVERLAPS` or 503 `DATABASE_CONTENTION` (a deadlock in the constraint: no scope lock), never 500; when the writes lock a parent for a state rule, race creates under two parents of the constraint's scope (golden `concurrentOverlappingCreatesStoreOne`: two todos of one owner), since one parent's writes queue; with an **updatable range**, race updates that move different records onto the same days (nothing locks them, so this is the path to the constraint's deadlock): one 200, the others 409 `<ENTITY>_OVERLAPS` or 503, one row on the days, never 500; with an **updatable scope** (a hand-over, SKILL.md 4.1), race hand-overs of different records onto one member's same days the same way | DATA-35, TEST-05 |
 | 28c | A parent in another module (ARCH-04; golden `PlanIntegrationTest`) | an unknown and another owner's parent id: 404 with the parent module's code, nothing stored; the parent's delete while children exist 409 (the child module maps the foreign key); row 23's gated race through the facade (unlocked view: 404 `<PARENT>_GONE` from the child module's write-side mapping; locked view, golden: every write 201, the delete 409, and row 23b); a parent deleted with a child between the child's two reads: the list leaves the row out (200), the single GET answers the child's 404 (golden `listLeavesOutAPlanWhoseTodoVanishedBetweenTheReads`, `getOfAPlanWhoseTodoVanishedBetweenTheReadsIs404`: the deletion holds the parent table `ACCESS EXCLUSIVE`, which the first statement passes and the second waits for); a list filtered by the parent's id (presence, then absence; another owner's parent id matches none), walked in each order; its statement count one more than row 21 (the batch's facade lookup) | ARCH-04, TEST-05 |
 | 28f | A **same-module parent** shown on the child's detail or a write's response (a `@ManyToOne(fetch = LAZY)`; SKILL.md 4.3; golden `Todo.todoList` shown as `todoList {id, name}`) | the detail and every write's response show the parent's name; the child and its parent deleted between the two reads (a transaction deletes both and holds the parent table `ACCESS EXCLUSIVE`; the read waits there, then the deletion commits) answer the child's 404, never a 500, for the GET and for every write that holds no row lock (a status change to the status it has); **assert the status first** (`assertRefusalsAre` checks only the answers with that status, so alone it passes a 500); one gated test per parent lookup when a row shows two parents (golden `TodoReferencesIntegrationTest.getOfATodoWhoseListVanishedBetweenTheReadsIs404`, `aStatusChangeToTheSameStatusOfAVanishingTodoIs404`: red without the entity graph). **On list rows**: each row shows its parent by name (`listRowsShowTheirListsByName`), a child deleted with its parent between the batch and the names' lookup is left out of the page, 200 (`listLeavesOutATodoWhoseListVanishedBetweenTheReads`, red when the mapper keeps the row), and the list's statement count is one more (row 21) | DATA-21, TEST-05 |

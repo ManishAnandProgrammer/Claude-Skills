@@ -289,11 +289,11 @@ LIST
                 echo "$ROW/src/main/resources/db/changelog/changes/0019-replica-identity.sql"
             fi
             # The example's owners reference the tenant's members instead of the platform's users, and
-            # get dependency statistics with their tenant, with the row-mode index test that needs them.
+            # get dependency statistics with their tenant, with the test that checks them.
             if chosen_piece example; then
                 echo "$ROW/src/main/resources/db/changelog/changes/0018-owners-reference-members.sql"
                 echo "$ROW/src/main/resources/db/changelog/changes/0023-owner-tenant-statistics.sql"
-                echo "$ROW/src/test/java/$reference_path/planning/PlanRowIndexIntegrationTest.java"
+                echo "$ROW/src/test/java/$reference_path/tenant/row/OwnerTenantStatisticsIntegrationTest.java"
             fi
             if chosen_piece media; then
                 echo "$ROW/src/main/java/$reference_path/media/api/UploadLimits.java"

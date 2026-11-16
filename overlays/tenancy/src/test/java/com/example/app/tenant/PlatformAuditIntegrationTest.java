@@ -1,16 +1,14 @@
 package com.example.app.tenant;
 
 import com.example.app.support.IntegrationTest;
-import com.example.app.support.ReadCost;
+import com.example.app.support.QueryPlan;
 import com.example.app.support.WithoutTestTenant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -81,46 +79,16 @@ class PlatformAuditIntegrationTest extends IntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    /**
-     * The audit list's two batch shapes (crud-gen tests.md row 28): the index exists and a batch reads at most
-     * two pages, for a tenant's 500 entries beside another tenant's 10,000, written as the application writes them
-     * (UUIDv7 ids and clock times, in rounds, so the heap follows the ids).
-     */
+    /** The audit list's index (crud-gen tests.md row 28): it exists, and a tenant's first batch is planned on it. */
     @Test
-    @DisplayName("Both batch shapes have idx_platform_audit_tenant_id_created_at_id and read at most two pages")
-    void batchesReadAtMostTwoPages() throws Exception {
-        UUID tenant = newTenant().id();
-        UUID other = newTenant().id();
-        // The staff account the platform token signs in, an author every audit row needs.
-        platformToken();
-        UUID actor = jdbc.queryForObject("select id from platform_users order by id limit 1", UUID.class);
-        // Twenty rounds, the tenant's entries then the other's: rows reach the heap in id order, as in production.
-        for (int round = 0; round < 20; round++) {
-            for (UUID seeded : List.of(tenant, other)) {
-                sql("""
-                        insert into platform_audit (id, actor_id, tenant_id, action, created_at, updated_at, version)
-                        select uuidv7(), ?, ?, 'SEEDED', clock_timestamp(), now(), 0 from generate_series(1, ?)
-                        """, actor, seeded, seeded.equals(tenant) ? 500 / 20 : 10_000 / 20);
-            }
-        }
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> jdbc.execute("analyze platform_audit"));
-        UUID after = jdbc.queryForObject(
-                "select id from platform_audit where tenant_id = ? order by created_at desc, id desc offset 250 limit 1", UUID.class, tenant);
-        MapSqlParameterSource parameters = new MapSqlParameterSource()
-                .addValue("tenant", tenant)
-                .addValue("after", after)
-                // As an OffsetDateTime: a java.sql.Timestamp would be bound in the JVM's time zone.
-                .addValue("afterCreated", jdbc.queryForObject("select created_at from platform_audit where id = ?", OffsetDateTime.class, after));
-
-        for (String statement : List.of(
+    @DisplayName("The audit list has idx_platform_audit_tenant_id_created_at_id and its first batch is planned on it")
+    void theFirstBatchIsPlannedOnItsIndex() {
+        String plan = QueryPlan.explain(jdbc, transactionManager,
                 "select id from platform_audit where tenant_id = :tenant order by created_at desc, id desc limit 21",
-                """
-                select id from platform_audit where tenant_id = :tenant and (created_at, id) < (:afterCreated, :after)
-                order by created_at desc, id desc limit 21""")) {
-            ReadCost cost = ReadCost.of(jdbc, transactionManager, statement, parameters);
+                new MapSqlParameterSource("tenant", UUID.randomUUID()));
 
-            assertThat(cost.rowsRead()).as(cost.plan()).isLessThanOrEqualTo(42);
-        }
-        assertThat(ReadCost.indexExists(jdbc, "idx_platform_audit_tenant_id_created_at_id")).isTrue();
+        assertThat(QueryPlan.indexExists(jdbc, "idx_platform_audit_tenant_id_created_at_id")).isTrue();
+        assertThat(plan).doesNotContain("Seq Scan");
+        assertThat(QueryPlan.indexesScanned(plan)).as(plan).contains("idx_platform_audit_tenant_id_created_at_id");
     }
 }

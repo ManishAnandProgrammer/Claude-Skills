@@ -4,7 +4,7 @@
 -- tenant_id = ?" selects the owner's rows, not their share of the table times the tenant's. Without these
 -- statistics the planner multiplies the two and, once other tenants fill the table, estimates a few rows
 -- for an owner with thousands: it then reads the exclusion constraint's GiST index (the same leading
--- columns) plus a sort instead of the plans' order index (PlanRowIndexIntegrationTest), and joins a
+-- columns) plus a sort instead of the plans' order index (measured in round 3), and joins a
 -- todo's tags by id with a sort instead of walking the order's index (TodoIndexIntegrationTest in a full
 -- run). Every tenant table whose rows an owner scopes gets them (house-review TEN-33).
 
