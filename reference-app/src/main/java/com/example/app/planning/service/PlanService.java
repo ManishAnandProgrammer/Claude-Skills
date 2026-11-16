@@ -11,6 +11,7 @@ import com.example.app.planning.domain.Plan;
 import com.example.app.planning.dto.internal.PlanRow;
 import com.example.app.planning.dto.request.PlanCreateRequest;
 import com.example.app.planning.dto.request.PlanFilter;
+import com.example.app.planning.dto.request.PlanUpdateRequest;
 import com.example.app.planning.dto.response.PlanResponse;
 import com.example.app.planning.mapper.PlanMapper;
 import com.example.app.planning.repository.PlanRepository;
@@ -82,6 +83,25 @@ public class PlanService {
     public ObjectWrapper<PlanResponse> findById(UUID id) {
         UUID ownerId = currentUser.id();
         Plan plan = getOwnedPlan(id, ownerId);
+        TodoView todo = todos.findOwnedTodoView(plan.getTodoId(), ownerId)
+                .orElseThrow(AppException.supply(ErrorCode.PLAN_NOT_FOUND, id));
+        return ObjectWrapper.withObject(mapper.toResponse(plan, todo));
+    }
+
+    /**
+     * New days for a plan, the version checked first. The plan's row lock (the update's) queues
+     * reschedules of one plan; reschedules of two of the owner's plans onto the same days meet in
+     * {@code ex_plans_owner_id_dates}: one wins, the other is 409 {@code PLAN_OVERLAPS}, or 503
+     * {@code DATABASE_CONTENTION} when the constraint's check deadlocks (the retry then answers 409). The
+     * todo is read like the GET's, after the write: it can't be deleted while it has this plan.
+     */
+    @Transactional
+    public ObjectWrapper<PlanResponse> update(UUID id, PlanUpdateRequest request) {
+        UUID ownerId = currentUser.id();
+        Plan plan = getOwnedPlan(id, ownerId);
+        plan.checkVersion(request.version());
+        plan.reschedule(request.startsOn(), request.endsOn());
+        repository.flush();
         TodoView todo = todos.findOwnedTodoView(plan.getTodoId(), ownerId)
                 .orElseThrow(AppException.supply(ErrorCode.PLAN_NOT_FOUND, id));
         return ObjectWrapper.withObject(mapper.toResponse(plan, todo));

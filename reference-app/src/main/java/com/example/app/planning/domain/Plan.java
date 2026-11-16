@@ -18,8 +18,8 @@ import java.util.UUID;
 
 /**
  * Days set aside for one todo, both ends inclusive. The todo is another module's, so it is an id here
- * (its foreign key is the database's, changeset 0011). A plan never changes: to move it, delete it and
- * create another.
+ * (its foreign key is the database's, changeset 0011). Its days move only through {@link #reschedule}, both
+ * ends at once; its todo and owner never change.
  */
 @Entity
 @Table(name = "plans")
@@ -38,9 +38,22 @@ public class Plan extends AuditableEntity {
     @Column(name = "owner_id", nullable = false, updatable = false)
     private UUID ownerId;
 
-    @Column(name = "starts_on", nullable = false, updatable = false)
+    @Column(name = "starts_on", nullable = false)
     private LocalDate startsOn;
 
-    @Column(name = "ends_on", nullable = false, updatable = false)
+    @Column(name = "ends_on", nullable = false)
     private LocalDate endsOn;
+
+    /**
+     * Both ends in one call, so the range is never half moved. The request already refused an inverted
+     * range (400); one reaching here is a caller's bug. The days' overlap is the database's to refuse
+     * ({@code ex_plans_owner_id_dates}, at the flush).
+     */
+    public void reschedule(LocalDate newStartsOn, LocalDate newEndsOn) {
+        if (newEndsOn.isBefore(newStartsOn)) {
+            throw new IllegalStateException("A plan can't end on %s, before it starts on %s".formatted(newEndsOn, newStartsOn));
+        }
+        startsOn = newStartsOn;
+        endsOn = newEndsOn;
+    }
 }

@@ -446,10 +446,12 @@ description and its 400 response name it.
   `#/endsOn`), backed by a `CHECK`
   (golden `PlanCreateRequest`); the API text says whether the ends are inclusive. An updatable range
   changes through **one** entity method that takes both ends and guards them (`reschedule(from, to)`,
-  `IllegalStateException` on an inverted range; no golden code: `Plan` is immutable), never a setter
+  `IllegalStateException` on an inverted range; golden `Plan.reschedule` through `PUT /plans/{id}`,
+  `PlanUpdateRequest`, `PlanService.update`), never a setter
   per end. When the range's scope column (the exclusion constraint's `owner_id WITH =`, a shift's
   member) is updatable too, it changes through an action of its own (`handOverTo(member)`), not a
-  third parameter of `reschedule`: each guards its own rule and is tested on its own. Its API is a
+  third parameter of `reschedule`: each guards its own rule and is tested on its own (no golden code: a
+  plan's owner is its todo's). Its API is a
   `PATCH /<entities>/{id}/<scope>` (`PATCH /on-call-shifts/{id}/member`) with a
   `<Entity><Scope>Request {<scope>Id, version}` (a person is a user id everywhere: `userId`, never
   `memberId`); a person is checked through `Members` (404

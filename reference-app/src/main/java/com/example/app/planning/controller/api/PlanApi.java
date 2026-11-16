@@ -4,6 +4,7 @@ import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.planning.dto.request.PlanCreateRequest;
 import com.example.app.planning.dto.request.PlanFilter;
+import com.example.app.planning.dto.request.PlanUpdateRequest;
 import com.example.app.planning.dto.response.PlanResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -58,7 +59,7 @@ public interface PlanApi {
             earliest and latest date. The days must be free: a plan that shares even one day with another of yours is refused \
             with 409 PLAN_OVERLAPS (a plan ending on the 22nd and one starting on the 22nd overlap; one \
             starting on the 23rd doesn't). The todo must be open: a plan for a DONE todo is refused with \
-            409 PLAN_TODO_DONE. A plan never changes: to move it, delete it and create another.""")
+            409 PLAN_TODO_DONE. To move its days, PUT the new ones.""")
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (a missing field, a date outside the configured earliest and latest ones, or \
@@ -74,6 +75,28 @@ public interface PlanApi {
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<PlanResponse> create(PlanCreateRequest request);
+
+    @Operation(summary = "Move a plan's days", description = """
+            Both ends at once, with the version you last read, under the same rules as the create: between \
+            the configured dates, at most a configured number of days, and free of your other plans (409 \
+            PLAN_OVERLAPS; the plan's own old days don't count). Its todo stays the same.""")
+    @ApiResponse(responseCode = "200", description = "The plan with its new days and version")
+    @ApiResponse(responseCode = "400", description = """
+            VALIDATION_FAILED (a missing field, a date outside the configured earliest and latest ones, or \
+            endsOn before startsOn or too far after it, reported on endsOn; see errors), REQUEST_UNREADABLE (a \
+            malformed date), REQUEST_PARAMETER_INVALID (the id is not a UUID)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "PLAN_NOT_FOUND (missing, or another user's)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "409", description = """
+            OPTIMISTIC_LOCK_CONFLICT (the version is stale); PLAN_OVERLAPS (the new days share one with another \
+            of your plans)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ObjectWrapper<PlanResponse> update(UUID id, PlanUpdateRequest request);
 
     @Operation(summary = "Delete a plan", description = "Its days are free again at once.")
     @ApiResponse(responseCode = "204", description = "Deleted")

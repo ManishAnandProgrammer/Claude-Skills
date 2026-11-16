@@ -363,26 +363,185 @@ class PlanIntegrationTest extends IntegrationTest {
         postAs(null, PLANS, planPayload(id, "2026-11-20", "2026-11-22"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+        putAs(null, PLANS + "/" + id, updatePayload("2026-11-20", "2026-11-22", 0))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
         deleteAs(null, PLANS + "/" + id)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
     }
 
-    @Test
-    @DisplayName("A plan never changes: PUT and PATCH are 405 REQUEST_METHOD_NOT_ALLOWED and the plan is unchanged")
-    void planIsImmutable() throws Exception {
-        TestUser user = newUser();
-        String todoId = createTodo(user, "Fixed");
-        String id = createPlan(user, todoId, "2026-11-20", "2026-11-22");
-        String moved = planPayload(todoId, "2026-12-20", "2026-12-22");
+    private static String updatePayload(String startsOn, String endsOn, long version) {
+        return """
+                {"startsOn": "%s", "endsOn": "%s", "version": %d}
+                """.formatted(startsOn, endsOn, version);
+    }
 
-        putAs(user.accessToken(), PLANS + "/" + id, moved)
+    private ResultActions update(TestUser user, String id, String startsOn, String endsOn, long version) throws Exception {
+        return putAs(user.accessToken(), PLANS + "/" + id, updatePayload(startsOn, endsOn, version));
+    }
+
+    @Test
+    @DisplayName("An update moves both ends at once and bumps the version; its todo stays; PATCH is still 405")
+    void updateMovesBothEndsAndBumpsTheVersion() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Moved");
+        String id = createPlan(user, todoId, "2026-11-20", "2026-11-22");
+
+        update(user, id, "2026-12-20", "2026-12-23", 0)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.startsOn").value("2026-12-20"))
+                .andExpect(jsonPath("$.response.endsOn").value("2026-12-23"))
+                .andExpect(jsonPath("$.response.todo.id").value(todoId))
+                .andExpect(jsonPath("$.response.version").value(1));
+        getAs(user.accessToken(), PLANS + "/" + id)
+                .andExpect(jsonPath("$.response.startsOn").value("2026-12-20"))
+                .andExpect(jsonPath("$.response.endsOn").value("2026-12-23"));
+        patchAs(user.accessToken(), PLANS + "/" + id, updatePayload("2026-12-01", "2026-12-01", 1))
                 .andExpect(status().isMethodNotAllowed())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_METHOD_NOT_ALLOWED"));
-        patchAs(user.accessToken(), PLANS + "/" + id, moved)
-                .andExpect(status().isMethodNotAllowed())
-                .andExpect(jsonPath("$.errorCode").value("REQUEST_METHOD_NOT_ALLOWED"));
-        getAs(user.accessToken(), PLANS + "/" + id).andExpect(jsonPath("$.response.startsOn").value("2026-11-20"));
+    }
+
+    @Test
+    @DisplayName("An update with a stale version is 409 OPTIMISTIC_LOCK_CONFLICT; the days stay")
+    void updateWithAStaleVersionIs409() throws Exception {
+        TestUser user = newUser();
+        String id = createPlan(user, createTodo(user, "Stale"), "2026-11-20", "2026-11-22");
+        update(user, id, "2026-11-21", "2026-11-22", 0).andExpect(status().isOk());
+
+        update(user, id, "2026-12-01", "2026-12-02", 0)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("OPTIMISTIC_LOCK_CONFLICT"));
+        getAs(user.accessToken(), PLANS + "/" + id).andExpect(jsonPath("$.response.startsOn").value("2026-11-21"));
+    }
+
+    @Test
+    @DisplayName("New days sharing one with another plan are 409 PLAN_OVERLAPS without internals; the plan's own old days don't count")
+    void updateOntoAnotherPlansDayIs409() throws Exception {
+        TestUser user = newUser();
+        String id = createPlan(user, createTodo(user, "Moving"), "2026-11-20", "2026-11-22");
+        createPlan(user, createTodo(user, "Fixed"), "2026-11-25", "2026-11-26");
+
+        update(user, id, "2026-11-23", "2026-11-25")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_OVERLAPS"))
+                .andExpect(result -> assertNoInternals(result.getResponse().getContentAsString()));
+        update(user, id, "2026-11-21", "2026-11-24").andExpect(status().isOk());
+    }
+
+    private ResultActions update(TestUser user, String id, String startsOn, String endsOn) throws Exception {
+        Number version = read(getAs(user.accessToken(), PLANS + "/" + id).andExpect(status().isOk()), "$.response.version");
+        return update(user, id, startsOn, endsOn, version.longValue());
+    }
+
+    @Test
+    @DisplayName("""
+            An update is bounded as the create: each end up to the configured dates accepted, a day past either \
+            400 naming it, a year PostgreSQL can't hold 400, an inverted or too long range 400 on endsOn""")
+    void updateIsBoundedAsTheCreate() throws Exception {
+        TestUser user = newUser();
+        String id = createPlan(user, createTodo(user, "Bounded"), "2026-11-20", "2026-11-22");
+
+        update(user, id, "2999-12-31", "2999-12-31").andExpect(status().isOk());
+        update(user, id, "1900-01-01", "1900-01-01").andExpect(status().isOk());
+        update(user, id, "2999-12-29", "3000-01-01")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/endsOn")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be on or before 2999-12-31")));
+        update(user, id, "1899-12-31", "1900-01-02")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/startsOn")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be on or after 1900-01-01")));
+        update(user, id, "-300000-01-01", "-300000-01-01")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].pointer", containsInAnyOrder("#/startsOn", "#/endsOn")));
+        update(user, id, "2026-11-22", "2026-11-21")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/endsOn")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("endsOn must not be before startsOn")));
+        LocalDate first = LocalDate.parse("2026-05-01");
+        update(user, id, first.toString(), first.plusDays(MAX_DAYS).toString())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/endsOn")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be at most " + MAX_DAYS)));
+        update(user, id, first.toString(), first.plusDays(MAX_DAYS - 1).toString()).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Without a version, or with a date-time for a day, an update is 400; nothing changes")
+    void updateNeedsItsFieldsInTheirForm() throws Exception {
+        TestUser user = newUser();
+        String id = createPlan(user, createTodo(user, "Strict update"), "2026-11-20", "2026-11-22");
+
+        putAs(user.accessToken(), PLANS + "/" + id, """
+                {"startsOn": "2026-12-01", "endsOn": "2026-12-02"}
+                """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/version")));
+        putAs(user.accessToken(), PLANS + "/" + id, updatePayload("2026-12-01T18:30:00Z", "2026-12-02", 0))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"));
+        getAs(user.accessToken(), PLANS + "/" + id).andExpect(jsonPath("$.response.version").value(0));
+    }
+
+    @Test
+    @DisplayName("An update of an unknown plan or another user's is 404 PLAN_NOT_FOUND; the other's plan stays")
+    void updateOfAnotherUsersPlanIs404() throws Exception {
+        TestUser owner = newUser();
+        String id = createPlan(owner, createTodo(owner, "Not yours"), "2026-11-20", "2026-11-22");
+
+        update(newUser(), id, "2026-12-01", "2026-12-01", 0)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+        update(owner, UUID.randomUUID().toString(), "2026-12-01", "2026-12-01", 0)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+        getAs(owner.accessToken(), PLANS + "/" + id).andExpect(jsonPath("$.response.startsOn").value("2026-11-20"));
+    }
+
+    @Test
+    @DisplayName("Concurrent updates of one plan with one version apply once: one 200, the rest 409, the version advanced once")
+    void concurrentUpdatesWithOneVersionApplyOnce() throws Exception {
+        TestUser user = newUser();
+        String id = createPlan(user, createTodo(user, "Raced"), "2026-11-20", "2026-11-22");
+        AtomicInteger racer = new AtomicInteger();
+
+        List<Answer> answers = race(() -> {
+            int day = 1 + racer.getAndIncrement();
+            String date = LocalDate.of(2027, 1, day).toString();
+            return update(user, id, date, date, 0);
+        });
+
+        assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).isSubsetOf(200, 409);
+        assertRefusalsAre(answers, 409, "OPTIMISTIC_LOCK_CONFLICT");
+        assertThat(jdbc.queryForObject("select version from plans where id = ?::uuid", Long.class, id)).isOne();
+    }
+
+    @Test
+    @DisplayName("""
+            Concurrent updates moving two plans onto the same days keep one there: one 200, the other 409 PLAN_OVERLAPS \
+            or 503 DATABASE_CONTENTION, never 500""")
+    void concurrentUpdatesOntoTheSameDaysKeepOne() throws Exception {
+        TestUser user = newUser();
+        List<String> ids = List.of(createPlan(user, createTodo(user, "First"), "2026-11-01", "2026-11-01"),
+                createPlan(user, createTodo(user, "Second"), "2026-11-03", "2026-11-03"));
+        AtomicInteger racer = new AtomicInteger();
+
+        List<Answer> answers = race(() -> update(user, ids.get(racer.getAndIncrement() % 2), "2026-12-10", "2026-12-12", 0));
+
+        // Each plan's racers queue on its row (the losers then see a stale version); the two plans' winners meet
+        // in the exclusion check, where one waits for the other's row and may deadlock (503, a safe retry).
+        assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).isSubsetOf(200, 409, 503);
+        for (Answer answer : answers) {
+            if (answer.status() == 409) {
+                assertThat(answer.errorCode()).isIn("PLAN_OVERLAPS", "OPTIMISTIC_LOCK_CONFLICT");
+                assertNoInternals(answer.body());
+            }
+        }
+        assertRefusalsAre(answers, 503, "DATABASE_CONTENTION");
+        assertThat(jdbc.queryForObject("select count(*) from plans where owner_id = ? and starts_on = '2026-12-10'",
+                Integer.class, user.id())).isOne();
     }
 
     @Test
@@ -886,6 +1045,8 @@ class PlanIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['409'].description", containsString("PLAN_TODO_DONE")))
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['404'].description", containsString("TODO_NOT_FOUND")))
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['404'].description", not(containsString("TODO_GONE"))))
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{id}'].put.responses['409'].description", containsString("PLAN_OVERLAPS")))
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{id}'].put.responses['409'].description", containsString("OPTIMISTIC_LOCK_CONFLICT")))
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].delete.responses['409'].description", containsString("plans")));
     }
 }
