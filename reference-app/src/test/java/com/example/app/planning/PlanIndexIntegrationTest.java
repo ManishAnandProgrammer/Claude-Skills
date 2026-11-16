@@ -28,7 +28,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and reads at most its bound (crud-gen tests.md row 28), with the statements PlanRepositoryImpl issues.
  * The owner's 2,000 plans, one a day over five todos, sit beside a sibling owner's 20,000, written as the
  * application writes them (UUIDv7 ids and clock times, twenty rounds of the owner's then the sibling's, so the
- * heap follows the ids): a cell its index doesn't serve reads at least ten times its bound.
+ * heap follows the ids).
+ *
+ * <p>Proven red without their index (the 2026-11-16 probe: each cell's index dropped in a rolled-back transaction, the statement read against
+ * the bound; crud-gen tests.md *Index tests*): both orders, plain, under the todo filter and in a
+ * later batch. Resting on the existence check alone: the planned-days overlap (another of the owner's indexes
+ * holds it within its bound), the todo's foreign key check (one todo's plans either way), the ids lookups and
+ * the overlap check (the primary key and the exclusion constraint's index, which can't be dropped).</p>
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PlanIndexIntegrationTest extends IntegrationTest {

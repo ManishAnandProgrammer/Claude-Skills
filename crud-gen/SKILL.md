@@ -416,6 +416,13 @@ only when (record which and why, so the review doesn't ask again):
 - every offered order brings the rare value's rows first (the newest-first order for the newest
   status), checked per order, never for the default one alone.
 
+That shape is the convention: every offered filter and order gets its index, the scope (owner or tenant)
+first and the id last. **Extension point (a use case, not generated):** on a table without a leading
+scope column the planner may walk the order's index instead of the composite (it costs the composite by
+its leading column's heap correlation). If the project knows one filter value is rare there, it adds a
+partial index for that value (`WHERE status = '<VALUE>'`), writes the value as a literal so a generic plan
+still matches it, and proves it with `EXPLAIN` against the read bound; the skill does not generate this.
+
 **Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
 `List<@NotNull ID> ids` with `@ConfiguredMaxSize("cursor-page.max-size")` (offset:
 `"offset-page.max-size"`), `requireIdsPredicate()` (non-null and non-empty), an `in` predicate in the

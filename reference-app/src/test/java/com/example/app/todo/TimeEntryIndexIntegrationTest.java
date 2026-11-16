@@ -23,8 +23,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Every cell of a todo's time entries (both orders, each range filter under each order, billable, a later
  * batch, the ids lookup) has its index and reads at most its bound (crud-gen tests.md row 28). The owner's
- * 50 todos with 100 entries each: a cell its index doesn't serve reads another todo's entries too, or sorts
- * the todo's whole set.
+ * 50 todos with 100 entries each.
+ *
+ * <p>Proven red without their index (the 2026-11-16 probe: each cell's index dropped in a rolled-back transaction, the statement read against
+ * the bound; crud-gen tests.md *Index tests*): both orders, a later batch and each order's own range.
+ * Resting on the existence check alone: the cells a bounded scope holds (another order's range, billable: one
+ * todo's entries either way, as decided in 0005) and the ids lookups (the primary key).</p>
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TimeEntryIndexIntegrationTest extends IntegrationTest {

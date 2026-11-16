@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * that decision allows. The bound holds whichever plan the planner picks, and other classes' rows can
  * only make a plan the index doesn't serve read more: it holds alone and in a full run.
  *
- * <p>The seed makes every cell its index doesn't serve read at least ten times its bound: the tested
+ * <p>The seed: the tested
  * owner's 2,000 todos in 20 lists of 100 (one in twenty OPEN, the latest due; one in ten HIGH; ten tags,
  * each on one todo in ten), beside a sibling owner with twenty times as many; the owner's 520 lists beside
  * the sibling's 10,000. Rows are written as the application writes them: UUIDv7 ids and {@code created_at}
@@ -42,6 +42,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Plus a tie group: 200 more of the owner's todos due on one day (a busy day), with a later batch's cursor
  * inside it; and an old, big owner: 3,000 lists made before anyone else's, the scope an id order walks the
  * primary key for.</p>
+ *
+ * <p>Proven red without their index (the 2026-11-16 probe: each cell's index dropped in a rolled-back transaction, the statement read against
+ * the bound; crud-gen tests.md *Index tests*): every NEWEST and DUE_DATE cell of all todos, of a list
+ * and of the OPEN ones, the later batches (the tie group's too), the due-on-or-before range, HIGH walked on
+ * each order, the lists in both orders, their later pages, the dropdown and the old owner's lists. Resting on
+ * the existence check alone: the DONE cells (most of the owner's todos: the owner's other index serves them as
+ * cheaply), the searches (the owner's rows at most either way), the tag's cascade (within its bound either way),
+ * and the cells on an index behind a constraint (the ids lookups' primary keys, the todo-tag pairs).</p>
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TodoIndexIntegrationTest extends IntegrationTest {

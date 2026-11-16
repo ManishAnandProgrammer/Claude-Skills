@@ -67,8 +67,8 @@ production fills the table:
   them once. **The red proof needs the misestimate to bite**: the tested person's rows × their tenant's
   share of the table must come to about one row, so size that cell's seed like the golden
   `PlanRowIndexIntegrationTest` (a tested member with about 100 rows, a sibling about ten times that,
-  other tenants 50 times the tenant and more), not like the 10× rule of *The seed*: for these cells
-  "unserved reads ten times the bound" becomes "a sort of the person's whole scope exceeds the bound".
+  other tenants 50 times the tenant and more): for these cells the per-cell proof (*The seed*) is that
+  without the statistics a sort of the person's whole scope exceeds the bound.
   The proof exists only where **another index competes** for the scope (an exclusion constraint's GiST
   index, a second order's index that also leads with the person): when none does, every cell is green
   with and without the statistics; keep them (TEN-33) and write in the test's javadoc why no cell can
@@ -129,10 +129,15 @@ index doesn't serve read more.
 | a contains search on a table without a scope column | the table's recorded maximum size (*Decisions per entity*), or, required with a scoping filter, that filter's rows |
 | an index the policy can't use under row mode (`&&`, `LIKE`: TEN-36) | the scope's rows (recorded in the cell) |
 
-**The seed** makes every cell its index doesn't serve read at least ten times its bound, **checked per
-cell**: the test's javadoc names the cells no seed can make expensive (a common value walked on its order's
-own index, a count of the whole table), which rest on the index's existence check alone, and the red proof
-drops an index of each other kind once. Ids are assigned **in a declared order**: within one statement
+**The seed** aims to make every cell its index doesn't serve read well past its bound, but **a claim is
+made per cell, only where it is proven**: drop the cell's index in a transaction that is rolled back
+(PostgreSQL's DDL is transactional), run the cell's statement under `EXPLAIN ANALYZE`, compare with the
+bound. The class javadoc then names the cells proven red that way and the ones that rest on the index's
+existence check alone: a common value the scope's other index serves as cheaply, a bounded scope, an index
+behind a constraint (a primary key, a unique pair), a cell another index also holds within its bound (golden
+`TodoIndexIntegrationTest`, `TagIndexIntegrationTest`, `PlanIndexIntegrationTest`,
+`TimeEntryIndexIntegrationTest`). Never "every unserved cell reads ten times its bound" without that proof.
+Ids are assigned **in a declared order**: within one statement
 `uuidv7()` follows the statement's output order, which a join or a cross join doesn't fix, so a claim such
 as "the active loans are the newest" is made true by rounds (one statement per round, in time order) or a
 single series `order by n`, and **checked before the cells** (golden `TodoIndexIntegrationTest` asserts its old owner's lists are
@@ -162,7 +167,8 @@ default_statistics_target = 1000` after seeding (in a full run they hold every o
 A fixture that inserts rows of a table with a display number splices in a number (golden
 `TODO_NUMBER_COLUMN`, `TODO_NUMBER` in the test base).
 
-**A rare value's cell is two pages, never the walking bound.** The walking bound is for a filter
+**A rare value's cell is two pages, never the walking bound** (on a table with a leading scope column; on one
+without, a rare value's plan is a use case: SKILL.md 4.1's extension point). The walking bound is for a filter
 without a rare value (a recorded reason, SKILL.md 4.1); a rare value has an index per order, so its cells
 are served. When such a cell fails two pages, the seed is wrong (the value placed where it doesn't sit:
 a later-decision status among the newest rows) or the index isn't needed (every offered order brings the

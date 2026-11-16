@@ -24,8 +24,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Every cell of the tag list and its dropdown (each order under each status value, a later page, the
  * search, the ids lookup) has its index and reads at most its bound (crud-gen tests.md row 28). The owner's
- * 500 tags, one in five inactive, sit beside a sibling owner's 10,000, interleaved in id order, so a cell
- * its index doesn't serve reads at least ten times its bound.
+ * 500 tags, one in five inactive, sit beside a sibling owner's 10,000, written in rounds as the application
+ * writes them.
+ *
+ * <p>Proven red without their index (the 2026-11-16 probe: each cell's index dropped in a rolled-back transaction, the statement read against
+ * the bound; crud-gen tests.md *Index tests*): every NAME and NEWEST cell of all tags and of the
+ * INACTIVE ones, the later pages and the ALL dropdowns. Resting on the existence check alone: the ACTIVE cells
+ * (four tags in five: the owner's other index serves them as cheaply), the searches (the owner's tags at most
+ * either way) and the ids lookups (the primary key, which can't be dropped).</p>
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TagIndexIntegrationTest extends IntegrationTest {

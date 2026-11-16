@@ -481,7 +481,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     offered order (`(scope…, status, sort keys…, id)`), unless the scope bounds the walk to a few pages
     or every offered order brings the rare rows first (recorded per order, never for the default order
     alone). Without it, an order under which the rare rows come last walks the scope past every other
-    row: on a shared root the whole table (measured: 165–202 ms against under 0.1 ms with the index);
+    row (measured: 165–202 ms against under 0.1 ms with the index). On a table without a leading scope
+    column the planner may still walk the order's index; a rare value's plan there is a use case
+    (crud-gen SKILL.md 4.1's extension point: a partial index for that value, the value a literal, proven
+    with `EXPLAIN` against the read bound), not a finding against the composite;
   - **a contains search (`query`) on a table without a scope column** reads the whole table, which grows:
     the house convention is that it is offered only on a table whose size is bounded and recorded (the most
     rows it will hold, crud-gen *Decisions per entity*, the cell's bound), or together with a filter that
@@ -525,7 +528,9 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     each filter (each value of an enum), a later batch or page, the `ids` lookup, the second steps, the
     delete-side key checks, the job leases, each naming the index meant to serve it and the most rows it
     may read; the test asserts the index exists and the statement reads at most the bound
-    (`ReadCost`, `EXPLAIN ANALYZE` rows), on a seed where every unserved cell reads ten times more;
+    (`ReadCost`, `EXPLAIN ANALYZE` rows); a claim that a cell fails without its index only where it was
+    proven so (the index dropped in a rolled-back transaction, the read past the bound), every other cell
+    named as resting on the existence check;
   - no exact `COUNT(*)` over large filtered sets on every page (PERF-04).
 - **Detect:** a status filter on a list with no status index and no recorded reason per offered order
   (a "rarely listed" note is not one: the UI offers the value); an index test that binds one status
@@ -533,7 +538,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   `Index Cond`) instead of the cell's read bound and its index's existence: the plan turns on the
   statistics, so it passes alone and fails in a full run (or the reverse), and an in-order walk that
   filters away the table passes "index by name, no Sort"; a list cell (an order × a filter) in no index
-  test, or with neither an index nor a recorded bound; a contains
+  test, or with neither an index nor a recorded bound; an index test's "every unserved cell reads ten times
+  its bound" (or any "fails without its index") that no per-cell proof backs; a contains
   search on an unscoped growing table with neither a recorded size nor a required scoping filter; **an order by the id alone** (`NEWEST` as `id desc`,
   `Sort.Order.desc("id")`) on any list; a seek in OR form, hand-written or in a cell's SQL; **an index test
   seeded with random ids or one block per scope** (production's UUIDv7 ids follow the heap: seed
