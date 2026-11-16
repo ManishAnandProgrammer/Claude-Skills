@@ -254,7 +254,8 @@ public interface TodoApi {
     @ApiResponse(responseCode = "200", description = "One batch, with pageInfo {nextCursor, hasMore}")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (size, after, minMinutes, maxMinutes or the number of ids out of range; \
-            spentOnFrom after spentOnTo, or minMinutes above maxMinutes, naming the lower bound); \
+            spentOnFrom after spentOnTo, or minMinutes above maxMinutes, naming the upper bound; a spentOn \
+            bound without sort SPENT_ON, or a minutes bound without sort MINUTES, naming that bound); \
             REQUEST_PARAMETER_INVALID (a malformed id or date, a non-numeric size or minutes, a billable \
             that is not true or false, an unknown sort, or an after that is tampered or from another \
             sort; see errors)""",

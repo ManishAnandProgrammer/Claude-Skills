@@ -1,9 +1,8 @@
 --liquibase formatted sql
 
--- The tag list's status filter under NEWEST. 0004 left it to the newest-first index ("a user's tags are a
--- bounded set"), but nothing bounds them, and under NEWEST the inactive tags are scattered over the whole
--- walk. One index per order under a scoping filter, as for every other list (house-review DATA-10; the
--- index matrix of crud-gen tests.md row 28, TagIndexIntegrationTest).
+-- The tag list's status filter under NEWEST, which 0004 left to the newest-first index. Every offered
+-- equality filter gets its own index per offered order, as for every other list (house-review DATA-10;
+-- crud-gen tests.md row 28, TagIndexIntegrationTest).
 -- bootstrap-copy.sh copies this file with the example piece.
 
 --changeset dev:0024-tags-status-newest

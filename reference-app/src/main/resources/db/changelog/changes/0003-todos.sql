@@ -37,18 +37,16 @@ CREATE TABLE todos (
     -- A real date on the sentinel would sort among the undated todos (the API stops it earlier).
     CONSTRAINT ck_todos_due_date CHECK (due_date < date '9999-12-31')
 );
--- One index per offered order (DUE_DATE: due_sort, id; NEWEST: id descending) per filter that
--- scopes the list, each ending in the id tie-breaker of its keyset:
--- * one list's todos (todoListId, the main screen); the first also serves the composite foreign key;
+-- One index per offered order (DUE_DATE: due_sort, id; NEWEST: here the id, which 0029 replaces with
+-- created_at, id) and per offered equality filter, the scope first, the id tie-breaker of its keyset last:
+-- * one list's todos (todoListId); the first also serves the composite foreign key;
 -- * all the owner's todos;
--- * the owner's todos in one status (open todos are the usual view; done ones pile up).
--- Left to the order index on purpose: priority (three values, none rare), status within one list
--- (a list is small), dueOnOrBefore (under DUE_DATE a range of the due_sort index, since the
--- repository also bounds due_sort; under NEWEST a filter), and query (a contains search no btree
--- serves; add pg_trgm if it gets slow).
+-- * the owner's todos in one status (and in one priority: 0031).
+-- dueOnOrBefore is offered under DUE_DATE only, a range of the due_sort index. query is a contains
+-- search within the owner's rows: the owner-scoped order index bounds it.
 -- tenancy-row:begin
--- -- Row mode: ILIKE isn't leakproof, so under the policy it filters the owner's rows even with a pg_trgm
--- -- index (TEN-36): the owner-scoped order index is what bounds the search.
+-- -- Row mode: ILIKE isn't leakproof, so under the policy no index serves the search itself (TEN-36):
+-- -- the owner-scoped order index is what bounds it.
 -- CREATE INDEX idx_todos_todo_list_id_owner_id_due_sort_id ON todos (todo_list_id, owner_id, tenant_id, due_sort, id);
 -- CREATE INDEX idx_todos_todo_list_id_owner_id_id ON todos (todo_list_id, owner_id, tenant_id, id);
 -- CREATE INDEX idx_todos_owner_id_due_sort_id ON todos (owner_id, tenant_id, due_sort, id);

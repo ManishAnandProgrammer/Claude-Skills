@@ -34,6 +34,13 @@ class TodoIndexIntegrationTest extends IntegrationTest {
             select id, name, owner_id, created_at, updated_at, created_by, updated_by, version
               from todo_lists""";
     private static final String DROPDOWN_ITEM = "select id, name from todo_lists";
+    // tenancy-row:begin
+    // // The repository's query names the tenant (Hibernate's @TenantId adds it), so the statement written as
+    // // the repository issues it does too.
+    // private static final String AND_TENANT = " and tenant_id = :tenantId";
+    // tenancy-row:else
+    private static final String AND_TENANT = "";
+    // tenancy-row:end
 
     /** Each offered filter and order, and each foreign key's check, with the index that serves it. */
     static Stream<Arguments> offeredFiltersAndOrders() {
@@ -45,9 +52,8 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                 Arguments.of("todos of a list, NEWEST", "idx_todos_todo_list_id_owner_id_created_at_id"),
                 Arguments.of("todos by status, DUE_DATE", "idx_todos_owner_id_status_due_sort_id"),
                 Arguments.of("todos by status, NEWEST", "idx_todos_owner_id_status_created_at_id"),
-                // 0003: no priority is rare, so the filter is applied while walking the order's index.
-                Arguments.of("todos by priority, DUE_DATE (the order's index)", "idx_todos_owner_id_due_sort_id"),
-                Arguments.of("todos by priority, NEWEST (the order's index)", "idx_todos_owner_id_created_at_id"),
+                Arguments.of("todos by priority, DUE_DATE", "idx_todos_owner_id_priority_due_sort_id"),
+                Arguments.of("todos by priority, NEWEST", "idx_todos_owner_id_priority_created_at_id"),
                 Arguments.of("todos due on or before, DUE_DATE only (a range of the order's index)", "idx_todos_owner_id_due_sort_id"),
                 Arguments.of("todos with a tag (the pair per todo)", "uq_todo_tags_todo_id_tag_id"),
                 Arguments.of("todos by ids (and the plans' todo lookup)", "pk_todos"),
@@ -70,18 +76,23 @@ class TodoIndexIntegrationTest extends IntegrationTest {
     static Stream<Arguments> firstPages() {
         return Stream.of(
                 Arguments.of("todos", "idx_todos_owner_id_due_sort_id",
-                        TODO_SUMMARY + " where owner_id = :owner order by due_sort, id limit 21"),
+                        TODO_SUMMARY + " where owner_id = :owner" + AND_TENANT + " order by due_sort, id limit 21"),
                 Arguments.of("todo lists", "idx_todo_lists_owner_id_name_id",
-                        TODO_LIST_ROW + " where owner_id = :owner order by name, id limit 20"),
+                        TODO_LIST_ROW + " where owner_id = :owner" + AND_TENANT + " order by name, id limit 20"),
                 Arguments.of("todo list dropdown", "idx_todo_lists_owner_id_name_id",
-                        DROPDOWN_ITEM + " where owner_id = :owner order by name, id limit 21"));
+                        DROPDOWN_ITEM + " where owner_id = :owner" + AND_TENANT + " order by name, id limit 21"));
     }
 
     @ParameterizedTest(name = "{0}: {1}")
     @MethodSource("firstPages")
     @DisplayName("Each list's first page is planned on its order's index, never a sequential scan")
     void theFirstPageIsPlannedOnItsIndex(String list, String index, String statement) {
-        String plan = QueryPlan.explain(jdbc, transactionManager, statement, new MapSqlParameterSource("owner", UUID.randomUUID()));
+        MapSqlParameterSource parameters = new MapSqlParameterSource("owner", UUID.randomUUID());
+        // tenancy-row:begin
+        // parameters.addValue("tenantId", testTenant().id());
+        // tenancy-row:end
+
+        String plan = QueryPlan.explain(jdbc, transactionManager, statement, parameters);
 
         assertThat(plan).as(list).doesNotContain("Seq Scan");
         assertThat(QueryPlan.indexesScanned(plan)).as(plan).contains(index);

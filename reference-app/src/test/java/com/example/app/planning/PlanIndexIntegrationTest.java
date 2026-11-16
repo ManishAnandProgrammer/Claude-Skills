@@ -25,6 +25,13 @@ class PlanIndexIntegrationTest extends IntegrationTest {
     private static final String PLAN_ROW = """
             select id, todo_id, owner_id, starts_on, ends_on, created_at, updated_at, created_by, updated_by, version
               from plans""";
+    // tenancy-row:begin
+    // // The repository's query names the tenant (Hibernate's @TenantId adds it), so the statement written as
+    // // the repository issues it does too.
+    // private static final String AND_TENANT = " and tenant_id = :tenantId";
+    // tenancy-row:else
+    private static final String AND_TENANT = "";
+    // tenancy-row:end
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -52,8 +59,13 @@ class PlanIndexIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("The first page (STARTS_ON) is planned on its index, never a sequential scan")
     void theFirstPageIsPlannedOnItsIndex() {
+        MapSqlParameterSource parameters = new MapSqlParameterSource("owner", UUID.randomUUID());
+        // tenancy-row:begin
+        // parameters.addValue("tenantId", testTenant().id());
+        // tenancy-row:end
+
         String plan = QueryPlan.explain(jdbc, transactionManager,
-                PLAN_ROW + " where owner_id = :owner order by starts_on, id limit 21", new MapSqlParameterSource("owner", UUID.randomUUID()));
+                PLAN_ROW + " where owner_id = :owner" + AND_TENANT + " order by starts_on, id limit 21", parameters);
 
         assertThat(plan).doesNotContain("Seq Scan");
         assertThat(QueryPlan.indexesScanned(plan)).as(plan).contains("idx_plans_owner_id_starts_on_id");

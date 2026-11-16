@@ -591,8 +591,8 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response[*].id", contains(after, last, first)));
         getAs(user.accessToken(), entries(todoId) + "?spentOnTo=2026-11-07")
                 .andExpect(jsonPath("$.response[*].id", contains(last, first, before)));
-        getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=2026-11-01&spentOnTo=2026-11-07&sort=MINUTES")
-                .andExpect(jsonPath("$.response[*].id", containsInAnyOrder(first, last)));
+        getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=2026-11-01&spentOnTo=2026-11-07")
+                .andExpect(jsonPath("$.response[*].id", contains(last, first)));
     }
 
     @Test
@@ -609,8 +609,8 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response[*].id", contains(above, high, low)));
         getAs(user.accessToken(), entries(todoId) + "?sort=MINUTES&maxMinutes=120")
                 .andExpect(jsonPath("$.response[*].id", contains(high, low, below)));
-        getAs(user.accessToken(), entries(todoId) + "?minMinutes=30&maxMinutes=120")
-                .andExpect(jsonPath("$.response[*].id", containsInAnyOrder(low, high)));
+        getAs(user.accessToken(), entries(todoId) + "?sort=MINUTES&minMinutes=30&maxMinutes=120")
+                .andExpect(jsonPath("$.response[*].id", contains(high, low)));
     }
 
     @Test
@@ -620,19 +620,42 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         String todoId = createTodo(user);
         String entry = createEntry(user, todoId, 60, "2026-11-01", false);
 
-        getAs(user.accessToken(), entries(todoId) + "?minMinutes=1&maxMinutes=1440")
+        getAs(user.accessToken(), entries(todoId) + "?sort=MINUTES&minMinutes=1&maxMinutes=1440")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response[*].id", contains(entry)));
-        getAs(user.accessToken(), entries(todoId) + "?minMinutes=0")
+        getAs(user.accessToken(), entries(todoId) + "?sort=MINUTES&minMinutes=0")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[*].parameter", contains("minMinutes")))
                 .andExpect(jsonPath("$.errors[*].detail", contains("must be greater than or equal to 1")));
-        getAs(user.accessToken(), entries(todoId) + "?maxMinutes=1441")
+        getAs(user.accessToken(), entries(todoId) + "?sort=MINUTES&maxMinutes=1441")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[*].parameter", contains("maxMinutes")))
                 .andExpect(jsonPath("$.errors[*].detail", contains("must be at most 1440")));
+    }
+
+    @Test
+    @DisplayName("Each range bound needs its own column's order: under the other one it is 400 VALIDATION_FAILED naming that bound")
+    void rangeFiltersNeedTheirOwnOrder() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user);
+
+        getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=2026-11-01&spentOnTo=2026-11-07&sort=MINUTES")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[*].parameter", containsInAnyOrder("spentOnFrom", "spentOnTo")))
+                .andExpect(jsonPath("$.errors[*].detail", contains(
+                        "spentOnFrom and spentOnTo need sort SPENT_ON", "spentOnFrom and spentOnTo need sort SPENT_ON")));
+        getAs(user.accessToken(), entries(todoId) + "?minMinutes=30")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].parameter", contains("minMinutes")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("minMinutes and maxMinutes need sort MINUTES")));
+        getAs(user.accessToken(), entries(todoId) + "?maxMinutes=120&sort=SPENT_ON")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[*].parameter", contains("maxMinutes")));
+        getAs(user.accessToken(), entries(todoId) + "?spentOnTo=2026-11-07&sort=SPENT_ON").andExpect(status().isOk());
+        getAs(user.accessToken(), entries(todoId) + "?maxMinutes=120&sort=MINUTES").andExpect(status().isOk());
     }
 
     @Test
@@ -642,7 +665,10 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         String todoId = createTodo(user);
         String entry = createEntry(user, todoId, 30, "2026-11-01", false);
 
-        getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=2026-11-01&spentOnTo=2026-11-01&minMinutes=30&maxMinutes=30")
+        getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=2026-11-01&spentOnTo=2026-11-01")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].id", contains(entry)));
+        getAs(user.accessToken(), entries(todoId) + "?sort=MINUTES&minMinutes=30&maxMinutes=30")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response[*].id", contains(entry)));
         getAs(user.accessToken(), entries(todoId) + "?spentOnFrom=2026-11-02&spentOnTo=2026-11-01")
@@ -650,7 +676,7 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[*].parameter", contains("spentOnTo")))
                 .andExpect(jsonPath("$.errors[*].detail", contains("spentOnFrom must not be after spentOnTo")));
-        getAs(user.accessToken(), entries(todoId) + "?minMinutes=31&maxMinutes=30")
+        getAs(user.accessToken(), entries(todoId) + "?sort=MINUTES&minMinutes=31&maxMinutes=30")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[*].parameter", contains("maxMinutes")))

@@ -54,3 +54,6 @@ databaseChangeLog:
   - include:
       file: changes/0029-newest-by-created-at.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/0031-filter-indexes.sql
+      relativeToChangelogFile: true

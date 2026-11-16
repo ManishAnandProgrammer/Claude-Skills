@@ -41,9 +41,9 @@ CREATE TABLE time_entries (
 );
 -- The list is always one todo's entries (the path scopes it), so one index per offered order under
 -- that scope, ending in the id tie-breaker: SPENT_ON (spent_on, id) and MINUTES (minutes, id), both
--- read backwards. The first also serves the composite foreign key. spentOnFrom/To are a range of
--- the first under SPENT_ON, minMinutes/maxMinutes of the second under MINUTES; otherwise they and
--- billable are filtered while walking (one todo's entries are few).
+-- read backwards. The first also serves the composite foreign key. spentOnFrom/To are offered under
+-- SPENT_ON only, a range of the first; minMinutes/maxMinutes under MINUTES only, a range of the second;
+-- billable has its own index per order (0031).
 -- tenancy-row:begin
 -- CREATE INDEX idx_time_entries_todo_id_owner_id_spent_on_id ON time_entries (todo_id, owner_id, tenant_id, spent_on, id);
 -- CREATE INDEX idx_time_entries_todo_id_owner_id_minutes_id ON time_entries (todo_id, owner_id, tenant_id, minutes, id);

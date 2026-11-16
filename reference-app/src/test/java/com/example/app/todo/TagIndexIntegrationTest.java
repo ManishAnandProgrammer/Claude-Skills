@@ -26,6 +26,13 @@ class TagIndexIntegrationTest extends IntegrationTest {
             select id, name, color, active, owner_id, created_at, updated_at, created_by, updated_by, version
               from tags""";
     private static final String DROPDOWN_ITEM = "select id, name from tags";
+    // tenancy-row:begin
+    // // The repository's query names the tenant (Hibernate's @TenantId adds it), so the statement written as
+    // // the repository issues it does too.
+    // private static final String AND_TENANT = " and tenant_id = :tenantId";
+    // tenancy-row:else
+    private static final String AND_TENANT = "";
+    // tenancy-row:end
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -48,22 +55,26 @@ class TagIndexIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * The list's and the dropdown's first page in their default order. The dropdown defaults to ACTIVE, most
-     * tags: walking the name index and skipping the few inactive ones is as good a plan as the status index.
+     * The list's and the dropdown's first page in their default order. The dropdown defaults to ACTIVE: walking
+     * the name index and skipping the inactive tags is an equally good plan as the status index, so either passes.
      */
     static Stream<Arguments> firstPages() {
         return Stream.of(
-                Arguments.of("tags", List.of("idx_tags_owner_id_name_id"), TAG_ROW + " where owner_id = :owner order by name, id limit 20"),
+                Arguments.of("tags", List.of("idx_tags_owner_id_name_id"), TAG_ROW + " where owner_id = :owner" + AND_TENANT + " order by name, id limit 20"),
                 Arguments.of("tag dropdown", List.of("idx_tags_owner_id_active_name_id", "idx_tags_owner_id_name_id"),
-                        DROPDOWN_ITEM + " where owner_id = :owner and active = :active order by name, id limit 21"));
+                        DROPDOWN_ITEM + " where owner_id = :owner and active = :active" + AND_TENANT + " order by name, id limit 21"));
     }
 
     @ParameterizedTest(name = "{0}: {1}")
     @MethodSource("firstPages")
     @DisplayName("Each list's first page is planned on one of its indexes, never a sequential scan")
     void theFirstPageIsPlannedOnItsIndex(String list, List<String> indexes, String statement) {
-        String plan = QueryPlan.explain(jdbc, transactionManager, statement,
-                new MapSqlParameterSource("owner", UUID.randomUUID()).addValue("active", true));
+        MapSqlParameterSource parameters = new MapSqlParameterSource("owner", UUID.randomUUID()).addValue("active", true);
+        // tenancy-row:begin
+        // parameters.addValue("tenantId", testTenant().id());
+        // tenancy-row:end
+
+        String plan = QueryPlan.explain(jdbc, transactionManager, statement, parameters);
 
         assertThat(plan).as(list).doesNotContain("Seq Scan");
         assertThat(QueryPlan.indexesScanned(plan)).as(plan).containsAnyElementsOf(indexes);

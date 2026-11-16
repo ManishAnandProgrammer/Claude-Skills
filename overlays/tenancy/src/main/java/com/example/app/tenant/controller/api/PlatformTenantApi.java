@@ -28,7 +28,7 @@ public interface PlatformTenantApi {
 
     @Operation(summary = "Tenants, a page at a time", description = "Newest first unless sort says otherwise.")
     @ApiResponse(responseCode = "200", description = "A page of tenants")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_PARAMETER_INVALID",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (query without status, naming query), REQUEST_PARAMETER_INVALID",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
