@@ -99,7 +99,7 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         assertThat(owner.queryForObject("select count(*) from %s.todos where requester_id = ?".formatted(TenantSchemas.of(ALPHA)),
                 Integer.class, LEFT)).as("the todos the member who left asked for still name them").isEqualTo(20 * 6);
         assertThat(owner.queryForList("select id from platform.databasechangelog", String.class))
-                .contains("0030-platform-newest-by-created-at");
+                .contains("0030-platform-list-indexes");
         for (UUID unprovisioned : List.of(PI, RHO)) {
             assertThat(owner.queryForObject("select count(*) from pg_namespace where nspname = ?", Integer.class,
                     TenantSchemas.of(unprovisioned))).isZero();

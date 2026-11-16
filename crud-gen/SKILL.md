@@ -218,8 +218,8 @@ Check before generating:
 | Unique text ignores case and surrounding spaces (one of the two shapes; partial when nullable). A column whose `CHECK` admits one spelling only (an ISBN of exactly 13 digits: no case, no spaces) takes a plain `UNIQUE`, and its `@Schema` says "unique" without "ignoring case" | DATA-05 |
 | A unique **code or identifier** (a course code, an SKU): **ask** "store it normalised (`CS101` upper-cased on write), or keep what was typed?". Normalised is DATA-05's first shape: the mapper upper- or lower-cases it, a `CHECK`, one plain `UNIQUE` that serves uniqueness, every `code = ?` lookup and the CODE order. The `CHECK` is the format when the request has a `@Pattern` (`CHECK (code ~ '^[A-Z0-9-]{1,20}$')`, upper-cased: it implies the normalisation; `code = upper(trim(code))` alone checks the case and lets a fixture or an import store a code no PUT can send back), else the normalising expression. The column is `text COLLATE "C"` (DATA-12: a code compares and sorts byte for byte, as Java does; names keep the locale's collation). Kept as typed is the second: a unique index on `lower(trim(code))`, an order on the code needs its own `(code, id)` index, and a lookup must name the same expression, never `WHERE code = ?` (a sequential scan). Prefer normalised for codes; record the answer | DATA-05 |
 | An **email** field: stored as `Emails.normalize` gives it (the first shape, golden `users`: `ck_<table>_email_normalized`, plain unique); the request shape is 4.1's *Email* | DATA-05 |
-| A value the mapper normalises (an email lower-cased and trimmed) has a `CHECK` with the same expression (`email = lower(trim(email))`, golden `users`) | DATA-05 |
-| A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one. Its "taken on update" test (tests.md row 11) means the writes that move a row **into** the live status or change the pair; when none does (the pair fixed at the create, no move back to live), the create's test is the whole duty: say so. When the entity also has a **date range**, ask the follow-up: "does a finished record (past its `endsOn`, still `<LIVE>`) still block a new one?" (a student who completed a course retaking it). If not, the rule is either no overlapping live ranges, DATA-35's exclusion constraint `WHERE (status = '<LIVE>')`, or a decided terminal status (`COMPLETED`, set by a person or a job), never "live" read from the dates (DATA-37) | DATA-05, DATA-35, DATA-37 |
+| A value the mapper normalises (an email lower-cased and trimmed) has a `CHECK` with the same expression (`email = lower(trim(email))`, golden `users`); trimming alone (a name the mapper `strip()`s) needs none, as its unique index's `lower(trim(…))` already covers it (golden `TodoList`, `Tag`) | DATA-05 |
+| A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one. Its "taken on update" test (tests.md row 11) means the writes that move a row **into** the live status or change the pair; when none does (the pair fixed at the create, no move back to live), the create's test is the whole duty: say so. When the entity also has a **date range**, ask the follow-up: "(a digits-only identifier, an ISBN, needs no `COLLATE "C"`: digits sort the same in every collation; a code with letters keeps it) does a finished record (past its `endsOn`, still `<LIVE>`) still block a new one?" (a student who completed a course retaking it). If not, the rule is either no overlapping live ranges, DATA-35's exclusion constraint `WHERE (status = '<LIVE>')`, or a decided terminal status (`COMPLETED`, set by a person or a job), never "live" read from the dates (DATA-37) | DATA-05, DATA-35, DATA-37 |
 | Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is not applied**, ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
 | A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column | DATA-33 |
 | `Instant` for moments, `LocalDate` for picked dates, no time zones | JAVA-25 |
@@ -349,7 +349,7 @@ those, not an `IllegalStateException`. A target that no state may move to (a sta
 only the create sets, `ACTIVE` for an enrollment, `PENDING` for a tenant) is refused the same way, 409
 with that code: the move is valid in itself, the lifecycle refuses it (ERR-05). **Ask about the
 terminal statuses** (WITHDRAWN, CANCELLED, CLOSED): may a record in one still be edited (PUT, the
-member and file writes) or deleted? When it is frozen, the entity's edit method guards it **first
+member and file writes) or deleted? When it is frozen, the entity's edit method guards it (or, when a rule the service checks comes before the edit, a public `require<Live>()` the service calls right after the version check) **first
 after the version check**, before any other rule (a configured maximum, a parent's state): 409
 `<ENTITY>_<STATUS>` (`ENROLLMENT_WITHDRAWN`, ERR-04's names), documented on each refused write, with
 tests.md row 26b (whose write would also break another rule, so the order is tested); when only the delete stays open, say so in the API text. Their tests take each
@@ -408,7 +408,17 @@ loans among the history). A filter with a rare value is **scoping**, and gets on
 order (`(<scope>, status, <sort keys>, id)`; golden `idx_todos_owner_id_status_due_sort_id` and
 `…_status_id`): walking the order's index with the filter reads every other row that comes first, and
 the rare rows come last under some order (active loans have the latest days, so `STARTS_ON` walks the
-whole history first; measured 165 ms against 0.06 ms with the index). Leave it to the order's index
+whole history first; measured 165 ms against 0.06 ms with the index). **On a table without a leading
+scope column** (a shared root, a platform register) that composite doesn't serve: the planner costs it
+by its leading status column's heap correlation and walks the order's own index through the common rows
+instead (library-desk: 28,503 rows for a page past the recent block). There each rare value gets a
+**partial index per offered order**, `(<sort keys>, id) WHERE status = '<VALUE>'`, and the repository
+writes that value as a SQL literal, `builder.equal(root.get(X_.status), builder.literal(filter.getStatus()))`
+(an enum constant's name: safe to inline), because a partial index matches a bound parameter only in a
+custom plan and pgjdbc's prepared statements switch to a generic plan after five runs. The common value
+walks the order's index (`(<sort keys>, id)`). Golden: the tenancy overlay's `TenantRepositoryImpl.matching`,
+`0030-platform-list-indexes.sql`, `PlatformTenantIndexIntegrationTest` (its cells under
+`ReadCost.ofGenericPlan`). A scoped table keeps the composite. Leave it to the order's index
 only when (record which and why, so the review doesn't ask again):
 - no value is rare (golden `0003`: priority, three values, none rare); or
 - the scope bounds the walk to a few pages whatever the value (status within one list: a list is
@@ -606,7 +616,11 @@ overlapping ranges: an exclusion constraint mapped to `<ENTITY>_OVERLAPS`, with 
 simultaneous overlap answers a retryable 503; DATA-35, golden `0011-plans.sql`, `PlanService.create`).
 An exclusion constraint with a plain column (`owner_id WITH =`) needs the `btree_gist` extension: the
 project's first one creates it in a changeset of its own, before the table's (`CREATE EXTENSION IF NOT
-EXISTS btree_gist;`, golden `0011-plans.sql`'s first changeset); without it the migration fails.
+EXISTS btree_gist;`, golden `0011-plans.sql`'s first changeset); without it the migration fails. Its
+`docs/runbook.md` gets a line (a restore onto a server without the extension fails the same way). A
+returned record that must keep the days it really held: the constraint's range is
+`daterange(starts_on, least(coalesce(returned_on, ends_on), ends_on), '[]')` with no status predicate,
+rather than `WHERE (status = '<LIVE>')`, which frees every day of a returned record.
 A lock a write already takes for a state rule (Step 1) queues the writes it covers, so their overlaps
 answer 409; never take a lock only to turn that 503 into a 409 (DATA-29).
 
@@ -689,7 +703,7 @@ service with the child (Step 8). A same-module parent's names on a list page: go
 length, an upload policy's file count) on an update runs only when the fields it reads change, so a
 lowered limit never blocks correcting another field of an existing record (golden
 `TodoService.changeAttachments`: the file count is checked only when the files change; tests.md
-row 25f). The exception is a range's configured maximum length (`@ConfiguredMax` on the update's
+row 25f). A field's own configured cap (`@ConfiguredMax` on a full-replace PUT, a maximum year) is checked only when the value changes too (compare with the stored one in the service), or a lowered cap blocks editing anything else of an older record; its `limits.yml` comment says "lower it only once no stored value is higher" when it is checked on every write. The exception is a range's configured maximum length (`@ConfiguredMax` on the update's
 `getLengthInDays()`, 4.1): it is checked on every update, which is safe because the maximum may only
 ever be lowered once no stored range is longer (its `limits.yml` comment says so). No remote call inside a
 transaction (DATA-01). Never lock "the current X" by a mutable column (DATA-32).

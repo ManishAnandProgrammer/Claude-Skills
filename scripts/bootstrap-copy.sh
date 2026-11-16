@@ -523,7 +523,7 @@ done
 # support/PreviousReleaseDatabase). A later platform changeset that tenant tables don't need goes in
 # platform_changesets only, never in first_changesets.
 first_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql 0020-tenant-members-list.sql 0021-users-session-version.sql 0022-memberships-session-version.sql"
-platform_changesets="$first_changesets 0027-users-status.sql 0028-platform-users-deactivation.sql 0030-platform-newest-by-created-at.sql"
+platform_changesets="$first_changesets 0027-users-status.sql 0028-platform-users-deactivation.sql 0030-platform-list-indexes.sql"
 # $1: platform, tenant, first, rest or all; the copied changesets of that kind, in order.
 changesets_of() {
     local want="$1" changeset name

@@ -207,7 +207,8 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   (the owners' dependency statistics); session-version 0021 without tenancy (the users column) or 0022
   with it (the membership column, a platform changeset); example 0024 (tags by status, newest first) and
   0025 (a todo's requester), with metadata 0026 (the todos' display numbers), 0029 (NEWEST indexes on the
-  creation time); tenancy 0030 (the same for the platform's lists). **The pieces own 0001 to
+  creation time); tenancy 0030 (the same for the platform's lists, and the tenants list's partial indexes per
+  rare status). **The pieces own 0001 to
   0099; a project's own changesets start at 0100** (`0100-orders.sql`, then 0101, …), whatever the copy
   holds: a piece turned on later (the session version) or a piece's new changeset in a later skills
   release brings its own number below 0100 without two files sharing one, appended to the master after

@@ -119,6 +119,8 @@ class PlanIndexIntegrationTest extends IntegrationTest {
     /**
      * {@code days} more days of plans for each of the owner's {@code todos} todos, from day {@code firstDay},
      * one plan a day per todo (one owner's plans never share a day), created now: UUIDv7 ids and clock times.
+     * Within the statement the ids follow the cross join's output, not the days: the cells claim nothing
+     * finer than the rounds' order.
      */
     private void seedPlans(UUID owner, int todos, int firstDay, int days) {
         // tenancy-row:begin

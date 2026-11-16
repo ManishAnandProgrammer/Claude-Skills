@@ -101,6 +101,11 @@ class TodoIndexIntegrationTest extends IntegrationTest {
             seedTodos(siblingId, 2 * round, 2, 1_000);
         }
         seedTieGroup(ownerId);
+        // The seed's own claim, checked before any cell relies on it: the old owner's lists are older than everyone else's.
+        Boolean oldestOfAll = jdbc.queryForObject("""
+                select max(created_at) filter (where owner_id = ?) < min(created_at) filter (where owner_id in (?, ?))
+                  from todo_lists""", Boolean.class, oldOwnerId, ownerId, siblingId);
+        assertThat(oldestOfAll).isTrue();
         // Ten tags of the owner, each on one todo in ten (a random one: tags follow no order).
         // tenancy-row:begin
         // sql("""

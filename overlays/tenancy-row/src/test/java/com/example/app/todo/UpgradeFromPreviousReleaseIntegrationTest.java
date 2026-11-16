@@ -93,7 +93,7 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     void theNewChangesetsRanOverTheSeededTenants() throws SQLException {
         // The owner's table: the application role can't read it.
         assertThat(textInTenant(ALPHA, "select string_agg(id, ',') from databasechangelog"))
-                .contains("0029-newest-by-created-at", "0030-platform-newest-by-created-at");
+                .contains("0029-newest-by-created-at", "0030-platform-list-indexes");
         assertThat(inTenant(ALPHA, "select count(*) from todos where title like 'Upgrade todo %'")).isEqualTo(20 * 60 + 2 * 5 + 5);
         assertThat(inTenant(ALPHA, "select count(*) from todos where requester_id = '" + LEFT + "'")).isEqualTo(20 * 6);
         assertThat(inTenant(ALPHA, "select count(*) from todos where owner_id = '" + LEFT + "'"))

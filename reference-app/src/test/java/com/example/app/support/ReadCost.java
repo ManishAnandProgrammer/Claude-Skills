@@ -6,7 +6,9 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -50,6 +52,54 @@ public record ReadCost(long rowsRead, String plan) {
             return new NamedParameterJdbcTemplate(jdbc).queryForList(
                     "explain (analyze, costs off, timing off, summary off, buffers off) " + statement, parameters, String.class);
         });
+        return of(planLines);
+    }
+
+    /**
+     * The same under a generic plan, the one pgjdbc's prepared statements end up with after five runs:
+     * {@code statement} (with {@code $1, $2, ...}: numbers or text) is prepared, planned for no particular values
+     * ({@code plan_cache_mode = force_generic_plan}) and executed with {@code values}. A partial index
+     * ({@code WHERE status = 'PENDING'}) serves such a plan only when the statement names the value as a literal.
+     */
+    public static ReadCost ofGenericPlan(JdbcTemplate jdbc, PlatformTransactionManager transactionManager, String statement,
+                                         List<?> values) {
+        // A name of its own: a prepared statement outlives the transaction, on the pooled connection.
+        String name = "read_cost_" + UUID.randomUUID().toString().replace("-", "");
+        String prepare = values.isEmpty() ? "prepare " + name + " as " : "prepare " + name + "(" + typesOf(values) + ") as ";
+        // EXPLAIN takes no bind parameters: the values go in as literals.
+        String execute = values.isEmpty() ? "execute " + name : "execute " + name + "(" + literalsOf(values) + ")";
+        List<String> planLines = new TransactionTemplate(transactionManager).execute(transaction -> {
+            transaction.setRollbackOnly();
+            jdbc.execute("set local enable_seqscan = off");
+            jdbc.execute("set local enable_bitmapscan = off");
+            jdbc.execute("set local plan_cache_mode = force_generic_plan");
+            jdbc.execute(prepare + statement);
+            List<String> lines = jdbc.queryForList("explain (analyze, costs off, timing off, summary off, buffers off) " + execute,
+                    String.class);
+            jdbc.execute("deallocate " + name);
+            return lines;
+        });
+        return of(planLines);
+    }
+
+    private static String literalsOf(List<?> values) {
+        List<String> literals = new ArrayList<>();
+        for (Object value : values) {
+            literals.add(value instanceof String text ? "'" + text.replace("'", "''") + "'" : String.valueOf(value));
+        }
+        return String.join(", ", literals);
+    }
+
+    /** The SQL types of the values, in order: PREPARE declares its parameters. */
+    private static String typesOf(List<?> values) {
+        List<String> types = new ArrayList<>();
+        for (Object value : values) {
+            types.add(value instanceof String ? "text" : "bigint");
+        }
+        return String.join(", ", types);
+    }
+
+    private static ReadCost of(List<String> planLines) {
         long rowsRead = 0;
         // EXPLAIN reports rows and removed rows per loop: both count once per loop of their scan.
         long loopsOfTheScan = 0;
