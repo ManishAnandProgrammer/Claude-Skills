@@ -237,9 +237,9 @@ is code-smells.md, java.md and architecture.md.
 
 ### REL-03: Dependency outages degrade the feature, not the app
 - **Check:** fail-open or fail-closed is decided per dependency, and its client's javadoc says which
-  (golden `RedisRateLimiter`). A fail-open fallback to the database is bounded, or it moves the
-  outage onto the pool. Health is covered in
-  REL-14.
+  (golden `RedisRateLimiter`). A fail-open fallback to the database is at most one indexed read per
+  request (golden: the session version's read while Redis is down), or it moves the outage onto the
+  pool. Health is covered in REL-14.
 - **Severity:** High.
 
 ### REL-04: Timeouts nest (deadline budget)
