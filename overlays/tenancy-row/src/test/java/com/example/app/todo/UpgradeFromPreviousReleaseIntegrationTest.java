@@ -30,8 +30,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Row mode: what the changesets after the previous release did to a used database (support/
  * PreviousReleaseDatabase built it: that release's changesets, then db/upgrade/previous-release-seed.sql
  * with tenants in every status, then the rest; crud-gen tests.md, *Upgrading a used database*). The cells
- * of the tenant lifecycle x seeding matrix (docs/design/tenancy.md) a fresh database can't reach: a
- * changeset over tenants that already hold rows, in every status. Runs only on such a run: verify.sh sets
+ * of the tenant lifecycle x seeding matrix (house-review references/tenancy-matrices.md) a fresh database
+ * can't reach: a changeset over tenants that already hold rows, in every status. Runs only on such a run: verify.sh sets
  * {@code app.test.upgrade.previous-release}.
  */
 @WithoutTestTenant

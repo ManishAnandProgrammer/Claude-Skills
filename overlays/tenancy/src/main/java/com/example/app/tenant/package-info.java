@@ -29,6 +29,6 @@
  * </ul>
  *
  * No plans or payment state: a billing module owns those and decides when to call {@code suspend}.
- * The design and its reasons: {@code docs/design/tenancy.md}.
+ * The rules and their reasons: house-review {@code references/tenancy.md}, its test matrices beside it.
  */
 package com.example.app.tenant;

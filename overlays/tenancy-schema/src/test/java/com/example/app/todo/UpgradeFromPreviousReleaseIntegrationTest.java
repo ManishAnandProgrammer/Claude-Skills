@@ -29,8 +29,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * built it: the platform at the previous release with tenants in every status, each provisioned tenant's
  * schema at that release with its rows; crud-gen tests.md, *Upgrading a used database*). TenantMigrations
  * brings the schemas up as a deploy does; the cells of the tenant lifecycle x seeding matrix
- * (docs/design/tenancy.md) a fresh database can't reach. Runs only on such a run: verify.sh sets
- * {@code app.test.upgrade.previous-release}.
+ * (house-review references/tenancy-matrices.md) a fresh database can't reach. Runs only on such a run:
+ * verify.sh sets {@code app.test.upgrade.previous-release}.
  */
 @WithoutTestTenant
 @EnabledIfSystemProperty(named = "app.test.upgrade.previous-release", matches = "\\d+")
