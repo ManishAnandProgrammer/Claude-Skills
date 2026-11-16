@@ -418,7 +418,11 @@ types.
 - **Detect:** a `spring.jackson` key of CFG-05 missing or relaxed; `@JsonFormat(lenient = …)` or a
   hand-written deserializer on a request field of a standard type. Not a finding: a form no setting
   refuses (a date as a `[year, month, day]` array or with surrounding spaces, a UUID as Base64, a number
-  sent for a text field).
+  sent for a text field), nor a value with a leading or trailing space or control character, NUL
+  included, which Jackson's date, moment and enum readers and Spring's query converters trim, nor a
+  single-valued query parameter sent twice (Spring takes one);
+  core's `StrictJsonInputIntegrationTest` holds every other form of every type in a body, a query
+  parameter and a cursor key.
 - **Why strict, not "tolerant reader":** tolerance is for data we read back, which we didn't just
   receive from the caller: stored JSON (DATA-27, META-04) and other services' responses are read
   leniently. A request is never read leniently: the caller is right there to be told about the

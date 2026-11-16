@@ -22,6 +22,12 @@ app:
     password-hash-strength: 4
   cors:
     allowed-origins: http://localhost:3000
+  limits:
+    # The test-only probe's day (support/HostileInputProbeController), bounded as every body date is.
+    earliest-date:
+      probe.day: "1900-01-01"
+    latest-date:
+      probe.day: "2999-12-31"
   # sign-in:begin
   # The sign-in limits are production's (config/limits.yml). Each MockMvc request comes from its own
   # client address (support/DistinctClientAddresses), as each test uses its own accounts, so no test
