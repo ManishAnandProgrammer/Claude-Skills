@@ -658,3 +658,30 @@ text copies them as a claim. Each was one run on the reference's shapes, not a b
 - `TextSearch`, a contains search on 50,000 rows: 54 ms as `position()`, 1 ms with a trigram index and an
   escaped `LIKE`.
 - TEN-32, Hibernate's `tenant_id = ?` makes the policy's predicate a one-time filter (the todo index shapes).
+
+## Versioned documents (DATA-36): the shape kept out of the rule
+
+DATA-36 is a use case (no golden code, not generated); the rule keeps only what a review checks. A project
+that builds versioned documents can start from this shape:
+- the stored state is the decision only, `DRAFT` / `PUBLISHED`, with `CHECK ((status = 'PUBLISHED') =
+  (published_at IS NOT NULL))`; `CURRENT`, `SUPERSEDED`, `SCHEDULED`, `EXPIRED` come from the dates (DATA-37);
+- the record's response carries the version id (and `versionNo` or `effectiveFrom`); its copied values sit in
+  columns commented `SNAPSHOT at <event>, never synced`;
+- correcting a published version's past is its own privileged action that records why, never the update;
+- superseding locks the document row by id first (never "the open version" by a mutable column: DATA-32),
+  then closes the open version and inserts the next with one clock read (JAVA-25). Without that lock two
+  supersedes deadlocked in the exclusion constraint, even with one insert per transaction; with it the loser
+  waits, fails the document's version check and answers 409;
+- a new draft is one explicit entity method (`RateVersion.draftFrom(previous)`, each field named, children
+  through `add…`), never `toBuilder()`: `@SuperBuilder(toBuilder = true)` copied the id, the version and the
+  audit fields and shared the collections, and `save(copy)` overwrote the published row (with the ids reset
+  by hand, persist failed on "Found shared references to a collection");
+- the copy's drift test compares `to_jsonb(row)` of source and copy minus the keys that must differ (`id`,
+  `version_no`, `status`, `published_at`, `version`, `created_*`, `updated_*`), for the version row and each
+  child table, and first asserts the source fixture has no NULL column (except `created_by` / `updated_by`):
+  a column NULL or default in both rows compared equal, a false green;
+- tests: superseding keeps the earlier slice; both sides of a boundary; a stored result answers byte for byte
+  the same after a new version; an overlapping version 409; concurrent supersedes store one version and
+  answer 409, never 503; the drift test;
+- an example: a per-owner `billing_rates` referent with `billing_rate_versions`, time entries gaining
+  `billing_rate_version_id` and `rate_applied`.

@@ -331,10 +331,7 @@ at its end.
 
   Schema (composite owner FKs on both sides, DATA-33), API (`PUT /<as>/{id}/<bs>`, A's own PUT
   refuses `<b>Ids`) and the list (one grouped query for a batch's links) as in the golden files.
-- **Versioned document** (a rate, a price list, terms or a form whose records must keep the version
-  they were made from; DATA-36): **no golden code yet**, so crud-gen does not generate it. Say so,
-  and offer the plain entity plus a hand-written version table that follows DATA-35's version-chain
-  shape and DATA-36 (version id and snapshot columns on the records, `draftFrom`, the drift test).
+- **Versioned document** (DATA-36, a use case): not generated. Generate the plain entity and say so.
   A status the clock changes (`EXPIRED`, `CURRENT`) is never generated as a stored enum (DATA-37).
 - **Variant A: list CRUD** (no FK with `unique = true`). **Variant B: one per parent** (a unique
   FK): a nested singleton resource; GET returns a null object when absent, PUT creates or

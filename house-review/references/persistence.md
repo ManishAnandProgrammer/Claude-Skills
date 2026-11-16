@@ -712,58 +712,19 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   open end; a `GENERATED` range column without `STORED`.
 - **Severity:** High (two overlapping bookings is corrupt data).
 
-### DATA-36: Versioned documents and the records made from them
-- **Check:** a record made **from** a document that changes (an invoice from a price list, a time
-  entry billed at a rate, a submission of a form, an acceptance of terms) keeps what it was made
-  from:
-  - it points at the **version** it used (`<doc>_version_id`, a foreign key to the version row,
-    not to the document), and **copies the values it computed with** (`rate_applied`, `unit_price`)
-    in columns commented `SNAPSHOT at <event>, never synced`. Its response carries the version id
-    (and `versionNo` or `effectiveFrom`), so a client can show "billed at the rate of 1 March";
-  - a published version is **never edited**: no setters, entity methods refuse once it is
-    `PUBLISHED` (JAVA-20), no update endpoint on it. A new value is a new version. Correcting a
-    published version's past (a backdated change, not a new one) is its own privileged action that
-    records why, never the ordinary update (DESIGN.md: considered);
-  - the stored state is the decision only: `DRAFT` / `PUBLISHED`, with `CHECK ((status =
-    'PUBLISHED') = (published_at IS NOT NULL))`. `CURRENT`, `SUPERSEDED`, `SCHEDULED`, `EXPIRED` are
-    derived from the dates and version numbers in the response (DATA-37);
-  - **superseding locks the document row first** (its `findForUpdate…`, by id, never "the open
-    version" by a mutable column: DATA-32), then reads the open version, closes it and inserts the
-    next, with **one clock read** for the close and the open (JAVA-25). Without the lock, two
-    supersedes deadlock in the exclusion constraint (measured 2026-11-14 with one insert per
-    transaction too); with it, the loser waits, then fails the document's version check (the
-    request carries the version the user saw, DATA-06) and answers 409;
-  - the chain follows DATA-35's version-chain shape (`[from, to)`, CHECK, NULL open end);
-  - **a copy** (a new draft from the latest version, with its child rows) is **one explicit entity
-    method** (`RateVersion.draftFrom(RateVersion previous)`, each field named, children copied
-    through the entity's `add…` methods), never `toBuilder()`: Lombok's `@SuperBuilder(toBuilder =
-    true)` copies the id, the version and the audit fields and shares the collections, and
-    `save(copy)` silently **overwrote the published row** (measured 2026-11-14; after resetting the
-    ids by hand, persist failed on "Found shared references to a collection");
-  - **the copy has a drift test**: an integration test compares `to_jsonb(row)` of the source and
-    the copy, minus the keys that must differ (`id`, `version_no`, `status`, `published_at`,
-    `version`, `created_*`, `updated_*`), for the version row and each child table
-    (`jsonb_agg(to_jsonb(child) - … ORDER BY …)`), and **first asserts the source fixture has no
-    NULL column** (`jsonb_each(to_jsonb(source)) WHERE value = 'null'`, except `created_by` /
-    `updated_by`), with non-default values: a forgotten column that is NULL or default in both rows
-    compares equal (a false green, measured). A new column the copy forgets turns the test red. No
-    reflection in application code.
-- **Why:** a result that reads the live document (`invoice.getPriceList().getPrice()`) changes
-  meaning when the document changes; a copy written field by field forgets the next column added.
-- **Not a finding when:** the record wants the referenced thing's **current** value (a customer's
-  current email): that is a plain reference.
+### DATA-36: Versioned documents and the records made from them (a use case)
+- **Check:** crud-gen doesn't generate them and no golden code shows them; the rule applies to
+  hand-written code. A record made **from** a document that changes (an invoice from a price list, a
+  time entry billed at a rate, a submission of a form, an acceptance of terms) points at the
+  **version** it used (a foreign key to the version row, not to the document) and copies the values it
+  computed with (`rate_applied`). A published version is never edited: a new value is a new version.
+  The chain follows DATA-35's version-chain shape; statuses the dates decide are derived (DATA-37).
+- **Why:** a result that reads the live document changes meaning when the document changes, and an
+  edited published version rewrites every result made from it.
 - **Detect:** a result's foreign key to the document with no version; a mapper or report reading the
-  document's live value for a stored result; a setter or an update endpoint on a published version;
-  `toBuilder()` on an entity; a hand-written copy without a drift test, or with one whose fixture
-  leaves columns NULL; supersede code that locks the open version (`… WHERE effective_to IS NULL FOR
-  UPDATE`) instead of the document.
-- **Tests:** superseding keeps the earlier slice (the old version keeps `[from, newFrom)`); both
-  sides of a boundary (the day before `to` finds the old version, `to` the new one); a stored result
-  is unchanged (its response byte for byte) after a new version is published; an overlapping version
-  is 409; concurrent supersedes of one document store one new version and answer 409, never 503; the
-  copy's drift test.
-- **Reference:** no golden code yet (the planned shape: a per-owner `billing_rates` referent with
-  `billing_rate_versions`, and time entries gaining `billing_rate_version_id` and `rate_applied`).
+  document's live value for a stored result (a record that wants the **current** value, a customer's
+  email, is a plain reference, not a finding); a setter or an update endpoint on a published version;
+  `toBuilder()` on an entity (it copies the id, the version and the audit fields).
 - **Severity:** High (a past result changes meaning, or a published version is overwritten).
 
 ### DATA-37: No stored status that the passage of time changes
