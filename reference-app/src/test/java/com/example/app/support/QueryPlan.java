@@ -32,9 +32,10 @@ public final class QueryPlan {
 
     /**
      * The plan of {@code statement} under {@code EXPLAIN} (planned, not run), in a transaction rolled back.
-     * Sequential and bitmap scans are off: a test database's tables are small, where reading one whole is
-     * rightly cheaper and the plan would show no index at all; with them off the planner shows the index it
-     * would use, and a missing index shows as another one or as a disabled sequential scan.
+     * Sequential scans, bitmap scans and sorts are off: on a test database's small tables, and for a scope
+     * id the statistics put at a row or two, reading the table whole or sorting a few rows from any index is
+     * rightly cheaper, and the plan would turn on the data. With them off the planner shows the index that
+     * serves the statement in its order, and a missing index shows as another one or a disabled node.
      */
     public static String explain(JdbcTemplate jdbc, PlatformTransactionManager transactionManager, String statement,
                                  MapSqlParameterSource parameters) {
@@ -42,6 +43,7 @@ public final class QueryPlan {
             transaction.setRollbackOnly();
             jdbc.execute("set local enable_seqscan = off");
             jdbc.execute("set local enable_bitmapscan = off");
+            jdbc.execute("set local enable_sort = off");
             return new NamedParameterJdbcTemplate(jdbc).queryForList("explain (costs off) " + statement, parameters, String.class);
         });
         return String.join("\n", planLines);

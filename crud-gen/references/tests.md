@@ -64,8 +64,9 @@ nothing about costs:
 2. **The first page is planned on its index**: per list (a dropdown is a list of its own), one `EXPLAIN` of
    the first page in the default order, written as the repository issues it (same select list, predicates,
    order, `limit`; `size + 1` for a cursor list): `QueryPlan.explain(jdbc, transactionManager, sql,
-   parameters)` plans it without running it, with sequential and bitmap scans off (a test database's small
-   tables would rightly be read whole), and the test asserts `doesNotContain("Seq Scan")` and that
+   parameters)` plans it without running it, with sequential scans, bitmap scans and sorts off (on a test
+   database's small tables, or for a scope the statistics put at a row, the plan would otherwise turn on the
+   data), and the test asserts `doesNotContain("Seq Scan")` and that
    `QueryPlan.indexesScanned(plan)` holds the expected index, or one of the expected ones when another is an
    equally good plan (golden `TagIndexIntegrationTest`'s ACTIVE dropdown). A scope id that matches nothing
    is enough: no seed, the plan comes from the statement.
