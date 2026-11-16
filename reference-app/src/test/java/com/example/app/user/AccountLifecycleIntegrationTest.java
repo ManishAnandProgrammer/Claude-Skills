@@ -128,7 +128,7 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$.errorCode").value("SESSION_VERSION_STALE"));
         }
         // session-version:else
-        // // Without the session version an access token lives out its lifetime (at most 15 minutes).
+        // // An access token lives out its lifetime (at most 15 minutes).
         // getAs(laptop.accessToken(), ME).andExpect(status().isOk());
         // session-version:end
         login(phone.email(), PASSWORD)

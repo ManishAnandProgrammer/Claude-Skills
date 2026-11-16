@@ -49,8 +49,8 @@ import java.util.UUID;
  * <p>Every issue for an account (login, refresh, switch, impersonation, a password change) starts with the
  * account's row, share-locked and ACTIVE ({@code UserService.activeForTokenIssue}), before it touches a
  * refresh token or a membership: a suspension or a password change updates that row first, so either the
- * issue commits before the change (which then revokes what it issued and raises the session versions over
- * its access token) or it reads the change and refuses. Same order everywhere: no deadlock.</p>
+ * issue commits before the change (which then revokes what it issued) or it reads the change and refuses. Same
+ * order everywhere: no deadlock.</p>
  */
 @Service
 @Slf4j
@@ -189,9 +189,13 @@ class TokenService {
 
     /**
      * A password change, in one transaction: the new hash (its update takes the account's row first), every
-     * refresh token of the account revoked in every tenant, every membership's session version raised (with
-     * that piece), and new tokens for the calling device, in the tenant it is signed in to. A suspended account
-     * changes nothing: 403 {@code AUTH_ACCOUNT_SUSPENDED}.
+     * refresh token of the account revoked in every tenant, and new tokens for the calling device, in the
+     * tenant it is signed in to.
+     *   <!-- session-version:begin -->
+     * Every membership's session version is raised too, so every other access token is refused from its next
+     * request.
+     *   <!-- session-version:end -->
+     * A suspended account changes nothing: 403 {@code AUTH_ACCOUNT_SUSPENDED}.
      */
     @Transactional
     TokenResponse replacePassword(UUID userId, UUID tenantId, String newPasswordHash) {

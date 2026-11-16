@@ -169,9 +169,14 @@ class AuthIntegrationTest extends IntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.response.email").value(longest.toLowerCase()));
         login(longest.toUpperCase(), PASSWORD).andExpect(status().isOk());
-        signup("e" + longest, PASSWORD)
+        // One longer, every part still valid (a 64-character local part, labels of at most 63): only the length refuses it.
+        String tooLong = "a".repeat(64) + "@" + unique + "B".repeat(31) + "." + "c".repeat(63) + "." + "d".repeat(59) + ".io";
+        assertThat(tooLong).hasSize(255);
+        signup(tooLong, PASSWORD)
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors[*].pointer", hasItem("#/email")));
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/email"))
+                .andExpect(jsonPath("$.errors[0].detail").value("must be at most 254 characters"));
     }
 
     @Test

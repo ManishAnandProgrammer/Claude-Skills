@@ -174,8 +174,13 @@ held their tables: a backfill rewrites its table under a lock, so a big one runs
 **Suspending an account** (abuse, a compromised account, someone who left) is an ADMIN's: find it with
 `GET /api/v1/users?email=<address>` (its `id`, `status` and `version`), then
 `PATCH /api/v1/users/{id}/status` with `{"status": "SUSPENDED", "version": n}`, never an `UPDATE users`:
-the endpoint also revokes every refresh token and, with the session version, ends the access tokens at
-once; SQL would leave them working. `ACTIVE` reactivates (the ended sessions stay ended). An ADMIN never
+the endpoint also revokes every refresh token
+<!-- session-version:begin -->
+and ends the access tokens at once (the session version);
+<!-- session-version:else -->
+<!-- (the access tokens already issued expire within their 15 minutes); -->
+<!-- session-version:end -->
+SQL would leave them working. `ACTIVE` reactivates (the ended sessions stay ended). An ADMIN never
 suspends their own account, so one ADMIN always remains.
 
 **The first admin** (and every later one). No endpoint grants a role: the person signs up, then an

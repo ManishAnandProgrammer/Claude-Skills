@@ -30,9 +30,10 @@ public enum Role {
      * it: an operator sets it in the database ({@code UPDATE users SET role = 'ADMIN'}; docs/runbook.md,
      * Operator tasks), and it reaches the user's next sign-in or refresh at the latest.
      *   <!-- session-version:begin -->
-     * The runbook's statement also raises the account's session version, so the user's next request
-     * with an older token is refused (401 {@code SESSION_VERSION_STALE}) and the refresh that follows
-     * brings the new role.
+     * The runbook's statement also raises the account's session version and drops its copy in Redis
+     * ({@code DEL sv:<id>}), so the user's next request with an older token is refused (401
+     * {@code SESSION_VERSION_STALE}) and the refresh that follows brings the new role; without the
+     * {@code DEL}, within {@code app.session-version.cache-ttl} (1 minute).
      *   <!-- session-version:end -->
      */
     // tenancy:end

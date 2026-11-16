@@ -34,9 +34,9 @@ public interface PlatformUserApi {
     ListWrapper<UserResponse> lookUp(UserFilter filter);
 
     @Operation(summary = "Suspend or reactivate an account", description = """
-            SUSPENDED ends every session of the account in every tenant at once (every refresh token revoked; \
-            with the session version, every access token refused from the next request on, else within its \
-            15 minutes) and refuses it every new one: login, refresh, switch-tenant and impersonation answer \
+            SUSPENDED ends every session of the account in every tenant at once (every refresh token revoked, \
+            and\s""" + UserApi.ACCESS_TOKENS_END + """
+            ) and refuses it every new one: login, refresh, switch-tenant and impersonation answer \
             403 AUTH_ACCOUNT_SUSPENDED. ACTIVE lets it sign in again; the sessions the suspension ended stay \
             ended. A person who is the last ADMIN with an ACTIVE account of an open tenant is not suspended: \
             make another member ADMIN first, or suspend the tenant.""")

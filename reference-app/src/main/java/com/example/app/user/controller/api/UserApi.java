@@ -30,6 +30,14 @@ import java.util.UUID;
 @Tag(name = "Users", description = "The signed-in user's account")
 public interface UserApi {
 
+    // session-version:begin
+    /** What a password change or a suspension does to the access tokens already issued. */
+    String ACCESS_TOKENS_END = "every access token is refused from its next request on";
+    // session-version:else
+    // /** What a password change or a suspension does to the access tokens already issued. */
+    // String ACCESS_TOKENS_END = "every access token already issued expires within its 15 minutes";
+    // session-version:end
+
     @Operation(summary = "The signed-in user's account")
     @ApiResponse(responseCode = "200", description = "The account")
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
@@ -43,10 +51,10 @@ public interface UserApi {
     @Operation(summary = "Change your password", description = """
             Needs the current password. The new one follows signup's rules (at least 8 characters and at most \
             72 bytes, an upper-case letter, a lower-case letter, a digit and another character, not from a \
-            known breach). Every session of the account ends: every refresh token is revoked, on every device \
-            (with the session version, every access token too, from the next request on). The answer is new \
-            tokens for this device. A wrong current password counts as a failed login of the account: the \
-            same per-account limit applies (5 a minute).""")
+            known breach). Every session of the account ends: every refresh token is revoked, on every device, \
+            and\s""" + ACCESS_TOKENS_END + """
+            . The answer is new tokens for this device. A wrong current password counts as a failed login of \
+            the account: the same per-account limit applies (5 a minute).""")
     @ApiResponse(responseCode = "200", description = "Changed; new tokens for this device")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, USER_PASSWORD_INCORRECT (the current password \
@@ -96,9 +104,9 @@ public interface UserApi {
     ListWrapper<UserResponse> lookUp(UserFilter filter);
 
     @Operation(summary = "Suspend or reactivate an account (ADMIN)", description = """
-            SUSPENDED ends every session of the account at once (every refresh token revoked; with the \
-            session version, every access token refused from the next request on, else within its 15 \
-            minutes) and refuses it every new one: login answers 403 AUTH_ACCOUNT_SUSPENDED. ACTIVE lets it \
+            SUSPENDED ends every session of the account at once (every refresh token revoked, and\s"""
+            + ACCESS_TOKENS_END + """
+            ) and refuses it every new one: login answers 403 AUTH_ACCOUNT_SUSPENDED. ACTIVE lets it \
             sign in again; the sessions the suspension ended stay ended. Never your own account; you must be \
             an ACTIVE ADMIN now, whatever your token says, so the last ADMIN is never suspended.""")
     @ApiResponse(responseCode = "200", description = "The account with its new status and version")

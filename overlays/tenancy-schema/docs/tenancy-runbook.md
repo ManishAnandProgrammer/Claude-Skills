@@ -63,7 +63,12 @@ statement with `deactivated_at = null`.
 **An account** (a person, global across tenants) is suspended or reactivated by staff: find it with
 `GET /api/v1/platform/users?email=<address>` (its `id`, `status` and `version`), then
 `PATCH /api/v1/platform/users/{id}/status` (`{"status": "SUSPENDED", "version": n}`), never by SQL: the
-endpoint also revokes every refresh token and, with the session version, ends the access tokens at once.
+endpoint also revokes every refresh token
+<!-- session-version:begin -->
+and ends the access tokens at once (the session version).
+<!-- session-version:else -->
+<!-- (the access tokens already issued expire within their 15 minutes). -->
+<!-- session-version:end -->
 The last active ADMIN of an open tenant is refused (409): make another member ADMIN first, or suspend the
 tenant.
 

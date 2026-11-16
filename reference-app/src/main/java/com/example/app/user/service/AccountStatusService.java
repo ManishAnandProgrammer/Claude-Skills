@@ -25,9 +25,13 @@ import java.util.UUID;
 /**
  * Finds, suspends and reactivates accounts (the sign-in piece). A suspension, in one transaction: the account's row
  * updated first (so a token issue racing it waits, then refuses: {@code UserService.activeForTokenIssue}),
- * every refresh token revoked, and the session version raised with that piece, so the access tokens already
- * out are refused on their next request (without it, they expire within their lifetime). A suspended
- * account gets no token from any path. A reactivation lets it sign in again; it revives no session.
+ * and every refresh token revoked.
+ *   <!-- session-version:begin -->
+ * The session version is raised too, so the access tokens already out are refused on their next request.
+ *   <!-- session-version:else -->
+ <!-- * The access tokens already out expire within their lifetime. -->
+ *   <!-- session-version:end -->
+ * A suspended account gets no token from any path. A reactivation lets it sign in again; it revives no session.
  *   <!-- tenancy:begin -->
  *
  * <p>With tenancy, accounts are global and platform staff suspend them ({@code PATCH /platform/users/{id}/status}):

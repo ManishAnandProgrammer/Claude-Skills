@@ -37,8 +37,8 @@ import java.util.UUID;
  *
  * <p>Every issue starts with the account's row, share-locked and ACTIVE ({@code UserService.activeForTokenIssue}),
  * before it touches a refresh token: a suspension or a password change updates that row first, so either the
- * issue commits before the change (which then revokes what it issued and raises the session version over its
- * access token) or it reads the change and refuses. Same order everywhere (account, then tokens): no deadlock.</p>
+ * issue commits before the change (which then revokes what it issued) or it reads the change and refuses. Same
+ * order everywhere (account, then tokens): no deadlock.</p>
  */
 @Service
 @Slf4j
@@ -106,8 +106,11 @@ class TokenService {
 
     /**
      * A password change, in one transaction: the new hash (its update takes the account's row first), every
-     * refresh token of the account revoked, the session version raised (with that piece), and new tokens for
-     * the device that changed it. A suspended account changes nothing: 403 {@code AUTH_ACCOUNT_SUSPENDED}.
+     * refresh token of the account revoked, and new tokens for the device that changed it.
+     *   <!-- session-version:begin -->
+     * The session version is raised too, so every other access token is refused from its next request.
+     *   <!-- session-version:end -->
+     * A suspended account changes nothing: 403 {@code AUTH_ACCOUNT_SUSPENDED}.
      */
     @Transactional
     TokenResponse replacePassword(UUID userId, String newPasswordHash) {

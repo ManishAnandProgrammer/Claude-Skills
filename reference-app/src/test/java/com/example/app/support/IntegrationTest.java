@@ -367,6 +367,7 @@ public abstract class IntegrationTest {
                 """, key, json, version)).isEqualTo(1);
     }
     // metadata:end
+
     protected ResultActions signup(String email, String password) throws Exception {
         return postAs(null, "/api/v1/auth/signup", """
                 {"email": "%s", "fullName": "Test User", "password": "%s"}

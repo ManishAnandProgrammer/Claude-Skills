@@ -18,6 +18,13 @@ import java.util.Map;
  * person through the user module first and their row is never deleted (an account; with tenancy a member's
  * row in {@code members}, which a removal marks left), and {@code uq_todos_number}, whose numbers come from
  * the counter's row, one create at a time.</p>
+ *   <!-- media:begin -->
+ *
+ * <p>The attachments' keys stay unmapped as well: every write of a todo's files holds the todo's lock, and a
+ * file is claimed (one claim wins) before it is attached, so neither {@code uq_todo_attachments_media_file_id}
+ * nor {@code fk_todo_attachments_media_file_id} can trip, and {@code fk_todo_attachments_todo_id} only when the
+ * todo goes, which waits for that lock and removes its attachments first.</p>
+ *   <!-- media:end -->
  */
 @Component
 class TodoConstraintErrorCodes implements ConstraintErrorCodes {

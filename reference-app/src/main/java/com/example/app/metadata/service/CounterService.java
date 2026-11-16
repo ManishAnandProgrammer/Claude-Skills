@@ -29,11 +29,6 @@ public class CounterService implements Counters {
         repository.saveAndFlush(Counter.startingAfter(name, lastValue));
     }
 
-    /**
-     * {@code MANDATORY}: in a transaction of its own the number would commit at once, and a caller
-     * that then fails would leave a gap. A missing counter is a bug (its seeding didn't run), not
-     * something a client can cause: 500.
-     */
     @Override
     @Transactional
     public void createIfAbsent(String name, long lastValue) {
@@ -44,6 +39,11 @@ public class CounterService implements Counters {
         // tenancy-row:end
     }
 
+    /**
+     * {@code MANDATORY}: in a transaction of its own the number would commit at once, and a caller
+     * that then fails would leave a gap. A missing counter is a bug (its seeding didn't run), not
+     * something a client can cause: 500.
+     */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public long next(String name) {

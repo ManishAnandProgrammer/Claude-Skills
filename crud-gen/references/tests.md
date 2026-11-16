@@ -44,19 +44,19 @@ golden "a list shows only yours" test has no counterpart: drop it (with tenancy,
 carries the access decision: a plain USER gets 403 `ACCESS_DENIED` **with a valid body** on every
 write (and on every read the decision restricts), the record unchanged; the writing role succeeds
 (golden `MetadataIntegrationTest.onlyAdminsReachTheApi`, `UploadPolicyIntegrationTest`). Row 28 on a
-shared table: seeded rows are seen by every unscoped list and dropdown, so give them `uuidv7()` ids
-(the NEWEST order is id order; `gen_random_uuid()` breaks it), a unique name prefix, and delete them
-in an `@AfterAll`. Seed the other scopes beside the tested one as the *Index tests* section below says
-(the tested scope a small share of its table, interleaved in id order). A **table with no scope column at
+shared table: seeded rows are seen by every unscoped list and dropdown, so give them a unique name prefix
+and delete them in an `@AfterAll`. Seed the other scopes beside the tested one as the *Index tests* section
+below says (the tested scope a small share of its table, written in creation order with the others'
+rows: `uuidv7()` ids and `clock_timestamp()`, in rounds). A **table with no scope column at
 all** (a tenant-wide table under schema tenancy: the schema is the scope) bounds each cell the same way:
 a page of the table read in order is two pages, whatever else the table holds.
 
 **Index tests in row mode** (`{{tenancy}}` = `row`): every tenant's rows share one table, so a second
-tenant seeded in one block before or after the tested rows doesn't model production. A later batch's
-`id < :after` (or a NEWEST walk) then meets one tenant only on the primary key, and the planner rightly
-takes `pk_*`. Seed it the way production fills the table:
-- **other tenants interleaved in id order** with the tested one (chunks per tenant, in turn), and
-  together 20–200 times bigger;
+tenant seeded in one block before or after the tested rows doesn't model production. Seed it the way
+production fills the table:
+- **other tenants in creation order** with the tested one (rounds: a chunk per tenant, in turn, each
+  round newer than the last), and together 20–200 times bigger; plus, for a NEWEST cell, a scope whose rows
+  are all older than the others' (*The seed*);
 - **a bigger sibling for every equality scope** of the tested tenant (another member beside the
   tested member, another customer beside the tested customer), else the planner estimates one row and
   picks another index (the exclusion constraint's GiST index) plus a sort;
@@ -64,7 +64,15 @@ takes `pk_*`. Seed it the way production fills the table:
   tenants interleaved, the planner multiplies the person's share by the tenant's (40 rows × 1.2% = one
   row). The table's changeset gives the pair dependency statistics (TEN-33; golden
   `0023-owner-tenant-statistics.sql`, `PlanRowIndexIntegrationTest`), and the test proves it red without
-  them once;
+  them once. **The red proof needs the misestimate to bite**: the tested person's rows × their tenant's
+  share of the table must come to about one row, so size that cell's seed like the golden
+  `PlanRowIndexIntegrationTest` (a tested member with about 100 rows, a sibling about ten times that,
+  other tenants 50 times the tenant and more), not like the 10× rule of *The seed*: for these cells
+  "unserved reads ten times the bound" becomes "a sort of the person's whole scope exceeds the bound".
+  The proof exists only where **another index competes** for the scope (an exclusion constraint's GiST
+  index, a second order's index that also leads with the person): when none does, every cell is green
+  with and without the statistics; keep them (TEN-33) and write in the test's javadoc why no cell can
+  prove them;
 - a class that seeds other tenants into shared tables deletes its rows in an `@AfterAll`
   (`PlanRowIndexIntegrationTest`): the next index class's analysis must see the table it seeds for;
 - another tenant's rows through `sqlIn(tenant, …)` (the test base: its own transaction, on a
@@ -94,7 +102,8 @@ cell. Golden: `TodoIndexIntegrationTest`, `TagIndexIntegrationTest`, `TimeEntryI
    dropped or never-created index that another index happens to serve cheaply on the seed (a composite
    key `(id, owner_id)` walked for the owner's newest filters inside the index, which no count shows).
 2. **The statement reads at most the cell's bound** (`ReadCost.of(jdbc, transactionManager, sql,
-   parameters).rowsRead()`): `EXPLAIN ANALYZE` runs the statement (rolled back, so a lease's `UPDATE`
+   parameters).rowsRead()`), written as the repository issues it, `limit` included: a cursor list fetches
+   `size + 1` rows (`limit 21` for the default 20), an offset page `size`: `EXPLAIN ANALYZE` runs the statement (rolled back, so a lease's `UPDATE`
    changes nothing) and adds up, over every table scan, the rows it handed on plus the rows its filter
    threw away, times its loops. Assert it with `.as(cost.plan())`, so a failure prints the plan.
 
@@ -107,12 +116,12 @@ index doesn't serve read more.
 
 | Cell | Bound |
 |---|---|
-| served by its index: a first page, a later batch (the seek exactly as `Seek.after` writes it, its leading `>=` bound included), a status value with its own index, a range of the order's own column | two pages (`2 × (size + 1)`) |
+| served by its index: a first page, a later batch (the seek exactly as `Seek.after` writes it: one row-value comparison, `(a, id) > (:a, :id)`), a later batch whose cursor sits inside a tie group of the leading key, a status value with its own index, a range of the order's own column | two pages (`2 × (size + 1)`) |
 | an offset list's later page | the offset plus two pages |
 | a filter **applied while walking** the order's index (a recorded reason, SKILL.md 4.1: no value rare, a tag) | two pages ÷ the share of the rarest value the reason allows (seeded at that share), times two when each walked row probes another index |
 | a filter left to **a bounded scope** (a todo's time entries: "one todo's entries are few") | the scope's rows, as seeded |
 | a contains search (`query`, no btree serves it) | the scope's rows (the owner's, the tenant's): never anyone else's |
-| an overlap filter with its derived lower bound | the configured maximum length plus the range's days |
+| an overlap filter with its derived lower bound | the configured maximum length plus the range's days, times the ranges the scope holds per day (1 for a scope whose ranges never overlap, a person's plans; a tenant's rota holds one per member on call each day) |
 | an `ids` lookup | the asked rows (two pages at most) |
 | a second step (`<parents> where id in (...)`, a batch's tags) | the batch's rows per table it reads |
 | a parent's delete-side foreign key check, a cascade | the parent's own children |
@@ -121,15 +130,46 @@ index doesn't serve read more.
 
 **The seed** makes every cell its index doesn't serve read at least ten times its bound: the tested
 scope a small share of its table (a sibling owner with twenty times the rows, another tenant's members),
-**interleaved in id order** (random ids, or chunks per scope in turn), each scope big enough that a sort
+**written as the application writes them**: `uuidv7()` ids and `clock_timestamp()` as `created_at`, in
+rounds of each scope's share in turn, so the rows reach the heap in id order and the scopes interleave.
+Random ids, or one block per scope, hide a backward walk of the primary key: on such a seed the walk looks
+expensive to the planner, in production (time-ordered ids in heap order) it looks cheap. Each scope big enough that a sort
 of all its rows exceeds two pages, the rare value at the share it really has and **where it really sits**
 (open todos are the latest due, active loans the latest days), every value of an enum filter bound as a
-parameter as the repository binds it (an inlined literal gets a plan the real query never gets). A later
+parameter as the repository binds it (an inlined literal gets a plan the real query never gets).
+**A status a later decision sets** (DONE, WITHDRAWN, CANCELLED, RETURNED) **is absent from the newest
+rows**: a record is created in its first status and moves on afterwards, so seed it among the older rows
+(none in the newest quarter by creation), never uniformly over every id; the first, live status sits with
+the newest. **Each scope at its production share**, from the domain facts Step 2 asks (members per
+tenant, enrollments per course, the share of each status value), written in the test's javadoc: a share
+picked to make the cells pass proves nothing. A later
 batch's cursor is **a seeded row inside the order's key range** (read after seeding, from the middle):
-a constant outside the seed leaves nothing past the seek. `analyze` the tables under `set local
+a constant outside the seed leaves nothing past the seek. Two more seeded shapes, each with its cell
+(golden `TodoIndexIntegrationTest`): **a tie group**, several pages of rows sharing one value of the
+order's leading key (200 todos due on one day), with a later batch's cursor inside it (an index bounded on
+the leading key alone rereads the group); and for NEWEST **an old, big scope**, many rows all created
+before everyone else's (3,000 lists), the scope an id order walks the primary key for. A cursor's
+`created_at` is read as an `OffsetDateTime` (a `java.sql.Timestamp` is bound in the JVM's time zone). `analyze` the tables under `set local
 default_statistics_target = 1000` after seeding (in a full run they hold every other class's rows too).
 A fixture that inserts rows of a table with a display number splices in a number (golden
 `TODO_NUMBER_COLUMN`, `TODO_NUMBER` in the test base).
+
+**A rare value's cell is two pages, never the walking bound.** The walking bound is for a filter
+without a rare value (a recorded reason, SKILL.md 4.1); a rare value has an index per order, so its cells
+are served. When such a cell fails two pages, the seed is wrong (the value placed where it doesn't sit:
+a later-decision status among the newest rows) or the index isn't needed (every offered order brings the
+value first: record that and drop the index). A rare value's cell loosened to the walking bound can't
+fail under any plan, so the index it was written for may go missing unnoticed.
+
+**A table with no scope column at all** (a tenant-wide table under schema tenancy, a platform catalogue)
+gives a contains search (`query`) a bound of the whole table, which no plan can exceed: such a cell
+records the decision instead of an assertion that can't fail (the table's expected size, asked in
+SKILL.md 4.1, and "no index serves a contains search"), keeping only the index existence checks of the
+cells beside it; the offset list's count statement is a cell of its own (bounded by that size). **A
+tenant-wide table in row mode** shares the test tenant with every other class's rows: count the scope's
+rows at run time after seeding (`select count(*) from <table> where tenant_id = ?`) for a bound that is
+"the scope's rows", or seed the cell's rows into a `newTenant()` of its own (golden
+`TenantMemberIndexIntegrationTest`).
 
 **A cell no index serves** is either given its index (golden `0024-tags-status-newest.sql`: tags by
 status under NEWEST) or not offered: a range filter is offered under its own column's order only, unless
@@ -161,9 +201,9 @@ and this table disagree, the table wins (and the golden class is a bug to report
 | 13b | Racers on **different rows that share one global row** (two "make default" calls on two different records) | they may both succeed one after the other, correctly: assert the **invariant** (exactly one default row, one of the 200s; every refusal its code), never "exactly one 200" (flaky) | TEST-05 |
 | 14 | `everyEndpointNeedsAToken` (and the wrong role per endpoint when roles exist) | 401 `AUTHENTICATION_REQUIRED` / 403 `ACCESS_DENIED`. When **every role writes** a shared root (with tenancy, recorded in Step 1): one parameterized test per `Role` constant (`@EnumSource(Role.class)`), each reaching every endpoint on another member's record (list, dropdown, get, update, delete, its own create), so a role added later is tested without an edit | TEST-02, SEC-01 |
 | 15 | `anotherUsersRecordIs404` (owned) | B gets 404 **with the code** on GET, PUT, actions, DELETE of A's record; A's record unchanged | TEST-02, 16 |
-| 15b | Tenancy (`{{tenancy}}` not `none`), in its own class `EntityNameTenantIsolationIntegrationTest` | a member of another tenant (`newUserIn(newTenant())`) gets 404 **with the code** on GET, PUT, actions, DELETE (each call asserts `errorCode`, PUT included); the record unchanged; that tenant's list doesn't show it, nor the reverse. **The stranger holds the role that writes the record** (`newUserIn(newTenant(), "ADMIN")` for an `@AdminOnly` root, the owner an ADMIN too): a plain USER's write is refused 403 by method security before the scope is reached, and the test would prove the role check, not the 404. Records shared by the whole tenant (no owner): scope both tenants' lists by a unique `query` token in the records' names, and assert presence and absence in the same call. A list **filtered by the other tenant's parent id** can only be empty from the stranger's side: the owning tenant's same call first shows its row, then the stranger's is empty | TEN-13 |
+| 15b | Tenancy (`{{tenancy}}` not `none`), in its own class `EntityNameTenantIsolationIntegrationTest` | a member of another tenant (`newUserIn(newTenant())`) gets 404 **with the code** on GET, PUT, actions, DELETE (each call asserts `errorCode`, PUT included); the record unchanged; that tenant's list doesn't show it, nor the reverse. **The stranger holds the role that writes the record** (`newUserIn(newTenant(), "ADMIN")` for an `@AdminOnly` root, the owner an ADMIN too): a plain USER's write is refused 403 by method security before the scope is reached, and the test would prove the role check, not the 404. Records shared by the whole tenant (no owner): scope both tenants' lists by a filter only the test's records match (a unique `query` token in their names; for a list without a text query, `ids` or a fresh parent's id), and assert presence and absence in the same call. With files (media piece): another tenant's upload key sent in a create or update is 409 `UPLOAD_NOT_AVAILABLE`, another tenant's file id in `remove<X>Ids` 404, the record unchanged. A list **filtered by the other tenant's parent id** can only be empty from the stranger's side: the owning tenant's same call first shows its row, then the stranger's is empty | TEN-13 |
 | 15c | Row mode (`{{tenancy}}` = `row`), in the same class | each **native query** of the entity's repository, run in the other tenant's scope (`TenantScope.callAs(other.id(), ...)` around the service call, which passes that tenant), returns none of the caller's rows and changes none; the guards (once per project, never per entity) run green with the new table: `RowSecurityCatalogIntegrationTest` (its policy forced, `tenant_id` without a default, its keys carrying `tenant_id`, its replica identity holding `tenant_id`, no key to a platform table but `tenants`, its entity a `TenantOwnedEntity`) and `NativeQueryTenantIntegrationTest` (each native statement names `tenant_id = :tenantId` per tenant table). A table that is the platform's is added to its `PLATFORM_TABLES` with the reason. Schema mode: `SchemaCatalogIntegrationTest` green (no key leaves the tenant schema) | TEN-30, TEN-33, TEN-37, TEN-38, TEN-16 |
-| 16 | Cursor list: `cursorBatchesWalkTheWholeListInOrder` | fixtures created **out of sort order** (TEST-10: rows created in calendar order pass a walk that ignores the sort; an id-only order such as NEWEST has no other order to create in: walk it both ways instead), then walk every batch with `after`: every row once, in order; batches split **inside a group of equal sort keys** (the id tie-breaker) and, when a key is nullable through a generated column, across that boundary (undated rows last); the last batch `hasMore` false, no `nextCursor`. Per **text sort key** (a dropdown's label included): a batch ending on a value at its `@MaxLength` of control characters (`\u0001`, escaped in six bytes in the cursor's JSON) and 4-byte letters (`𐌰`) continues (golden `TodoListIntegrationTest.dropdownCursorOfTheLongestNameIsAccepted`; the cursor limit, SKILL.md 4.2) | TEST-11, 12, REST-08 |
+| 16 | Cursor list: `cursorBatchesWalkTheWholeListInOrder` | fixtures created **out of sort order** (TEST-10: rows created in calendar order pass a walk that ignores the sort; a creation-time order such as NEWEST has no other order to create in: walk it both ways instead), then walk every batch with `after`: every row once, in order; batches split **inside a group of equal sort keys** (the id tie-breaker) and, when a key is nullable through a generated column, across that boundary (undated rows last); the last batch `hasMore` false, no `nextCursor`. Per **text sort key** (a dropdown's label included): a batch ending on a value at its `@MaxLength` of control characters (`\u0001`, escaped in six bytes in the cursor's JSON) and 4-byte letters (`𐌰`) continues (golden `TodoListIntegrationTest.dropdownCursorOfTheLongestNameIsAccepted`; the cursor limit, SKILL.md 4.2) | TEST-11, 12, REST-08 |
 | 16b | Offset list: `listIsOffsetPaged`, `listPastTheLastPageIsEmptyButNavigable` | `pageInfo` fields; the overrun page; size over the configured maximum is 400 | TEST-11, 12 |
 | 17 | `cursorFromAnotherSortIsRefused`; a tampered cursor | 400 `REQUEST_PARAMETER_INVALID`, `$.errors[0].parameter` is `after` | REST-08 |
 | 18 | Per filter: `filterByXReturnsOnlyMatching` | its matching row present, its non-matching row **in the same scope** absent (a test scoped to one row passes with the filter ignored); **range filters include the boundary row** and exclude the next one | TEST-16, TEST-12 |
@@ -182,16 +222,17 @@ and this table disagree, the table wins (and the golden class is a bug to report
 | 25f | A rule from configuration on an update (a maximum length of a loan, a file count) | with the limit lowered below an existing record: an update that changes another field succeeds, one that changes the rule's inputs is refused with its code; both sides of the limit on create (golden `TodoAttachmentsIntegrationTest`'s shrunk policy) | SMELL-27, TEST-03 |
 | 25e | Immutable resources (no PUT, PATCH or DELETE: an issued invoice) | each answers 405 `REQUEST_METHOD_NOT_ALLOWED`, and the record is unchanged | TEST-01 |
 | 26 | Entity unit test (only when the entity has state methods) | state methods (`changeStatus`, `moveTo`): transitions, the timestamp rule, the impossible-state guard (`IllegalStateException`); for a **status workflow** (SKILL.md Step 3) the whole matrix of moves, each refused one the 409 `AppException` with its code (no `IllegalStateException`: a refused move is the client's, not a bug) | JAVA-16, ERR-05 |
-| 26b | A **frozen terminal status** (SKILL.md Step 3: a WITHDRAWN enrollment can't be edited) | each write the status freezes (PUT, member and file writes) on a record in that status: 409 `<ENTITY>_<STATUS>` with the code, the record unchanged (a re-read, `version` included), sent with a body that would also break another rule (longer days than the configured maximum), so the freeze is proven first; the same write on a live record succeeds; the entity unit test refuses it too; the writes left open (a delete) still work | ERR-05, TEST-01 |
+| 26b | A **frozen terminal status** (SKILL.md Step 3: a WITHDRAWN enrollment can't be edited) | each write the status freezes (PUT, member and file writes) on a record in that status: 409 `<ENTITY>_<STATUS>` with the code, the record unchanged (a re-read, `version` included), sent with a body that would also break another rule the write checks (longer days than a configured maximum, a parent's state; when the write checks no other rule, the frozen status alone), so the freeze is proven first; the same write on a live record succeeds; the entity unit test refuses it too; the writes left open (a delete) still work | ERR-05, TEST-01 |
 | 27b | A **display number** (a counter, SKILL.md Step 2's TEN-18 row; golden `Todo.number`) | consecutive creates get consecutive numbers, shown on the detail and the list's rows; another tenant's first record is #1; concurrent creates get distinct consecutive numbers, never a duplicate or a 500 (the counter's row queues them); a refused create takes no number (golden `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest.eachTenantNumbersFromOne`) | TEN-18, TEN-05 |
 | 27c | Row mode: the display number's seed pair (TEN-34) | the counters backfill run for a tenant without the counter gives it its highest number (0 for none); a PENDING tenant approved after the backfill is ACTIVE with one counter and numbers its first record #1 (golden `TodoSeedsBackfillIntegrationTest.existingTenantsGetTheirCounter`, `aPendingTenantThroughTheBackfillsIsActivated`); on a used database every tenant, whatever its status, numbers its own rows from 1 in id order (row 30) | TEN-34 |
 | 27d | Row mode: a tenant without its counter (activated by an instance without the listener) | delete the counter row in a tenant, then create: #1, then #2 (the create's `createIfAbsent`), never a 500 (golden `TodoSeedsBackfillIntegrationTest.aTenantWithoutItsCounterNumbersFromOne`) | TEN-34 |
 | 28 | `everyCellReadsAtMostItsBound` | the list's cell matrix (*Index tests* above): every offered order × every filter (every value of an enum filter, the rare one included), a later batch, an offset list's later page, the `ids` lookup, each second step (`<parents> where id in (...)` with the repository's own select list), each parent's delete-side foreign key check (`select 1 from <children> where <fk> = ?`), an overlap filter in each order with its derived lower bound: the cell's index exists by name, and the statement as the repository issues it (same select list, predicates, order and seek) reads at most the cell's bound. Golden: `TodoIndexIntegrationTest` | DATA-10 |
-| 28b | No overlapping ranges (an exclusion constraint, DATA-35; golden `PlanIntegrationTest`) | overlap on the first day, the last day, inside and around an existing range: 409 `<ENTITY>_OVERLAPS` without internals; the day before and after accepted; another scope's same range accepted; concurrent overlapping creates store exactly one, the others 409 `<ENTITY>_OVERLAPS` or 503 `DATABASE_CONTENTION` (a deadlock in the constraint: no scope lock), never 500; when the writes lock a parent for a state rule, race creates under two parents of the constraint's scope (golden `concurrentOverlappingCreatesStoreOne`: two todos of one owner), since one parent's writes queue; with an **updatable range**, race updates that move different records onto the same days (nothing locks them, so this is the path to the constraint's deadlock): one 200, the others 409 `<ENTITY>_OVERLAPS` or 503, one row on the days, never 500 | DATA-35, TEST-05 |
+| 28b | No overlapping ranges (an exclusion constraint, DATA-35; golden `PlanIntegrationTest`) | overlap on the first day, the last day, inside and around an existing range: 409 `<ENTITY>_OVERLAPS` without internals; the day before and after accepted; another scope's same range accepted; concurrent overlapping creates store exactly one, the others 409 `<ENTITY>_OVERLAPS` or 503 `DATABASE_CONTENTION` (a deadlock in the constraint: no scope lock), never 500; when the writes lock a parent for a state rule, race creates under two parents of the constraint's scope (golden `concurrentOverlappingCreatesStoreOne`: two todos of one owner), since one parent's writes queue; with an **updatable range**, race updates that move different records onto the same days (nothing locks them, so this is the path to the constraint's deadlock): one 200, the others 409 `<ENTITY>_OVERLAPS` or 503, one row on the days, never 500; with an **updatable scope** (a hand-over, SKILL.md 4.1), race hand-overs of different records onto one member's same days the same way | DATA-35, TEST-05 |
 | 28c | A parent in another module (ARCH-04; golden `PlanIntegrationTest`) | an unknown and another owner's parent id: 404 with the parent module's code, nothing stored; the parent's delete while children exist 409 (the child module maps the foreign key); row 23's gated race through the facade (unlocked view: 404 `<PARENT>_GONE` from the child module's write-side mapping; locked view, golden: every write 201, the delete 409, and row 23b); a parent deleted with a child between the child's two reads: the list leaves the row out (200), the single GET answers the child's 404 (golden `listLeavesOutAPlanWhoseTodoVanishedBetweenTheReads`, `getOfAPlanWhoseTodoVanishedBetweenTheReadsIs404`: the deletion holds the parent table `ACCESS EXCLUSIVE`, which the first statement passes and the second waits for); a list filtered by the parent's id (presence, then absence; another owner's parent id matches none), walked in each order; its statement count one more than row 21 (the batch's facade lookup) | ARCH-04, TEST-05 |
-| 28f | A **same-module parent** shown on the child's detail or a write's response (a `@ManyToOne(fetch = LAZY)`; SKILL.md 4.3; golden `Todo.todoList` shown as `todoList {id, name}`) | the detail and every write's response show the parent's name; the child and its parent deleted between the two reads (a transaction deletes both and holds the parent table `ACCESS EXCLUSIVE`; the read waits there, then the deletion commits) answer the child's 404, never a 500, for the GET and for every write that holds no row lock (a status change to the status it has); **assert the status first** (`assertRefusalsAre` checks only the answers with that status, so alone it passes a 500); one gated test per parent lookup when a row shows two parents (golden `TodoReferencesIntegrationTest.getOfATodoWhoseListVanishedBetweenTheReadsIs404`, `aStatusChangeToTheSameStatusOfAVanishingTodoIs404`: red without the entity graph) | DATA-21, TEST-05 |
-| 28g | A **person reference** (an owner, an assignee, who asked; SKILL.md 4.3; golden `Todo.requesterId`) | without tenancy: an unknown account 404 `USER_NOT_FOUND` and nothing stored, the id echoed and kept by a PUT that doesn't carry it (golden `TodoReferencesIntegrationTest`). With tenancy: the person removed from the tenant while records name them: the list still shows the records, the GET answers 200 with the person by id and the name `null`, PUT and DELETE work; a create naming a removed member, or another tenant's, is 404 `TENANT_MEMBER_NOT_FOUND`; re-added, the name is back (golden `TodoRequesterTenancyIntegrationTest`) | TEST-05, TEN-17 |
+| 28f | A **same-module parent** shown on the child's detail or a write's response (a `@ManyToOne(fetch = LAZY)`; SKILL.md 4.3; golden `Todo.todoList` shown as `todoList {id, name}`) | the detail and every write's response show the parent's name; the child and its parent deleted between the two reads (a transaction deletes both and holds the parent table `ACCESS EXCLUSIVE`; the read waits there, then the deletion commits) answer the child's 404, never a 500, for the GET and for every write that holds no row lock (a status change to the status it has); **assert the status first** (`assertRefusalsAre` checks only the answers with that status, so alone it passes a 500); one gated test per parent lookup when a row shows two parents (golden `TodoReferencesIntegrationTest.getOfATodoWhoseListVanishedBetweenTheReadsIs404`, `aStatusChangeToTheSameStatusOfAVanishingTodoIs404`: red without the entity graph). **On list rows**: each row shows its parent by name (`listRowsShowTheirListsByName`), a child deleted with its parent between the batch and the names' lookup is left out of the page, 200 (`listLeavesOutATodoWhoseListVanishedBetweenTheReads`, red when the mapper keeps the row), and the list's statement count is one more (row 21) | DATA-21, TEST-05 |
+| 28g | A **person reference** (an owner, an assignee, who asked; SKILL.md 4.3; golden `Todo.requesterId`) | without tenancy: an unknown account 404 `USER_NOT_FOUND` on the create and on an update that names it, nothing stored; the id echoed, kept by a PUT that re-sends it, replaced by one naming another, cleared by one without it (golden `TodoReferencesIntegrationTest`). An **updatable** reference is checked only when the request changes it: With tenancy: the person removed from the tenant while records name them: the list still shows the records, the GET answers 200 with the person by id and the name `null`, a PUT re-sending the removed member works (200, kept) and DELETE works; a create or a PUT newly naming a removed member, or another tenant's, is 404 `TENANT_MEMBER_NOT_FOUND`, the record unchanged; list rows carry the person's id; re-added, the name is back (golden `TodoRequesterTenancyIntegrationTest`, `anUpdateNamesOnlyACurrentMember`) | TEST-05, TEN-17 |
 | 30 | **Upgrading a used database** (a changeset that backfills or changes existing rows; *Upgrading a used database* below) | the project's `UpgradeFromPreviousReleaseIntegrationTest` asserts what the new changesets did to the previous release's seeded rows: every row backfilled (in every tenant, whatever its status), the constraints added hold over them, a PENDING tenant approved afterwards gets its seeds, a SUSPENDED one reactivated goes on where it was, a seeded account works through the API (golden: the reference's and the overlays' `UpgradeFromPreviousReleaseIntegrationTest`) | DATA-13, TEN-34 |
+| 31 | `apiDocsNameEveryErrorCode` (SKILL.md 4.9) | the published OpenAPI document names, per endpoint and status, every code it can answer (`$.paths['<path>'].<method>.responses['409'].description` contains `<ENTITY>_IN_USE`, ...); a code added to an endpoint is added there in the same change (golden `TodoListIntegrationTest.apiDocsShowTheConfiguredLimits`, `PlanIntegrationTest`'s docs test) | REST-20 |
 | 28d | Member rows another aggregate's delete removes by cascade (a todo's tag rows) | gated: the other delete held uncommitted, the root's delete answers 204 and leaves no rows (golden `todoDeleteRacingATagDeleteSucceeds`); a write that replaces them answers the documented 409 (golden `tagReplaceDroppingATagBeingDeletedIs409`) | DATA-29, TEST-05 |
 | 28e | Versioned document (DATA-36; no golden code yet) | supersede keeps the earlier slice; both sides of a boundary (the day before `effective_to` finds the old version, `effective_to` the new); a stored record answers byte for byte the same after a new version; an overlapping version 409; concurrent supersedes store one new version, the others 409; the copy's `to_jsonb` drift test with its no-NULL fixture assertion | DATA-36, DATA-35, TEST-05 |
 | 29 | Variant N (golden `TodoTagsIntegrationTest`) | max and max + 1 on create and the link PUT; a repeated id counts once; unknown and foreign ids 404 on both; a malformed id 400 without internals; stale version, missing fields, no token; the version moves only when the set changes; A's PUT leaves the links and refuses `<b>Ids`; list rows and the `<b>Id` filter, a cursor walk under the filter, 2 statements; both deletes (cascade keeps A and its version, or `*_IN_USE`); the gated race of link writes against B's delete (row 23: 404 `<B>_GONE`, no link stored); concurrent link PUTs apply once; the composite FK refusing a cross-owner link through `sql(...)`; `maxItems` in the docs | TEST-05, DATA-05 |
@@ -228,7 +269,7 @@ The test base's `PreviousReleaseDatabase` (core) builds that database for the wh
 `app.test.upgrade.previous-release` names the release in production (the highest changeset number of
 each range it shipped, `<pieces>[,<project>]`: the pieces own 0001-0099, the project 0100 and up, and a
 piece's changeset added since the release runs after the project's, so one number can't say what shipped;
-`26,105`, or `23` while the project has none of its own): Liquibase applies the changesets up to the
+`28,105`, or `28` while the project has none of its own): Liquibase applies the changesets up to the
 first one the release didn't ship, `src/test/resources/db/upgrade/previous-release-seed.sql`
 fills them as a used database holds them, then the application's own run applies the newer changesets
 (schema per tenant: each provisioned tenant's schema at that release too, with

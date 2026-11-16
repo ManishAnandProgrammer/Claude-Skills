@@ -110,12 +110,20 @@ app:
     groups:
       # Requests matching these path patterns take their permit from the bulkhead of that name.
       # The version segment is a wildcard, so a new API version is admitted the same way.
-      # sign-in is the bcrypt endpoints only: refresh and logout stay in `api`, so a login storm
+      # sign-in is the bcrypt endpoints only (every request with a password to verify or hash;
+      # AdmissionGroupsIntegrationTest checks it): refresh and logout stay in `api`, so a login storm
       # never refuses the token refresh of users already signed in.
       paths:
         sign-in:
           - /api/*/auth/login
           - /api/*/auth/signup
+          - /api/*/users/me/password
+          # tenancy:begin
+          # - /api/*/platform/auth/login
+          # tenancy:end
+          # tenant-registration:begin
+          # - /api/*/auth/tenant-registrations
+          # tenant-registration:end
       # While refusing, at most one WARN per group per interval.
       warn-interval: 10s
   # How long a client is told to wait (jittered within the range) after a 503 or 429.

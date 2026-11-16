@@ -473,6 +473,9 @@ class TodoListIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.pageInfo.number").value(1))
                 .andExpect(jsonPath("$.pageInfo.hasNext").value(false))
                 .andExpect(jsonPath("$.pageInfo.hasPrevious").value(true));
+        getAs(user.accessToken(), LISTS + "?size=100")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pageInfo.size").value(100));
         getAs(user.accessToken(), LISTS + "?size=101")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
@@ -614,7 +617,9 @@ class TodoListIntegrationTest extends IntegrationTest {
                 {"name": "Sneaky", "ownerId": "%s"}
                 """.formatted(UUID.randomUUID()))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"));
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_UNREADABLE"))
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/ownerId"))
+                .andExpect(jsonPath("$.errors[0].detail").value("unknown field"));
     }
 
     @Test

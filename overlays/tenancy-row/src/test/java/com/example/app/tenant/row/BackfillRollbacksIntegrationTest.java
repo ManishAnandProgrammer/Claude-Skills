@@ -19,6 +19,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -93,9 +94,12 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
             finds with the policy lifted, and leaves the policy forced (all rolled back afterwards)""")
     void backfillRollbacksDeleteTheirRows() throws IOException, SQLException {
         testTenant();
+        List<Changeset> all = changesets();
         List<Changeset> deleting = new ArrayList<>();
-        for (Changeset changeset : changesets()) {
-            if (changeset.liftsForce() && changeset.rollback().stream().anyMatch(BackfillRollbacksIntegrationTest::deletes)) {
+        for (int index = 0; index < all.size(); index++) {
+            Changeset changeset = all.get(index);
+            if (changeset.liftsForce() && changeset.rollback().stream().anyMatch(BackfillRollbacksIntegrationTest::deletes)
+                    && !referencedLater(all.subList(index + 1, all.size()), changeset)) {
                 deleting.add(changeset);
             }
         }
@@ -133,6 +137,26 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
             }
         }
         assertThat(deletedInAll).as("rows the rollbacks deleted (the run's tenants have their seeds)").isPositive();
+    }
+
+    /**
+     * A later changeset's foreign key into the table the rollback deletes from: a real rollback undoes that
+     * changeset first, so this rollback can't run alone on today's schema (0018's members, which 0025's
+     * requester key references). The static test above still checks it.
+     */
+    private static boolean referencedLater(List<Changeset> later, Changeset changeset) {
+        for (String statement : changeset.rollback()) {
+            Matcher table = ROW_WRITE.matcher(statement);
+            if (deletes(statement) && table.find()) {
+                String references = "references " + table.group(1).toLowerCase(Locale.ROOT) + " ";
+                boolean referenced = later.stream().flatMap(next -> next.statements().stream())
+                        .anyMatch(next -> next.toLowerCase(Locale.ROOT).contains(references));
+                if (referenced) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean deletes(String statement) {
@@ -175,7 +199,10 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
     /** Every changeset of the copied changelogs, the pieces' and the project's. */
     private List<Changeset> changesets() throws IOException {
         List<Changeset> changesets = new ArrayList<>();
-        for (Resource file : resources.getResources("classpath*:db/changelog/changes/*.sql")) {
+        List<Resource> files = new ArrayList<>(List.of(resources.getResources("classpath*:db/changelog/changes/*.sql")));
+        // In number order, the order the master runs them in (and a rollback undoes them, the other way).
+        files.sort(Comparator.comparing(Resource::getFilename));
+        for (Resource file : files) {
             changesets.addAll(parse(file.getContentAsString(StandardCharsets.UTF_8)));
         }
         assertThat(changesets).isNotEmpty();
