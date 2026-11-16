@@ -31,6 +31,9 @@
 #          policy (the catalogue guard), composite keys, seeds on TenantProvisioned, the cross-tenant
 #          tests, the session version per membership; every test runs, the reference's own tests inside
 #          the test tenant;
+#      2k, 2l, 2m. every piece but the example, as a project starts: without tenancy (2k), schema per tenant
+#          (2l), row mode (2m): the pieces' own code and tests with none of the example's samples to lean on;
+#          every test runs;
 #      the session version is opt-in: every copy without it (2, 2b, 2c, 2e, 2g, 2i, 2d) is checked for
 #      none of its traces (no column, claim, filter, endpoint or configuration key);
 #      2d. core alone (a project signing users in elsewhere), without sign-in's Redis and Bucket4j
@@ -52,11 +55,11 @@
 # While iterating, --only runs just the named stages (comma list of the ids below); step 0 and the
 # setup the copies share always run:
 #   scripts/verify.sh --only 2i,2j
-#   ids: reference (1), 2, 2b, 2c, 2e, 2f, 2g, 2h, 2i, 2j, 2d, image (3)
+#   ids: reference (1), 2, 2b, 2c, 2e, 2f, 2g, 2h, 2i, 2j, 2k, 2l, 2m, 2d, image (3)
 # A partial run never records the fingerprint, so a push still needs one full run.
 set -euo pipefail
 
-STAGES="reference 2 2b 2c 2e 2f 2g 2h 2i 2j 2d image"
+STAGES="reference 2 2b 2c 2e 2f 2g 2h 2i 2j 2k 2l 2m 2d image"
 # The highest changeset number of the release in production (main): the upgrade path starts from it.
 # Raise it, and extend the previous-release seeds, when a release ships. The pieces' range alone (0001-0099):
 # the reference has no project changesets (a project passes <pieces>,<project>, PreviousReleaseDatabase).
@@ -469,6 +472,41 @@ if wants 2j; then
         && { echo "FAILED: the accounts' facade in a tenancy copy (a person in a tenant is a member: Members)" >&2; exit 1; }
     mvn_verify "$rowtenants" "$WORK/rowtenants.log" "$UPGRADE"
     upgraded "$rowtenants"
+fi
+
+# Every piece but the example, per tenancy mode: what a project starts from before its first entity.
+# $1 stage id, $2 directory and application name, $3 tenancy pieces ("" for none).
+every_piece_but_the_example() {
+    local id="$1" name="$2" tenancy="$3" dir pieces
+    dir="$WORK/$name"
+    pieces="core,sign-in,metadata,media,session-version${tenancy:+,$tenancy}"
+    mkdir -p "$dir/src/main/java/com/acme/$name"
+    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$dir/"
+    sed -e "s|<artifactId>reference-app</artifactId>|<artifactId>$name</artifactId>|" -e "s|<name>reference-app</name>|<name>$name</name>|" \
+        "$REFERENCE/pom.xml" > "$dir/pom.xml"
+    sed -e "s/package com.acme.smoke;/package com.acme.$name;/" -e "s/SmokeApplication/${name^}Application/g" \
+        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$dir/src/main/java/com/acme/$name/${name^}Application.java"
+    "$REPO/scripts/bootstrap-copy.sh" --target "$dir" --package "com.acme.$name" --with "$pieces" > "$WORK/copy-$name.log" 2>&1
+    grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version):(begin|else|end)" "$dir/src" "$dir/compose.yaml" "$dir/.env.example" "$dir/docs" \
+        && { echo "FAILED: markers left in the $id copy" >&2; exit 1; }
+    grep -rqE "TODO_LIST|TODO_ATTACHMENT|todo_lists|TodoListSettings|com\.acme\.$name\.(todo|planning)\b" "$dir/src" \
+        && { echo "FAILED: the example's entries left in the $id copy, which has no example" >&2; exit 1; }
+    mvn_verify "$dir" "$WORK/$name.log"
+}
+
+if wants 2k; then
+    echo "[2k/3] bootstrap-copy with every piece but the example, without tenancy (package com.acme.pieces)"
+    every_piece_but_the_example 2k pieces ""
+fi
+
+if wants 2l; then
+    echo "[2l/3] bootstrap-copy with every piece but the example, schema per tenant (package com.acme.schemapieces)"
+    every_piece_but_the_example 2l schemapieces "tenancy-schema,tenant-registration"
+fi
+
+if wants 2m; then
+    echo "[2m/3] bootstrap-copy with every piece but the example, row mode (package com.acme.rowpieces)"
+    every_piece_but_the_example 2m rowpieces "tenancy-row,tenant-registration"
 fi
 
 if wants 2d; then
