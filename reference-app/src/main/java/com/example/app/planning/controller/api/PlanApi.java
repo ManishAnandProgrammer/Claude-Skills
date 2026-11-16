@@ -4,6 +4,7 @@ import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.planning.dto.request.PlanCreateRequest;
 import com.example.app.planning.dto.request.PlanFilter;
+import com.example.app.planning.dto.request.PlanStatusRequest;
 import com.example.app.planning.dto.request.PlanUpdateRequest;
 import com.example.app.planning.dto.response.PlanResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -97,6 +98,29 @@ public interface PlanApi {
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<PlanResponse> update(UUID id, PlanUpdateRequest request);
+
+    @Operation(summary = "Mark a plan done, or cancel it", description = """
+            A PLANNED plan becomes DONE, on the day you give in doneOn (at most today, with a configured \
+            tolerance, and never before its first day), or CANCELLED, which frees its days. Both are final: \
+            any other move, a move to the current status included, is 409 PLAN_STATUS_CHANGE_INVALID.""")
+    @ApiResponse(responseCode = "200", description = "The plan with its new status and version")
+    @ApiResponse(responseCode = "400", description = """
+            VALIDATION_FAILED (a missing status or version; doneOn missing with DONE or sent with CANCELLED, \
+            after today or before the configured earliest date; see errors); PLAN_DONE_ON_BEFORE_STARTS_ON \
+            (doneOn before the plan's first day); REQUEST_UNREADABLE (an unknown status, a malformed date); \
+            REQUEST_PARAMETER_INVALID (the id is not a UUID)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "PLAN_NOT_FOUND (missing, or another user's)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "409", description = """
+            OPTIMISTIC_LOCK_CONFLICT (the version is stale); PLAN_STATUS_CHANGE_INVALID (a move the lifecycle \
+            doesn't allow)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ObjectWrapper<PlanResponse> changeStatus(UUID id, PlanStatusRequest request);
 
     @Operation(summary = "Delete a plan", description = "Its days are free again at once.")
     @ApiResponse(responseCode = "204", description = "Deleted")

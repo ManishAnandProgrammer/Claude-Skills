@@ -1,5 +1,7 @@
 package com.example.app.planning.domain;
 
+import com.example.app.common.exception.AppException;
+import com.example.app.common.exception.ErrorCode;
 // tenancy-row:begin
 // import com.example.app.common.persistence.TenantOwnedEntity;
 // tenancy-row:else
@@ -7,8 +9,11 @@ import com.example.app.common.persistence.AuditableEntity;
 // tenancy-row:end
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
@@ -44,6 +49,15 @@ public class Plan extends AuditableEntity {
     @Column(name = "ends_on", nullable = false)
     private LocalDate endsOn;
 
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private PlanStatus status = PlanStatus.PLANNED;
+
+    /** The day the user says it was done: set with DONE, never otherwise. */
+    @Column(name = "done_on")
+    private LocalDate doneOn;
+
     /**
      * Both ends in one call, so the range is never half moved. The request already refused an inverted
      * range (400); one reaching here is a caller's bug. The days' overlap is the database's to refuse
@@ -55,5 +69,22 @@ public class Plan extends AuditableEntity {
         }
         startsOn = newStartsOn;
         endsOn = newEndsOn;
+    }
+
+    /**
+     * A move the lifecycle allows ({@link PlanStatus#canBecome}), else 409 {@code PLAN_STATUS_CHANGE_INVALID}
+     * naming both statuses; a move to the current status is one it doesn't list. DONE records the day it was
+     * done, which can't be before the plan's first: 400 {@code PLAN_DONE_ON_BEFORE_STARTS_ON}. The request
+     * gives the day exactly when the target is DONE.
+     */
+    public void changeStatus(PlanStatus target, LocalDate newDoneOn) {
+        if (!status.canBecome(target)) {
+            throw AppException.of(ErrorCode.PLAN_STATUS_CHANGE_INVALID, status, target);
+        }
+        if (target == PlanStatus.DONE && newDoneOn.isBefore(startsOn)) {
+            throw AppException.of(ErrorCode.PLAN_DONE_ON_BEFORE_STARTS_ON, newDoneOn, startsOn);
+        }
+        status = target;
+        doneOn = target == PlanStatus.DONE ? newDoneOn : null;
     }
 }

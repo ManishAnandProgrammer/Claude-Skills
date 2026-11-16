@@ -124,4 +124,21 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         assertThat(created.longValue()).isEqualTo(counter + 1);
     }
     // metadata:end
+
+    @Test
+    @DisplayName("After 0033 every seeded plan is PLANNED without a done day, and still holds its days")
+    void theSeededPlansArePlanned() throws Exception {
+        assertThat(jdbc.queryForObject("select count(*) from plans where owner_id = ?", Integer.class, HEAVY)).isPositive();
+        assertThat(jdbc.queryForObject("select count(*) from plans where status <> 'PLANNED' or done_on is not null", Integer.class))
+                .isZero();
+        String token = heavyOwnersToken();
+        String todoId = jdbc.queryForObject("select todo_id::text from plans where owner_id = ? order by starts_on limit 1",
+                String.class, HEAVY);
+        String day = jdbc.queryForObject("select min(starts_on)::text from plans where owner_id = ?", String.class, HEAVY);
+        postAs(token, "/api/v1/plans", """
+                {"todoId": "%s", "startsOn": "%s", "endsOn": "%s"}
+                """.formatted(todoId, day, day))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_OVERLAPS"));
+    }
 }

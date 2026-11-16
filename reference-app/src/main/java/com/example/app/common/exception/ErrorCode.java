@@ -148,5 +148,9 @@ public enum ErrorCode {
     PLAN_OVERLAPS,
     /** A plan for a todo that is done: plans are for open todos. */
     PLAN_TODO_DONE,
+    /** A move PlanStatus.canBecome doesn't allow: the plan's status and the target. */
+    PLAN_STATUS_CHANGE_INVALID,
+    /** A done day before the plan's first: the day and the first day. */
+    PLAN_DONE_ON_BEFORE_STARTS_ON,
     // example:end
 }

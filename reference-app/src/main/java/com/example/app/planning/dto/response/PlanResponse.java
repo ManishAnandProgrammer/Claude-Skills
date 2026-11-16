@@ -1,5 +1,6 @@
 package com.example.app.planning.dto.response;
 
+import com.example.app.planning.domain.PlanStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
@@ -13,9 +14,11 @@ public record PlanResponse(
         @Schema(description = "The owner's account id") UUID ownerId,
         @Schema(description = "The first day", example = "2026-11-20") LocalDate startsOn,
         @Schema(description = "The last day, inclusive", example = "2026-11-22") LocalDate endsOn,
+        @Schema(description = "PLANNED, DONE or CANCELLED", example = "PLANNED") PlanStatus status,
+        @Schema(description = "The day it was done; null unless DONE", example = "2026-11-21") LocalDate doneOn,
         @Schema(description = "When it was created") Instant createdAt,
         @Schema(description = "When it last changed") Instant updatedAt,
         @Schema(description = "Who created it") UUID createdBy,
         @Schema(description = "Who last changed it") UUID updatedBy,
-        @Schema(description = "Its version; a plan never changes, so it stays 0", example = "0") Long version) {
+        @Schema(description = "Its version, to send back with a change", example = "0") Long version) {
 }

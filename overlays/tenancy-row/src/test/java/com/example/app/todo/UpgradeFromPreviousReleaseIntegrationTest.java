@@ -192,4 +192,13 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.number").value(31));
     }
     // metadata:end
+
+    @Test
+    @DisplayName("After 0033 every seeded tenant's plans are PLANNED without a done day")
+    void theSeededPlansArePlanned() throws Exception {
+        assertThat(inTenant(ALPHA, "select count(*) from plans")).isPositive();
+        for (UUID tenant : TENANTS) {
+            assertThat(inTenant(tenant, "select count(*) from plans where status <> 'PLANNED' or done_on is not null")).isZero();
+        }
+    }
 }

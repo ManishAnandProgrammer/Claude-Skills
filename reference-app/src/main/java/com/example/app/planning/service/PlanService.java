@@ -11,6 +11,7 @@ import com.example.app.planning.domain.Plan;
 import com.example.app.planning.dto.internal.PlanRow;
 import com.example.app.planning.dto.request.PlanCreateRequest;
 import com.example.app.planning.dto.request.PlanFilter;
+import com.example.app.planning.dto.request.PlanStatusRequest;
 import com.example.app.planning.dto.request.PlanUpdateRequest;
 import com.example.app.planning.dto.response.PlanResponse;
 import com.example.app.planning.mapper.PlanMapper;
@@ -101,6 +102,19 @@ public class PlanService {
         Plan plan = getOwnedPlan(id, ownerId);
         plan.checkVersion(request.version());
         plan.reschedule(request.startsOn(), request.endsOn());
+        repository.flush();
+        TodoView todo = todos.findOwnedTodoView(plan.getTodoId(), ownerId)
+                .orElseThrow(AppException.supply(ErrorCode.PLAN_NOT_FOUND, id));
+        return ObjectWrapper.withObject(mapper.toResponse(plan, todo));
+    }
+
+    /** A status change (PlanStatus's moves), the version checked first; the todo read as on the update. */
+    @Transactional
+    public ObjectWrapper<PlanResponse> changeStatus(UUID id, PlanStatusRequest request) {
+        UUID ownerId = currentUser.id();
+        Plan plan = getOwnedPlan(id, ownerId);
+        plan.checkVersion(request.version());
+        plan.changeStatus(request.status(), request.doneOn());
         repository.flush();
         TodoView todo = todos.findOwnedTodoView(plan.getTodoId(), ownerId)
                 .orElseThrow(AppException.supply(ErrorCode.PLAN_NOT_FOUND, id));

@@ -359,8 +359,9 @@ at its end.
 **Shapes without golden code yet** (money, exactly one current, month values, a record two parties
 see with different rights (REST-16), a use case writing two aggregates (a `<UseCase>Manager`,
 ARCH-15's shape)): follow the house-review rules and ask; don't invent a shape. A **status workflow**
-(several states, only some moves allowed) copies the tenant lifecycle with tenancy, or its shape
-without it: the moves as one `canBecome(target)` switch on the status enum (`TenantStatus`), the
+(several states, only some moves allowed) copies golden `PlanStatus` and `Plan.changeStatus`
+(`PATCH /plans/{id}/status`, `PlanStatusRequest`, `PlanStatusIntegrationTest`): the moves as one
+`canBecome(target)` switch on the status enum (with tenancy also `TenantStatus`), the
 entity's change method refusing the rest with 409 `<ENTITY>_STATUS_CHANGE_INVALID` naming both
 states, and a test per allowed and per refused move. A move to the record's **current** status is
 refused like any move the switch doesn't list (409, tested), unless the owner decides it is a no-op
@@ -507,8 +508,10 @@ description and its 400 response name it.
   (a return before the loan's start: 400 `<ENTITY>_<FIELD>_BEFORE_<OTHER>`), never
   `LocalDate.now(clock)`: the server's UTC day is yesterday for a desk east of UTC until midnight UTC
   (JAVA-25). A moment the action records stays the server's `clock.instant()` (golden
-  `Todo.changeStatus`'s `completedAt`); the day's shape is `TimeEntryCreateRequest.spentOn` on the
-  action's record (no golden action takes one). A planned date (a leave, a plan)
+  `Todo.changeStatus`'s `completedAt`). Golden: `PlanStatusRequest.doneOn` (given with DONE and only with
+  it, a `@CrossField` on `doneOn`), checked in `Plan.changeStatus` against the plan's first day (400
+  `PLAN_DONE_ON_BEFORE_STARTS_ON`), tests `PlanStatusIntegrationTest.doneOnIsAtMostToday` and
+  `doneOnIsNeverBeforeTheFirstDay`. A planned date (a leave, a plan)
   lies ahead or behind: no `@NotAfterToday`, a sanity `@LatestDate` (golden `plan.dates`), and the
   rules the business gives (within one calendar year: name it so, e.g. `isInOneCalendarYear`; no
   golden code).

@@ -199,4 +199,16 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.number").value(31));
     }
     // metadata:end
+
+    @Test
+    @DisplayName("After 0033 every seeded schema's plans are PLANNED without a done day")
+    void theSeededPlansArePlanned() {
+        JdbcTemplate owner = migratedOwner();
+
+        assertThat(owner.queryForObject("select count(*) from %s.plans".formatted(TenantSchemas.of(ALPHA)), Integer.class)).isPositive();
+        for (UUID tenant : PROVISIONED) {
+            assertThat(owner.queryForObject("select count(*) from %s.plans where status <> 'PLANNED' or done_on is not null"
+                    .formatted(TenantSchemas.of(tenant)), Integer.class)).as(TenantSchemas.of(tenant)).isZero();
+        }
+    }
 }

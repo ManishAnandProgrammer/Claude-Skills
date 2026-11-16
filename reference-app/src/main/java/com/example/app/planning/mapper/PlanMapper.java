@@ -30,6 +30,8 @@ public class PlanMapper {
                 plan.getOwnerId(),
                 plan.getStartsOn(),
                 plan.getEndsOn(),
+                plan.getStatus(),
+                plan.getDoneOn(),
                 plan.getCreatedAt(),
                 plan.getUpdatedAt(),
                 plan.getCreatedBy(),
@@ -39,8 +41,8 @@ public class PlanMapper {
 
     /** A list row, with its todo from the batch's one lookup. */
     public PlanResponse toResponse(PlanRow row, TodoView todo) {
-        return new PlanResponse(row.id(), toTodoResponse(todo), row.ownerId(), row.startsOn(), row.endsOn(),
-                row.createdAt(), row.updatedAt(), row.createdBy(), row.updatedBy(), row.version());
+        return new PlanResponse(row.id(), toTodoResponse(todo), row.ownerId(), row.startsOn(), row.endsOn(), row.status(),
+                row.doneOn(), row.createdAt(), row.updatedAt(), row.createdBy(), row.updatedBy(), row.version());
     }
 
     /** The todo module's view, in this API's own shape (ARCH-06: no other module's type on the wire). */

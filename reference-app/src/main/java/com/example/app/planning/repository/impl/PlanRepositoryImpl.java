@@ -71,7 +71,7 @@ class PlanRepositoryImpl implements CustomPlanRepository {
     private static CompoundSelection<PlanRow> rowOf(CriteriaBuilder builder, Root<Plan> root) {
         return builder.construct(PlanRow.class,
                 root.get(Plan_.id), root.get(Plan_.todoId), root.get(Plan_.ownerId),
-                root.get(Plan_.startsOn), root.get(Plan_.endsOn),
+                root.get(Plan_.startsOn), root.get(Plan_.endsOn), root.get(Plan_.status), root.get(Plan_.doneOn),
                 root.get(Plan_.createdAt), root.get(Plan_.updatedAt), root.get(Plan_.createdBy), root.get(Plan_.updatedBy),
                 root.get(Plan_.version));
     }
