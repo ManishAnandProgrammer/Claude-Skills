@@ -163,7 +163,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("An ADMIN removes a member: 204, the membership is gone and its refresh token no longer works there")
+    @DisplayName("An ADMIN removes a member: 204, the membership is gone (TokenPathIntegrationTest has its tokens' paths)")
     void adminRemovesAMember() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
@@ -174,11 +174,6 @@ class TenantMemberIntegrationTest extends IntegrationTest {
         Integer memberships = jdbc.queryForObject("select count(*) from tenant_memberships where tenant_id = ? and user_id = ?",
                 Integer.class, tenant.id(), member.id());
         assertThat(memberships).isZero();
-        postAs(null, "/api/v1/auth/refresh-token", """
-                {"refreshToken": "%s"}
-                """.formatted(member.refreshToken()))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.errorCode").value("MEMBERSHIP_NOT_FOUND"));
     }
 
     @Test

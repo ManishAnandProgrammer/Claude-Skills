@@ -76,19 +76,16 @@ class SessionVersionTenancyIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            A demoted ADMIN's older token is 401 SESSION_VERSION_STALE on the very next request; the refresh returns \
-            a USER token, which the ADMIN endpoint refuses with 403""")
-    void aDemotionTakesEffectAtOnce() throws Exception {
+            A demoted ADMIN's refreshed token (TokenPathIntegrationTest has the refused older one) is a USER's: the \
+            ADMIN endpoint refuses it with 403, the account's own takes it""")
+    void aDemotionRefreshesIntoTheLowerRole() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = newUserIn(tenant, "ADMIN");
         TestUser demoted = newUserIn(tenant, "ADMIN");
-        getAs(demoted.accessToken(), MEMBERS).andExpect(status().isOk());
 
         changeRole(owner, tenant, demoted, "USER").andExpect(status().isOk());
 
-        assertStale(getAs(demoted.accessToken(), MEMBERS));
         String refreshed = read(refresh(demoted.refreshToken()).andExpect(status().isOk()), "$.response.accessToken");
-        assertThat(claim(refreshed, "$.roles[0]")).isEqualTo("USER");
         getAs(refreshed, MEMBERS)
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
@@ -113,19 +110,15 @@ class SessionVersionTenancyIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            A removed member's token is 401 at once and the refresh fails (404 MEMBERSHIP_NOT_FOUND); added again, \
-            the old token stays refused (a new membership), and a new sign-in works""")
-    void aRemovalTakesEffectAtOnce() throws Exception {
+            A removed member added again (TokenPathIntegrationTest has the removal's paths): the old token stays \
+            refused, a new membership, and a new sign-in works""")
+    void aReAddedMembersOldTokenStaysRefused() throws Exception {
         TestTenant tenant = newTenant();
         TestUser owner = newUserIn(tenant, "ADMIN");
         TestUser member = newUserIn(tenant, "ADMIN");
 
         deleteAs(owner.accessToken(), MEMBERS + "/" + member.id()).andExpect(status().isNoContent());
 
-        assertStale(getAs(member.accessToken(), MEMBERS));
-        refresh(member.refreshToken())
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.errorCode").value("MEMBERSHIP_NOT_FOUND"));
         postAs(owner.accessToken(), MEMBERS, """
                 {"email": "%s", "role": "USER"}
                 """.formatted(member.email())).andExpect(status().isCreated());
@@ -135,8 +128,8 @@ class SessionVersionTenancyIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            Suspending a tenant cuts every member's token there at once, one statement for all; their refresh is 403 \
-            TENANT_NOT_ACTIVE until it is ACTIVE again, and another tenant's member is untouched""")
+            Suspending a tenant cuts every member's token there (TokenPathIntegrationTest has each path), the ADMIN's \
+            too; another tenant's member is untouched, and once it is ACTIVE again the refresh works""")
     void aSuspensionEndsEveryMembersTokens() throws Exception {
         TestTenant tenant = newTenant();
         TestTenant elsewhere = newTenant();
@@ -147,11 +140,7 @@ class SessionVersionTenancyIntegrationTest extends IntegrationTest {
         changeStatus(tenant, "SUSPENDED").andExpect(status().isOk());
 
         assertStale(getAs(admin.accessToken(), ME));
-        assertStale(getAs(member.accessToken(), ME));
         getAs(outsider.accessToken(), ME).andExpect(status().isOk());
-        refresh(member.refreshToken())
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("TENANT_NOT_ACTIVE"));
         changeStatus(tenant, "ACTIVE").andExpect(status().isOk());
         String refreshed = read(refresh(member.refreshToken()).andExpect(status().isOk()), "$.response.accessToken");
         getAs(refreshed, ME).andExpect(status().isOk());

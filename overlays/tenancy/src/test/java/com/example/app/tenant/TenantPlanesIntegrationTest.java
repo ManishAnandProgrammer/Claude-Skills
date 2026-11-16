@@ -116,8 +116,10 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Login skips a suspended most recent tenant for another ACTIVE one; switching to the suspended one is 403 and keeps the session")
-    void suspendedTenantDoesNotLockOutTheOthers() throws Exception {
+    @DisplayName("""
+            A refused switch to a suspended tenant keeps the session: its refresh token still works (TokenPathIntegrationTest \
+            has the login and the switch themselves)""")
+    void aRefusedSwitchKeepsTheSession() throws Exception {
         TestTenant other = newTenant();
         TestTenant suspended = newTenant();
         TestUser user = newUserIn(other);
@@ -126,8 +128,6 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
                 "$.response.refreshToken");
         changeStatus(suspended.id(), "SUSPENDED");
 
-        String loggedIn = read(login(user.email(), PASSWORD).andExpect(status().isOk()), "$.response.accessToken");
-        assertThat(claim(loggedIn, "$.tenant_id")).isEqualTo(other.id().toString());
         String otherRefresh = read(switchTenant(refreshToken, other.id()).andExpect(status().isOk()), "$.response.refreshToken");
         switchTenant(otherRefresh, suspended.id())
                 .andExpect(status().isForbidden())

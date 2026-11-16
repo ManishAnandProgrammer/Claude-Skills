@@ -186,9 +186,9 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            A suspension ends every session and refuses every token path: login with the right password 403 \
-            AUTH_ACCOUNT_SUSPENDED (a wrong one still 401), both refresh tokens 401, no live refresh token left""")
-    void aSuspensionRefusesEveryTokenPath() throws Exception {
+            A suspension ends every session, each device's (TokenPathIntegrationTest has each path): a wrong password \
+            is still 401, every refresh token 401, no live refresh token left""")
+    void aSuspensionEndsEverySession() throws Exception {
         TestUser phone = newUser();
         TestUser laptop = signIn(phone);
 
@@ -196,9 +196,6 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.status").value("SUSPENDED"));
 
-        login(phone.email(), PASSWORD)
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("AUTH_ACCOUNT_SUSPENDED"));
         login(phone.email(), "Wrong-Pass-1")
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_CREDENTIALS"));
@@ -209,9 +206,6 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
         }
         assertThat(liveRefreshTokensOf(phone.id())).isZero();
         // session-version:begin
-        getAs(laptop.accessToken(), ME)
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.errorCode").value("SESSION_VERSION_STALE"));
         // session-version:else
         // // The access token lives out its lifetime, but issues nothing: a password change is refused too.
         // changePassword(laptop.accessToken(), PASSWORD, NEW_PASSWORD)

@@ -135,8 +135,8 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            A suspended member's switch-tenant is refused: 401 with the revoked refresh token, 403 \
-            AUTH_ACCOUNT_SUSPENDED with one the suspension didn't revoke""")
+            A suspended member's switch-tenant with a refresh token the suspension didn't revoke (one issued in a race) \
+            is still refused: 403 AUTH_ACCOUNT_SUSPENDED (TokenPathIntegrationTest has the revoked one)""")
     void aSuspendedMemberSwitchesNowhere() throws Exception {
         TestTenant first = newTenant();
         TestTenant second = newTenant();
@@ -145,25 +145,8 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
 
         changeStatus(platformToken(), member.email(), "SUSPENDED").andExpect(status().isOk());
 
-        switchTenant(member.refreshToken(), second.id())
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));
         sql("update refresh_tokens set revoked_at = null, revocation_reason = null where user_id = ?", member.id());
         switchTenant(member.refreshToken(), second.id())
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("AUTH_ACCOUNT_SUSPENDED"));
-    }
-
-    @Test
-    @DisplayName("Staff can't act as a suspended member: impersonation is 403 AUTH_ACCOUNT_SUSPENDED")
-    void aSuspendedMemberIsNotImpersonated() throws Exception {
-        TestTenant tenant = newTenant();
-        TestUser member = newUserIn(tenant);
-        changeStatus(platformToken(), member.email(), "SUSPENDED").andExpect(status().isOk());
-
-        postAs(platformToken(), "/api/v1/platform/tenants/" + tenant.id() + "/impersonations", """
-                {"userId": "%s", "reason": "SUP-1"}
-                """.formatted(member.id()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("AUTH_ACCOUNT_SUSPENDED"));
     }
