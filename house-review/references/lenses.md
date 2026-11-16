@@ -60,7 +60,16 @@ is code-smells.md, java.md and architecture.md.
   - secrets are compared in constant time;
   - tokens and codes are stored hashed;
   - personal data is hashed before use as a key;
-  - **heap dumps and JFR files are secrets**: private paths, never in images or logs.
+  - **heap dumps and JFR files are secrets**: private paths, never in images or logs;
+  - **a library's own messages count**: a driver or framework that copies values into an exception
+    message (pgjdbc's server `DETAIL` and a failed batch's bound values) puts them in every log line that
+    logs the exception.
+- **Detect:** `logServerErrorDetail` not `false` on every PostgreSQL data source (the pool's
+  `data-source-properties`, a data source built in code such as Liquibase's: CFG-01); a test log of a
+  409 path showing `Key (` or `Batch entry 0 insert`; `log.*(…, exception)` or `exception.getMessage()`
+  logged where the exception carries a request's values (a JSON parse error with the body, a
+  `ConstraintViolationException`'s invalid value); Hibernate's `org.hibernate.orm.jdbc.bind` or SQL
+  parameter logging outside dev.
 - **Severity:** High (Critical for login codes in logs).
 
 ### SEC-05: Injection and hostile input

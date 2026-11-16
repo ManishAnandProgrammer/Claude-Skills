@@ -45,6 +45,11 @@ spring:
         reWriteBatchedInserts: true
         tcpKeepAlive: true
         ApplicationName: ${spring.application.name}-${APP_ENV:local}
+        # pgjdbc otherwise copies the server's DETAIL ("Key (email)=(...) already exists") and a failed
+        # batch's bound values into the exception message, which Hibernate logs at WARN: every refused
+        # write would put the row's personal data in the logs (SEC-04). The constraint name the error
+        # mapping reads stays in the message.
+        logServerErrorDetail: false
   jpa:
     open-in-view: false
     show-sql: false

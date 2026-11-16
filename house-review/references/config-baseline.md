@@ -26,6 +26,7 @@ Check these in whole-codebase mode, and in diff mode whenever configuration file
 | `…data-source-properties.reWriteBatchedInserts` | `true` | One round trip per insert batch |
 | `…data-source-properties.tcpKeepAlive` | `true` | Finds connections a NAT or load balancer dropped |
 | `…data-source-properties.ApplicationName` | `<app>-<env>` | Finds the app's sessions in `pg_stat_activity` |
+| `…data-source-properties.logServerErrorDetail` | `false` | pgjdbc otherwise copies the server's `DETAIL` (`Key (email)=(…) already exists`) and a failed batch's **bound values** (`Batch entry 0 insert into … values ('ann@…', …)`) into the exception message, which Hibernate logs at WARN (`org.hibernate.orm.jdbc.error`, kept by a prod `root: WARN`): every refused write, an ordinary 409 included, writes the row's personal data to the logs (SEC-04, High). The constraint name the error mapping reads stays in the message. Liquibase's own data source sets it too (`setLogServerErrorDetail(false)`, reference `config/LiquibaseConnectionConfig`). Test: reference `RefusedWriteLoggingIntegrationTest` (a refused statement and a refused batch log the constraint, never the value) |
 
 MySQL-only driver properties (`cachePrepStmts`, `useServerPrepStmts`,
 `rewriteBatchedStatements`) on PostgreSQL are a finding: they do nothing.

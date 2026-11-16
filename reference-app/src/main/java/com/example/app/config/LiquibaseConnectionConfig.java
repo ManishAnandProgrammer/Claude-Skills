@@ -31,6 +31,9 @@ class LiquibaseConnectionConfig {
         dataSource.setPassword(database.getPassword());
         dataSource.setOptions("-c lock_timeout=" + settings.lockTimeout().toMillis());
         dataSource.setApplicationName(settings.applicationName());
+        // A failed backfill or unique index would otherwise log the rows' values (config/db.yml, the pool's
+        // logServerErrorDetail). The operator finds the rows with a query on a restored copy instead.
+        dataSource.setLogServerErrorDetail(false);
         return dataSource;
     }
 

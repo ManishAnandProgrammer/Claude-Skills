@@ -1,7 +1,7 @@
 6d626d234a3309745e56d5c4cd792b70fd9cafa64fd006c524ab031d5f3e95e2  reference-app/src/main/java/com/example/app/common/logging/LogContext.java
 fd882eddeb373cc284a39309eefa431e144279b7e296d01bc36b1c5df8a11e68  reference-app/src/main/java/com/example/app/common/logging/UserLogContextFilter.java
 a85b8eadc5c06dfca2bcb6204d44b0c79679895b67c946d8d0ed26dcce792f14  reference-app/src/main/java/com/example/app/common/security/CurrentUser.java
-8e20c269b33b0361372b4af49f4f1d79985ccd70ceea0eedae41eeedbdb266dd  reference-app/src/main/java/com/example/app/config/LiquibaseConnectionConfig.java
+5c8d9c14b22e49d3ecc068d4453714cf8c4defe06647c9f1cdeac2cebc4d4e9b  reference-app/src/main/java/com/example/app/config/LiquibaseConnectionConfig.java
 99c681fd5a53fd94206fa1794237fac7f77d49e15851b1623f9120029486dcb1  reference-app/src/main/java/com/example/app/config/SchedulingConfig.java
 a60a3b85f4bedaf6f216a50f0056cea6db23a51b4907cc7963742df9ad81597b  reference-app/src/main/java/com/example/app/media/mapper/MediaFileMapper.java
 1789b719174017b17552e2592ee503869e35637a47e92bbbdd7de9255c194449  reference-app/src/main/java/com/example/app/media/repository/MediaFileRepository.java
