@@ -1,6 +1,7 @@
 package com.example.app.todo;
 
 import com.example.app.common.dropdown.DropdownStatus;
+import com.example.app.common.pagination.Cursor;
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -779,6 +780,18 @@ class TodoListIntegrationTest extends IntegrationTest {
 
         assertThat(walk(user, DROPDOWN + "?size=2&sortDirection=DESC"))
                 .containsExactly(List.of("Echo", "Delta"), List.of("Charlie", "Bravo"), List.of("Alpha"));
+    }
+
+    @Test
+    @DisplayName("A dropdown cursor whose name key holds U+0000 is 400 REQUEST_PARAMETER_INVALID naming after, never a 500")
+    void dropdownCursorWithANulCharacterIs400() throws Exception {
+        TestUser user = newUser();
+        String tampered = Cursor.write("NAME_ASC", "Lists\u0000", UUID.randomUUID());
+
+        mvc.perform(get(DROPDOWN).param("after", tampered).header(HttpHeaders.AUTHORIZATION, "Bearer " + user.accessToken()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                .andExpect(jsonPath("$.errors[0].parameter").value("after"));
     }
 
     @Test

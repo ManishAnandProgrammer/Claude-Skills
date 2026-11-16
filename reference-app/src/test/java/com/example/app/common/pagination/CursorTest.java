@@ -34,6 +34,14 @@ class CursorTest {
     }
 
     @Test
+    @DisplayName("A key holding U+0000 is refused like a tampered cursor: PostgreSQL can't take it as text")
+    void aKeyWithANulCharacterIsRefused() {
+        String cursor = Cursor.write("NAME", "Lists\u0000", ID);
+
+        assertRefused(() -> Cursor.read(cursor, "NAME"));
+    }
+
+    @Test
     @DisplayName("No after is the first batch")
     void absentIsFirstBatch() {
         assertThat(Cursor.read(null, "AMOUNT").isPresent()).isFalse();

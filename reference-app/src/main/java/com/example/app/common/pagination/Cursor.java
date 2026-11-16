@@ -56,8 +56,10 @@ public final class Cursor {
         } catch (IllegalArgumentException | JacksonException unreadable) {
             throw invalid();
         }
+        // A key with U+0000 is well-formed JSON that PostgreSQL can't take as text: a 500 at the database.
         if (Objects.isNull(content) || !expectedSort.equals(content.sort()) || Objects.isNull(content.keys())
-                || content.keys().isEmpty() || content.keys().contains(null)) {
+                || content.keys().isEmpty() || content.keys().contains(null)
+                || content.keys().stream().anyMatch(key -> key.indexOf('\u0000') >= 0)) {
             throw invalid();
         }
         return new Cursor(List.copyOf(content.keys()));
