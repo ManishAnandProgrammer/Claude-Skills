@@ -59,6 +59,7 @@ class LayerArchTest {
             .should().beAnnotatedWith(Transactional.class)
             .because("a class-level transaction on a controller holds a connection through (de)serialisation of every endpoint (ARCH-11)");
 
+    /** {@code repositoryAccess: aggregate-service} (the profiles); a project with {@code service, mapper} adds {@code "..mapper.."}. */
     @ArchTest
     static final ArchRule onlyServicesUseRepositories = classes().that().resideInAPackage("..repository..")
             .should().onlyHaveDependentClassesThat().resideInAnyPackage("..service..", "..repository..")

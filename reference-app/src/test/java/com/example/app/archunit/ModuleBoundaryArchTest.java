@@ -2,6 +2,7 @@ package com.example.app.archunit;
 
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -24,8 +25,8 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
  * Module boundaries (profile: {@code moduleContracts: api-facades}). Every module, {@code config}
  * included, reaches a feature module ({@code todo}, {@code user}) only through its {@code api} package;
  * {@code common} and {@code config} are infrastructure every module may use, and {@code common} depends
- * on no feature at all. An {@code api} package holds contracts only: records, interfaces and enums, with
- * no entity or layer type in them.
+ * on no feature at all. An {@code api} package holds contracts only: records, interfaces, enums and constants holders,
+ * with no entity or layer type in them.
  */
 @AnalyzeClasses(packages = "com.example.app", importOptions = ImportOption.DoNotIncludeTests.class)
 class ModuleBoundaryArchTest {
@@ -64,6 +65,7 @@ class ModuleBoundaryArchTest {
                     a response that embeds another module's view changes whenever that contract does; map it into \
                     a record of your own (ARCH-06)""");
 
+    /** The allowed packages are the libraries common uses: a project adds its own (a phone-number library), never a feature package. */
     @ArchTest
     static final ArchRule commonDependsOnNoFeature = noClasses().that().resideInAPackage("com.example.app.common..")
             .should().dependOnClassesThat().resideOutsideOfPackages("com.example.app.common..", "java..", "javax..",
@@ -130,14 +132,29 @@ class ModuleBoundaryArchTest {
     }
 
     private static ArchCondition<JavaClass> beARecordAnInterfaceOrAnEnum() {
-        return new ArchCondition<>("be a record, an interface or an enum") {
+        return new ArchCondition<>("be a record, an interface, an enum or a constants holder") {
             @Override
             public void check(JavaClass javaClass, ConditionEvents events) {
-                if (!javaClass.isRecord() && !javaClass.isInterface() && !javaClass.isEnum()) {
+                boolean contract = javaClass.isRecord() || javaClass.isInterface() || javaClass.isEnum() || isConstantsHolder(javaClass);
+                if (!contract) {
                     events.add(SimpleConditionEvent.violated(javaClass, javaClass.getName() + " is a class"));
                 }
             }
         };
+    }
+
+    /**
+     * A final class of {@code static final} fields behind a private constructor, and nothing else: the
+     * compile-time constants an annotation needs (a pattern), which no record or enum can hold, and an
+     * interface of constants is Effective Java's item 22.
+     */
+    private static boolean isConstantsHolder(JavaClass javaClass) {
+        boolean finalClass = javaClass.getModifiers().contains(JavaModifier.FINAL);
+        boolean onlyConstants = javaClass.getFields().stream()
+                .allMatch(field -> field.getModifiers().containsAll(Set.of(JavaModifier.STATIC, JavaModifier.FINAL)));
+        boolean privateConstructors = javaClass.getConstructors().stream()
+                .allMatch(constructor -> constructor.getModifiers().contains(JavaModifier.PRIVATE));
+        return finalClass && onlyConstants && privateConstructors && javaClass.getMethods().isEmpty();
     }
 
     private static Optional<String> moduleOf(String packageName) {

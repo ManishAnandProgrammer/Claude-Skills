@@ -7,8 +7,11 @@ import com.tngtech.archunit.core.domain.JavaAnnotation;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
+import com.tngtech.archunit.core.domain.JavaField;
+import com.tngtech.archunit.core.domain.JavaMember;
 import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.domain.JavaModifier;
+import com.tngtech.archunit.core.domain.JavaType;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
@@ -30,8 +33,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 
@@ -44,7 +49,6 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noMethods;
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_ACCESS_STANDARD_STREAMS;
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_THROW_GENERIC_EXCEPTIONS;
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
-import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING;
 
 /** House conventions that live in bytecode (architecture.md "Conventions in bytecode", "Naming"). */
 @AnalyzeClasses(packages = "com.example.app", importOptions = ImportOption.DoNotIncludeTests.class)
@@ -67,13 +71,18 @@ class ConventionArchTest {
             .should().beAnnotatedWith(Transactional.class)
             .because("the proxy can't apply to a private method: the write would silently not be transactional (DATA-16)");
 
+    /** A project with a lock library adds its annotation: {@code .orShould().beAnnotatedWith(SchedulerLock.class)} (ShedLock). */
     @ArchTest
     static final ArchRule scheduledJobsDeclareTheirConcurrencyPosture = methods().that().areAnnotatedWith(Scheduled.class)
             .should().beAnnotatedWith(MultiInstanceSafe.class)
             .because("several instances run: a job is either safe on all of them at once, or takes a distributed lock (ARCH-12)");
 
+    // Requests and filters only: a settings record's startup check (@AssertTrue on a @ConfigurationProperties record)
+    // is no request, and no client field could name it.
     @ArchTest
-    static final ArchRule crossFieldRulesNameTheirField = noMethods().should().beAnnotatedWith(AssertTrue.class)
+    static final ArchRule crossFieldRulesNameTheirField = noMethods().that().areDeclaredInClassesThat().resideInAPackage("..dto..")
+            .should().beAnnotatedWith(AssertTrue.class)
+            .allowEmptyShould(true)
             .because("a rule across fields is @CrossField(reportedOn = ...): an @AssertTrue getter is reported on its own name, a field no client sends (ERR-07)");
 
     @ArchTest
@@ -89,6 +98,14 @@ class ConventionArchTest {
     static final ArchRule noOptionalParameters = noCodeUnits().that().doNotHaveModifier(JavaModifier.SYNTHETIC)
             .should(haveAnOptionalParameter())
             .because("Optional is a return type only: a parameter takes the value or null, and overloads cover the absent case (JAVA-08)");
+
+    @ArchTest
+    static final ArchRule membersExposeNoNarrowerType = classes().that().arePublic()
+            .should(exposeOnlyTypesOtherPackagesCanName())
+            .because("""
+                    any package may call a public member, but none outside can name a package-private type it takes or \
+                    returns: narrow the member (@RequiredArgsConstructor(access = AccessLevel.PACKAGE)), never widen the \
+                    type (JAVA-27)""");
 
     @ArchTest
     static final ArchRule noUnboundedExecutors = noClasses()
@@ -240,6 +257,57 @@ class ConventionArchTest {
         };
     }
 
+    private static ArchCondition<JavaClass> exposeOnlyTypesOtherPackagesCanName() {
+        return new ArchCondition<>("expose only types other packages can name") {
+            @Override
+            public void check(JavaClass owner, ConditionEvents events) {
+                if (!isVisibleEverywhere(owner)) {
+                    return;
+                }
+                for (JavaMember member : owner.getMembers()) {
+                    if (isVisibleOutsideItsPackage(member)) {
+                        for (JavaClass named : typesNamedBy(member)) {
+                            if (!isVisibleEverywhere(named)) {
+                                events.add(SimpleConditionEvent.violated(member, member.getFullName() + " names " + named.getName()));
+                            }
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    private static boolean isVisibleOutsideItsPackage(JavaMember member) {
+        Set<JavaModifier> modifiers = member.getModifiers();
+        return !modifiers.contains(JavaModifier.SYNTHETIC)
+                && (modifiers.contains(JavaModifier.PUBLIC) || modifiers.contains(JavaModifier.PROTECTED));
+    }
+
+    /** The field's type, or the parameter and return types, each with its type arguments and array components. */
+    private static Set<JavaClass> typesNamedBy(JavaMember member) {
+        Set<JavaClass> named = new HashSet<>();
+        if (member instanceof JavaField field) {
+            named.addAll(field.getType().getAllInvolvedRawTypes());
+        }
+        if (member instanceof JavaCodeUnit codeUnit) {
+            for (JavaType parameter : codeUnit.getParameterTypes()) {
+                named.addAll(parameter.getAllInvolvedRawTypes());
+            }
+            named.addAll(codeUnit.getReturnType().getAllInvolvedRawTypes());
+        }
+        return named;
+    }
+
+    /** Public, and so is every class it is nested in; a primitive or an array of a visible type too. */
+    private static boolean isVisibleEverywhere(JavaClass type) {
+        JavaClass base = type.isArray() ? type.getBaseComponentType() : type;
+        if (base.isPrimitive()) {
+            return true;
+        }
+        Optional<JavaClass> enclosing = base.getEnclosingClass();
+        return base.getModifiers().contains(JavaModifier.PUBLIC) && (enclosing.isEmpty() || isVisibleEverywhere(enclosing.get()));
+    }
+
     private static ArchCondition<JavaCodeUnit> haveAnOptionalParameter() {
         return new ArchCondition<>("have an Optional parameter") {
             @Override
@@ -266,8 +334,10 @@ class ConventionArchTest {
     @ArchTest
     static final ArchRule noStandardStreams = NO_CLASSES_SHOULD_ACCESS_STANDARD_STREAMS;
 
+    /** ArchUnit's NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING sees a Logger field only, never a {@code Logger.getLogger(...)} call. */
     @ArchTest
-    static final ArchRule noJavaUtilLogging = NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING;
+    static final ArchRule noJavaUtilLogging = noClasses().should().dependOnClassesThat().resideInAPackage("java.util.logging..")
+            .because("every line goes through SLF4J and the house pattern, with its context (OPS-01)");
 
     @ArchTest
     static final ArchRule noFieldInjection = NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
