@@ -77,7 +77,10 @@ The rules below say which mode they apply to.
 ### ARCH-05: `api/` packages are pure contracts (`api-facades` mode)
 - **Check:** `<module>.api` depends only on shared code, the JDK, Jakarta, Spring contracts and
   Lombok. No service, repository, entity, mapper, HTTP DTO, controller or config. (`controller/api`
-  OpenAPI interfaces are excluded: they document HTTP.)
+  OpenAPI interfaces are excluded: they document HTTP.) Its types are records, interfaces, enums, and
+  constants holders (a final class of `static final` fields behind a private constructor: the
+  compile-time constant an annotation needs, such as a pattern, which no record or enum can hold);
+  `ModuleBoundaryArchTest.apiPackagesHoldOnlyContractTypes`.
 - **Severity:** High: "the facade is an illusion: renaming an internal type forces a contract
   change across every consuming module".
 
@@ -144,7 +147,9 @@ The rules below say which mode they apply to.
   - unscoped or bypassing queries;
   - `@Scheduled` jobs, which must declare a concurrency posture (a lock annotation, or
     `@MultiInstanceSafe("why")`: safe when every instance runs it at once) when `{{instances}}` is
-    `multiple`;
+    `multiple`. The house rule (`ConventionArchTest.scheduledJobsDeclareTheirConcurrencyPosture`) knows
+    `@MultiInstanceSafe`; a project with a lock library adds its annotation there
+    (`.orShould().beAnnotatedWith(SchedulerLock.class)`);
   - the tenant bypass, which is profile-optional.
 
   The user's reason: the defect "recurred at least six times… after this rule, it fails the
@@ -259,7 +264,7 @@ Automatable, from the profile:
 | ARCH-16 | no constructor parameter or field annotated `@Lazy` (the `ObjectProvider<OwnBean>` type argument and `allow-circular-references` stay review checks) |
 | REST-25 | no `@PreAuthorize` whose value contains `hasRole(` outside `<root>.common.security..` (annotation values are in bytecode) |
 | Naming (the reference checks the controller and repository names in `ConventionArchTest`) | `*Controller`, `*Repository`; `*RepositoryImpl` not public; package names lower-case; test classes end in `Test` (Surefire skips others silently) |
-| Conventions in bytecode | no `@Lob` field; no `@Transactional` private method; no `Optional` field or parameter; no `@TransactionalEventListener` + `REQUIRES_NEW` without `@Async`; no `Executors.newFixedThreadPool` / `newCachedThreadPool`; `GeneralCodingRules` (no `System.out`, no java.util.logging, no field injection, no generic `RuntimeException` thrown) |
+| Conventions in bytecode | no `@Lob` field; no `@Transactional` private method; no `Optional` field or parameter; no `@TransactionalEventListener` + `REQUIRES_NEW` without `@Async`; no `Executors.newFixedThreadPool` / `newCachedThreadPool`; no public member naming a package-private type (JAVA-27); no dependency on `java.util.logging` (ArchUnit's `NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING` sees a `Logger` field only, never a `Logger.getLogger(...)` call); `GeneralCodingRules` (no `System.out`, no field injection, no generic `RuntimeException` thrown) |
 
 Not automatable (they live in source, not bytecode), so they stay review rules:
 - `var`;
@@ -284,4 +289,10 @@ How the skill uses it:
 
    Also offer it when an automatable guideline finding recurs.
 4. Use `FreezingArchRule` only when the developer chooses to freeze existing violations instead of
-   fixing them first, and its stored violations go in the deviation register.
+   fixing them first, and its stored violations go in the deviation register. The store is in the
+   repository: `src/test/resources/archunit.properties` with `freeze.store.default.path` under
+   `src/test/resources` and, once the first run has written it, `freeze.store.default.allowStoreCreation=false`,
+   so a missing store fails the build instead of silently freezing every violation again.
+5. A rule's scope change (narrowed to a package, a new accepted shape) is proven on fixture classes:
+   what it must still refuse and what it now lets pass (reference `ArchRuleScopeTest`). A planted
+   violation for a red run must be one the rule sees.

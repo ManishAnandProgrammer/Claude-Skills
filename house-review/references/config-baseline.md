@@ -75,7 +75,9 @@ query plan cache size left at its default.
 | `server.compression.*` | enabled with `min-response-size=1KB` and JSON mime types, **or** documented as done by the edge proxy | Off in prod when Nginx compresses |
 | `server.tomcat.connection-timeout` | `5s` | |
 | `server.tomcat.max-connections` / `accept-count` / `keep-alive-timeout` / `max-keep-alive-requests` | set for prod (5000 / 1000 / 15s / 1000) | Don't lower `max-connections` to "cap load": it counts idle keep-alive sockets |
-| `server.tomcat.max-http-form-post-size`, `max-swallow-size`, `max-http-response-header-size`, multipart `max-file-size` / `max-request-size` | set | Bounded input |
+| `server.tomcat.max-http-form-post-size`, `max-swallow-size`, `max-http-response-header-size` | set | Bounded input. These bound forms and headers only: Jackson reads a whole JSON body into memory before validation, and nothing in Boot caps it. The reverse proxy's body limit is the bound (`client_max_body_size`, in the deployment notes); an in-app cap (a declared `Content-Length` check plus a counting stream for chunked bodies, 413) is a project's own filter |
+| `spring.servlet.multipart.enabled` | `false` where no endpoint takes a file (the house uploads go to storage directly, MEDIA-01); else `max-file-size` / `max-request-size` set | The resolver parses every part of a multipart body before any filter or wrapper sees it |
+| `spring.mvc.formcontent.filter.enabled` | `false` where no endpoint reads form parameters | Boot's `FormContentFilter` (order -9900, on by default) reads a PUT, PATCH or DELETE form body whole into memory ahead of admission control, the security chain and any body cap. Reference: `ConfigurationBaselineIntegrationTest.noBodyIsReadAheadOfTheFilters` |
 | Scheduler | a `TaskScheduler` bean with N named platform threads, `waitForTasksToCompleteOnShutdown`, `awaitTerminationSeconds` | `spring.task.scheduling.pool.size` is ignored under virtual threads (REL-08) |
 | `spring.task.execution.mode` | `force` (whenever a `TaskScheduler` bean exists) | A scheduler is an `Executor`, so Boot otherwise skips its `applicationTaskExecutor`, and the MDC `TaskDecorator` with it |
 | `spring.task.execution.thread-name-prefix` | set | Readable thread dumps |
@@ -161,6 +163,10 @@ scrape is secured, `{{metricsAuth}}`).
   accepts the gap.
 - No container definition in the repository at all is itself the finding (the flags can't be
   reviewed): a Dockerfile, or `build-image` with the flags recorded.
+- The image holds the jar the verified build produced (reference `Dockerfile`: `COPY target/*.jar`). A
+  Dockerfile that compiles the code itself must copy every file the build reads (`lombok.config`, `.mvn/`,
+  annotation-processor settings), and CI builds that image: an image compiled without `lombok.config`
+  dropped every `@Qualifier` from Lombok's constructors (JAVA-26) while every test and CI run was green.
 - Unique node id per instance when ids need one (TSID).
 
 ## CFG-09: merged into REL-01, REL-04 and OPS-06

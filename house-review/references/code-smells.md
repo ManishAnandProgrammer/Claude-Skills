@@ -25,6 +25,8 @@ Lines are counted without blank or comment lines.
 - **Check:** a class over `{{maxClassLines}}` lines, or one that changes for several unrelated
   reasons (HTTP transport + resilience + message wording + parsing).
 - **Detect:**
+  - lines are code lines, without blank lines and comments (javadoc included), never the file's length:
+    `grep -cvE '^\s*($|//|/\*|\*)' <File>.java`;
   - list the class's responsibilities, one line each; 4 or more is a finding;
   - injected collaborators: 8 or more is a finding; 5–7 sends you to the responsibility list above;
   - ask "if two unrelated rules change, do they both hit this class?".

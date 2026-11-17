@@ -48,7 +48,10 @@ Principles:
 Look for `.claude/review-profile.md` at the project root.
 
 **If it exists:** read it. Also read CLAUDE.md (project rules) and, if present,
-`.claude/crud-profile.md`.
+`.claude/crud-profile.md`. Check that every file, package and class a profile row names still exists
+(code moves; a row naming `auth/security/ProblemResponses` after it moved to `common/web` misleads every
+rule that reads it): a missing one is a stale profile row (Low), corrected with the user before the
+review leans on it.
 
 **If it doesn't exist:** build it before reviewing anything.
 1. Copy `~/.claude/skills/house-review/profile-template.md`.
@@ -164,7 +167,7 @@ When a file's kind, or whether a rule applies to it, is unclear, load the refere
 
 | Focus | Loads |
 |---|---|
-| `api` | rest-api.md, error-contract.md, REL-10, ARCH-13 |
+| `api` | rest-api.md, error-contract.md, REL-10, ARCH-13, DATA-10 (the indexes a new sort, filter or dropdown needs) |
 | `data` | persistence.md; lenses.md's section *Lens 8: Concurrency (CONC)*; REST-08, REST-09, ERR-03 |
 | `tests` | lenses.md's section *Tests (TEST)*; ERR-06, ERR-07, DATA-06, DATA-10 and DATA-19 (their **Detect** hints name test defects) |
 | `security` | REST-09, REST-14 to REST-18, REST-22, REST-25; TEST-02, TEST-03, TEST-04 |
@@ -186,7 +189,7 @@ tenancy-matrices.md.
 **Small scope** (up to `subagentThreshold` files in the profile, default 25): review it
 yourself, file by file.
 
-**Large scope** (path or whole codebase above the threshold): split it by module into 3–5
+**Large scope** (any mode above the threshold, a diff included): split it by module into 3–5
 groups and start one reviewer per group with the **Agent** tool, all in one message so they
 run in parallel. Each reviewer must get:
 - the list of files;
@@ -199,6 +202,11 @@ run in parallel. Each reviewer must get:
 Run the test-suite lens (TEST-xx, CONC, PERF query counts) as its own reviewer in whole-codebase
 mode. Do the REST pass, including doc drift, yourself across all controllers: it needs one view
 of every endpoint.
+
+**A review of code you wrote or fixed** (the rounds of one session that also changes the code): the
+final round goes to a reviewer that hasn't seen your reasoning (the **Agent** tool), given the scope, the
+references and the profile, never your summary of what changed or why it is right: a round anchored on
+the author's reading finds what the author already looked for.
 
 ### Steps 3a and 3b: the architecture and resilience passes (path and all)
 `references/deep-passes.md`, read only in path and all (with `--focus`, Gate 3 says which).

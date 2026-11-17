@@ -45,7 +45,11 @@ a finding**. Profile keys are written `{{key}}`.
   - DELETE removes.
 - **Detect:**
   - a `PATCH` whose body DTO has required (`@NotNull` / `@NotBlank`) fields is really a PUT;
-  - a GET that INSERTs, e.g. a settings row created on read.
+  - a GET that INSERTs, e.g. a settings row created on read;
+  - a PATCH with a field a client may clear (an optional value set back to none): a record body can't
+    tell an absent field from a `null` one, so the PATCH either clears what the client didn't send or can
+    never clear. The editable content is a PUT, or the clearable field a sub-resource of its own
+    (`PUT /x/{id}/<field>` and `DELETE /x/{id}/<field>`).
 - **Severity:** Medium.
 - **Not a finding when:** a REST-03 state change or single-field sub-resource
   (`PATCH /x/{id}/role {role}`, `PATCH /x/{id}/enabled {enabled}`): its one field is required by
@@ -55,7 +59,9 @@ a finding**. Profile keys are written `{{key}}`.
 ### REST-05: Status codes
 - **Check:**
   - 200: read or update with a body;
-  - **201**: created;
+  - **201**: created, the new resource in the body. A `Location` header is optional (the golden creates
+    have none); when there is one, it names a GET that exists, so a resource read only through a list or
+    a queue answers 201 without it;
   - **202**: accepted asynchronous work, with a status URL in the body;
   - **204**: any success with no body, not only DELETE;
   - 400: the request's own values are wrong (validation, a value outside an allowed range);
@@ -81,7 +87,8 @@ a finding**. Profile keys are written `{{key}}`.
 - **Check:**
   - every error is Problem Details (`application/problem+json`) with a stable,
     machine-readable `errorCode`;
-  - the request id is included;
+  - the request id is in the `X-Request-ID` header (ERR-01); a `requestId` member in the body as well is
+    fine (users quote the body), the same value;
   - the values that failed are RFC 9457's `errors` list: a JSON Pointer for a body value, `parameter`
     for a query or path parameter (error-contract.md ERR-07), never a house-made `failed` list;
   - the protocol-agnostic `ErrorCode` enum is mapped to HTTP in one place;
@@ -206,7 +213,9 @@ the path.
   second one arrives (GraphQL, a CLI, a job calling the same use case), they move to the service
   (`@Validated` class + `@Valid` parameters, `@PreAuthorize` on service methods), so every entry
   point is covered once and none is forgotten.
-- **Detect:** request DTO fields without constraints; a `LocalDate` field or filter without
+- **Detect:** a String stored in a `varchar(n)` column without a request limit at or below `n`: a longer
+  value answers 500 at the insert today (DATA-12 asks for `text`, where the limit is the product's);
+  request DTO fields without constraints; a `LocalDate` field or filter without
   `@EarliestDate`; `List<String>` / `Set<String>` whose elements
   carry no `@MaxLength`; a `@Pattern` with `*`, `+` or `\s*` and no `@MaxLength`; a body parameter missing `@Valid`; a
   service re-checking by hand what a constraint could declare (duplicated bounds); a second entry
@@ -282,6 +291,9 @@ types.
     with eviction on writes, and a shared cache (or a confirmed reason) when `{{instances}}` is
     `multiple`;
   - documented in the API interface and tested.
+- **Also:** a picker for a write offers exactly what that write accepts (the roles an assignee may have,
+  the statuses a parent may be in): one definition both use (a constant or a method of the owning module),
+  and a test that a value the dropdown leaves out is refused by the write.
 - **Also:** a screen that needs a picker has its dropdown (an assignee picker for "reassign"); a
   resource other screens pick from (another entity references it) without `@DropdownCandidate` is
   worth asking about.
@@ -406,6 +418,10 @@ types.
   changelog, k6 scripts); non-OpenAPI contracts follow ARCH-13. In **diff mode**, a change to a request or response DTO, a
   controller method or a thrown exception, with no change to the matching API interface or
   `@Schema`, is a finding.
+- **A tightened rule is a breaking change** (a free text becoming a pattern, a lower maximum, a value
+  once truncated now refused): an entry marked *breaking* in the changelog, and a check of the stored
+  values (a query, or a changeset that fixes or fails on them): a stored value the new rule refuses fails
+  every later PUT that sends it back.
 - **Detect:** a code-only description (`description = "AUTHENTICATION_REQUIRED"`) while springdoc's
   i18n is on (no `springdoc.disable-i18n: true`): springdoc resolves it as a message key, and the
   published docs show the code's message, never the code a client switches on. Fix the setting (the

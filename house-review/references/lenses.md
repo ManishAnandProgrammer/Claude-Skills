@@ -85,8 +85,20 @@ is code-smells.md, java.md and architecture.md.
     library's parser: one widened what it accepts in a minor release, and Unicode digits passed
     Java but failed in PostgreSQL;
   - no regex with overlapping quantifiers (`(a+)+`, `(\w|\d)*`) on user input: one long input
-    takes quadratic or exponential time (REL-05).
-- **Severity:** Critical (SQL) / High.
+    takes quadratic or exponential time (REL-05);
+  - **a destination a user names** (a site to fetch, a webhook URL) is checked before **every** request
+    of the call (a method fallback such as HEAD then GET, and each redirect, followed by hand): the host
+    is resolved and every address refused unless public, so a name that resolves again (DNS rebinding) or
+    a redirect never reaches an inner address. The check unwraps the IPv6 forms that carry an IPv4
+    address (mapped `::ffff:0:0/96`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`, Teredo `2001::/32`) and
+    refuses the reserved IPv4 ranges besides the private ones (`0.0.0.0/8`, `100.64.0.0/10`,
+    `169.254.0.0/16`, `198.18.0.0/15`, `240.0.0.0/4`): a resolver hands `::ffff:127.0.0.1` over as an
+    `Inet6Address`, which `isLoopbackAddress` and `isSiteLocalAddress` both pass. Its tests answer from a
+    fixed resolver (a test bean), never the network and never a literal: Java turns a `::ffff:` literal
+    into an `Inet4Address`, so such a test passes for the wrong reason. A check at save time (a validator
+    resolving the host) runs outside any transaction (DATA-01) and refuses a name that doesn't resolve;
+    the check per request stays, since the answer can change.
+- **Severity:** Critical (SQL) / High (a user-named destination reaching an inner address).
 
 ### SEC-06: "Unknown" is a refusal
 - **Check:** a security predicate that can't decide (a missing claim, an absent row, a null, an
@@ -222,7 +234,14 @@ is code-smells.md, java.md and architecture.md.
 
   Clients are built from Boot's builders (OPS-06), configured through the resilience library's
   registry, never inside a transaction. For user-defined destinations: cap concurrency per
-  destination, bound the response size, honour `Retry-After`.
+  destination, bound the response size, honour `Retry-After`, check the address before every request
+  (SEC-05).
+- **Detect:** a Resilience4j breaker with `record-failure-predicate` (or `record-exceptions`) and no
+  `ignore-exceptions`: every exception it doesn't record counts as a **success**, so a failure classified
+  as not the dependency's fault (a permanent refusal) closes a half-open breaker; those go to
+  `ignore-exceptions` (or an `ignore-exception-predicate`). A `CallNotPermittedException` reported as
+  "paused" when the same call's own failed attempt opened the breaker: the call's outcome is that
+  attempt's failure.
 - **Not a finding (no breaker needed):** the only database (Hikari's wait + 503 already fails
   fast); a call the developer records as low-volume in the profile's Conventions (a timeout plus a
   quota is enough); paths where an open breaker would
@@ -235,7 +254,10 @@ is code-smells.md, java.md and architecture.md.
   - retries back off and count attempts, and the Nth failure is DEAD;
   - claim queries can't be starved by orphans;
   - "replay" really re-does the work;
-  - finished rows are purged (OPS-03).
+  - finished rows are purged (OPS-03);
+  - a sweep that ends work stuck in progress judges by when the work **started** (a claim the running
+    thread sets, `started_at`), never by when it was queued or created: work that waited in a queue is
+    otherwise ended as it starts. What never started has a limit of its own (the queue wait).
 - **Severity:** High.
 
 ### REL-03: Dependency outages degrade the feature, not the app
@@ -301,14 +323,15 @@ is code-smells.md, java.md and architecture.md.
 - **Severity:** High.
 
 ### REL-10: Outages answer 503 + Retry-After, never 500 or 401
-- **Check:** infrastructure exceptions map centrally to 503 + a jittered `Retry-After`
-  (error-contract.md ERR-02, ERR-03), never the generic 500:
+- **Check:** infrastructure failures answer 503 + a jittered `Retry-After` (error-contract.md ERR-02,
+  ERR-03), never the generic 500:
   - database: pool exhaustion, statement timeout, lock timeout and an unreachable database,
-    classified by walking the **cause chain and SQLSTATE** (ERR-03);
-  - SDK client errors and 5xx;
-  - `ResourceAccessException`;
-  - `CallNotPermittedException`;
-  - AI provider unavailable.
+    classified centrally by walking the **cause chain and SQLSTATE** (ERR-03);
+  - a dependency's: SDK client errors and 5xx, `ResourceAccessException`, `CallNotPermittedException`,
+    an AI provider unavailable. Classified where the client sees them, as `AppException.withCause(
+    <DEPENDENCY>_UNAVAILABLE, failure)` (golden `MediaStorage`, ERR-02): only the client knows which
+    dependency failed, and one that reaches the handler unclassified answers the generic 500 (a finding
+    against the client).
 
   A failure inside the security filter chain answers 503, not 401 (DATA-17).
 - **Severity:** High (filter → 401; database failures answering 500, `POOL-EXHAUSTION-IS-500`:
@@ -324,6 +347,11 @@ is code-smells.md, java.md and architecture.md.
 ### REL-12: Paid or quota-bearing calls
 - **Check:** a call that costs money (LLM, SMS) has:
   - a burst limit **and** a total budget per account;
+  - an application-wide budget per paid channel, so many accounts each at its own cap (self-made
+    accounts pumping SMS) can't spend without bound; **one budget per purpose**: a sign-in purpose (a
+    two-factor code) is never refused because an open purpose (codes to numbers nobody has proven) used a
+    shared budget up, or whoever abuses the open path locks everyone out of signing in. The numbers are
+    the developer's (ask);
   - usage recorded from the raw response *before* parsing;
   - retries counted inside the budget and the deadline.
 - **Severity:** High.
@@ -498,7 +526,9 @@ resilience or failure-injection test is Medium).
   - *profile-optional:* the positive escape-valve test, where a role that may cross the boundary
     really succeeds.
 
-  Preferred: one table-driven test over every endpoint.
+  Preferred: one table-driven test over every endpoint. That table is the suite's largest writer of
+  shared data (TEST-07): each row cleans up what it made (an enabled record a later run picks up, a run
+  left in progress) and sets any static stub it relies on, never the state the previous row left.
 
 ### TEST-03: Hostile input
 - **Check:** one test per new free-text input shape, with `<script>alert(1)</script>` and an
@@ -544,6 +574,10 @@ resilience or failure-injection test is Medium).
   - a fixture that inherits data from neighbouring rows (a new record copying the previous one's
     settings) resets it to known values, so no test depends on the one that ran before; a direct
     `sql(...)` fixture seeds what the record's lifecycle would (its configuration, its counter);
+  - a fixture that would join a working set read in bulk (records enabled for a scheduled run, what a
+    "run every one" endpoint drains) is created outside it by default (disabled, another status) and
+    joins it only in the test that needs it, which restores it: otherwise every later run picks up every
+    test's rows;
   - **a list over a shared, company-wide table** (types, employees, anything admin-managed) shows
     every other test's rows: each test scopes its list calls by a filter only its own rows match (a
     fresh parent id, a unique `query` token), never asserting a page's absolute contents or total.
@@ -564,6 +598,9 @@ resilience or failure-injection test is Medium).
     string as a URI template and encodes `%25` a second time, so the test sends something else;
   - a 403 test sends a **valid** body: argument binding and validation run before method
     security, so an invalid body answers 400 and the role check is never reached.
+- **Order in unit tests:** a test whose stubs or assertions follow an order the code computes (a sort
+  by id, a set's iteration) builds its ids in that order (fixed values), never one `UUID.randomUUID()`
+  each: a sort added later makes it pass or fail by chance (a strict stub met in another order).
 - **Dates:** a date-dependent test computes "today" once, or uses a settable clock; it never calls
   `LocalDate.now()` twice across UTC midnight, and never hard-codes a year that the data will pass.
 
@@ -580,6 +617,12 @@ resilience or failure-injection test is Medium).
   duty per entity (a red run leaves nothing a reviewer can check): its guards mirror golden tests, proven
   red in the reference, and the generation report names which golden test each one mirrors; the review
   compares the shapes.
+- **A layered guard** (a row lock, `@Version` and a conflict retry, each enough on some path) stays green
+  with one layer off, by design: prove each layer with a test the others don't cover (the retry with a
+  forced conflict, the lock with a gate), or the red-proof names the layers switched off together and why
+  one alone stays green.
+- **Detect:** an assertion that holds whatever the code does: two bcrypt hashes of one value differ
+  (every `encode` is salted: compare with `matches`), a fresh random id is unique.
 
 ### TEST-10: Setup that silently failed (`SETUP-THAT-SILENTLY-FAILED`)
 - **Check:** every fixture built through the API asserts its own 2xx, or goes through a helper

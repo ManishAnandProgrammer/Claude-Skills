@@ -54,6 +54,7 @@ class MessageSourceConfig {
     @Bean
     static LocaleResolver localeResolver() {
         AcceptHeaderLocaleResolver localeResolver = new AcceptHeaderLocaleResolver();
+        // A language is its messages file plus its locale here; ErrorCodeContractTest checks the files alike.
         localeResolver.setSupportedLocales(List.of(Locale.ENGLISH));
         localeResolver.setDefaultLocale(Locale.ENGLISH);
         return localeResolver;

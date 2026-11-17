@@ -59,6 +59,10 @@
     `isPresent()` + `get()` only around a block with side effects (the same reasoning as the
     stream rule);
   - null checks are `Objects.isNull` / `Objects.nonNull`, not `== null` / `!= null`.
+- **Detect:** a lookup that may pass `null` into an immutable collection: `Map.of()` / `Set.of()` /
+  `List.of()` (and their `copyOf`) throw on `get(null)`, `containsKey(null)` and `contains(null)`, where a
+  `HashMap` answers `null` or `false`. It fails only on the empty case (a batch with no ids gets
+  `Map.of()`, and a mapper asks it for an absent reference), so the test that finds it is that case.
 - **Severity:** Medium for a `null` collection or `.get()`; Low for `== null`.
 
 ### JAVA-09: Exceptions
@@ -211,8 +215,11 @@ The backend handles no time zone.
   - a `super(...)` call with arguments, or a `@Value` parameter (below);
   - meters registered at startup, so their series read 0 before the first event;
   - a Resilience4j instance looked up once, failing the startup when it is missing;
-  - a value that is expensive or checked once: a bcrypt decoy hash, contributions merged with a
-    conflict check;
+  - a value that is expensive or checked once and that only this bean uses: contributions merged with a
+    conflict check, a bcrypt decoy hash one sign-in service compares against (golden `AuthService`, whose
+    constructor also registers a meter). A value several beans use is a bean of its own, made once by a
+    `@Bean` method (a `DecoyHash` record that login and the code checks compare against), never computed
+    in each of their constructors;
   - a helper that must stay the bean's own: a `JdbcTemplate` over a second `DataSource`, a `REQUIRES_NEW`
     `TransactionTemplate`. As beans, other classes would be injected with them by type.
 
@@ -258,7 +265,9 @@ The backend handles no time zone.
   a public service whose Lombok constructor (public by default) takes a package-private collaborator.
 - **Detect:** per package, its package-private top-level types; then each public class of the package:
   `@RequiredArgsConstructor` without `access` over a `final` field of such a type, or a `public` or
-  `protected` constructor, method or field that names one.
+  `protected` constructor, method or field that names one. The house `ConventionArchTest
+  .membersExposeNoNarrowerType` fails the build on it (in bytecode, so Lombok's constructors too); review
+  only a project without that rule.
 - **Fix:** narrow the member, never widen the type: `@RequiredArgsConstructor(access =
   AccessLevel.PACKAGE)` (golden `UserService`, `MediaFileService`), a package-private hand-written
   constructor (golden `AuthService`), a package-private method. Spring calls a package-private

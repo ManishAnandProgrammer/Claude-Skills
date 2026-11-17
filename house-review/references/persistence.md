@@ -303,7 +303,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     fail on the key, answered with the parent's not-found code (DATA-33, error-contract ERR-02). A
     `FOR KEY SHARE` or `FOR SHARE` "delete guard" on that read is a finding unless its javadoc names
     another rule; `FOR SHARE` there also blocks every edit of the parent, and two writers that each
-    update their own row and share-lock the other's (swap two employees' managers) deadlock;
+    update their own row and share-lock the other's (swap two employees' managers) deadlock. **Not a
+    finding when** the child writes do check a mutable column of the parent (above), many of them run at
+    once (every story write checks its category's enabled flag) and none writes the parent: a share lock
+    (`PESSIMISTIC_READ`, `FOR SHARE`, its javadoc naming the rule) lets them run together while the
+    parent's own change waits for them, where `findForUpdate…` would queue every child write of that
+    parent behind each other;
   - an exclusion constraint's concurrent overlapping inserts can deadlock (a rare 503, exactly one
     row stored): not a reason to serialise the scope (DATA-35);
   - advisory locks only for a rule that has no row to lock; transaction-scoped
@@ -362,7 +367,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Check:**
   - import loops `flush()` + `clear()` every `batch_size` rows (or use a stateless session);
   - uploads are parsed streaming (no whole `XSSFWorkbook`);
-  - the import doesn't hold one transaction for the whole file.
+  - the import doesn't hold one transaction for the whole file;
+  - a batched walk by UUID starts before every id: the nil UUID (`new UUID(0, 0)`), never
+    `new UUID(Long.MIN_VALUE, Long.MIN_VALUE)`. PostgreSQL orders uuids by their unsigned bytes, Java's
+    `UUID.compareTo` by signed longs, so that value sits in the middle of the database's order and the
+    walk skips every row below it; each next batch starts after the last id the database returned, never
+    after a Java sort. A multi-batch test proves the walk.
 - **Severity:** High (out of memory).
 
 ## Integrity and data design
@@ -443,9 +453,12 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 
 ### DATA-09: Primary keys are time-ordered
 - **Check:** new tables use time-ordered ids per `{{idStrategy}}` (UUIDv7 or TSID).
-  - For JPA entities, generate in the application (Hibernate 7's `UuidVersion7Strategy` via
-    `@UuidGenerator`), not with a database `DEFAULT uuidv7()`: a database-generated id must be
-    read back after each insert, which costs JDBC insert batching;
+  - For JPA entities, generate in the application (Hibernate 7's `@UuidGenerator(style =
+    UuidGenerator.Style.VERSION_7)`, its one shared, monotonic `UuidVersion7Strategy`; golden
+    `AuditableEntity`), not with a database `DEFAULT uuidv7()`: a database-generated id must be read back
+    after each insert, which costs JDBC insert batching. Not `algorithm = UuidVersion7Strategy.class`:
+    Hibernate then builds one per entity through a constructor it marks `@Internal` (both forms are
+    `@Incubating` in 7.4);
   - application-assigned ids are inserted with `persist`, not `save` (DATA-25);
   - the id is never updatable: `@Column(updatable = false)`;
   - TSID needs a unique node id per instance, checked at startup (refuse to start without one when
@@ -468,8 +481,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     link table (a tag on a todo) is served by the link's key. On a table without a leading scope column the
     planner may still walk the order's index for a rare value; that plan is a use case, not a finding
     against the composite. **Extension point:** a project that knows a value is rare adds a partial index
-    (`WHERE status = '<VALUE>'`, the value a literal so a generic plan still matches it), proven with its
-    own `EXPLAIN (ANALYZE, BUFFERS)` test;
+    (`WHERE status = '<VALUE>'`), proven with its own `EXPLAIN (ANALYZE, BUFFERS)` test. The query names
+    the value as a literal too (a JPQL enum literal, `where r.status = com.x.RunStatus.IN_PROGRESS`), never
+    a bind parameter: after five executions PostgreSQL may switch to a generic plan, which can't prove a
+    parameter matches the index's predicate and never uses it;
   - **a contains search (`query`)** is offered where the developer asks for it, alone or with other
     filters, on any table: how many rows it reads is a fact about the data, so a list that offers `query`
     without another filter is not a finding (reference: the tenancy overlay's `TenantFilter`).
@@ -579,9 +594,27 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - Liquibase migrates the app's own database URL;
   - *profile-optional:* the app uses a DML-only role, and Liquibase the owner role;
   - a data migration checks that every row maps to the new shape and fails the changeset rather
-    than dropping or nulling the rows that don't.
+    than dropping or nulling the rows that don't;
+  - a data migration that derives another system's key (its id for a record, a hash of a URL) feeds
+    exactly the input that system used (its normalisation, not ours), proven by a test with a value
+    taken from that system (TEST-14): reviews that check the function miss a different input;
+  - a backfill that needs what SQL lacks (a hash PostgreSQL has no function for) is a Liquibase
+    `CustomTaskChange` reading in batches (DATA-31), or an extension the owner approves; never a startup
+    job (DATA-28);
+  - **a rolling deploy runs the previous release beside the migrated schema**: a changeset that changes
+    what that release reads or writes (a column's type, a rename, a dropped column, a new `NOT NULL`
+    without a default) is expand-then-contract over two releases (add the new, write both, drop the old
+    later), or the release note says the old instances stop before it runs;
+  - **a `runOnChange` seed** (an upsert of reference rows) re-runs on every database whenever its file
+    changes, a change unrelated to its data included (an id function, a comment): the release note says
+    what the re-run overwrites (rows an admin edited since). Its `ON CONFLICT` target is the table's
+    natural key, and no other unique key of the table may differ between the seed and the rows already
+    there: a changed seed value that meets another unique key fails the upsert and stops every startup.
 - **Detect:** an entity `@Index` or `@Table(uniqueConstraints = …)` that no changeset creates:
-  `ddl-auto: validate` doesn't check indexes, so a claimed unique index may never have existed.
+  `ddl-auto: validate` doesn't check indexes, so a claimed unique index may never have existed. In a
+  formatted-SQL changelog, a comment line starting `-- changeset` (or `-- rollback`, `-- preconditions`)
+  is a Liquibase directive, not a comment: the file fails to parse, or the rest becomes a changeset of
+  its own.
 - **Severity:** High for an edited applied changeset, a data migration that drops rows, or a
   claimed unique index that doesn't exist; Medium otherwise.
 

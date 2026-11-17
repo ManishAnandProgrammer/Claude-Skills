@@ -727,7 +727,8 @@ Decided:
 - **A constructor that does work stays only when the work can't be a `@Bean` method or a bean of its
   own**, with a why-comment. In the reference that is a `super(...)` call, meters registered at startup
   (a series reads 0 before its first event; a meter registered on first use has no series until then),
-  a Resilience4j instance looked up once with a startup failure when missing, a bcrypt decoy hash, a
+  a Resilience4j instance looked up once with a startup failure when missing, a bcrypt decoy hash only
+  that bean uses (one several beans share is a `@Bean` of its own, 2026-11-18), a
   `@Value` parameter, the modules' constraint claims merged with a conflict check, and a helper that must
   stay the bean's own (the schema overlay's owner `JdbcTemplate`: as a bean, Boot's `JdbcTemplate` backs
   off and every class injecting one gets the owner role's). Reading a value out of injected properties is not work: the
@@ -747,3 +748,26 @@ Decided:
 The reference after the change: 39 hand-written constructors became Lombok (30 in the reference, 9 in the
 overlays), 16 stay hand-written with a why-comment (9 and 7), and 12 constructors became package-private
 for JAVA-27 (6 and 6: 8 Lombok `access = AccessLevel.PACKAGE`, 4 hand-written).
+
+## news-pulse gaps, AI contract to phase 6b (2026-11-18)
+
+69 Low rows from news-pulse's work with the skills (`skill-e2e/gaps/backlog-low.md`), folded in as
+sharper Detect / Fix / Not-a-finding lines; no new rule ID. Decided:
+- **DATA-09: `@UuidGenerator(style = VERSION_7)`**, not `algorithm = UuidVersion7Strategy.class`. Read in
+  Hibernate 7.4.13's sources: `algorithm` instantiates the strategy per generator through its `@Internal`
+  no-arg constructor, `VERSION_7` returns the shared `UuidVersion7Strategy.INSTANCE`. Both are
+  `@Incubating`, so the gap's "stable equivalent" was only half right; the choice rests on not calling
+  an internal constructor. Guard: `TimeOrderedIdsIntegrationTest`.
+- **Translated field details stay a use case.** The reference is English with Hibernate's `{max}`
+  templates; MessageFormat (ERR-06) can't read them, so a project that translates them uses a second
+  bundle without MessageFormat (news-pulse's shape). The skills ship the parity test for the error
+  messages (every `message_*.properties`), not a second bundle.
+- **Parked as features:** a request-body cap filter (CFG-04 now names the proxy as the bound and turns
+  Boot's `FormContentFilter` off), 5xx bodies with their own message or extensions (a 502 refusal, a 503
+  naming what it left behind: both change the generic-5xx contract), a thrower-known `Retry-After`, the
+  build's quality gates (coverage, static analysis), and the shapes (an operation, a singleton
+  resource, an RPC module, an agreed-breaking update mode, dropdowns over a status or in the reader's
+  language).
+- **ArchUnit rule scopes are proven on fixtures** (`ArchRuleScopeTest`): a narrowed rule must still
+  refuse what it is for. It found that ArchUnit's `NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING` checks field
+  writes only; the house rule is now a plain dependency rule.

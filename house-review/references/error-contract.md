@@ -19,7 +19,7 @@ that hasn't adopted it yet gets one finding per missing piece, not one per endpo
 | `ErrorCodeHttpStatusMapper` | `final` utility class with a private constructor, holding a static `EnumMap<ErrorCode, HttpStatus>`. It is the **only** place an ErrorCode meets an HttpStatus. `resolve()` throws `IllegalStateException` for an unmapped code, so a new code can't reach production silently. Other protocols (gRPC) would get their own mapper. |
 | `AppException` | One `RuntimeException` carrying `ErrorCode`, `Object[] args`, optional `errors` (`RequestError`s, ERR-07) and response `extensions`. Private constructor, with static factories: `of(code, args…)`, `withCause(code, cause, args…)`, `withErrors(code, errors)`, `supply(code, args…)` (for `orElseThrow`). Also `withExtension(name, value)`, which rejects the reserved names `type`, `title`, `status`, `detail`, `instance`, `errorCode` and `errors`. |
 | `RequestError` | A record `(pointer, parameter, detail)`, `@JsonInclude(NON_NULL)`, with the factories `atPointer(pointer, detail)` and `atParameter(name, detail)`: exactly one of the two locations is set. `JsonPointers` builds the pointer from a property path (`items[0].name`) or Jackson's path; `MvcRequestErrors` gives the entries of the exceptions Spring MVC answers itself. The OpenAPI document describes `errorCode` and `errors` on the `ProblemDetail` schema (a customizer: springdoc can't see extension members). |
-| Messages | `messages/message_<locale>.properties`, keyed by `ErrorCode.name()`, with `{0}` arguments, written for `MessageFormat` (ERR-06). `ReloadableResourceBundleMessageSource` set to `UTF-8` **and** `setAlwaysUseMessageFormat(true)`. Without that setting a message with no arguments skips MessageFormat, and `''` / `{0}` reach the client raw (MESSAGE-PLACEHOLDERS-LEAK). The bean validator uses the same MessageSource. Locale comes from `AcceptHeaderLocaleResolver` **with its supported locales set**, and the MessageSource has **`setDefaultLocale(ENGLISH)`**: otherwise any `Accept-Language` without its own file (`de`, `pa`) throws `NoSuchMessageException` inside the error handler and breaks every error response. |
+| Messages | `messages/message_<locale>.properties`, keyed by `ErrorCode.name()`, with `{0}` arguments, written for `MessageFormat` (ERR-06). `ReloadableResourceBundleMessageSource` set to `UTF-8` **and** `setAlwaysUseMessageFormat(true)`. Without that setting a message with no arguments skips MessageFormat, and `''` / `{0}` reach the client raw (MESSAGE-PLACEHOLDERS-LEAK). The bean validator uses the same MessageSource. Locale comes from `AcceptHeaderLocaleResolver` **with its supported locales set**, and the MessageSource has **`setDefaultLocale(ENGLISH)`**: otherwise any `Accept-Language` without its own file (`de`, `pa`) throws `NoSuchMessageException` inside the error handler and breaks every error response. A language is its file (`message_pa.properties`) plus its locale in the resolver's supported list; `ErrorCodeContractTest` checks that every file has English's keys with the same placeholders. |
 | `GlobalExceptionHandler` | `@RestControllerAdvice extends ResponseEntityExceptionHandler`, so Spring MVC's own errors pass through it too. |
 
 ## ERR-01: Every error response has the same members
@@ -60,7 +60,7 @@ the generic text.
 | `DataIntegrityViolationException`, other | 500 | `DATA_INTEGRITY_ERROR` | ERROR |
 | `ObjectOptimisticLockingFailureException` (or a known version constraint) | 409 | `OPTIMISTIC_LOCK_CONFLICT` | DEBUG |
 | Transient database failure (ERR-03) | 503 + `Retry-After` | per kind | WARN with the cause's class and SQL state, never its message (ERROR + stack for query timeout) |
-| A downstream service didn't answer (SDK client error or 5xx, AI provider, circuit breaker open) | 503 + jittered `Retry-After` | `<DEPENDENCY>_UNAVAILABLE` | WARN without stack, and counted on a metric |
+| A downstream service didn't answer (SDK client error or 5xx, AI provider, circuit breaker open, `ResourceAccessException`), thrown by its client as `AppException.withCause(<DEPENDENCY>_UNAVAILABLE, failure)` where it sees the failure (golden `MediaStorage`): unclassified it reaches the catch-all, 500 | 503 + jittered `Retry-After` | `<DEPENDENCY>_UNAVAILABLE` | WARN without stack, and counted on a metric |
 | Any other exception `ResponseEntityExceptionHandler` handles (406, a missing header, an async timeout, `ResponseStatusException`, ...) | its status | a specific code where one exists, else by status class: 404 `RESOURCE_NOT_FOUND`, other 4xx `REQUEST_INVALID`, 5xx `UNEXPECTED_ERROR` with the generic detail; `ConversionNotSupportedException` (a 500) before its parent `TypeMismatchException` | 5xx: ERROR with stack |
 | Anything else, `IllegalArgumentException` included (ERR-04) | 500 | `UNEXPECTED_ERROR`, generic detail | ERROR with stack |
 
@@ -103,7 +103,12 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
 
 ## ERR-04: Rules for code that throws
 - Throw `AppException.of(ErrorCode.X, args)`. Never `new RuntimeException("…")`. Never a new
-  exception class per error case: a new class only when a caller must catch it specifically.
+  exception class per error case: a new class only when a caller must catch it specifically, and then
+  it extends `AppException` through its protected constructor, so the handler still answers its code.
+- Work that runs off the request thread (an operation on an executor, an event listener, a job) and
+  records how it failed classifies the exception as the handler would (`TransientDatabaseFailure.of`,
+  an `AppException`'s code), never with a second switch of its own: the code a client polls must be the
+  code the same failure would have answered.
 - Lookups: `repository.findById(id).orElseThrow(AppException.supply(X_NOT_FOUND, id))`.
 - `IllegalStateException` only for impossible states (JAVA-20); anything a client can cause is an
   `AppException` with an ErrorCode.
@@ -187,6 +192,14 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
   the entry (`AppException.withErrors(code, List.of(RequestError.atParameter("after", RequestError.INVALID_VALUE)))`,
   a nested document's violations prefixed with its field: golden `MetadataService`). Reference test:
   `common/exception/RequestErrorsTest` (each shape, nested and indexed pointers, escaping).
+
+  **Field details in the request's language (a use case):** the house constraint templates are English
+  (`must be at most {max} characters`; Hibernate Validator fills `{max}` itself). A project that translates
+  them makes every message a key, never English text in the annotation. A key without placeholders sits in
+  the messages files beside the error codes and is translated with them (golden `todo.due-filter-order`);
+  one that shows a bound (`{max}`) goes in a second bundle per language read **without** MessageFormat,
+  because the error messages' MessageSource (`setAlwaysUseMessageFormat(true)`, ERR-06) can't parse
+  `{max}`, with a parity check like `ErrorCodeContractTest`'s.
 - **Detect:** a `failed` member or `"field: message"` strings; a top-level `parameter` extension naming
   the one bad parameter; a body field reported as a `parameter` or a query parameter as a `pointer`
   (the handler decides by `@RequestBody` on the method parameter); a dotted path (`items[0].name`) or a
