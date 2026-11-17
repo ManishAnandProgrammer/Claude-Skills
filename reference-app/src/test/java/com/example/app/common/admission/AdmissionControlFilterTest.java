@@ -103,6 +103,27 @@ class AdmissionControlFilterTest {
     }
 
     @Test
+    @DisplayName("Only the actuator's base path itself and the paths below it skip admission, not a path that merely starts like it")
+    void onlyTheActuatorItselfSkipsAdmission() throws Exception {
+        CountDownLatch inside = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> first = executor.submit(() -> holdAPermit(API_PATH, inside, release));
+            assertThat(inside.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
+
+            MockHttpServletResponse lookalike = new MockHttpServletResponse();
+            filter.doFilter(request("/actuatorX"), lookalike, new MockFilterChain());
+            MockFilterChain baseChain = new MockFilterChain();
+            filter.doFilter(request("/actuator"), new MockHttpServletResponse(), baseChain);
+            release.countDown();
+            first.get(WAIT_SECONDS, TimeUnit.SECONDS);
+
+            assertThat(lookalike.getStatus()).isEqualTo(503);
+            assertThat(baseChain.getRequest()).isNotNull();
+        }
+    }
+
+    @Test
     @DisplayName("A full sign-in group refuses sign-ins of every API version only, counted under its own tag")
     void aFullSignInGroupRefusesSignInsOnly() throws Exception {
         CountDownLatch inside = new CountDownLatch(1);

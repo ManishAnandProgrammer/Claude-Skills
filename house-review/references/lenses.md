@@ -174,7 +174,10 @@ is code-smells.md, java.md and architecture.md.
     number), or Spring 7 `@ConcurrencyLimit`;
   - a short max-wait, then 503 `SERVER_BUSY` + `Retry-After`;
   - a rejected-count metric per group;
-  - placed before the security chain; the actuator is never capped.
+  - placed before the security chain and behind CORS, which is a servlet filter of its own (never the
+    chain's `.cors()`), so a 503 carries the CORS headers a browser needs and a preflight takes no permit;
+  - the actuator is never capped, matched as its base path or a path below it (never a bare prefix:
+    `/actuatorX` is an API path).
 - **Severity:** High on a hot path, a report or an export.
 
 ### PERF-04: Long reads and exports

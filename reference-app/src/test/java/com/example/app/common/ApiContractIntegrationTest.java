@@ -32,6 +32,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** The error contract every client relies on, through the real stack. */
 class ApiContractIntegrationTest extends IntegrationTest {
 
+    /** The origin application-test.yml allows. */
+    private static final String ALLOWED_ORIGIN = "http://localhost:3000";
+
     @Autowired
     @Qualifier("applicationTaskExecutor")
     private AsyncTaskExecutor applicationTaskExecutor;
@@ -105,14 +108,15 @@ class ApiContractIntegrationTest extends IntegrationTest {
 
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"/api/v1/users//status", "/api/v1/users/me;jsessionid=x", "/api/v1/users/%2e%2e/me"})
-    @DisplayName("A path the security firewall refuses (an empty segment, a ';', an encoded '.') is Problem Details 400 REQUEST_INVALID, with the request id")
+    @DisplayName("A path the security firewall refuses (an empty segment, a ';', an encoded '.') is Problem Details 400 REQUEST_INVALID, with the request id and the CORS headers")
     void aPathTheFirewallRefusesIsProblemDetails(String path) throws Exception {
-        mvc.perform(get(URI.create(path)))
+        mvc.perform(get(URI.create(path)).header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_INVALID"))
                 .andExpect(jsonPath("$.type").value(problemType("REQUEST_INVALID")))
-                .andExpect(header().exists("X-Request-ID"));
+                .andExpect(header().exists("X-Request-ID"))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN));
     }
 
     @Test

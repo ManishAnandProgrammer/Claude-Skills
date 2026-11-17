@@ -371,7 +371,11 @@ types.
     the security configuration;
   - CORS origins from configuration, trimmed, no wildcard with credentials; credentials off
     entirely when auth is a header, not a cookie (nothing needs them, and they widen what a
-    misconfigured origin can do).
+    misconfigured origin can do);
+  - CORS as a servlet filter ahead of everything that can answer before the security chain
+    (admission control's 503, the firewall's 400) and the chain's `.cors()` disabled: otherwise those
+    answers carry no `Access-Control-Allow-Origin` and the browser hides them; `Retry-After` and the
+    request id among the exposed headers.
 - **Severity:** Low / Medium.
 
 ### REST-19: Long-running work

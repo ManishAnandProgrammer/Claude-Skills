@@ -11,11 +11,12 @@ import com.example.app.common.web.ProblemResponses;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.nimbusds.jose.proc.SecurityContext;
 import jakarta.servlet.DispatcherType;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -37,6 +38,7 @@ import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -58,6 +60,9 @@ import java.util.List;
  *       error page isn't re-answered as a 401.</li>
  *   <li>Security errors are Problem Details with an {@code errorCode}, like every other error, the
  *       firewall's refusals included (an empty segment {@code //}, a {@code ;}, an encoded {@code .}).</li>
+ *   <li>CORS is a servlet filter ahead of admission control and this chain ({@link #corsFilter}), not the
+ *       chain's {@code .cors()}: every answer written before the chain (503 {@code SERVER_BUSY}, the
+ *       firewall's 400) carries the headers a browser needs to read it.</li>
  *   <!-- session-version:begin -->
  *   <li>The session version (the session-version piece): a verified token is accepted only while its
  *       {@code sv} claim is current ({@link SessionVersionFilter}), one Redis read per request.</li>
@@ -98,7 +103,8 @@ class SecurityConfig {
                                             CurrentUser currentUser) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
-                .cors(Customizer.withDefaults())
+                // A servlet filter ahead of admission control does it (corsFilter): here it would come too late.
+                .cors(cors -> cors.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
@@ -181,6 +187,18 @@ class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    /**
+     * Ahead of admission control ({@code DEFAULT_FILTER_ORDER - 10}) and the security chain: a 503 refused at the
+     * door carries {@code Access-Control-Allow-Origin} and the exposed {@code Retry-After}, and a preflight is
+     * answered here without taking an admission permit.
+     */
+    @Bean
+    FilterRegistrationBean<CorsFilter> corsFilter(CorsConfigurationSource corsConfigurationSource) {
+        FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(corsConfigurationSource));
+        registration.setOrder(SecurityFilterProperties.DEFAULT_FILTER_ORDER - 20);
+        return registration;
     }
 
     static SecretKey secretKey(JwtProperties properties) {

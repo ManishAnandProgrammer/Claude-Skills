@@ -42,8 +42,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * startup rather than run on the library's defaults.</p>
  *
  * <p>Runs before the security chain, so refused requests cost nothing more, and after the
- * log-context filters, so a refusal is still one line in the log. The actuator is never capped:
- * health must answer under overload.</p>
+ * log-context filters and CORS ({@code SecurityConfig.corsFilter}), so a refusal is still one line in
+ * the log and a browser can read it (a preflight never gets here). The actuator (its base path, or a
+ * path below it) is never capped: health must answer under overload.</p>
  *
  * <p><b>Signals:</b> {@value #REJECTED_METRIC} tagged by group (registered at zero), Resilience4j's
  * {@code resilience4j_bulkhead_available_concurrent_calls}, and one WARN per group per
@@ -102,7 +103,8 @@ class AdmissionControlFilter extends OncePerRequestFilter implements Ordered {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getRequestURI().startsWith(actuatorBasePath);
+        String path = request.getRequestURI();
+        return path.equals(actuatorBasePath) || path.startsWith(actuatorBasePath + "/");
     }
 
     @Override
