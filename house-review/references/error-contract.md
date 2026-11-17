@@ -66,7 +66,7 @@ the generic text.
 
 **Errors raised before the handler** are written by `common/web/ProblemResponses`, with the same members:
 the security chain's 401 and 403 (its `AuthenticationEntryPoint` and `AccessDeniedHandler`), a filter's
-refusal (admission control's 503, the session version's 401, the CORS filter's 403 `CORS_ORIGIN_REFUSED`
+refusal (admission control's 503, the session version's 401, the CORS filter's 403 `CORS_REQUEST_REFUSED`
 for an origin it doesn't allow: reference `config/ProblemCorsProcessor`) and **the firewall's**: a path Spring
 Security's `StrictHttpFirewall` refuses (an empty segment `//`, a `;`, an encoded `.`) is 400
 `REQUEST_INVALID` through a `RequestRejectedHandler` bean (reference: `config/SecurityConfig`). Without that

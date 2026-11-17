@@ -135,27 +135,27 @@ class ApiContractIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A request from an origin that isn't allowed is Problem Details 403 CORS_ORIGIN_REFUSED, with the request id")
+    @DisplayName("A request from an origin that isn't allowed is Problem Details 403 CORS_REQUEST_REFUSED, with the request id")
     void aRequestFromARefusedOriginIsProblemDetails() throws Exception {
         expectCorsRefusal(mvc.perform(get("/api/v1/users/me").header(HttpHeaders.ORIGIN, REFUSED_ORIGIN)));
     }
 
     @Test
-    @DisplayName("A preflight from an origin that isn't allowed is Problem Details 403 CORS_ORIGIN_REFUSED, with the request id")
+    @DisplayName("A preflight from an origin that isn't allowed is Problem Details 403 CORS_REQUEST_REFUSED, with the request id")
     void aPreflightFromARefusedOriginIsProblemDetails() throws Exception {
         expectCorsRefusal(mvc.perform(options("/api/v1/users/me").header(HttpHeaders.ORIGIN, REFUSED_ORIGIN)
                 .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")));
     }
 
     @Test
-    @DisplayName("The OpenAPI document names CORS_ORIGIN_REFUSED on every operation's 403")
+    @DisplayName("The OpenAPI document names CORS_REQUEST_REFUSED on every operation's 403")
     void apiDocsNameTheCorsRefusal() throws Exception {
         getAs(null, "/v3/api-docs")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v1/users/me'].get.responses['403'].description",
-                        containsString("CORS_ORIGIN_REFUSED")))
+                        containsString("CORS_REQUEST_REFUSED")))
                 .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.responses['403'].description",
-                        containsString("CORS_ORIGIN_REFUSED")))
+                        containsString("CORS_REQUEST_REFUSED")))
                 .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.responses['403'].content['application/problem+json']").exists());
     }
 
@@ -312,8 +312,8 @@ class ApiContractIntegrationTest extends IntegrationTest {
     private void expectCorsRefusal(ResultActions answer) throws Exception {
         answer.andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.errorCode").value("CORS_ORIGIN_REFUSED"))
-                .andExpect(jsonPath("$.type").value(problemType("CORS_ORIGIN_REFUSED")))
+                .andExpect(jsonPath("$.errorCode").value("CORS_REQUEST_REFUSED"))
+                .andExpect(jsonPath("$.type").value(problemType("CORS_REQUEST_REFUSED")))
                 .andExpect(jsonPath("$.instance").value("/api/v1/users/me"))
                 .andExpect(header().exists("X-Request-ID"))
                 .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));

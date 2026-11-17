@@ -83,7 +83,7 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("""
             Under /platform/** too, the CORS filter answers a preflight from the allowed origin (200 with its headers) \
-            and refuses another origin (403 CORS_ORIGIN_REFUSED); a plain OPTIONS without a token is 401""")
+            and refuses another origin (403 CORS_REQUEST_REFUSED); a plain OPTIONS without a token is 401""")
     void corsOnThePlatformPlane() throws Exception {
         mvc.perform(options(TENANTS).header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN)
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
@@ -92,7 +92,7 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
         mvc.perform(options(TENANTS).header(HttpHeaders.ORIGIN, "https://elsewhere.example")
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("CORS_ORIGIN_REFUSED"));
+                .andExpect(jsonPath("$.errorCode").value("CORS_REQUEST_REFUSED"));
         mvc.perform(options(TENANTS))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));

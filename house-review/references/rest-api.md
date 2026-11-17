@@ -379,7 +379,7 @@ types.
   - no `OPTIONS` permit in any security chain (`requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()`):
     the CORS filter answers every preflight before the chain, so the permit only lets a plain `OPTIONS`
     through without a token; it is 401 like any other unauthenticated request;
-  - an origin the CORS settings refuse is Problem Details (403 `CORS_ORIGIN_REFUSED`, a
+  - an origin the CORS settings refuse is Problem Details (403 `CORS_REQUEST_REFUSED`, a
     `DefaultCorsProcessor` that writes through `ProblemResponses`, set on the `CorsFilter`), not Spring's
     plain-text `Invalid CORS request` (ERR-01).
 - **Severity:** Low / Medium.

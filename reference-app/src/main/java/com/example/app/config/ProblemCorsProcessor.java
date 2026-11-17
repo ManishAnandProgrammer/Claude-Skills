@@ -11,7 +11,7 @@ import org.springframework.web.cors.DefaultCorsProcessor;
 import java.io.IOException;
 
 /**
- * Spring's CORS checks, with the refusal written as Problem Details (403 {@code CORS_ORIGIN_REFUSED}) like every
+ * Spring's CORS checks, with the refusal written as Problem Details (403 {@code CORS_REQUEST_REFUSED}) like every
  * other error, instead of Spring's plain text {@code Invalid CORS request}. The refusal carries no
  * {@code Access-Control-Allow-Origin}, so a browser still keeps it from the page; a client outside one reads the code.
  */
@@ -29,7 +29,7 @@ class ProblemCorsProcessor extends DefaultCorsProcessor {
                                   HttpServletResponse response) throws IOException {
         boolean allowed = super.processRequest(configuration, request, response);
         if (!allowed) {
-            problemResponses.write(request, response, ErrorCode.CORS_ORIGIN_REFUSED);
+            problemResponses.write(request, response, ErrorCode.CORS_REQUEST_REFUSED);
         }
         return allowed;
     }

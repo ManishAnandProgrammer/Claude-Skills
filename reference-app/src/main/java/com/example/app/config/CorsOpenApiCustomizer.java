@@ -18,14 +18,14 @@ import java.util.Objects;
 import static org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE;
 
 /**
- * Adds {@code CORS_ORIGIN_REFUSED} to the 403 of every operation: the CORS filter ({@link ProblemCorsProcessor})
+ * Adds {@code CORS_REQUEST_REFUSED} to the 403 of every operation: the CORS filter ({@link ProblemCorsProcessor})
  * can answer it on every path, so it is written here once instead of on each {@code *Api} interface.
  */
 @Component
 class CorsOpenApiCustomizer implements OpenApiCustomizer {
 
     private static final String FORBIDDEN = "403";
-    private static final String DESCRIPTION = ErrorCode.CORS_ORIGIN_REFUSED.name()
+    private static final String DESCRIPTION = ErrorCode.CORS_REQUEST_REFUSED.name()
             + " (a cross-origin request from an origin, or a preflight with a method or headers, the CORS settings don't allow)";
     private static final String PROBLEM_SCHEMA = "#/components/schemas/" + ProblemDetail.class.getSimpleName();
 

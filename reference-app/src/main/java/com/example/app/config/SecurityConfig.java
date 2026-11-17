@@ -63,7 +63,7 @@ import java.util.List;
  *       chain's {@code .cors()}: every answer written before the chain (503 {@code SERVER_BUSY}, the
  *       firewall's 400) carries the headers a browser needs to read it. It answers every preflight, so the
  *       chain permits no {@code OPTIONS}: a plain one needs a token like any other request. An origin it
- *       doesn't allow is 403 {@code CORS_ORIGIN_REFUSED} ({@link ProblemCorsProcessor}).</li>
+ *       doesn't allow is 403 {@code CORS_REQUEST_REFUSED} ({@link ProblemCorsProcessor}).</li>
  *   <!-- session-version:begin -->
  *   <li>The session version (the session-version piece): a verified token is accepted only while its
  *       {@code sv} claim is current ({@link SessionVersionFilter}), one Redis read per request.</li>
