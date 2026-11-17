@@ -15,7 +15,6 @@ import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilte
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -62,7 +61,9 @@ import java.util.List;
  *       firewall's refusals included (an empty segment {@code //}, a {@code ;}, an encoded {@code .}).</li>
  *   <li>CORS is a servlet filter ahead of admission control and this chain ({@link #corsFilter}), not the
  *       chain's {@code .cors()}: every answer written before the chain (503 {@code SERVER_BUSY}, the
- *       firewall's 400) carries the headers a browser needs to read it.</li>
+ *       firewall's 400) carries the headers a browser needs to read it. It answers every preflight, so the
+ *       chain permits no {@code OPTIONS}: a plain one needs a token like any other request. An origin it
+ *       doesn't allow is 403 {@code CORS_ORIGIN_REFUSED} ({@link ProblemCorsProcessor}).</li>
  *   <!-- session-version:begin -->
  *   <li>The session version (the session-version piece): a verified token is accepted only while its
  *       {@code sv} claim is current ({@link SessionVersionFilter}), one Redis read per request.</li>
@@ -108,7 +109,6 @@ class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(PUBLIC_PATHS).permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(resourceServer -> resourceServer
@@ -195,8 +195,11 @@ class SecurityConfig {
      * answered here without taking an admission permit.
      */
     @Bean
-    FilterRegistrationBean<CorsFilter> corsFilter(CorsConfigurationSource corsConfigurationSource) {
-        FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(corsConfigurationSource));
+    FilterRegistrationBean<CorsFilter> corsFilter(CorsConfigurationSource corsConfigurationSource,
+                                                  ProblemResponses problemResponses) {
+        CorsFilter filter = new CorsFilter(corsConfigurationSource);
+        filter.setCorsProcessor(new ProblemCorsProcessor(problemResponses));
+        FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(SecurityFilterProperties.DEFAULT_FILTER_ORDER - 20);
         return registration;
     }

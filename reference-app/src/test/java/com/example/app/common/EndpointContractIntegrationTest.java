@@ -223,7 +223,7 @@ class EndpointContractIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Without a token every endpoint but the declared public ones is 401 AUTHENTICATION_REQUIRED, as Problem Details")
+    @DisplayName("Without a token every endpoint but the declared public ones is 401 AUTHENTICATION_REQUIRED, as Problem Details, and so is a plain OPTIONS on its path")
     void everyEndpointNeedsAToken() throws Exception {
         List<String> open = new ArrayList<>();
         for (Endpoint endpoint : endpoints()) {
@@ -231,6 +231,11 @@ class EndpointContractIntegrationTest extends IntegrationTest {
                 MockHttpServletResponse answer = send(endpoint, endpoint.path(null), null, validBody(endpoint));
                 if (!isProblem(answer, 401, "AUTHENTICATION_REQUIRED")) {
                     open.add(endpoint.name() + " answered " + answer.getStatus());
+                }
+                // No Origin, so not a preflight: the CORS filter passes it on, and the chain asks it for a token.
+                MockHttpServletResponse options = mvc.perform(request(HttpMethod.OPTIONS, endpoint.path(null))).andReturn().getResponse();
+                if (!isProblem(options, 401, "AUTHENTICATION_REQUIRED")) {
+                    open.add("OPTIONS " + endpoint.pattern() + " (from " + endpoint.name() + ") answered " + options.getStatus());
                 }
             }
         }

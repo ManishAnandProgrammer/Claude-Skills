@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.ResultActions;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -23,6 +24,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -34,6 +36,8 @@ class ApiContractIntegrationTest extends IntegrationTest {
 
     /** The origin application-test.yml allows. */
     private static final String ALLOWED_ORIGIN = "http://localhost:3000";
+    /** An origin application-test.yml doesn't allow. */
+    private static final String REFUSED_ORIGIN = "https://elsewhere.example";
 
     @Autowired
     @Qualifier("applicationTaskExecutor")
@@ -117,6 +121,42 @@ class ApiContractIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.type").value(problemType("REQUEST_INVALID")))
                 .andExpect(header().exists("X-Request-ID"))
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN));
+    }
+
+    @Test
+    @DisplayName("A preflight from the allowed origin is 200 with the CORS headers: the CORS filter answers it, no token asked")
+    void aPreflightFromTheAllowedOriginIsAnswered() throws Exception {
+        mvc.perform(options("/api/v1/users/me").header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN)
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, HttpHeaders.AUTHORIZATION))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, containsString("GET")));
+    }
+
+    @Test
+    @DisplayName("A request from an origin that isn't allowed is Problem Details 403 CORS_ORIGIN_REFUSED, with the request id")
+    void aRequestFromARefusedOriginIsProblemDetails() throws Exception {
+        expectCorsRefusal(mvc.perform(get("/api/v1/users/me").header(HttpHeaders.ORIGIN, REFUSED_ORIGIN)));
+    }
+
+    @Test
+    @DisplayName("A preflight from an origin that isn't allowed is Problem Details 403 CORS_ORIGIN_REFUSED, with the request id")
+    void aPreflightFromARefusedOriginIsProblemDetails() throws Exception {
+        expectCorsRefusal(mvc.perform(options("/api/v1/users/me").header(HttpHeaders.ORIGIN, REFUSED_ORIGIN)
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")));
+    }
+
+    @Test
+    @DisplayName("The OpenAPI document names CORS_ORIGIN_REFUSED on every operation's 403")
+    void apiDocsNameTheCorsRefusal() throws Exception {
+        getAs(null, "/v3/api-docs")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/users/me'].get.responses['403'].description",
+                        containsString("CORS_ORIGIN_REFUSED")))
+                .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.responses['403'].description",
+                        containsString("CORS_ORIGIN_REFUSED")))
+                .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.responses['403'].content['application/problem+json']").exists());
     }
 
     @Test
@@ -266,5 +306,16 @@ class ApiContractIntegrationTest extends IntegrationTest {
             }
         }
         return hasVersion(docs, schema.path("items"), depth + 1);
+    }
+
+    /** No Access-Control-Allow-Origin: the browser keeps the body from the page, but a client outside one reads the code. */
+    private void expectCorsRefusal(ResultActions answer) throws Exception {
+        answer.andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.errorCode").value("CORS_ORIGIN_REFUSED"))
+                .andExpect(jsonPath("$.type").value(problemType("CORS_ORIGIN_REFUSED")))
+                .andExpect(jsonPath("$.instance").value("/api/v1/users/me"))
+                .andExpect(header().exists("X-Request-ID"))
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
     }
 }

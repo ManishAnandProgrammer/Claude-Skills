@@ -32,6 +32,7 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.AUTHENTICATION_REQUIRED, HttpStatus.UNAUTHORIZED);
         MAPPING.put(ErrorCode.ACCESS_DENIED, HttpStatus.FORBIDDEN);
         MAPPING.put(ErrorCode.RATE_LIMITED, HttpStatus.TOO_MANY_REQUESTS);
+        MAPPING.put(ErrorCode.CORS_ORIGIN_REFUSED, HttpStatus.FORBIDDEN);
 
         MAPPING.put(ErrorCode.DUPLICATE_RECORD, HttpStatus.CONFLICT);
         MAPPING.put(ErrorCode.OPTIMISTIC_LOCK_CONFLICT, HttpStatus.CONFLICT);

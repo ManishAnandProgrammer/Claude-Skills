@@ -375,7 +375,13 @@ types.
   - CORS as a servlet filter ahead of everything that can answer before the security chain
     (admission control's 503, the firewall's 400) and the chain's `.cors()` disabled: otherwise those
     answers carry no `Access-Control-Allow-Origin` and the browser hides them; `Retry-After` and the
-    request id among the exposed headers.
+    request id among the exposed headers;
+  - no `OPTIONS` permit in any security chain (`requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()`):
+    the CORS filter answers every preflight before the chain, so the permit only lets a plain `OPTIONS`
+    through without a token; it is 401 like any other unauthenticated request;
+  - an origin the CORS settings refuse is Problem Details (403 `CORS_ORIGIN_REFUSED`, a
+    `DefaultCorsProcessor` that writes through `ProblemResponses`, set on the `CorsFilter`), not Spring's
+    plain-text `Invalid CORS request` (ERR-01).
 - **Severity:** Low / Medium.
 
 ### REST-19: Long-running work

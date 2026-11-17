@@ -6,6 +6,7 @@ import com.example.app.support.WithoutTestTenant;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.nio.charset.StandardCharsets;
@@ -13,6 +14,8 @@ import java.util.Base64;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -26,6 +29,8 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
 
     private static final String TENANTS = "/api/v1/platform/tenants";
     private static final String SWITCH = "/api/v1/auth/switch-tenant";
+    /** The origin application-test.yml allows. */
+    private static final String ALLOWED_ORIGIN = "http://localhost:3000";
 
     /** The access token's claims, read without checking the signature (the server checked it). */
     private static String claim(String accessToken, String jsonPath) {
@@ -71,6 +76,24 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
         getAs(null, TENANTS)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
+    }
+
+    @Test
+    @DisplayName("""
+            Under /platform/** too, the CORS filter answers a preflight from the allowed origin (200 with its headers) \
+            and refuses another origin (403 CORS_ORIGIN_REFUSED); a plain OPTIONS without a token is 401""")
+    void corsOnThePlatformPlane() throws Exception {
+        mvc.perform(options(TENANTS).header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN)
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN));
+        mvc.perform(options(TENANTS).header(HttpHeaders.ORIGIN, "https://elsewhere.example")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("CORS_ORIGIN_REFUSED"));
+        mvc.perform(options(TENANTS))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
     }

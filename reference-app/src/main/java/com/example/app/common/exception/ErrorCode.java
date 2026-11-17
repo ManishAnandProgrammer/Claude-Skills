@@ -32,6 +32,8 @@ public enum ErrorCode {
     AUTHENTICATION_REQUIRED,
     ACCESS_DENIED,
     RATE_LIMITED,
+    /** A cross-origin request whose origin, or a preflight whose method or headers, the CORS settings don't allow. */
+    CORS_ORIGIN_REFUSED,
 
     // ── Data ─────────────────────────────────────────────────────────────
     DUPLICATE_RECORD,

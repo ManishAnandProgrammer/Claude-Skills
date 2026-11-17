@@ -66,7 +66,8 @@ the generic text.
 
 **Errors raised before the handler** are written by `common/web/ProblemResponses`, with the same members:
 the security chain's 401 and 403 (its `AuthenticationEntryPoint` and `AccessDeniedHandler`), a filter's
-refusal (admission control's 503, the session version's 401) and **the firewall's**: a path Spring
+refusal (admission control's 503, the session version's 401, the CORS filter's 403 `CORS_ORIGIN_REFUSED`
+for an origin it doesn't allow: reference `config/ProblemCorsProcessor`) and **the firewall's**: a path Spring
 Security's `StrictHttpFirewall` refuses (an empty segment `//`, a `;`, an encoded `.`) is 400
 `REQUEST_INVALID` through a `RequestRejectedHandler` bean (reference: `config/SecurityConfig`). Without that
 bean the refusal is a bare 400 that Boot's `/error` answers as `{timestamp, status, error, path}`. Tomcat
@@ -201,6 +202,8 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
   copied into `detail` for a 5xx or a database exception.
 - No `RequestRejectedHandler` bean: `GET /api/v1/x//y` answers Boot's `/error` JSON without `errorCode`
   (Medium, ERR-01).
+- The `CorsFilter` on Spring's `DefaultCorsProcessor`: an origin it refuses answers the plain text
+  `Invalid CORS request` (Medium, ERR-01; REST-18).
 - Exception classes that differ only by name.
 - No transient-failure classification: pool exhaustion and timeouts answer 500.
 - `@ExceptionHandler(IllegalArgumentException.class)` answering a 4xx; `throw new
