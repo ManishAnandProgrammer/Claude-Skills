@@ -29,7 +29,11 @@ public class AppException extends RuntimeException {
     private final transient List<RequestError> errors;
     private final transient Map<String, Object> extensions = new LinkedHashMap<>();
 
-    private AppException(ErrorCode errorCode, Object[] args, List<RequestError> errors, Throwable cause) {
+    /**
+     * For the rare subclass a caller must catch on its own (ERR-04); everyone else throws through the
+     * factories. A subclass is still answered by its code.
+     */
+    protected AppException(ErrorCode errorCode, Object[] args, List<RequestError> errors, Throwable cause) {
         super(errorCode.name(), cause);
         this.errorCode = errorCode;
         this.args = args;

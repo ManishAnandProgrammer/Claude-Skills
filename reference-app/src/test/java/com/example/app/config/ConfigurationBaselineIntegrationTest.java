@@ -1,12 +1,16 @@
 package com.example.app.config;
 
 import com.example.app.support.IntegrationTest;
+import jakarta.servlet.Filter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.core.env.Environment;
+import org.springframework.web.filter.FormContentFilter;
+import org.springframework.web.multipart.MultipartResolver;
 
 import java.util.List;
 
@@ -21,6 +25,9 @@ class ConfigurationBaselineIntegrationTest extends IntegrationTest {
 
     @Autowired
     private Environment environment;
+
+    @Autowired
+    private ApplicationContext context;
 
     @ParameterizedTest(name = "{0} = {1}")
     @CsvSource(delimiter = '|', textBlock = """
@@ -58,6 +65,8 @@ class ConfigurationBaselineIntegrationTest extends IntegrationTest {
             spring.jackson.mapper.accept-case-insensitive-enums                    | false
             spring.jackson.default-leniency                                        | false
             spring.jackson.datatype.enum.fail-on-numbers-for-enums                 | true
+            spring.mvc.formcontent.filter.enabled                                  | false
+            spring.servlet.multipart.enabled                                       | false
             """)
     @DisplayName("A baseline setting has its required value")
     void aBaselineSettingHasItsValue(String key, String required) {
@@ -69,6 +78,18 @@ class ConfigurationBaselineIntegrationTest extends IntegrationTest {
     void thePoolSetsItsServerSideLimits() {
         assertThat(environment.getProperty("spring.datasource.hikari.data-source-properties.options"))
                 .contains("statement_timeout=25s", "lock_timeout=3s", "idle_in_transaction_session_timeout=30s");
+    }
+
+    /**
+     * Boot's FormContentFilter (order -9900) reads a PUT, PATCH or DELETE form body whole into memory, and the
+     * multipart resolver parses every part, both before admission control and the security chain (CFG-04).
+     */
+    @Test
+    @DisplayName("No body is read ahead of the filters: no form-content filter, no multipart resolver")
+    void noBodyIsReadAheadOfTheFilters() {
+        assertThat(context.getBeanNamesForType(Filter.class)).isNotEmpty();
+        assertThat(context.getBeanNamesForType(FormContentFilter.class)).isEmpty();
+        assertThat(context.getBeanNamesForType(MultipartResolver.class)).isEmpty();
     }
 
     @Test

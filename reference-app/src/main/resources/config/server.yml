@@ -18,6 +18,11 @@ spring:
     # is safer for deployments.
     timeout-per-shutdown-phase: 30s
   mvc:
+    formcontent:
+      filter:
+        # No endpoint reads form parameters: Boot's FormContentFilter would read a PUT, PATCH or DELETE
+        # form body whole into memory, ahead of admission control and the security chain (CFG-04).
+        enabled: false
     # Spring's API versioning; the parser (v1, v2, ...) is common/apiversion/MajorVersionParser.
     apiversion:
       use:
@@ -30,7 +35,7 @@ spring:
       detect-supported: false
   servlet:
     multipart:
-      # No endpoint takes uploads.
+      # No endpoint takes uploads: the resolver would parse every multipart body before the filters.
       enabled: false
   jackson:
     # A request body is read strictly: anything else is a 400 REQUEST_UNREADABLE, never silently

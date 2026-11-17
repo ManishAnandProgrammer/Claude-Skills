@@ -10,7 +10,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.UuidGenerator;
-import org.hibernate.id.uuid.UuidVersion7Strategy;
 import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedBy;
@@ -27,7 +26,9 @@ import java.util.UUID;
  *
  * <ul>
  *   <li>{@code id}: UUIDv7, assigned by Hibernate in the application (not a database default), so
- *       inserts batch and need no read-back;</li>
+ *       inserts batch and need no read-back. {@code style = VERSION_7} uses Hibernate's one shared,
+ *       monotonic generator; {@code algorithm = UuidVersion7Strategy.class} would build one per entity
+ *       through a constructor Hibernate marks internal;</li>
  *   <li>{@code createdAt} / {@code updatedAt} / {@code createdBy} / {@code updatedBy}: filled by Spring
  *       Data auditing ({@code JpaAuditingConfig}); {@code createdBy} / {@code updatedBy} are the
  *       signed-in user's id, {@code null} outside a request (signup, scheduled jobs);</li>
@@ -48,7 +49,7 @@ public abstract class AuditableEntity {
 
     @Id
     @GeneratedValue
-    @UuidGenerator(algorithm = UuidVersion7Strategy.class)
+    @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
     @Column(nullable = false, updatable = false)
     private UUID id;
 
