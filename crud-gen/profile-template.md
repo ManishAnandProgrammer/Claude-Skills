@@ -58,7 +58,7 @@ Fill values from the codebase, not from memory.
 | Key | Value | Notes |
 |---|---|---|
 | `noEmojiFields` | `none` | The only fields that get `{{NoEmoji}}` (codes, identifiers) |
-| `idStrategy` | `uuidv7` | `uuidv7` (Hibernate `UuidVersion7Strategy`, app-assigned) or `tsid` |
+| `idStrategy` | `uuidv7` | `uuidv7` (Hibernate `@UuidGenerator(style = VERSION_7)`, app-assigned) or `tsid` |
 | `instances` | `multiple` | `single` or `multiple`, same value as the review profile (dropdown caching) |
 | `moduleContracts` | `api-facades` | Or `service-entity-methods`; same value as the review profile |
 | `repositoryAccess` | `aggregate-service` | ARCH-15: only the aggregate's service uses its repositories; mappers receive resolved entities |

@@ -18,7 +18,12 @@ subclasses `{{DropdownFilter}}` as `<Entity>DropdownFilter`, one field per dot-p
    `builder.construct(DropdownItem.class, value, label)`, written top to bottom with `Cursor` /
    `Seek` (sorts `NAME_ASC` / `NAME_DESC`) over the keyset `(sortField, valueField)`, returning a
    `CursorBatch`; predicates for mandatory, optional, status and search; scoped like the
-   resource's reads (ownership, tenant). Indexes `(scope columns, sortField, valueField)`.
+   resource's reads (ownership, tenant). Indexes `(scope columns, sortField, valueField)`. When
+   `sortField` isn't the `displayField` (a display order), the item carries no sort key to write the
+   cursor from: project a row record of the repository's own (`<Entity>DropdownRow(value, label,
+   sortKey)`), write the cursor from it, and map the batch to `DropdownItem` before it leaves the
+   repository; the cursor's key is then the sort column's (its size in `app.limits.text.cursor`, 4.2,
+   when it is text).
 2. **Service:** `CursorWrapper<DropdownItem> dropdown(<Filter> filter)` builds the wrapper from the
    repository's `CursorBatch`; refuses an inapplicable
    `status`; the batch size from `Paging.cursorSize(filter)`. `cacheable = true` only when the

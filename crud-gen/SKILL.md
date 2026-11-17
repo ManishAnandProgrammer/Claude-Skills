@@ -89,8 +89,10 @@ If it doesn't exist, build it before generating anything:
 1. Copy `~/.claude/skills/crud-gen/profile-template.md`.
 2. Fill each key from the codebase; don't guess.
 3. **If the house infrastructure is missing** (no ErrorCode/AppException contract, no
-   `PaginationWrapper`/`CursorWrapper`, no `Limits`/`@MaxLength`, no test base), stop and offer
-   `/crud-gen bootstrap`. Generated code depends on it.
+   `PaginationWrapper`/`CursorWrapper`, no `Limits`/`@MaxLength`, no `@CrossField` for a rule across
+   fields, no test base), stop and offer `/crud-gen bootstrap`: generated code depends on it. A project
+   that declines takes the missing piece alone from the reference (`common/validation/CrossField`, and the handler's
+   `reportedOn` lookup it relies on), never a hand-written variant.
 4. Keys with no equivalent: `none` (see *Fallbacks* in the template).
 5. Write the profile, show a short summary, and get confirmation **once**.
 

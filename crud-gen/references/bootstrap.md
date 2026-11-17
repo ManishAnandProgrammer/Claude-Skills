@@ -9,7 +9,10 @@ differs per project.
 
 **Rules:**
 - **Never overwrite.** The script skips files that exist and reports them; on an existing project,
-  compare each skipped file with the reference and propose the differences one by one.
+  compare each skipped file with the reference and propose the differences one by one. To compare
+  pieces without copying into the project, copy them into a scratch directory holding an empty
+  `pom.xml` (the script refuses a target without a build file and never touches it) and diff the two
+  trees.
   A project's own `lombok.config` is skipped like any other: add the reference's
   `lombok.copyableAnnotations` line to it, or every `@Qualifier` on a Lombok-injected field is silently
   dropped (house-review JAVA-26).
@@ -229,7 +232,12 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
 - `ErrorCode`: remove the sign-in codes if `sign-in` wasn't copied. Constraint mappings live in each
   module's `ConstraintErrorCodes` bean (`UserConstraintErrorCodes`, ...), which the handler
   aggregates, so they come and go with their module.
-- The ArchUnit rules' module list comes from the profile.
+- The ArchUnit rules' module list comes from the profile, and so do the rules the profile can change:
+  `LayerArchTest.onlyServicesUseRepositories` follows `repositoryAccess` (`service, mapper` adds
+  `"..mapper.."`), `ConventionArchTest.scheduledJobsDeclareTheirConcurrencyPosture` takes the project's
+  lock annotation beside `@MultiInstanceSafe` (`.orShould().beAnnotatedWith(SchedulerLock.class)` with
+  ShedLock), and `ModuleBoundaryArchTest.commonDependsOnNoFeature` lists the project's own libraries that
+  `common` uses (never a feature package). Each rule's comment says so.
 - `docs/runbook.md`: the deployment's own commands (how an instance is stopped, how a release is
   rolled back) where it says `docker`; `<app>` stays a placeholder for `spring.application.name`.
   With `sign-in` and an ADMIN role (metadata, media) and no tenancy, `docs/local-dev.md` step 4 and the
