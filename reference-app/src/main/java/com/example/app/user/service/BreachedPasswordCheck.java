@@ -37,6 +37,8 @@ class BreachedPasswordCheck {
     private final Bulkhead bulkhead;
     private final Counter unavailable;
 
+    // Hand-written (JAVA-26): the bulkhead is looked up once (a missing instance stops the startup) and the
+    // counter registered, so its series reads 0 before the first failed lookup.
     BreachedPasswordCheck(CompromisedPasswordChecker checker, BreachedPasswordProperties properties,
                           BulkheadRegistry bulkheads, MeterRegistry meterRegistry) {
         this.checker = checker;

@@ -35,6 +35,8 @@ public class TenantProvisioning {
     private final TransactionTemplate newTransaction;
     private final Counter failures;
 
+    // Hand-written (JAVA-26): the counter is registered at startup, so its series reads 0 before the first failure,
+    // and the template is this class's own (a REQUIRES_NEW bean would be injected by mistake elsewhere).
     TenantProvisioning(TenantService tenantService, PlatformTransactionManager transactionManager, MeterRegistry meterRegistry) {
         this.tenantService = tenantService;
         this.failures = Counter.builder(FAILED_METRIC)

@@ -5,6 +5,7 @@ import com.example.app.common.exception.ErrorCode;
 import com.example.app.media.dto.internal.PresignedUpload;
 import com.example.app.media.dto.request.UploadFileRequest;
 import io.micrometer.core.instrument.MeterRegistry;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
@@ -25,6 +26,7 @@ import java.util.Map;
  * ({@code media.storage.failures}, by operation).
  */
 @Component
+@RequiredArgsConstructor
 class MediaStorage {
 
     private static final String FAILURES = "media.storage.failures";
@@ -34,13 +36,6 @@ class MediaStorage {
     private final S3Presigner presigner;
     private final MediaProperties properties;
     private final MeterRegistry meterRegistry;
-
-    MediaStorage(S3Client s3, S3Presigner presigner, MediaProperties properties, MeterRegistry meterRegistry) {
-        this.s3 = s3;
-        this.presigner = presigner;
-        this.properties = properties;
-        this.meterRegistry = meterRegistry;
-    }
 
     /**
      * A PUT signed with the file's exact size, type and disposition ({@code X-Amz-SignedHeaders}): the

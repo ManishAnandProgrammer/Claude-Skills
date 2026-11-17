@@ -24,6 +24,7 @@ import com.example.app.media.dto.request.UploadUrlRequest;
 import com.example.app.media.dto.response.UploadUrlResponse;
 import com.example.app.media.mapper.MediaFileMapper;
 import com.example.app.media.repository.MediaFileRepository;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -41,7 +42,7 @@ import java.util.UUID;
  * short transactions. Nothing here calls the store inside a transaction.
  */
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 @Transactional(readOnly = true)
 public class MediaFileService implements Uploads {
 

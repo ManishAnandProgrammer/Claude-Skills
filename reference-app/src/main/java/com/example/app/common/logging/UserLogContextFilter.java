@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -17,13 +18,10 @@ import java.util.UUID;
  * clears it when the request ends. Not a bean, so the servlet container doesn't register it a
  * second time outside the chain.
  */
+@RequiredArgsConstructor
 public class UserLogContextFilter extends OncePerRequestFilter {
 
     private final CurrentUser currentUser;
-
-    public UserLogContextFilter(CurrentUser currentUser) {
-        this.currentUser = currentUser;
-    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)

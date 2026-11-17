@@ -1,5 +1,6 @@
 package com.example.app.config;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,6 +25,7 @@ import java.util.Map;
  */
 @Component
 @DependsOn("liquibase")
+@RequiredArgsConstructor
 class PoolRoleCheck implements InitializingBean {
 
     /** {@code pg_has_role(…, 'MEMBER')} is true for the role itself and every role it reaches, directly or not. */
@@ -36,15 +38,11 @@ class PoolRoleCheck implements InitializingBean {
                        and pg_has_role(current_user, c.relowner, 'MEMBER')) as owned_tables,
                    has_table_privilege('platform_users', 'INSERT, UPDATE, DELETE') as writes_staff""";
 
-    private final JdbcTemplate jdbc;
-
-    PoolRoleCheck(DataSource dataSource) {
-        this.jdbc = new JdbcTemplate(dataSource);
-    }
+    private final DataSource dataSource;
 
     @Override
     public void afterPropertiesSet() {
-        Map<String, Object> role = jdbc.queryForMap(POOL_ROLE);
+        Map<String, Object> role = new JdbcTemplate(dataSource).queryForMap(POOL_ROLE);
         check((Boolean) role.get("privileged"), ((Number) role.get("owned_tables")).longValue(), (Boolean) role.get("writes_staff"));
     }
 

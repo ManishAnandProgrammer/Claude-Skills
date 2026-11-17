@@ -15,6 +15,7 @@ import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.query.QueryUtils;
@@ -25,13 +26,10 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
+@RequiredArgsConstructor
 class TenantMembershipRepositoryImpl implements CustomTenantMembershipRepository {
 
     private final EntityManager entityManager;
-
-    TenantMembershipRepositoryImpl(EntityManager entityManager) {
-        this.entityManager = entityManager;
-    }
 
     /**
      * One tenant's members: the membership holds the role and the version, the account its email and

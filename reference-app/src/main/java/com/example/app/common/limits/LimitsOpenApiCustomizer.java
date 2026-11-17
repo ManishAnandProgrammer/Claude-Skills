@@ -3,6 +3,7 @@ package com.example.app.common.limits;
 import io.swagger.v3.core.converter.AnnotatedType;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.Parameter;
+import lombok.RequiredArgsConstructor;
 import org.springdoc.core.customizers.ParameterCustomizer;
 import org.springdoc.core.customizers.PropertyCustomizer;
 import org.springframework.core.MethodParameter;
@@ -19,13 +20,10 @@ import java.util.Objects;
  * A limit on a collection's elements is {@link ElementLimitsModelConverter}'s.
  */
 @Component
+@RequiredArgsConstructor
 class LimitsOpenApiCustomizer implements PropertyCustomizer, ParameterCustomizer {
 
     private final Limits limits;
-
-    LimitsOpenApiCustomizer(Limits limits) {
-        this.limits = limits;
-    }
 
     @Override
     public Schema customize(Schema property, AnnotatedType type) {

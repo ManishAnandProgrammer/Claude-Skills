@@ -4,6 +4,8 @@ import com.example.app.common.ratelimit.RateLimitExceededException;
 import com.example.app.common.web.ProblemTypes;
 import com.example.app.common.web.RetryAfterProperties;
 import jakarta.validation.ConstraintViolation;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
 import org.springframework.context.MessageSourceResolvable;
@@ -52,6 +54,7 @@ import java.util.Optional;
  */
 @RestControllerAdvice
 @Slf4j
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     /** The attribute of {@code CrossField} and {@code ConfiguredMax} that names the field a rule across fields is reported on. */
@@ -61,14 +64,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private final ProblemTypes problemTypes;
     private final RetryAfterProperties retryAfter;
     private final ConstraintViolationCodes constraintCodes;
-
-    GlobalExceptionHandler(MessageSource messageSource, ProblemTypes problemTypes, RetryAfterProperties retryAfter,
-                           ConstraintViolationCodes constraintCodes) {
-        this.messageSource = messageSource;
-        this.problemTypes = problemTypes;
-        this.retryAfter = retryAfter;
-        this.constraintCodes = constraintCodes;
-    }
 
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ProblemDetail> handleAppException(AppException exception, WebRequest request) {

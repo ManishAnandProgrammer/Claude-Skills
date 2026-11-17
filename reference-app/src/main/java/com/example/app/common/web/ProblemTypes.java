@@ -24,6 +24,8 @@ public class ProblemTypes {
 
     private final String namespace;
 
+    // Hand-written (JAVA-26): @Value goes on the parameter; on a Lombok field it is field injection, which
+    // ConventionArchTest refuses.
     public ProblemTypes(@Value("${spring.application.name}") String applicationName) {
         this.namespace = "urn:" + applicationName + ":error:";
     }

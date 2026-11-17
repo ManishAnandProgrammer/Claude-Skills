@@ -67,6 +67,7 @@ public class RedisRateLimiter implements DisposableBean {
     private volatile StatefulConnection<String, byte[]> connection;
     private volatile ProxyManager<String> buckets;
 
+    // Hand-written (JAVA-26): the counters are registered at startup, so their series read 0 before the first outage.
     public RedisRateLimiter(LettuceConnectionFactory connectionFactory, RateLimitProperties properties,
                             MeterRegistry meterRegistry) {
         this.connectionFactory = connectionFactory;

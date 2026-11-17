@@ -1,5 +1,6 @@
 package com.example.app.common.limits;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
@@ -9,16 +10,13 @@ import org.springframework.stereotype.Component;
  * {@code LimitsIntegrationTest} checks every key the code uses.
  */
 @Component
+@RequiredArgsConstructor
 public class Limits {
 
     private static final String PREFIX = "app.limits.";
     private static final String TEXT_PREFIX = PREFIX + "text.";
 
     private final Environment environment;
-
-    public Limits(Environment environment) {
-        this.environment = environment;
-    }
 
     /** {@code app.limits.<key>}, e.g. {@code offset-page.max-size}. */
     public int get(String key) {

@@ -1,6 +1,7 @@
 package com.example.app.user.service;
 
 import io.micrometer.core.instrument.Counter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
@@ -15,13 +16,10 @@ import java.io.IOException;
  * (its own ERROR log is switched off in config), so this is the only place an outage still shows.
  */
 @Slf4j
+@RequiredArgsConstructor
 class FailureCountingInterceptor implements ClientHttpRequestInterceptor {
 
     private final Counter failures;
-
-    FailureCountingInterceptor(Counter failures) {
-        this.failures = failures;
-    }
 
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)

@@ -1,5 +1,6 @@
 package com.example.app.common.tenancy;
 
+import lombok.RequiredArgsConstructor;
 import org.hibernate.engine.jdbc.connections.spi.MultiTenantConnectionProvider;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -24,6 +25,7 @@ import java.util.UUID;
  * <p>{@link TenantContext#NO_TENANT} keeps the default: the platform's tables resolve, a tenant's table
  * doesn't exist.</p>
  */
+@RequiredArgsConstructor
 public class TransactionLocalSchemaProvider implements MultiTenantConnectionProvider<UUID> {
 
     private static final String TENANT_TRANSACTION = """
@@ -35,10 +37,6 @@ public class TransactionLocalSchemaProvider implements MultiTenantConnectionProv
     private static final String RESET_SESSION = "reset search_path";
 
     private final DataSource dataSource;
-
-    public TransactionLocalSchemaProvider(DataSource dataSource) {
-        this.dataSource = dataSource;
-    }
 
     @Override
     public Connection getConnection(UUID tenantId) throws SQLException {

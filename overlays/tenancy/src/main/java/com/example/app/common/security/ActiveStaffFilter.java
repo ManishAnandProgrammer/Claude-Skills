@@ -6,6 +6,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,15 +24,11 @@ import java.util.UUID;
  * container doesn't register it a second time outside the chain.
  */
 @Slf4j
+@RequiredArgsConstructor
 public class ActiveStaffFilter extends OncePerRequestFilter {
 
     private final StaffAccounts staffAccounts;
     private final ProblemResponses problemResponses;
-
-    public ActiveStaffFilter(StaffAccounts staffAccounts, ProblemResponses problemResponses) {
-        this.staffAccounts = staffAccounts;
-        this.problemResponses = problemResponses;
-    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)

@@ -14,6 +14,7 @@ import com.example.app.user.dto.request.SignupRequest;
 import com.example.app.user.dto.response.UserResponse;
 import com.example.app.user.mapper.UserMapper;
 import com.example.app.user.repository.UserRepository;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 // session-version:begin
@@ -40,7 +41,7 @@ import java.util.UUID;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 @Transactional(readOnly = true)
 // tenancy:begin
 // public class UserService {

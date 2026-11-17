@@ -1,5 +1,6 @@
 package com.example.app.common.tenancy;
 
+import lombok.RequiredArgsConstructor;
 import org.hibernate.engine.jdbc.connections.spi.MultiTenantConnectionProvider;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -23,6 +24,7 @@ import java.util.UUID;
  * <p>{@link TenantContext#NO_TENANT} sets an empty tenant: the policies match no row, so tenant tables
  * read as empty and refuse writes, while the platform's tables (no policy) work.</p>
  */
+@RequiredArgsConstructor
 public class TransactionLocalTenantProvider implements MultiTenantConnectionProvider<UUID> {
 
     private static final String TENANT_TRANSACTION = """
@@ -30,10 +32,6 @@ public class TransactionLocalTenantProvider implements MultiTenantConnectionProv
     private static final String NO_TENANT_SETTING = "";
 
     private final DataSource dataSource;
-
-    public TransactionLocalTenantProvider(DataSource dataSource) {
-        this.dataSource = dataSource;
-    }
 
     @Override
     public Connection getConnection(UUID tenantId) throws SQLException {

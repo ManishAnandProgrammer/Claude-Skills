@@ -34,6 +34,7 @@ public class TenantProvisioningJob {
     private final Settings settings;
     private final Counter failures;
 
+    // Hand-written (JAVA-26): the counter is registered at startup, so its series reads 0 before the first failure.
     TenantProvisioningJob(TenantSchemaMigrator migrator, TenantMigrationService migrations, Settings settings,
                           MeterRegistry meterRegistry) {
         this.migrator = migrator;

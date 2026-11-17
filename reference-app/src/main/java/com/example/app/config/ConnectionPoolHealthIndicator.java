@@ -2,6 +2,7 @@ package com.example.app.config;
 
 import com.zaxxer.hikari.HikariDataSource;
 import com.zaxxer.hikari.HikariPoolMXBean;
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
@@ -20,13 +21,10 @@ import java.util.Objects;
  * the load balancer sends new traffic elsewhere until the queue drains.</p>
  */
 @Component("connectionPool")
+@RequiredArgsConstructor
 class ConnectionPoolHealthIndicator implements HealthIndicator {
 
     private final DataSource dataSource;
-
-    ConnectionPoolHealthIndicator(DataSource dataSource) {
-        this.dataSource = dataSource;
-    }
 
     @Override
     public Health health() {

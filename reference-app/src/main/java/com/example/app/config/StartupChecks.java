@@ -1,6 +1,8 @@
 package com.example.app.config;
 
 import com.example.app.common.admission.AdmissionProperties;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
@@ -26,14 +28,20 @@ import java.util.Objects;
  * </ul>
  */
 @Component
-class StartupChecks {
+@RequiredArgsConstructor
+class StartupChecks implements InitializingBean {
 
     /** The test profile alone: the only one allowed the shortcuts below. */
     private static final List<String> TEST_ONLY_PROFILES = List.of("test");
     /** A security decision, not a tunable: lower, a stolen hash is cheap to crack; higher, sign-in outgrows its CPU. */
     private static final int PASSWORD_HASH_STRENGTH = 12;
 
-    StartupChecks(Environment environment, AdmissionProperties admission, PasswordHashProperties passwordHash) {
+    private final Environment environment;
+    private final AdmissionProperties admission;
+    private final PasswordHashProperties passwordHash;
+
+    @Override
+    public void afterPropertiesSet() {
         checkProfiles(environment);
         checkAdmissionLeavesRoomForThePoolQueue(environment, admission);
         checkManagementPortIsSeparate(environment);

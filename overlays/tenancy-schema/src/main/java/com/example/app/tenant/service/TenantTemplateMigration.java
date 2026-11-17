@@ -1,5 +1,6 @@
 package com.example.app.tenant.service;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.jpa.autoconfigure.EntityManagerFactoryDependsOnPostProcessor;
 import org.springframework.context.annotation.DependsOn;
@@ -14,13 +15,10 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @DependsOn("liquibase")
+@RequiredArgsConstructor
 class TenantTemplateMigration implements InitializingBean {
 
     private final TenantSchemaMigrator migrator;
-
-    TenantTemplateMigration(TenantSchemaMigrator migrator) {
-        this.migrator = migrator;
-    }
 
     @Override
     public void afterPropertiesSet() {
@@ -31,6 +29,7 @@ class TenantTemplateMigration implements InitializingBean {
     @Component
     static class EntityManagerFactoryWaitsForTemplate extends EntityManagerFactoryDependsOnPostProcessor {
 
+        // Hand-written (JAVA-26): the superclass takes the bean to wait for, which Lombok can't pass on.
         EntityManagerFactoryWaitsForTemplate() {
             super(TenantTemplateMigration.class);
         }

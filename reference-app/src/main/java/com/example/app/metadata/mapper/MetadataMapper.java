@@ -7,6 +7,7 @@ import com.example.app.common.exception.RequestError;
 import com.example.app.metadata.api.MetadataKey;
 import com.example.app.metadata.domain.ConfigurationMetadata;
 import com.example.app.metadata.dto.response.MetadataResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
@@ -22,15 +23,12 @@ import java.util.List;
  * bodies: the same ISO dates and the same strictness, except for stored documents.
  */
 @Component
+@RequiredArgsConstructor
 public class MetadataMapper {
 
     private static final String VALUE = "value";
 
     private final JsonMapper jsonMapper;
-
-    public MetadataMapper(JsonMapper jsonMapper) {
-        this.jsonMapper = jsonMapper;
-    }
 
     public <T> ConfigurationMetadata toEntity(MetadataKey<T> key, T value) {
         return ConfigurationMetadata.builder()

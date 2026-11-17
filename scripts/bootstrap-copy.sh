@@ -12,7 +12,8 @@
 #   one, the markers applied. Generators read golden files through it instead of reasoning about markers.
 #   pieces (comma-separated, default core,sign-in):
 #     core     error contract, wrappers, paging, limits, logging, admission, security config,
-#              persistence base, config files, test base, ArchUnit, the incident runbook (docs/)
+#              persistence base, config files (lombok.config among them), test base, ArchUnit, the
+#              incident runbook (docs/)
 #     sign-in  user module (signup, login, tokens) and its Redis rate limiting: the limiter in
 #              common/ratelimit, config/RedisClientConfig, the Redis settings and Testcontainer
 #     example  the golden crud-gen modules (todo lists and todos; plans, in a module of their own), for
@@ -181,6 +182,7 @@ compose.yaml
 .env.example
 Dockerfile
 .dockerignore
+lombok.config
 docs/runbook.md
 docs/local-dev.md
 LIST

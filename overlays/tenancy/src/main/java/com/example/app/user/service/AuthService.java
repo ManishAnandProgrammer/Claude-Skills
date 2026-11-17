@@ -50,9 +50,11 @@ public class AuthService {
      */
     private final String unknownUserHash;
 
-    public AuthService(UserService userService, TokenService tokenService, PasswordEncoder passwordEncoder,
-                       AuthRateLimits rateLimits, BreachedPasswordCheck breachedPasswordCheck, CurrentUser currentUser,
-                       MeterRegistry meterRegistry) {
+    // Hand-written (JAVA-26): the decoy hash costs one bcrypt run, paid once at startup, and the counter is
+    // registered then, so its series reads 0 before the first refusal. Package-private: its collaborators are (JAVA-27).
+    AuthService(UserService userService, TokenService tokenService, PasswordEncoder passwordEncoder,
+                AuthRateLimits rateLimits, BreachedPasswordCheck breachedPasswordCheck, CurrentUser currentUser,
+                MeterRegistry meterRegistry) {
         this.userService = userService;
         this.tokenService = tokenService;
         this.passwordEncoder = passwordEncoder;

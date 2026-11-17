@@ -17,6 +17,7 @@ import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -24,16 +25,13 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
+@RequiredArgsConstructor
 class TimeEntryRepositoryImpl implements CustomTimeEntryRepository {
 
     /** Every order's keyset: its sort key, then the id. */
     private static final int CURSOR_KEYS = 2;
 
     private final EntityManager entityManager;
-
-    TimeEntryRepositoryImpl(EntityManager entityManager) {
-        this.entityManager = entityManager;
-    }
 
     /** Both orders read their index backwards: the most recent day, or the longest entry, first; ties newest first. */
     @Override

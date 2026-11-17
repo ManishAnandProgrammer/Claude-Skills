@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -27,19 +28,15 @@ import java.util.regex.Pattern;
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 1)
+@RequiredArgsConstructor
 class RequestLogContextFilter extends OncePerRequestFilter {
 
     static final String HEADER_NAME = "X-Request-ID";
     /** Letters, digits, dot, underscore and dash: nothing that can forge or garble a log line or header. */
     private static final Pattern SAFE_REQUEST_ID = Pattern.compile("[A-Za-z0-9._-]{1,128}");
 
-    private final ClientIpMode clientIpMode;
+    private final LoggingProperties properties;
     private final PersonalDataHasher hasher;
-
-    RequestLogContextFilter(LoggingProperties properties, PersonalDataHasher hasher) {
-        this.clientIpMode = properties.clientIp();
-        this.hasher = hasher;
-    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -48,7 +45,7 @@ class RequestLogContextFilter extends OncePerRequestFilter {
         response.setHeader(HEADER_NAME, requestId);
         MDC.put(LogContext.REQUEST_ID, requestId);
         MDC.put(LogContext.ENDPOINT, request.getMethod() + " " + request.getRequestURI());
-        MDC.put(LogContext.CLIENT_IP, clientIpMode.render(request.getRemoteAddr(), hasher));
+        MDC.put(LogContext.CLIENT_IP, properties.clientIp().render(request.getRemoteAddr(), hasher));
         try {
             filterChain.doFilter(request, response);
         } finally {

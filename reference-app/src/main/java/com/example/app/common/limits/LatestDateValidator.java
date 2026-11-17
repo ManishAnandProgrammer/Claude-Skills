@@ -2,6 +2,7 @@ package com.example.app.common.limits;
 
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
+import lombok.RequiredArgsConstructor;
 import org.hibernate.validator.constraintvalidation.HibernateConstraintValidatorContext;
 import org.springframework.core.env.Environment;
 
@@ -12,16 +13,13 @@ import java.util.Objects;
  * Reads the date from the environment itself: {@link Limits} serves numbers only. A Spring bean
  * (created through the validator factory), so the date comes from configuration.
  */
+@RequiredArgsConstructor
 class LatestDateValidator implements ConstraintValidator<LatestDate, LocalDate> {
 
     private static final String PREFIX = "app.limits.latest-date.";
 
     private final Environment environment;
     private String key;
-
-    LatestDateValidator(Environment environment) {
-        this.environment = environment;
-    }
 
     @Override
     public void initialize(LatestDate constraint) {

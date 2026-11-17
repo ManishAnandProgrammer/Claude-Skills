@@ -12,6 +12,7 @@ import com.example.app.tenant.api.Tenants;
 import com.example.app.user.domain.TenantMembership;
 import com.example.app.user.dto.request.ImpersonationRequest;
 import com.example.app.user.dto.response.TokenResponse;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,7 +30,7 @@ import java.util.UUID;
  */
 @Service
 @Slf4j
-@RequiredArgsConstructor
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class ImpersonationService {
 

@@ -5,6 +5,7 @@ import com.example.app.user.domain.User;
 import com.example.app.user.dto.request.SignupRequest;
 import com.example.app.user.dto.request.TenantRegistrationRequest;
 import com.example.app.user.dto.response.UserResponse;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,7 +31,7 @@ import java.util.UUID;
  */
 @Service
 @Slf4j
-@RequiredArgsConstructor
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class TenantRegistrationService {
 

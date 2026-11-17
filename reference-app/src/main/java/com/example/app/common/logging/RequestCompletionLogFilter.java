@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.actuate.autoconfigure.endpoint.web.WebEndpointProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
@@ -27,19 +28,15 @@ import java.time.Duration;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 2)
 @ConditionalOnBooleanProperty(name = "app.logging.request-completion.enabled")
+@RequiredArgsConstructor
 class RequestCompletionLogFilter extends OncePerRequestFilter {
 
-    private final long slowThresholdMillis;
-    private final String actuatorBasePath;
-
-    RequestCompletionLogFilter(LoggingProperties properties, WebEndpointProperties actuator) {
-        this.slowThresholdMillis = properties.requestCompletion().slowThreshold().toMillis();
-        this.actuatorBasePath = actuator.getBasePath();
-    }
+    private final LoggingProperties properties;
+    private final WebEndpointProperties actuator;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getRequestURI().startsWith(actuatorBasePath);
+        return request.getRequestURI().startsWith(actuator.getBasePath());
     }
 
     @Override
@@ -58,6 +55,7 @@ class RequestCompletionLogFilter extends OncePerRequestFilter {
     }
 
     private void logCompletion(HttpServletRequest request, HttpServletResponse response, long durationMillis) {
+        long slowThresholdMillis = properties.requestCompletion().slowThreshold().toMillis();
         if (durationMillis > slowThresholdMillis) {
             log.warn("Request slow: status={}, durationMs={}, thresholdMs={}{}",
                     response.getStatus(), durationMillis, slowThresholdMillis, apiVersion(request));

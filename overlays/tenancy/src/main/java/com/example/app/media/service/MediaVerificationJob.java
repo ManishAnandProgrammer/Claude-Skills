@@ -41,6 +41,7 @@ class MediaVerificationJob {
     private final Counter missingFiles;
     private final Tenants tenants;
 
+    // Hand-written (JAVA-26): the counter is registered at startup, so its series reads 0 before the first missing file.
     MediaVerificationJob(MediaFileService mediaFiles, MediaStorage storage, Settings settings, MeterRegistry meterRegistry,
                          Tenants tenants) {
         this.mediaFiles = mediaFiles;

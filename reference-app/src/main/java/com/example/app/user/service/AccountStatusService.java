@@ -14,6 +14,7 @@ import com.example.app.user.dto.request.UserFilter;
 import com.example.app.user.dto.request.UserStatusRequest;
 import com.example.app.user.dto.response.UserResponse;
 import com.example.app.user.mapper.UserMapper;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -47,7 +48,7 @@ import java.util.UUID;
  */
 @Service
 @Slf4j
-@RequiredArgsConstructor
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 @Transactional(readOnly = true)
 public class AccountStatusService {
 

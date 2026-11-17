@@ -12,6 +12,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.query.QueryUtils;
@@ -21,13 +22,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Repository
+@RequiredArgsConstructor
 class TenantRepositoryImpl implements CustomTenantRepository {
 
     private final EntityManager entityManager;
-
-    TenantRepositoryImpl(EntityManager entityManager) {
-        this.entityManager = entityManager;
-    }
 
     @Override
     public Page<TenantResponse> findByFilter(TenantFilter filter, Pageable pageable) {

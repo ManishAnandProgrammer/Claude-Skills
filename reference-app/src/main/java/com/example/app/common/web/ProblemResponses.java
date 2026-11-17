@@ -4,6 +4,7 @@ import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.exception.ErrorCodeHttpStatusMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpHeaders;
@@ -24,20 +25,13 @@ import java.util.Optional;
  * code's range. Written from a map, so it needs no Jackson mix-in.
  */
 @Component
+@RequiredArgsConstructor
 public class ProblemResponses {
 
     private final ObjectMapper objectMapper;
     private final MessageSource messageSource;
     private final ProblemTypes problemTypes;
     private final RetryAfterProperties retryAfter;
-
-    public ProblemResponses(ObjectMapper objectMapper, MessageSource messageSource, ProblemTypes problemTypes,
-                            RetryAfterProperties retryAfter) {
-        this.objectMapper = objectMapper;
-        this.messageSource = messageSource;
-        this.problemTypes = problemTypes;
-        this.retryAfter = retryAfter;
-    }
 
     public void write(HttpServletRequest request, HttpServletResponse response, ErrorCode code) throws IOException {
         HttpStatus status = ErrorCodeHttpStatusMapper.resolve(code);

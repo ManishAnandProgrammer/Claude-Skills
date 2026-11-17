@@ -19,6 +19,7 @@ class ApiVersionObservationConvention extends DefaultServerRequestObservationCon
     static final String API_VERSION = "apiVersion";
     static final String NONE = "none";
 
+    // Hand-written (JAVA-26): the superclass takes the metric's name, which Lombok can't pass on.
     ApiVersionObservationConvention(ObservationProperties properties) {
         super(properties.getHttp().getServer().getRequests().getName());
     }

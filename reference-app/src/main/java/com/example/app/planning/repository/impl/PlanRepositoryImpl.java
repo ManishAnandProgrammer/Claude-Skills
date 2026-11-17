@@ -17,6 +17,7 @@ import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
+@RequiredArgsConstructor
 class PlanRepositoryImpl implements CustomPlanRepository {
 
     /** Every order's keyset: its sort key, then the id. */
@@ -31,11 +33,6 @@ class PlanRepositoryImpl implements CustomPlanRepository {
 
     private final EntityManager entityManager;
     private final Limits limits;
-
-    PlanRepositoryImpl(EntityManager entityManager, Limits limits) {
-        this.entityManager = entityManager;
-        this.limits = limits;
-    }
 
     /**
      * STARTS_ON in calendar order, NEWEST by the creation time, newest first. One owner's plans never share

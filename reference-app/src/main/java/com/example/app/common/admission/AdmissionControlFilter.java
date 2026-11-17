@@ -73,6 +73,8 @@ class AdmissionControlFilter extends OncePerRequestFilter implements Ordered {
         }
     }
 
+    // Hand-written (JAVA-26): each group's bulkhead is looked up once (a group without one stops the startup)
+    // and its rejection counter registered, so the series reads 0 before the first refusal.
     AdmissionControlFilter(AdmissionGroups groups, BulkheadRegistry bulkheads, MeterRegistry meterRegistry,
                            ProblemResponses problemResponses, WebEndpointProperties actuator) {
         this.problemResponses = problemResponses;

@@ -5,6 +5,7 @@ import io.swagger.v3.core.converter.ModelConverter;
 import io.swagger.v3.core.converter.ModelConverterContext;
 import io.swagger.v3.core.util.Json;
 import io.swagger.v3.oas.models.media.Schema;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.AnnotatedParameterizedType;
@@ -19,15 +20,12 @@ import java.util.Objects;
  * this walks its fields for element limits.
  */
 @Component
+@RequiredArgsConstructor
 class ElementLimitsModelConverter implements ModelConverter {
 
     private static final String REF_PREFIX = "#/components/schemas/";
 
     private final Limits limits;
-
-    ElementLimitsModelConverter(Limits limits) {
-        this.limits = limits;
-    }
 
     @Override
     public Schema resolve(AnnotatedType type, ModelConverterContext context, Iterator<ModelConverter> chain) {

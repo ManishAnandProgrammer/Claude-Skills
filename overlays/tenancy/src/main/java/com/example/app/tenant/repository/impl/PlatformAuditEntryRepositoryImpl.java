@@ -14,6 +14,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
+@RequiredArgsConstructor
 class PlatformAuditEntryRepositoryImpl implements CustomPlatformAuditEntryRepository {
 
     /**
@@ -33,10 +35,6 @@ class PlatformAuditEntryRepositoryImpl implements CustomPlatformAuditEntryReposi
     private static final int CURSOR_KEYS = 2;
 
     private final EntityManager entityManager;
-
-    PlatformAuditEntryRepositoryImpl(EntityManager entityManager) {
-        this.entityManager = entityManager;
-    }
 
     @Override
     public CursorBatch<PlatformAuditResponse> findByTenant(UUID tenantId, PlatformAuditFilter filter, int size) {

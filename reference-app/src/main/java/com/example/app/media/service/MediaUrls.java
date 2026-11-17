@@ -2,6 +2,7 @@ package com.example.app.media.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -12,15 +13,11 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  * signed twice differs anyway (the SDK can't fix the signing time).
  */
 @Component
+@RequiredArgsConstructor
 class MediaUrls {
 
     private final S3Presigner presigner;
     private final MediaProperties properties;
-
-    MediaUrls(S3Presigner presigner, MediaProperties properties) {
-        this.presigner = presigner;
-        this.properties = properties;
-    }
 
     /** Valid for {@code app.media.read-url-expiry}; the download carries the stored {@code Content-Disposition}. */
     String readUrl(String key) {

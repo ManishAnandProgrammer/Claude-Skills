@@ -32,6 +32,7 @@ import com.example.app.user.dto.response.TenantMemberResponse;
 import com.example.app.user.mapper.MembershipMapper;
 import com.example.app.user.repository.MemberRepository;
 import com.example.app.user.repository.TenantMembershipRepository;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 // session-version:begin
 import lombok.extern.slf4j.Slf4j;
@@ -71,7 +72,7 @@ import java.util.stream.Collectors;
 // session-version:begin
 @Slf4j
 // session-version:end
-@RequiredArgsConstructor
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 @Transactional(readOnly = true)
 public class MembershipService implements Members {
 

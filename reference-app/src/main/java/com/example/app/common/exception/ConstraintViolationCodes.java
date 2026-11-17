@@ -30,6 +30,8 @@ class ConstraintViolationCodes {
     private final Map<String, ErrorCode> byConstraintName;
     private final Map<String, ErrorCode> byForeignKeyOnWrite;
 
+    // Hand-written (JAVA-26): the modules' claims are merged once into immutable maps, and a constraint two
+    // modules claim stops the startup.
     ConstraintViolationCodes(List<ConstraintErrorCodes> contributors) {
         Map<String, ErrorCode> merged = new HashMap<>();
         Map<String, ErrorCode> mergedOnWrite = new HashMap<>();

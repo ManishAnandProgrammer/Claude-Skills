@@ -22,6 +22,7 @@ import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -31,6 +32,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Repository
+@RequiredArgsConstructor
 class TodoRepositoryImpl implements CustomTodoRepository {
 
     /** The same value as the {@code due_sort} expression in changeset 0003. */
@@ -40,10 +42,6 @@ class TodoRepositoryImpl implements CustomTodoRepository {
     private static final int CURSOR_KEYS = 2;
 
     private final EntityManager entityManager;
-
-    TodoRepositoryImpl(EntityManager entityManager) {
-        this.entityManager = entityManager;
-    }
 
     /**
      * DUE_DATE sorts by the generated {@code due_sort} column (the due date, or 9999-12-31): a seek

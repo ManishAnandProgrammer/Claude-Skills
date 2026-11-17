@@ -1,5 +1,6 @@
 package com.example.app.tenant.service;
 
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -29,7 +30,7 @@ import java.util.UUID;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 public class TenantMigrations {
 
     private final TenantSchemaMigrator migrator;

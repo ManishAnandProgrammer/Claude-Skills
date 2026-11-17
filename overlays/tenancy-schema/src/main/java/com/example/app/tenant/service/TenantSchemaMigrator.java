@@ -41,6 +41,8 @@ class TenantSchemaMigrator {
     private final ResourceLoader resourceLoader;
     private final TenantSchemaProperties properties;
 
+    // Hand-written (JAVA-26): the owner's JdbcTemplate is this class's own; as a bean, any class injecting a
+    // JdbcTemplate could get the owner role's instead of the application's.
     TenantSchemaMigrator(@LiquibaseDataSource DataSource owner, ResourceLoader resourceLoader, TenantSchemaProperties properties) {
         this.owner = owner;
         this.ownerJdbc = new JdbcTemplate(owner);

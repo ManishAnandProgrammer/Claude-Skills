@@ -1,5 +1,6 @@
 package com.example.app.common.security;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -18,21 +19,18 @@ import java.util.Objects;
  * Random tokens use {@link Hashes#sha256Hex} instead.
  */
 @Component
+@RequiredArgsConstructor
 public class PersonalDataHasher {
 
     private static final String HMAC_SHA_256 = "HmacSHA256";
 
-    private final SecretKeySpec key;
-
-    public PersonalDataHasher(PepperProperties properties) {
-        this.key = new SecretKeySpec(properties.personalDataPepper().getBytes(StandardCharsets.UTF_8), HMAC_SHA_256);
-    }
+    private final PepperProperties properties;
 
     /** Lower-case hex HMAC of the UTF-8 bytes: 64 characters. */
     public String hash(String value) {
         try {
             Mac mac = Mac.getInstance(HMAC_SHA_256);
-            mac.init(key);
+            mac.init(new SecretKeySpec(properties.personalDataPepper().getBytes(StandardCharsets.UTF_8), HMAC_SHA_256));
             return HexFormat.of().formatHex(mac.doFinal(value.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException | InvalidKeyException impossible) {
             throw new IllegalStateException("Every Java runtime provides HmacSHA256", impossible);

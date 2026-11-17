@@ -2,19 +2,17 @@ package com.example.app.common.limits;
 
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
+import lombok.RequiredArgsConstructor;
 import org.hibernate.validator.constraintvalidation.HibernateConstraintValidatorContext;
 
 import java.util.Collection;
 import java.util.Objects;
 
+@RequiredArgsConstructor
 class ConfiguredMaxSizeValidator implements ConstraintValidator<ConfiguredMaxSize, Collection<?>> {
 
     private final Limits limits;
     private String key;
-
-    ConfiguredMaxSizeValidator(Limits limits) {
-        this.limits = limits;
-    }
 
     @Override
     public void initialize(ConfiguredMaxSize constraint) {

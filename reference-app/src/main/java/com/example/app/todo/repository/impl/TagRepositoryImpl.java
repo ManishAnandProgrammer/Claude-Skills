@@ -20,6 +20,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.query.QueryUtils;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
+@RequiredArgsConstructor
 class TagRepositoryImpl implements CustomTagRepository {
 
     /** The cursor names the direction it was taken in, so it is refused in the other. */
@@ -40,10 +42,6 @@ class TagRepositoryImpl implements CustomTagRepository {
     private static final int CURSOR_KEYS = 2;
 
     private final EntityManager entityManager;
-
-    TagRepositoryImpl(EntityManager entityManager) {
-        this.entityManager = entityManager;
-    }
 
     @Override
     public Page<TagResponse> findByFilter(TagFilter filter, UUID ownerId, Pageable pageable) {

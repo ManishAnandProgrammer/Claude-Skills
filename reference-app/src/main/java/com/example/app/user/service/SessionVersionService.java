@@ -65,14 +65,17 @@ public class SessionVersionService implements SessionVersions {
     private final Counter lostPublishes;
     private final AtomicBoolean cacheAvailable = new AtomicBoolean(true);
 
-    public SessionVersionService(
-                                 // tenancy:begin
-                                 // MembershipService memberships,
-                                 // tenancy:else
-                                 UserService users,
-                                 // tenancy:end
-                                 StringRedisTemplate redis, SessionVersionProperties properties,
-                                 CircuitBreakerRegistry circuitBreakers, MeterRegistry meterRegistry) {
+    // Hand-written (JAVA-26): the circuit breaker is looked up once (a missing instance stops the startup) and
+    // the counters registered, so their series read 0 before the first fallback. Package-private: its
+    // properties are (JAVA-27).
+    SessionVersionService(
+                          // tenancy:begin
+                          // MembershipService memberships,
+                          // tenancy:else
+                          UserService users,
+                          // tenancy:end
+                          StringRedisTemplate redis, SessionVersionProperties properties,
+                          CircuitBreakerRegistry circuitBreakers, MeterRegistry meterRegistry) {
         // tenancy:begin
         // this.memberships = memberships;
         // tenancy:else

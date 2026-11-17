@@ -37,8 +37,10 @@ public class PlatformAuthService implements StaffAccounts {
     private final AuthRateLimits rateLimits;
     private final String unknownUserHash;
 
-    public PlatformAuthService(PlatformUserRepository repository, TokenService tokenService, PasswordEncoder passwordEncoder,
-                               AuthRateLimits rateLimits) {
+    // Hand-written (JAVA-26): the decoy hash costs one bcrypt run, paid once at startup. Package-private: its
+    // collaborators are (JAVA-27).
+    PlatformAuthService(PlatformUserRepository repository, TokenService tokenService, PasswordEncoder passwordEncoder,
+                        AuthRateLimits rateLimits) {
         this.repository = repository;
         this.tokenService = tokenService;
         this.passwordEncoder = passwordEncoder;
