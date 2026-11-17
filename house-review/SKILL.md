@@ -423,6 +423,8 @@ Also offer:
 - fixing the generator itself (`~/.claude/skills/crud-gen`), when a finding is in generated code.
   Generated code must pass this review.
 
-Ask before adding Lombok annotations a class doesn't already use, or any new dependency.
+Ask before adding any new dependency, Lombok included. In a project that has Lombok, the annotations a
+rule's fix names (`@RequiredArgsConstructor` for JAVA-26, JAVA-16's on entities) need no question; ask
+before any other Lombok annotation a class doesn't already use.
 
 Never commit unless the user asks.

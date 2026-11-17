@@ -713,3 +713,37 @@ that builds versioned documents can start from this shape:
   answer 409, never 503; the drift test;
 - an example: a per-owner `billing_rates` referent with `billing_rate_versions`, time entries gaining
   `billing_rate_version_id` and `rate_applied`.
+
+## Constructors and visibility (JAVA-26, JAVA-27; 2026-11-17)
+
+The owner's decisions, from news-pulse: beans take their collaborators through Lombok's
+`@RequiredArgsConstructor` over `private final` fields, not hand-written constructors; a public bean that
+injects a package-private collaborator gets a package-private constructor
+(`@RequiredArgsConstructor(access = AccessLevel.PACKAGE)`), and the collaborator stays package-private.
+Before the rules, neither skill said either, and the reference mixed both styles (24 Lombok classes,
+about 30 hand-written constructors), so generated and reviewed code drifted.
+
+Decided:
+- **A constructor that does work stays only when the work can't be a `@Bean` method or a bean of its
+  own**, with a why-comment. In the reference that is a `super(...)` call, meters registered at startup
+  (a series reads 0 before its first event; a meter registered on first use has no series until then),
+  a Resilience4j instance looked up once with a startup failure when missing, a bcrypt decoy hash, a
+  `@Value` parameter, the modules' constraint claims merged with a conflict check, and a helper that must
+  stay the bean's own (the schema overlay's owner `JdbcTemplate`: as a bean, Boot's `JdbcTemplate` backs
+  off and every class injecting one gets the owner role's). Reading a value out of injected properties is not work: the
+  properties are injected and read where used. A startup check is an `InitializingBean`.
+- **`lombok.config` lists `@Qualifier` as copyable**, and bootstrap copies it with core. Checked with
+  Lombok 1.18.48: without the line the qualifier never reaches the generated constructor's parameter and
+  is silently ignored (the primary or the wrong bean). High severity for that case only; the rest is Low.
+- **`@Value` is not made copyable.** On a field it is field injection, which the house `ConventionArchTest`
+  refuses (ArchUnit's `NO_CLASSES_SHOULD_USE_FIELD_INJECTION` lists `@Value`; the first verify run of this
+  change failed on exactly that in `ProblemTypes`). Values come from `@ConfigurationProperties` records; a
+  value that can only be a `@Value` (`spring.application.name`) keeps a hand-written constructor.
+- **Enums are not a finding** (an enum constant table's constructor; Lombok on enums reads worse), beside
+  the owner's list (records, entities, exceptions, `@ConfigurationProperties`, tests).
+- **JAVA-27 narrows the member, never widens the type.** Spring calls a package-private constructor as
+  well; a member another package truly needs is a module-contract decision (ARCH-04).
+
+The reference after the change: 39 hand-written constructors became Lombok (30 in the reference, 9 in the
+overlays), 16 stay hand-written with a why-comment (9 and 7), and 12 constructors became package-private
+for JAVA-27 (6 and 6: 8 Lombok `access = AccessLevel.PACKAGE`, 4 hand-written).

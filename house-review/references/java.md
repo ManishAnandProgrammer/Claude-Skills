@@ -200,3 +200,70 @@ The backend handles no time zone.
   `LocalDate.now(clock)` calls in one close-and-open method; `now()` or `clock_timestamp()` in a
   query that writes a period bound the application also writes.
 - **Severity:** Medium (High when a stored date shifts).
+
+### JAVA-26: Constructors are Lombok's
+- **Check:** a class whose constructor receives its collaborators (a Spring bean, a class Spring
+  instantiates such as a constraint validator, a filter or interceptor a configuration builds with `new`)
+  takes them through Lombok's `@RequiredArgsConstructor` over `private final` fields. A hand-written
+  constructor that only assigns its parameters to fields is a finding. One that does work is a finding
+  unless the work can't be a `@Bean` method or a bean of its own; then it stays, with a why-comment
+  saying what it does. Work that stays:
+  - a `super(...)` call with arguments, or a `@Value` parameter (below);
+  - meters registered at startup, so their series read 0 before the first event;
+  - a Resilience4j instance looked up once, failing the startup when it is missing;
+  - a value that is expensive or checked once: a bcrypt decoy hash, contributions merged with a
+    conflict check;
+  - a helper that must stay the bean's own: a `JdbcTemplate` over a second `DataSource`, a `REQUIRES_NEW`
+    `TransactionTemplate`. As beans, other classes would be injected with them by type.
+
+  Copying a value out of injected properties (`properties.slowThreshold().toMillis()`) is not such work:
+  inject the properties and read them where they are used. A startup check is an `InitializingBean` over
+  Lombok fields, not a constructor that checks (golden `StartupChecks`).
+- **`@Qualifier` through Lombok:** Lombok copies a field's annotation onto the generated constructor's
+  parameter, where Spring reads it, only when `lombok.config` lists it:
+  `lombok.copyableAnnotations += org.springframework.beans.factory.annotation.Qualifier`, in a
+  `lombok.config` at the project root with `config.stopBubbling = true` (golden `lombok.config`; Lombok
+  1.18.48 copies none of Spring's annotations by default). Without the line, a `@Qualifier` field loses
+  its qualifier: the bean gets the primary candidate (the wrong one), or the startup fails on an
+  ambiguous match. A qualifier annotation of its own (`@LiquibaseDataSource`) needs its own line.
+  `@Value` never goes on a field, even a Lombok one: that is field injection (ArchUnit's
+  `NO_CLASSES_SHOULD_USE_FIELD_INJECTION`, in the house `ConventionArchTest`). A value is a
+  `@ConfigurationProperties` record injected like any collaborator; where it can only be a `@Value`
+  (`spring.application.name`), the bean keeps a hand-written constructor with `@Value` on the parameter
+  and a why-comment (golden `ProblemTypes`).
+- **Detect:**
+  - constructors in `@Component` / `@Service` / `@Repository` / `@Controller` / `@Configuration` classes,
+    filters, interceptors, `*RepositoryImpl` classes and `ConstraintValidator`s whose body is only
+    `this.x = x;` lines;
+  - constructors that do more, without a why-comment;
+  - `@Autowired` on a constructor (a single constructor needs none);
+  - `@Qualifier` or a qualifier annotation on a `final` field of a `@RequiredArgsConstructor` class,
+    while `lombok.config` is missing or lacks the matching `copyableAnnotations` line;
+  - `@Value` on a field.
+- **Fix:** delete the constructor and add `@RequiredArgsConstructor` (`access = AccessLevel.PACKAGE` when
+  JAVA-27 asks for it). Keep the fields in the old parameter order: tests that call `new` rely on it.
+  Move the work out: properties are read where they are used, a check moves to `afterPropertiesSet`.
+  Add the missing `lombok.config` lines (`/crud-gen bootstrap` copies the file).
+- **Not a finding when:** records (canonical and compact constructors), enums, entities (JAVA-16),
+  exceptions, `@ConfigurationProperties` types, test classes; the private constructor of a utility class
+  (JAVA-02) or of a value class behind static factories (JAVA-01). A project without Lombok records that
+  in the profile's *Conventions*; the rule then doesn't apply.
+- **Severity:** Low; High for a `@Qualifier` that Lombok drops (the wrong bean, or a startup failure).
+
+### JAVA-27: No member exposes a type beyond its visibility
+- **Check:** no public or protected constructor, method or field of a public class names a
+  package-private type, as a parameter, return type, field type or type argument. IntelliJ reports it
+  as "Class is exposed outside its defined visibility scope": any package may call the member, but none
+  outside can name the type, so the member promises a contract nobody else can use. The common case is
+  a public service whose Lombok constructor (public by default) takes a package-private collaborator.
+- **Detect:** per package, its package-private top-level types; then each public class of the package:
+  `@RequiredArgsConstructor` without `access` over a `final` field of such a type, or a `public` or
+  `protected` constructor, method or field that names one.
+- **Fix:** narrow the member, never widen the type: `@RequiredArgsConstructor(access =
+  AccessLevel.PACKAGE)` (golden `UserService`, `MediaFileService`), a package-private hand-written
+  constructor (golden `AuthService`), a package-private method. Spring calls a package-private
+  constructor as well. When another package truly needs the member, its types go public as a module
+  contract decision (ARCH-04), not as the fix of this rule.
+- **Not a finding when:** the member is private, or the class itself is package-private (its members
+  can't escape the package); test classes.
+- **Severity:** Low.

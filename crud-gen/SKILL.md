@@ -399,7 +399,12 @@ House-review's rules, as the golden files apply them: KISS and SRP (SMELL-29: qu
 bottom, plain helpers, no lambda-taking helpers), no tunables in code (SMELL-17), why-only comments
 (SMELL-19), `Objects.isNull`, `Optional` only as a return type (JAVA-08), no `var` and text blocks
 (JAVA-13), streams without side effects (JAVA-14), enums with `==` (JAVA-18), minimal visibility
-(JAVA-03). **Naming** (SMELL-20): bodies `<Entity><Action>{{requestSuffix}}`, GET parameters
+(JAVA-03). **Constructors** (JAVA-26): every generated bean (service, mapper, controller, `*RepositoryImpl`)
+takes its collaborators through `@RequiredArgsConstructor` over `private final` fields, never a
+hand-written constructor; a public class whose fields include a package-private type takes
+`@RequiredArgsConstructor(access = AccessLevel.PACKAGE)` (JAVA-27: narrow the constructor, never widen the
+type). A `@Qualifier` on such a field needs the project's `lombok.config` line (bootstrap copies the
+file); a `@Value` never goes on a field (a `@ConfigurationProperties` record instead). **Naming** (SMELL-20): bodies `<Entity><Action>{{requestSuffix}}`, GET parameters
 `<Entity>Filter`, responses `<Entity>Response`; list rows `<Entity>SummaryResponse` only when they
 leave out heavy fields (a `text` column with a limit over 1,000 characters, or a collection).
 
