@@ -59,9 +59,9 @@ a finding**. Profile keys are written `{{key}}`.
 ### REST-05: Status codes
 - **Check:**
   - 200: read or update with a body;
-  - **201**: created, the new resource in the body. A `Location` header is optional (the golden creates
-    have none); when there is one, it names a GET that exists, so a resource read only through a list or
-    a queue answers 201 without it;
+  - **201**: created, the new resource in the body. A `Location` header is optional (the golden todo
+    creates have none, signup's names `/users/me`); when there is one, it names a GET that exists, so a
+    resource read only through a list or a queue answers 201 without it;
   - **202**: accepted asynchronous work, with a status URL in the body;
   - **204**: any success with no body, not only DELETE;
   - 400: the request's own values are wrong (validation, a value outside an allowed range);
