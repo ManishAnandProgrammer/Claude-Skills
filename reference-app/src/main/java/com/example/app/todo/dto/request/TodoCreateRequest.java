@@ -10,6 +10,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -66,4 +68,12 @@ public record TodoCreateRequest(
                 example = "[\"0190a9c2-8e21-7a3c-9b4d-3e5f7a9b1c2d\"]")
         @ConfiguredMaxSize("todo.max-tags")
         Set<@NotNull UUID> tagIds) {
+
+    // Jackson builds it before validation: a null, or a null element, reaches the constraints that name it.
+    public TodoCreateRequest {
+        // media:begin
+        attachmentKeys = Objects.isNull(attachmentKeys) ? null : Collections.unmodifiableSet(attachmentKeys);
+        // media:end
+        tagIds = Objects.isNull(tagIds) ? null : Collections.unmodifiableSet(tagIds);
+    }
 }

@@ -15,6 +15,10 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.Map;
+// tenancy:begin
+// tenancy:else
+import java.util.Objects;
+// tenancy:end
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -106,7 +110,11 @@ public class SessionVersionService implements SessionVersions {
         // }
         // UUID id = UUID.fromString(membershipId);
         // tenancy:else
-        UUID id = UUID.fromString(accessToken.getSubject());
+        String subject = accessToken.getSubject();
+        if (Objects.isNull(subject)) {
+            return false;
+        }
+        UUID id = UUID.fromString(subject);
         // tenancy:end
         long tokenVersion = claimed.longValue();
         Optional<String> cached;

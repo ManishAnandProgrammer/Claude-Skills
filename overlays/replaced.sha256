@@ -1,6 +1,8 @@
+c9e948297f186c1738a464c3f7e5863e5eefa8c9f40f0a152d2bf2d3e50dc383  overlays/tenancy/spotbugs-exclude.xml
+0b97dbeb541d50b59abbacbc4f868450c36e65caf47dbf63c4f013613b27695a  reference-app/spotbugs-exclude.xml
 6d626d234a3309745e56d5c4cd792b70fd9cafa64fd006c524ab031d5f3e95e2  reference-app/src/main/java/com/example/app/common/logging/LogContext.java
 11f2b9179e3f61756c09217b66fb0a350e125ae5cf117be60dcfc177177b38c5  reference-app/src/main/java/com/example/app/common/logging/UserLogContextFilter.java
-a85b8eadc5c06dfca2bcb6204d44b0c79679895b67c946d8d0ed26dcce792f14  reference-app/src/main/java/com/example/app/common/security/CurrentUser.java
+ac927c2fcb5bf8f96e1846fb6d281a36f8e2dcf1a7e4317a438ab178a4b4f5ed  reference-app/src/main/java/com/example/app/common/security/CurrentUser.java
 5c8d9c14b22e49d3ecc068d4453714cf8c4defe06647c9f1cdeac2cebc4d4e9b  reference-app/src/main/java/com/example/app/config/LiquibaseConnectionConfig.java
 99c681fd5a53fd94206fa1794237fac7f77d49e15851b1623f9120029486dcb1  reference-app/src/main/java/com/example/app/config/SchedulingConfig.java
 a60a3b85f4bedaf6f216a50f0056cea6db23a51b4907cc7963742df9ad81597b  reference-app/src/main/java/com/example/app/media/mapper/MediaFileMapper.java

@@ -37,7 +37,7 @@ public class CurrentUser {
     public Optional<UUID> findId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (Objects.nonNull(authentication) && authentication.getPrincipal() instanceof Jwt jwt) {
-            return Optional.of(UUID.fromString(jwt.getSubject()));
+            return Optional.ofNullable(jwt.getSubject()).map(UUID::fromString);
         }
         return Optional.empty();
     }

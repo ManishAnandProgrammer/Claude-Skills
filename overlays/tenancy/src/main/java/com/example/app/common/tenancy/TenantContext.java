@@ -56,9 +56,8 @@ public final class TenantContext {
 
     private static Optional<UUID> fromToken() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (Objects.nonNull(authentication) && authentication.getPrincipal() instanceof Jwt jwt
-                && jwt.hasClaim(TENANT_CLAIM)) {
-            return Optional.of(UUID.fromString(jwt.getClaimAsString(TENANT_CLAIM)));
+        if (Objects.nonNull(authentication) && authentication.getPrincipal() instanceof Jwt jwt) {
+            return Optional.ofNullable(jwt.getClaimAsString(TENANT_CLAIM)).map(UUID::fromString);
         }
         return Optional.empty();
     }

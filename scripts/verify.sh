@@ -2,8 +2,12 @@
 # Verifies the skills repository before a push (it is private: there is no CI):
 #   0. the overlays' replacement files were written against the reference's current files
 #      (scripts/overlay-replacements.sh --check);
-#   1. reference-app builds and every test passes (Testcontainers: Docker must be reachable). It is a
-#      plain application: tenancy exists only in overlays/, so it is proven by 2g and 2h;
+#   1. reference-app builds and every test passes (Testcontainers: Docker must be reachable), and so do its
+#      quality gates: static analysis with security rules and the coverage minimum (verify, house-review CFG-11).
+#      Every copy below runs the same gates from the same pom and its piece's exclude entries (an overlay's
+#      own with tenancy), with coverage minimums of its own; 2d and 2f, which run a subset of the tests, check
+#      static analysis only. It is a plain application: tenancy exists only in overlays/,
+#      so it is proven by 2g and 2h;
 #   2. bootstrap-copy.sh copies core + sign-in into a fresh project under another package and
 #      another application name, and that project builds and passes its tests too;
 #      2b. the same with the example module and the metadata piece, so every golden file arrives
@@ -110,16 +114,29 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Extra arguments go to Maven.
+# The whole suite's line and branch coverage from JaCoCo's report, when the stage measured it.
+coverage_of() {
+    local csv="$1/target/site/jacoco/jacoco.csv"
+    [ -f "$csv" ] || return 0
+    awk -F, 'NR > 1 { bm += $6; bc += $7; lm += $8; lc += $9 }
+        END { printf "coverage: lines %.2f %%, branches %.2f %%\n", 100 * lc / (lc + lm), 100 * bc / (bc + bm) }' "$csv"
+}
+
+# verify runs the tests and the quality gates (static analysis, the coverage minimum). Extra arguments go to Maven.
+# A copy holds fewer tests than the reference, so each copy stage passes minimums of its own
+# (-Dcoverage.line.minimum, -Dcoverage.branch.minimum): measured and set like the reference's (house-review
+# CFG-11: a full point below the lowest measured run, rounded down), and only ever raised.
 mvn_verify() {
     local dir="$1" log="$2"
     shift 2
     if (cd "$dir" && ./mvnw -B verify "$@" > "$log" 2>&1); then
         grep -E "Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$" "$log" | tail -1
+        coverage_of "$dir"
         return 0
     fi
     echo "FAILED: $dir (log: $log)" >&2
-    grep -E "Tests run:.*FAIL|\[ERROR\]   |COMPILATION ERROR|Could not find a valid Docker" "$log" | head -20 >&2
+    grep -E "Tests run:.*FAIL|\[ERROR\]   |\[ERROR\] (High|Medium):|Rule violated|COMPILATION ERROR|Could not find a valid Docker" "$log" | head -20 >&2 \
+        || true  # no line matched: under set -e the log below must still be kept
     cp "$log" "${TMPDIR:-/tmp}/claude-skills-verify-failed.log"
     echo "full log kept at ${TMPDIR:-/tmp}/claude-skills-verify-failed.log" >&2
     return 1
@@ -143,6 +160,14 @@ echo "[0/3] overlays: replacements pinned to the reference's files"
 # A commented line may name them: a tenancy block's own lines are comments in the reference.
 grep -rnE "TenantContext|TenantScope|tenant_memberships" "$REFERENCE/src/main/java" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' \
     && { echo "FAILED: tenancy code in the reference outside a commented tenancy block (it belongs in overlays/)" >&2; exit 1; }
+
+# The static-analysis exclude file holds false positives one class and bug pattern at a time (house-review CFG-11):
+# never a package, a whole category, a priority or a rank, so a new finding of the same kind still fails the build.
+for exclude in $(find "$REFERENCE" "$REPO/overlays" -name spotbugs-exclude.xml -not -path '*/target/*'); do
+    perl -0777 -ne 'while (/<Match>(.*?)<\/Match>/sg) { my $m = $1;
+            exit 1 unless $m =~ /<Class name=/ && $m =~ /<Bug pattern=/ && $m !~ /<(Package|Priority|Rank)\b|category=/ }' "$exclude" \
+        || { echo "FAILED: a <Match> in $exclude without a class and a bug pattern, or with a package, category, priority or rank" >&2; exit 1; }
+done
 
 # Generators and reviewers read the skill texts, the guides, the design notes and the reference: they say why
 # in general terms, never which field test found what or when (house-review/DESIGN.md, the design log, is exempt).
@@ -252,7 +277,8 @@ if wants 2; then
     # Bootstrap renames the application; tests must not depend on the reference's name.
     sed -i 's/\${APP_NAME:reference}/${APP_NAME:smoke}/' "$project/src/main/resources/application.yml"
     grep -q 'APP_NAME:smoke' "$project/src/main/resources/application.yml" || { echo "FAILED: could not rename the smoke application" >&2; exit 1; }
-    mvn_verify "$project" "$WORK/smoke.log"
+    # Coverage measured 2026-11-18 at lines 89.33 %, branches 76.52 %; only ever raised.
+    mvn_verify "$project" "$WORK/smoke.log" -Dcoverage.line.minimum=0.88 -Dcoverage.branch.minimum=0.75
 fi
 
 if wants 2b; then
@@ -269,7 +295,8 @@ if wants 2b; then
     grep -rqE "Attachment|UploadPurpose|MEDIA_(BUCKET|STORAGE)|UPLOAD_|media_files|awssdk" "$example/src" && { echo "FAILED: media entries left in an example copy without the media piece" >&2; exit 1; }
     [ -f "$example/src/test/java/com/acme/example/metadata/MetadataIntegrationTest.java" ] || { echo "FAILED: the metadata samples' tests are missing from the copy with both pieces" >&2; exit 1; }
     no_session_version "$example/src" "$example/docs"
-    mvn_verify "$example" "$WORK/example.log" "$UPGRADE"
+    # Coverage measured 2026-11-18 at lines 95.64 %, branches 84.76 %; only ever raised.
+    mvn_verify "$example" "$WORK/example.log" "$UPGRADE" -Dcoverage.line.minimum=0.94 -Dcoverage.branch.minimum=0.83
     upgraded "$example"
 fi
 
@@ -286,7 +313,8 @@ if wants 2c; then
     grep -rqE "(example|metadata):(begin|end)|TODO_LIST|todo-list|TodoListSettings" "$meta/src" && { echo "FAILED: samples or markers left in a metadata copy without the example piece" >&2; exit 1; }
     [ -f "$meta/src/main/resources/db/changelog/changes/0007-users-admin-role.sql" ] || { echo "FAILED: the ADMIN role changeset is missing from the metadata copy" >&2; exit 1; }
     no_session_version "$meta/src" "$meta/docs"
-    mvn_verify "$meta" "$WORK/meta.log"
+    # Coverage measured 2026-11-18 at lines 84.73 %, branches 74.80 %; only ever raised.
+    mvn_verify "$meta" "$WORK/meta.log" -Dcoverage.line.minimum=0.83 -Dcoverage.branch.minimum=0.73
 fi
 
 if wants 2e; then
@@ -308,7 +336,8 @@ if wants 2e; then
     for endpoint_test in UploadUrlIntegrationTest UploadPolicyIntegrationTest PresignedUploadIntegrationTest; do
         [ -f "$media/src/test/java/com/acme/media/media/$endpoint_test.java" ] || { echo "FAILED: $endpoint_test is missing from the media copy" >&2; exit 1; }
     done
-    mvn_verify "$media" "$WORK/media.log"
+    # Coverage measured 2026-11-18 at lines 82.59 %, branches 70.62 %; only ever raised.
+    mvn_verify "$media" "$WORK/media.log" -Dcoverage.line.minimum=0.81 -Dcoverage.branch.minimum=0.69
 fi
 
 if wants 2f; then
@@ -344,8 +373,9 @@ if wants 2f; then
         grep -qE "(^|[ ,:(])$artifact([ ,;(]|\$)" "$WORK/copy-files.log" \
             || { echo "FAILED: $artifact (reference pom) is missing from bootstrap-copy.sh's dependency lists" >&2; exit 1; }
     done
-    # Everything compiles; the tests that need both pieces run (the others ran in 1, 2b and 2e).
-    mvn_verify "$files" "$WORK/files.log" \
+    # Everything compiles and static analysis reads it all; the tests that need both pieces run (the others ran in 1,
+    # 2b and 2e), so coverage, a measure of the whole suite, isn't checked here.
+    mvn_verify "$files" "$WORK/files.log" -Djacoco.skip=true \
         -Dtest='TodoAttachmentsIntegrationTest,Upload*IntegrationTest,PresignedUploadIntegrationTest,UploadPurposeTest,*ArchTest,ErrorCodeContractTest,LimitsIntegrationTest,SessionVersion*Test,AuthIntegrationTest' \
         -Dsurefire.failIfNoSpecifiedTests=false
 fi
@@ -377,7 +407,8 @@ if wants 2g; then
         && [ "$(grep -c "file:" "$tenancy/src/main/resources/db/changelog/tenant.yaml")" = 1 ] \
         && grep -q "changes/0017-members.sql" "$tenancy/src/main/resources/db/changelog/tenant.yaml" \
         || { echo "FAILED: the tenancy copy's masters don't list its changesets as platform and tenant ones" >&2; exit 1; }
-    mvn_verify "$tenancy" "$WORK/tenancy.log"
+    # Coverage measured 2026-11-18 at lines 93.68 %, branches 79.42 %; only ever raised.
+    mvn_verify "$tenancy" "$WORK/tenancy.log" -Dcoverage.line.minimum=0.92 -Dcoverage.branch.minimum=0.78
 fi
 
 if wants 2h; then
@@ -409,7 +440,8 @@ if wants 2h; then
         || { echo "FAILED: the todo numbers or the tenant schemas' previous-release seed are missing from the schema-per-tenant copy" >&2; exit 1; }
     [ -f "$tenants/src/main/java/com/acme/tenants/user/api/Users.java" ] \
         && { echo "FAILED: the accounts' facade in a tenancy copy (a person in a tenant is a member: Members)" >&2; exit 1; }
-    mvn_verify "$tenants" "$WORK/tenants.log" "$UPGRADE"
+    # Coverage measured 2026-11-18 at lines 95.99 %, branches 84.78 %; only ever raised.
+    mvn_verify "$tenants" "$WORK/tenants.log" "$UPGRADE" -Dcoverage.line.minimum=0.94 -Dcoverage.branch.minimum=0.83
     upgraded "$tenants"
 fi
 
@@ -434,7 +466,8 @@ if wants 2i; then
     grep -q "0012-tenancy.sql" "$rows/src/main/resources/db/changelog/db.changelog-master.yaml" \
         && grep -q "0013-row-security.sql" "$rows/src/main/resources/db/changelog/db.changelog-master.yaml" \
         || { echo "FAILED: the row-mode master doesn't list the tenancy changesets" >&2; exit 1; }
-    mvn_verify "$rows" "$WORK/rows.log"
+    # Coverage measured 2026-11-18 at lines 93.26 %, branches 79.45 %; only ever raised.
+    mvn_verify "$rows" "$WORK/rows.log" -Dcoverage.line.minimum=0.92 -Dcoverage.branch.minimum=0.78
 fi
 
 if wants 2j; then
@@ -470,14 +503,16 @@ if wants 2j; then
         || { echo "FAILED: the todo numbers' changeset or their seed listener is missing from the row-mode copy" >&2; exit 1; }
     [ -f "$rowtenants/src/main/java/com/acme/rowtenants/user/api/Users.java" ] \
         && { echo "FAILED: the accounts' facade in a tenancy copy (a person in a tenant is a member: Members)" >&2; exit 1; }
-    mvn_verify "$rowtenants" "$WORK/rowtenants.log" "$UPGRADE"
+    # Coverage measured 2026-11-18 at lines 95.96 %, branches 84.98 %; only ever raised.
+    mvn_verify "$rowtenants" "$WORK/rowtenants.log" "$UPGRADE" -Dcoverage.line.minimum=0.94 -Dcoverage.branch.minimum=0.83
     upgraded "$rowtenants"
 fi
 
 # Every piece but the example, per tenancy mode: what a project starts from before its first entity.
 # $1 stage id, $2 directory and application name, $3 tenancy pieces ("" for none).
+# $4, $5: the copy's coverage minimums (lines, branches).
 every_piece_but_the_example() {
-    local id="$1" name="$2" tenancy="$3" dir pieces
+    local id="$1" name="$2" tenancy="$3" line_minimum="$4" branch_minimum="$5" dir pieces
     dir="$WORK/$name"
     pieces="core,sign-in,metadata,media,session-version${tenancy:+,$tenancy}"
     mkdir -p "$dir/src/main/java/com/acme/$name"
@@ -491,22 +526,25 @@ every_piece_but_the_example() {
         && { echo "FAILED: markers left in the $id copy" >&2; exit 1; }
     grep -rqE "TODO_LIST|TODO_ATTACHMENT|todo_lists|TodoListSettings|com\.acme\.$name\.(todo|planning)\b" "$dir/src" \
         && { echo "FAILED: the example's entries left in the $id copy, which has no example" >&2; exit 1; }
-    mvn_verify "$dir" "$WORK/$name.log"
+    mvn_verify "$dir" "$WORK/$name.log" -Dcoverage.line.minimum="$line_minimum" -Dcoverage.branch.minimum="$branch_minimum"
 }
 
 if wants 2k; then
     echo "[2k/3] bootstrap-copy with every piece but the example, without tenancy (package com.acme.pieces)"
-    every_piece_but_the_example 2k pieces ""
+    # Coverage measured 2026-11-18 at lines 79.43 %, branches 69.09 %; only ever raised.
+    every_piece_but_the_example 2k pieces "" 0.78 0.68
 fi
 
 if wants 2l; then
     echo "[2l/3] bootstrap-copy with every piece but the example, schema per tenant (package com.acme.schemapieces)"
-    every_piece_but_the_example 2l schemapieces "tenancy-schema,tenant-registration"
+    # Coverage measured 2026-11-18 at lines 86.26 %, branches 73.33 %; only ever raised.
+    every_piece_but_the_example 2l schemapieces "tenancy-schema,tenant-registration" 0.85 0.72
 fi
 
 if wants 2m; then
     echo "[2m/3] bootstrap-copy with every piece but the example, row mode (package com.acme.rowpieces)"
-    every_piece_but_the_example 2m rowpieces "tenancy-row,tenant-registration"
+    # Coverage measured 2026-11-18 at lines 85.09 %, branches 72.84 %; only ever raised.
+    every_piece_but_the_example 2m rowpieces "tenancy-row,tenant-registration" 0.84 0.71
 fi
 
 if wants 2d; then
@@ -527,7 +565,8 @@ if wants 2d; then
         && { echo "FAILED: Redis rate limiting, media or their markers left in a core copy" >&2; exit 1; }
     [ -d "$core/src/main/java/com/acme/core/user" ] && { echo "FAILED: the user module in a core copy" >&2; exit 1; }
     no_session_version "$core/src" "$core/docs"
-    mvn_verify "$core" "$WORK/core.log" -Dtest='!*IntegrationTest,!*ArchTest' -Dsurefire.failIfNoSpecifiedTests=false
+    # The unit tests alone can't reach the suite's coverage minimum: static analysis runs, coverage doesn't.
+    mvn_verify "$core" "$WORK/core.log" -Dtest='!*IntegrationTest,!*ArchTest' -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true
 fi
 
 if wants image; then

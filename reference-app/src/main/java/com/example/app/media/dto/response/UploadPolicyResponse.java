@@ -26,4 +26,8 @@ public record UploadPolicyResponse(
         @Schema(description = "Who created it; null when seeded") UUID createdBy,
         @Schema(description = "Who last changed it") UUID updatedBy,
         @Schema(description = "Send it back when updating", example = "0") Long version) {
+
+    public UploadPolicyResponse {
+        contentTypes = List.copyOf(contentTypes);
+    }
 }

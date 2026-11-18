@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.WebRequest;
 
 import java.net.URI;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -36,7 +37,8 @@ public class ProblemTypes {
 
     /** Sets {@code type} from the problem's {@code errorCode}, and {@code instance} to the request path unless already set. */
     public void identify(ProblemDetail problem, WebRequest request) {
-        if (Objects.nonNull(problem.getProperties()) && problem.getProperties().get(ERROR_CODE) instanceof String code) {
+        Map<String, Object> properties = problem.getProperties();
+        if (Objects.nonNull(properties) && properties.get(ERROR_CODE) instanceof String code) {
             problem.setType(typeOf(ErrorCode.valueOf(code)));
         }
         if (Objects.isNull(problem.getInstance())) {

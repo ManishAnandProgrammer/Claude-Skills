@@ -7,4 +7,8 @@ import java.util.List;
  * and schema modes, where a changeset inserts it. Admins change them later like any policy.
  */
 public record UploadLimits(long minSizeBytes, long maxSizeBytes, int minFiles, int maxFiles, List<String> contentTypes) {
+
+    public UploadLimits {
+        contentTypes = List.copyOf(contentTypes);
+    }
 }

@@ -34,6 +34,10 @@ public record TodoSummaryResponse(
         @Schema(description = "Who last changed it") UUID updatedBy,
         @Schema(description = "Send it back when changing the todo", example = "0") Long version) {
 
+    public TodoSummaryResponse {
+        tags = List.copyOf(tags);
+    }
+
     /** The batch's projection: the row without its list's name and its tags, which the service reads in two more steps. */
     public TodoSummaryResponse(UUID id, UUID todoListId,
                                // metadata:begin

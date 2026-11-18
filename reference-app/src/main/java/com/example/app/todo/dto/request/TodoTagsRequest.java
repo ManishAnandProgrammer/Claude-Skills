@@ -4,6 +4,8 @@ import com.example.app.common.limits.ConfiguredMaxSize;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 
+import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -19,4 +21,9 @@ public record TodoTagsRequest(
         @Schema(description = "The version you last read; a stale one is refused with 409", example = "0")
         @NotNull
         Long version) {
+
+    // Jackson builds it before validation: a null, or a null element, reaches the constraints that name it.
+    public TodoTagsRequest {
+        tagIds = Objects.isNull(tagIds) ? null : Collections.unmodifiableSet(tagIds);
+    }
 }

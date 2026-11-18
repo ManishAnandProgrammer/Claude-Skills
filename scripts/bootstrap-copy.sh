@@ -12,8 +12,8 @@
 #   one, the markers applied. Generators read golden files through it instead of reasoning about markers.
 #   pieces (comma-separated, default core,sign-in):
 #     core     error contract, wrappers, paging, limits, logging, admission, security config,
-#              persistence base, config files (lombok.config among them), test base, ArchUnit, the
-#              incident runbook (docs/)
+#              persistence base, config files (lombok.config and spotbugs-exclude.xml among them), test
+#              base, ArchUnit, the incident runbook (docs/)
 #     sign-in  user module (signup, login, tokens) and its Redis rate limiting: the limiter in
 #              common/ratelimit, config/RedisClientConfig, the Redis settings and Testcontainer
 #     example  the golden crud-gen modules (todo lists and todos; plans, in a module of their own), for
@@ -183,6 +183,7 @@ compose.yaml
 Dockerfile
 .dockerignore
 lombok.config
+spotbugs-exclude.xml
 docs/runbook.md
 docs/local-dev.md
 LIST
@@ -657,6 +658,9 @@ echo "dependencies these pieces need (add after the owner approves them):"
 for piece in "${chosen[@]}"; do
     echo "  $piece: $(dependencies_for "$piece")"
 done
+echo "build plugins (the quality gates, house-review CFG-11; the reference pom's blocks and properties):"
+echo "  spotbugs-maven-plugin with findsecbugs-plugin, jacoco-maven-plugin; coverage.line.minimum and"
+echo "  coverage.branch.minimum are the project's own: measure three clean runs (bootstrap.md, step 4)"
 echo "then: add @ConfigurationPropertiesScan to the application class; set spring.application.name, and DB_NAME"
 echo "      in .env.example to the same name; delete Initializr's application.properties (application.yml"
 echo "      replaces it), its <App>ApplicationTests (a bare @SpringBootTest with no database: the copied"

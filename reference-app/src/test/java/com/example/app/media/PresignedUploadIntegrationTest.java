@@ -89,7 +89,9 @@ class PresignedUploadIntegrationTest extends IntegrationTest {
                 Arguments.of("one byte more", SIZE + 1, HttpHeaders.CONTENT_TYPE, "image/png"),
                 Arguments.of("one byte less", SIZE - 1, HttpHeaders.CONTENT_TYPE, "image/png"),
                 Arguments.of("empty", 0, HttpHeaders.CONTENT_TYPE, "image/png"),
-                Arguments.of("much more", 5_000_000, HttpHeaders.CONTENT_TYPE, "image/png"),
+                // Far past the signed length, yet small enough that the store reads it all before refusing: with a
+                // larger body it may close the connection while the client is still sending, and no answer arrives.
+                Arguments.of("much more", 100_000, HttpHeaders.CONTENT_TYPE, "image/png"),
                 Arguments.of("another type", SIZE, HttpHeaders.CONTENT_TYPE, "text/html"),
                 Arguments.of("no disposition", SIZE, HttpHeaders.CONTENT_DISPOSITION, null),
                 Arguments.of("another disposition", SIZE, HttpHeaders.CONTENT_DISPOSITION, "inline"));

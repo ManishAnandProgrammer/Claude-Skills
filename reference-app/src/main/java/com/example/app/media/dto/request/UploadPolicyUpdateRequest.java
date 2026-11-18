@@ -11,6 +11,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 
+import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
 
@@ -41,6 +42,11 @@ public record UploadPolicyUpdateRequest(
         @Schema(description = "The version you last read; a stale one is refused with 409", example = "0")
         @NotNull
         Long version) {
+
+    // Jackson builds it before validation: a null, or a null element, reaches the constraints that name it.
+    public UploadPolicyUpdateRequest {
+        contentTypes = Objects.isNull(contentTypes) ? null : Collections.unmodifiableSet(contentTypes);
+    }
 
     @CrossField(reportedOn = "maxSizeBytes", message = "{upload-policy.size-range}")
     @Schema(hidden = true)

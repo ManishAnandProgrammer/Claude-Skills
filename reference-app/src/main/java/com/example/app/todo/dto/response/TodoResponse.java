@@ -40,4 +40,11 @@ public record TodoResponse(
         @Schema(description = "Who created it") UUID createdBy,
         @Schema(description = "Who last changed it") UUID updatedBy,
         @Schema(description = "Send it back when updating", example = "0") Long version) {
+
+    public TodoResponse {
+        tags = List.copyOf(tags);
+        // media:begin
+        attachments = List.copyOf(attachments);
+        // media:end
+    }
 }

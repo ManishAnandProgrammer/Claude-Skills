@@ -40,6 +40,10 @@ public class TenantMigrations {
 
     /** What one run did; {@code ran} is false when another instance held the lock. */
     public record Run(boolean ran, int migrated, List<UUID> failed) {
+
+        public Run {
+            failed = List.copyOf(failed);
+        }
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -53,7 +57,7 @@ public class TenantMigrations {
         List<UUID> migrated = new ArrayList<>();
         List<UUID> failed = new ArrayList<>();
         boolean ran = migrator.runLocked(() -> migrateAll(migrated, failed));
-        Run run = new Run(ran, migrated.size(), List.copyOf(failed));
+        Run run = new Run(ran, migrated.size(), failed);
         log.info("Tenant migrations: ran={}, migrated={}, failed={}", run.ran(), run.migrated(), run.failed());
         return run;
     }

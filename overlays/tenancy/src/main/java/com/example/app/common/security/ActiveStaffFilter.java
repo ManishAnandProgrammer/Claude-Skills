@@ -14,6 +14,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -34,13 +35,17 @@ public class ActiveStaffFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication instanceof JwtAuthenticationToken token
-                && !staffAccounts.isActive(UUID.fromString(token.getToken().getSubject()))) {
+        if (authentication instanceof JwtAuthenticationToken token && !isActiveStaff(token.getToken().getSubject())) {
             log.info("Platform token refused, the staff member is deactivated: platformUserId={}", token.getToken().getSubject());
             SecurityContextHolder.clearContext();
             problemResponses.write(request, response, ErrorCode.AUTHENTICATION_REQUIRED);
             return;
         }
         filterChain.doFilter(request, response);
+    }
+
+    /** A platform token without a subject names no staff member: refused like a deactivated one. */
+    private boolean isActiveStaff(String subject) {
+        return Objects.nonNull(subject) && staffAccounts.isActive(UUID.fromString(subject));
     }
 }

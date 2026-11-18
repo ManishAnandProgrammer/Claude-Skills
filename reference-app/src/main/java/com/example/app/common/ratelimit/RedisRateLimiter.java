@@ -123,6 +123,9 @@ public class RedisRateLimiter implements DisposableBean {
             return;
         }
         AbstractRedisClient client = connectionFactory.getNativeClient();
+        if (Objects.isNull(client)) {
+            throw new IllegalStateException("The Redis connection factory has no client yet");
+        }
         ExpirationAfterWriteStrategy expiry =
                 ExpirationAfterWriteStrategy.basedOnTimeForRefillingBucketUpToMax(properties.expiryGrace());
         if (client instanceof RedisClusterClient cluster) {

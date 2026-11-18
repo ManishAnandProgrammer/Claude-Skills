@@ -36,6 +36,10 @@ JDK 25 and Docker (Testcontainers):
 ```bash
 ./mvnw -B verify                    # or: sg docker -c "./mvnw -B verify"
 ```
+`verify` is the gate command: every test, the ArchUnit rules, then static analysis with security rules
+(SpotBugs and FindSecBugs at medium and above; false positives in `spotbugs-exclude.xml`, one class and
+pattern each with its reason) and the coverage minimum (JaCoCo, `coverage.*.minimum` in `pom.xml`, only
+ever raised). Reports: `target/spotbugsXml.xml`, `target/site/jacoco/index.html` (house-review CFG-11).
 `../scripts/verify.sh` builds this project **and** fresh bootstrap copies of it (core with sign-in;
 with the example and metadata; metadata without the example; media without the example; the example
 with media; schema per tenant alone; every piece with schema per tenant; core alone), then starts the

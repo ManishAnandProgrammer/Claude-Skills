@@ -13,6 +13,8 @@ import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
 // media:begin
+import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 // media:end
 import java.util.UUID;
@@ -76,4 +78,12 @@ public record TodoUpdateRequest(
         @Schema(description = "The version you last read; a stale one is refused with 409", example = "0")
         @NotNull
         Long version) {
+    // media:begin
+
+    // Jackson builds it before validation: a null, or a null element, reaches the constraints that name it.
+    public TodoUpdateRequest {
+        addAttachmentKeys = Objects.isNull(addAttachmentKeys) ? null : Collections.unmodifiableSet(addAttachmentKeys);
+        removeAttachmentIds = Objects.isNull(removeAttachmentIds) ? null : Collections.unmodifiableSet(removeAttachmentIds);
+    }
+    // media:end
 }

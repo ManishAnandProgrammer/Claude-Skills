@@ -2,10 +2,13 @@ package com.example.app.common.apiversion;
 
 import io.micrometer.common.KeyValue;
 import io.micrometer.common.KeyValues;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.boot.micrometer.observation.autoconfigure.ObservationProperties;
 import org.springframework.http.server.observation.DefaultServerRequestObservationConvention;
 import org.springframework.http.server.observation.ServerRequestObservationContext;
 import org.springframework.stereotype.Component;
+
+import java.util.Objects;
 
 /**
  * {@code http.server.requests} with an {@code apiVersion} tag: the resolved version, or
@@ -26,7 +29,8 @@ class ApiVersionObservationConvention extends DefaultServerRequestObservationCon
 
     @Override
     public KeyValues getLowCardinalityKeyValues(ServerRequestObservationContext context) {
-        String version = RequestApiVersion.of(context.getCarrier()).orElse(NONE);
+        HttpServletRequest request = context.getCarrier();
+        String version = Objects.isNull(request) ? NONE : RequestApiVersion.of(request).orElse(NONE);
         return super.getLowCardinalityKeyValues(context).and(KeyValue.of(API_VERSION, version));
     }
 }

@@ -24,4 +24,8 @@ public record UploadUrlResponse(
         Map<String, String> headers,
         @Schema(description = "When the URL stops accepting the upload")
         Instant expiresAt) {
+
+    public UploadUrlResponse {
+        headers = Map.copyOf(headers);
+    }
 }

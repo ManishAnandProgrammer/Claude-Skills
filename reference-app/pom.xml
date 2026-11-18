@@ -34,6 +34,15 @@
 		<logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
 		<archunit.version>1.5.1</archunit.version>
 		<awssdk.version>2.59.1</awssdk.version>
+		<spotbugs-maven-plugin.version>4.10.5.0</spotbugs-maven-plugin.version>
+		<findsecbugs.version>1.14.0</findsecbugs.version>
+		<jacoco.version>0.8.16</jacoco.version>
+		<!-- The coverage gate (house-review CFG-11): each minimum a full point below the lowest of three clean runs, rounded
+		     down, so run-to-run noise never fails a build. Set 2026-11-18: lines 95.19 %, branches 83.86 % in all three runs
+		     (2,689 of 2,825 lines, 852 of 1,016 branches). Only ever raised, by the same rule; a change that drops below
+		     them adds its tests. A bootstrap copy measures its own suite and sets its own. -->
+		<coverage.line.minimum>0.94</coverage.line.minimum>
+		<coverage.branch.minimum>0.82</coverage.branch.minimum>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -253,6 +262,91 @@
 									<artifactId>lombok</artifactId>
 								</path>
 							</annotationProcessorPaths>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<!-- Static analysis with security rules (house-review CFG-11): SpotBugs reads the bytecode, FindSecBugs adds the
+			     security detectors. Any finding of medium priority or above fails verify unless spotbugs-exclude.xml names its
+			     class and bug pattern with the reason (findings: target/spotbugsXml.xml). Declared before JaCoCo: both run in
+			     verify in this order, so a coverage failure still leaves the findings. -->
+			<plugin>
+				<groupId>com.github.spotbugs</groupId>
+				<artifactId>spotbugs-maven-plugin</artifactId>
+				<version>${spotbugs-maven-plugin.version}</version>
+				<configuration>
+					<effort>Max</effort>
+					<threshold>Medium</threshold>
+					<xmlOutput>true</xmlOutput>
+					<excludeFilterFile>${project.basedir}/spotbugs-exclude.xml</excludeFilterFile>
+					<plugins>
+						<plugin>
+							<groupId>com.h3xstream.findsecbugs</groupId>
+							<artifactId>findsecbugs-plugin</artifactId>
+							<version>${findsecbugs.version}</version>
+						</plugin>
+					</plugins>
+				</configuration>
+				<executions>
+					<execution>
+						<id>static-analysis</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<!-- Coverage of the whole test suite (house-review CFG-11): the agent runs with Surefire, the report and the gate in
+			     verify (target/site/jacoco). Lombok's code (@lombok.Generated, lombok.config) and the generated JPA metamodel
+			     are not ours to cover. -->
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>${jacoco.version}</version>
+				<configuration>
+					<excludes>
+						<exclude>**/*_.class</exclude>
+					</excludes>
+				</configuration>
+				<executions>
+					<execution>
+						<id>prepare-agent</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>report</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>coverage-gate</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>${coverage.line.minimum}</minimum>
+										</limit>
+										<limit>
+											<counter>BRANCH</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>${coverage.branch.minimum}</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
 						</configuration>
 					</execution>
 				</executions>
