@@ -199,8 +199,8 @@ command. Reference: `pom.xml` (JaCoCo 0.8.16; SpotBugs 4.10.5 with FindSecBugs 1
     timing-dependent test to find (TEST-07), never a reason to lower the minimum.
   - **Only ever raised.** A lowered minimum in a diff is a finding (Medium): the fix is the tests the change
     lacks. A raise is set by the same rule.
-- **Static analysis** (SpotBugs + FindSecBugs): effort max, threshold medium, `check` in `verify`: any finding
-  of medium priority or above fails the build. A real finding is fixed. A false positive gets one `<Match>` in
+- **Static analysis** (SpotBugs + FindSecBugs): effort max, threshold low, `check` in `verify`: any finding, low
+  priority included, fails the build. A real finding is fixed. A false positive gets one `<Match>` in
   the exclude file: its **class** (and method, where the finding is one method's) and **bug pattern**, with a
   one-line reason on it (why the pattern is not a defect at that code: the generated metamodel, a record handing
   out a list it was built from and no one keeps, an injected singleton whose sharing is the point, a constructor
@@ -211,7 +211,14 @@ command. Reference: `pom.xml` (JaCoCo 0.8.16; SpotBugs 4.10.5 with FindSecBugs 1
     pattern entry: the classes are generated.
   - **An entity's relation method** (one that points a JPA relation at its argument: `EI_EXPOSE_REP2`) is an
     entry per class and method like any other, with the reason "a JPA relation holds the managed entity; it
-    can't be a copy"; crud-gen generates it with the entity, and it is the only entry generated code brings.
+    can't be a copy"; crud-gen generates it with the entity.
+  - **Low priority's informational kinds**, one entry per class: `SPRING_ENDPOINT` per controller (FindSecBugs
+    marks every handler for a reviewer; who may call it is its role annotation and its tests), which crud-gen
+    generates with the controller; `CRLF_INJECTION_LOGS` per class that logs a value, while every deployed profile
+    writes JSON lines (CFG-07: the encoder escapes a line break; a text log in a deployed profile makes the finding
+    real). These and the relation method are the only entries generated code brings. A filter (a bean bound through
+    its setters) compares its range's bounds through `DateRanges` / `NumberRanges`: compared in the filter's own
+    method, static analysis reads the fields as never null-checked (`UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR`).
   - In a diff, **a new entry is reviewed like a deviation** (Step 4): its reason must hold at the code it names;
     when it doesn't, the finding is the defect the entry hides. An entry whose class or method no longer exists
     is stale (Low).
@@ -223,7 +230,7 @@ command. Reference: `pom.xml` (JaCoCo 0.8.16; SpotBugs 4.10.5 with FindSecBugs 1
 - **Not the gate:** SonarLint is an IDE aid, never what passes or fails a build; Error Prone (a compiler
   setup next to Lombok), PMD (weak security rules) and a SonarQube server are not required. A project with
   another tool that fails the build on security rules at medium and above meets the static-analysis half.
-- **Detect:** `pom.xml` (`build.gradle`): the two plugins, their `check` goals bound to `verify`, the minimums'
-  properties and their comment; the exclude file; the CI workflow's command and kept reports.
+- **Detect:** `pom.xml` (`build.gradle`): the two plugins, their `check` goals bound to `verify`, the threshold
+  (`Low`), the minimums' properties and their comment; the exclude file; the CI workflow's command and kept reports.
 - **Severity:** Medium for a missing gate, a lowered minimum, a minimum within the noise, or an entry that is a
   package or a category; Low for an entry without its reason or a stale one.

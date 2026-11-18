@@ -10,7 +10,6 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.accept.InvalidApiVersionException;
 import org.springframework.web.accept.MissingApiVersionException;
-import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.servlet.NoHandlerFoundException;
@@ -35,7 +34,7 @@ final class MvcExceptionCodes {
     private static Optional<ErrorCode> specificCode(Exception exception) {
         return switch (exception) {
             case HttpMessageNotReadableException _ -> Optional.of(ErrorCode.REQUEST_UNREADABLE);
-            case MissingServletRequestParameterException _ -> Optional.of(ErrorCode.REQUEST_PARAMETER_MISSING);
+            // A missing parameter, header, cookie or path variable: each is a ServletRequestBindingException.
             case ServletRequestBindingException _ -> Optional.of(ErrorCode.REQUEST_PARAMETER_MISSING);
             // A 500 (no converter at all), so it must be matched before its parent TypeMismatchException.
             case ConversionNotSupportedException _ -> Optional.of(ErrorCode.UNEXPECTED_ERROR);

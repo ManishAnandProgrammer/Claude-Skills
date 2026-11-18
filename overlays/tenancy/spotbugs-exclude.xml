@@ -71,6 +71,151 @@
     </Match>
     <!-- example:end -->
 
+    <!-- Low priority (threshold Low): the findings below are informational or false positives at these classes. -->
+
+    <!-- CRLF_INJECTION_LOGS: the deployed profile writes one JSON object a line (logback-spring.xml, LogstashEncoder),
+         which escapes a line break in any logged value, so no value can forge an entry or split a line; dev and test
+         write text on a developer's machine. One entry per class that logs a value, so a new one is looked at: what
+         it logs is still never personal data (house-review SEC-04). -->
+    <Match>
+        <Class name="com.example.app.common.admission.AdmissionControlFilter"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.common.exception.GlobalExceptionHandler"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.common.logging.RequestCompletionLogFilter"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <!-- sign-in:begin -->
+    <Match>
+        <Class name="com.example.app.common.ratelimit.RedisRateLimiter"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.AccountStatusService"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.AuthService"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.BreachedPasswordCheck"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.FailureCountingInterceptor"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.TokenService"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.UserService"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <!-- session-version:begin -->
+    <Match>
+        <Class name="com.example.app.common.security.SessionVersionFilter"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.SessionVersionService"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <!-- session-version:end -->
+    <!-- sign-in:end -->
+    <!-- media:begin -->
+    <Match>
+        <Class name="com.example.app.media.service.MediaCleanupJob"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.media.service.MediaVerificationJob"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <!-- media:end -->
+
+    <!-- SPRING_ENDPOINT: informational, FindSecBugs marks every request handler for a reviewer. Who may call each
+         endpoint is its role annotation or owner scope, proven by its tests (403 and 404 for another user's record);
+         what it accepts is its request record's validation. One entry per controller, written with the controller
+         (crud-gen generates it with the entity's). -->
+    <!-- sign-in:begin -->
+    <Match>
+        <Class name="com.example.app.user.controller.AuthController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.controller.UserController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <!-- sign-in:end -->
+    <!-- metadata:begin -->
+    <Match>
+        <Class name="com.example.app.metadata.controller.MetadataController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <!-- metadata:end -->
+    <!-- media:begin -->
+    <Match>
+        <Class name="com.example.app.media.controller.UploadPolicyController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.media.controller.UploadUrlController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <!-- media:end -->
+    <!-- example:begin -->
+    <Match>
+        <Class name="com.example.app.planning.controller.PlanController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.todo.controller.TagController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.todo.controller.TodoController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.todo.controller.TodoListController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <!-- example:end -->
+
+    <!-- The request id echoed from X-Request-Id only when it matches a short pattern of safe characters; otherwise a
+         new one. -->
+    <Match>
+        <Class name="com.example.app.common.logging.RequestLogContextFilter"/>
+        <Method name="requestIdFrom"/>
+        <Bug pattern="SERVLET_HEADER"/>
+    </Match>
+    <!-- An AppException is never serialized: it lives for one request and ends as a Problem Details body. -->
+    <Match>
+        <Class name="com.example.app.common.exception.AppException"/>
+        <Bug pattern="SE_TRANSIENT_FIELD_NOT_RESTORED"/>
+    </Match>
+    <!-- HttpSecurity.build() declares Exception; the bean method passes it on to Spring, which stops startup. -->
+    <Match>
+        <Class name="com.example.app.config.SecurityConfig"/>
+        <Method name="securityFilterChain"/>
+        <Bug pattern="THROWS_METHOD_THROWS_CLAUSE_BASIC_EXCEPTION"/>
+    </Match>
+    <!-- session-version:begin -->
+    <!-- Rethrows a failure that is not a database outage, so the error handling above answers it as any other. -->
+    <Match>
+        <Class name="com.example.app.common.security.SessionVersionFilter"/>
+        <Method name="refusalOf"/>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+    </Match>
+    <!-- session-version:end -->
+
     <!-- Tenancy (overlays/tenancy): this file replaces the reference's in a copy with a tenancy mode. -->
     <!-- Logs three UUIDs (the staff member, the tenant, the account): none can carry a line break. -->
     <Match>
@@ -78,4 +223,77 @@
         <Method name="impersonate"/>
         <Bug pattern="CRLF_INJECTION_LOGS"/>
     </Match>
+    <!-- Low priority, as above: CRLF_INJECTION_LOGS and SPRING_ENDPOINT per class, for the same reasons. -->
+    <Match>
+        <Class name="com.example.app.common.security.ActiveStaffFilter"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.MembershipService"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.PlatformAuthService"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <!-- tenant-registration:begin -->
+    <Match>
+        <Class name="com.example.app.user.service.TenantRegistrationService"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <!-- tenant-registration:end -->
+    <Match>
+        <Class name="com.example.app.tenant.controller.PlatformTenantController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.controller.MembershipController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.controller.PlatformAuthController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.controller.PlatformImpersonationController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.controller.PlatformUserController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.controller.TenantMemberController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <!-- metadata:begin -->
+    <Match>
+        <Class name="com.example.app.metadata.controller.PlatformMetadataController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <!-- metadata:end -->
+    <!-- tenant-registration:begin -->
+    <Match>
+        <Class name="com.example.app.user.controller.TenantRegistrationController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <!-- tenant-registration:end -->
+    <!-- HttpSecurity.build() declares Exception; the bean method passes it on to Spring, which stops startup. -->
+    <Match>
+        <Class name="com.example.app.config.PlatformSecurityConfig"/>
+        <Method name="platformSecurityFilterChain"/>
+        <Bug pattern="THROWS_METHOD_THROWS_CLAUSE_BASIC_EXCEPTION"/>
+    </Match>
+    <!-- tenancy-row:begin -->
+    <!-- Row mode: the provisioning's lines log the tenant id and a count. Hibernate's Service interface is Serializable;
+         Hibernate never serializes a connection provider, which holds the data source. -->
+    <Match>
+        <Class name="com.example.app.tenant.service.TenantProvisioning"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.common.tenancy.TransactionLocalTenantProvider"/>
+        <Bug pattern="SE_NO_SERIALVERSIONID"/>
+    </Match>
+    <!-- tenancy-row:end -->
 </FindBugsFilter>

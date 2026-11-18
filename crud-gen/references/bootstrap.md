@@ -303,8 +303,10 @@ image `versity/versitygw` (the version the reference pins) for the S3-compatible
 (with `findsecbugs-plugin`) and `jacoco-maven-plugin` blocks, their version properties and the
 `coverage.line.minimum` / `coverage.branch.minimum` properties; the script prints them with core. A
 project started from the reference pom has them; an existing project's pom gets them proposed like a
-dependency (the house's decided gate: SpotBugs with FindSecBugs at effort max and threshold medium,
-JaCoCo; SonarLint stays an IDE aid). Core copies `spotbugs-exclude.xml`, and `lombok.config` carries
+dependency (the house's decided gate: SpotBugs with FindSecBugs at effort max and threshold low, JaCoCo;
+SonarLint stays an IDE aid). Low priority's informational findings arrive excluded with their pieces, one entry
+per class (`SPRING_ENDPOINT` per controller, `CRLF_INJECTION_LOGS` per class that logs a value: CFG-11); a project
+that adapted a deployed profile to text logs makes the second kind real. Core copies `spotbugs-exclude.xml`, and `lombok.config` carries
 `lombok.addLombokGeneratedAnnotation`; a project's own `lombok.config` gets that line too, or Lombok's
 code counts against the minimum. **The minimums are the project's own:** the reference's measure the
 reference's suite, so the copy measures its own level in step 4 and sets each by the same rule.

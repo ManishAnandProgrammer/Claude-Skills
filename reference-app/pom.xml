@@ -267,7 +267,7 @@
 				</executions>
 			</plugin>
 			<!-- Static analysis with security rules (house-review CFG-11): SpotBugs reads the bytecode, FindSecBugs adds the
-			     security detectors. Any finding of medium priority or above fails verify unless spotbugs-exclude.xml names its
+			     security detectors. Any finding, low priority included, fails verify unless spotbugs-exclude.xml names its
 			     class and bug pattern with the reason (findings: target/spotbugsXml.xml). Declared before JaCoCo: both run in
 			     verify in this order, so a coverage failure still leaves the findings. -->
 			<plugin>
@@ -276,7 +276,7 @@
 				<version>${spotbugs-maven-plugin.version}</version>
 				<configuration>
 					<effort>Max</effort>
-					<threshold>Medium</threshold>
+					<threshold>Low</threshold>
 					<xmlOutput>true</xmlOutput>
 					<excludeFilterFile>${project.basedir}/spotbugs-exclude.xml</excludeFilterFile>
 					<plugins>

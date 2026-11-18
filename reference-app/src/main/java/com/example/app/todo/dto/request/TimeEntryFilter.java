@@ -6,6 +6,8 @@ import com.example.app.common.limits.EarliestDate;
 import com.example.app.common.limits.LatestDate;
 import com.example.app.common.pagination.CursorFilter;
 import com.example.app.common.validation.CrossField;
+import com.example.app.common.validation.DateRanges;
+import com.example.app.common.validation.NumberRanges;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -68,12 +70,12 @@ public class TimeEntryFilter extends CursorFilter {
     /** An inverted range is a mistake the client should hear about, not an empty list. */
     @CrossField(reportedOn = "spentOnTo", message = "{time-entry.spent-on-range}")
     public boolean isSpentOnRangeOrdered() {
-        return Objects.isNull(spentOnFrom) || Objects.isNull(spentOnTo) || !spentOnFrom.isAfter(spentOnTo);
+        return DateRanges.isOrdered(spentOnFrom, spentOnTo);
     }
 
     @CrossField(reportedOn = "maxMinutes", message = "{time-entry.minutes-range}")
     public boolean isMinutesRangeOrdered() {
-        return Objects.isNull(minMinutes) || Objects.isNull(maxMinutes) || minMinutes <= maxMinutes;
+        return NumberRanges.isOrdered(minMinutes, maxMinutes);
     }
 
     /**
