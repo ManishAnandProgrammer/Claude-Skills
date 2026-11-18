@@ -4,7 +4,8 @@ Values are production values, each with its *why*; the reference application's
 `application.yml` and `config/*.yml` carry them. A missing key, or a different value without a reason in the profile, is a
 finding (default Medium). The profile can override a value with its reason.
 
-Check these in whole-codebase mode, and in diff mode whenever configuration files change.
+Check these in whole-codebase mode, and in diff mode whenever configuration files change or a settings record does
+(a `@ConfigurationProperties` record, a job's `Settings`, the records they hold: CFG-10 and CFG-12).
 
 ---
 
@@ -179,7 +180,9 @@ scrape is secured, `{{metricsAuth}}`).
 - Every tunable is in configuration (SMELL-17); `spring.application.name` is the one name the rest
   derives from.
 - No default profile; **startup fails** on a missing or unknown active profile (an allow-list),
-  on missing secrets, and on inert settings (admission below twice the pool size).
+  on missing secrets, on inert settings (admission below twice the pool size), and on a renamed setting's old
+  property or environment variable while it is still set (CFG-12's migration: its value would be read in another
+  unit, or silently ignored).
 - API docs are off in the base configuration and on only in `dev` (a forgotten profile must not
   publish the schema).
 - The prod pool is set explicitly (e.g. 30/10), never the default 10.
@@ -234,3 +237,71 @@ command. Reference: `pom.xml` (JaCoCo 0.8.16; SpotBugs 4.10.5 with FindSecBugs 1
   (`Low`), the minimums' properties and their comment; the exclude file; the CI workflow's command and kept reports.
 - **Severity:** Medium for a missing gate, a lowered minimum, a minimum within the noise, or an entry that is a
   package or a category; Low for an entry without its reason or a stale one.
+
+## CFG-12: Typed settings
+Each setting is bound as the **type of what it means**, so Boot parses and checks it once, at startup, naming its key,
+and code never converts a unit or parses text. Reference: the settings records (`JwtProperties`, `MediaProperties`,
+the jobs' `Settings`, `NotAfterTodayProperties`), `common/scheduling/Cron`; `SettingsBindingTest` proves each binding
+below on Boot's own binder.
+- **Check:** every component of a settings record (`@ConfigurationProperties`, a job's `Settings`, a group or value
+  record it holds) has its meaning's type:
+  - a time span is a `Duration` (`500ms`, `30s`, `5m`, `6h`, `7d`, or ISO `PT15M`); a span of calendar days added to a
+    `LocalDate` a `Period` (`1d`, `2w`, `1y`); a size a `DataSize` (`512KB`, `2MB`; a KB is 1024 bytes);
+  - a mode or a strategy an enum (code branches on a constant, never on text; Boot binds `truncated` to `TRUNCATED`);
+  - an address a `URI` (an unset `${VAR:}` binds as null: "none"); a language a `Locale`; a content type a
+    `MediaType`; an email sender the mail library's address type when the project has one; a library's own value
+    type when it binds (the AWS SDK's `Region`, through its `Region.of`);
+  - one value per case a `Map<SomeEnum, X>` (a code lifetime per purpose, keys written `signup-verification`); named
+    instances a `Map<String, Settings>` (as Resilience4j's `instances`); a group of settings a nested record;
+  - text with a grammar (a cron, a percentage, a CIDR) a small value record whose constructor checks it: Spring's
+    converter binds a `String` through a **public** `String` constructor (a record's own) or a public static
+    `of(String)` (a package-private one is never found). A cron is `Cron`: what `CronExpression` parses, or Spring's
+    `"-"` (off). The job's `@Scheduled(cron =
+    "${...}")` keeps reading the raw property (its run observation and `@MultiInstanceSafe` stay); the record makes
+    the setting typed and checked.
+- **Bounded:** a value whose zero, negative or too-large setting breaks something carries its bound in the record:
+  `@DurationMin` / `@DurationMax` (Hibernate Validator; `days = 0` for "never negative", `millis = 1` for "positive":
+  a timeout or a lock timeout of zero often means none at all), `@Positive`, `@Size`, `@NotEmpty`; a rule across
+  fields (a grace below a lifetime, an attempt's timeout within the call's) or a library's own range (a presigned
+  URL's 1 s to 7 days) is checked in the compact constructor, naming the key, so it fails at startup rather than at
+  each call. A token lifetime nothing ends early has a maximum (15m, as the access token's). A `URI` the code relies on is checked for what it needs (absolute, with a host): Spring encodes
+  what the URI grammar refuses instead of failing (`http://bad host/` binds as `http://bad%20host/`, with no host).
+- **The unit is in the value, never in the name:** `accessTokenTtl: 15m`, not `accessTokenTtlMinutes: 15`; the
+  environment variable likewise (`JWT_ACCESS_TTL=15m`).
+- **The migration trap:** a bare number bound to a `Duration` means **milliseconds** (a `Period`, days; a `DataSize`,
+  bytes). Turning `ttlMinutes` into a `Duration` while the deployment keeps `JWT_ACCESS_TTL_MINUTES=15`, or the yml
+  keeps `15`, silently gives 15 ms. So a migrated setting gets a **new name** for the property and its environment
+  variable, the startup checks (CFG-10) **refuse the old names while they are still set** (naming the new one and its
+  format), and its minimum is one a stray bare number fails (`JwtProperties`: an access-token lifetime of at least
+  `1s`). `@DurationUnit(ChronoUnit.MINUTES)` keeps the old meaning of a bare number; it is only for a setting whose
+  name and value can't change yet, with its reason; prefer the rename.
+- **Detect:** `int`/`long`/`double` components named `*Ms`, `*Millis`, `*Seconds`, `*Minutes`, `*Hours`, `*Days`,
+  `*Bytes`, `*Kb`, `*Mb`; `String` components named `*Url`, `*Uri`, `*Endpoint`, `*Cron` (a host name alone stays
+  text), or holding a mode compared with
+  `equals`; `Duration.ofMinutes(settings.x())`, `* 1000`, `TimeUnit.X.toMillis(...)`, `URI.create(settings.x())`,
+  `CronExpression.parse(...)` or `Enum.valueOf(...)` on a setting; a `Limits`-style read by key of a time or a size;
+  a renamed setting's old name or environment variable still in `.env.example`, a compose file or a deployment
+  manifest; a `Period` written `1m` (a month, where a `Duration`'s `1m` is a minute). **Enforced** by ArchUnit
+  (`ConventionArchTest.settingsAreTypedByWhatTheyMean`, the names above on every `@ConfigurationProperties` record and
+  the records it holds, a map's or list's values included; proven red on its fixtures in `ArchRuleScopeTest`); the
+  rest (a mode as text, a conversion in code, a bound) is review.
+- **Not a finding when:**
+  - a count (`batchSize`, `maxFiles`, attempts, a per-day budget): a number is its type;
+  - a library's own property that takes only a number (Hikari's `connection-timeout` in milliseconds, PgJDBC's
+    `socketTimeout` in seconds, JavaMail's `mail.smtp.timeout`), with a comment naming the unit;
+  - the configured bound of a number the **API** receives in its own unit (`time-entry.max-minutes` for a request
+    field in minutes, `upload-policy.max-size-bytes` for a size in bytes): the setting matches the wire. It is a
+    `Limits` key, read by key, so the ArchUnit rule never meets it;
+  - an invariant (an algorithm's or a format's constant, S3's 5 GiB, SigV4's seven days) stays in code with a
+    why-comment (SMELL-17);
+  - business values clients edit are data (rows, configuration metadata), not settings;
+  - a time zone: there is no time-zone setting (the backend is UTC), so `ZoneId` and a business-local `LocalTime`
+    stay out.
+- **Tests:** the binding is Boot's, so a settings record needs no binding test of its own; its compact
+  constructor's checks get a unit test (`JwtPropertiesTest`), and a value record of the project's own (`Cron`) is
+  bound in `SettingsBindingTest`. A test profile may set short values (`200ms`, `2s`) where a test exercises an
+  expiry, a lease or a retention for real.
+- **Severity:** Low for a new number-with-unit or text-to-parse setting; **Medium** when code converts it in several
+  places, or a wrong unit or a missing bound weakens a safeguard (a token lifetime, a lock lease, a timeout of zero);
+  **High** for the migration trap (an existing environment value read in another unit).
+

@@ -20,7 +20,7 @@ The rules are fixed and identical across projects. They live in `references/`:
 | `references/lenses.md` | SEC/PERF/REL/OPS/CONC/TEST-xx | The eight lenses, resilience, the runbook and required tests |
 | `references/architecture.md` | ARCH-xx | Module map, boundaries, layers, events, ArchUnit enforcement |
 | `references/error-contract.md` | ERR-xx | The house error contract (ErrorCode, mapper, ProblemDetail, 409 vs 400, 503 + Retry-After) |
-| `references/config-baseline.md` | CFG-xx | Hikari/JPA/PostgreSQL, server and threads, Jackson, actuator, logging, JVM |
+| `references/config-baseline.md` | CFG-xx | Hikari/JPA/PostgreSQL, server and threads, Jackson, actuator, logging, JVM, configuration layout, build gates, typed settings |
 | `references/metadata.md` | META-xx | Configuration metadata and counters; only for projects with the `metadata` piece |
 | `references/media.md` | MEDIA-xx | File uploads to S3 (presigned URLs, purposes and policies, claim, verification, cleanup); only for projects with the `media` piece |
 | `references/tenancy.md` | TEN-xx | Multi-tenancy: the tenant from the token, the connection hook, the platform and tenant planes, memberships, jobs per tenant, roles; schema-per-tenant migrations; row mode's policies, keys and leakproof operators; a tenant's data as a closed graph that can move to its own database (members, per-tenant numbers and file prefixes, replica identities). Only when the profile's `tenancy` is `row` or `schema`; its test matrices (token paths × access changes, seeds × tenant statuses) are `references/tenancy-matrices.md` |
@@ -170,6 +170,7 @@ section *Tests (TEST)*.
 | Java of a feature module: controller, API interface, request, response, filter and view records, entity and domain enums, repository and its implementation, service, facade, Manager, mapper, `*ConstraintErrorCodes` | the core; lenses.md's section *Lens 8: Concurrency (CONC)*; PERF-01 (the profile's `hotPaths` answer it on every change); OPS-03 (an entity or its repository: are its rows kept or do they accumulate) |
 | Test (`testRoots`) | the core |
 | Changeset (`migrationsDir`), configuration (`application*.yml`, `config/*.yml`, `logback*.xml`) | the core without java.md; config-baseline.md; OPS-03 (a changeset that creates a table) |
+| A settings record in any module (a `@ConfigurationProperties` class or record, a job's `Settings`, a group or value record they hold) or a startup check, besides its own row | config-baseline.md's CFG-10 and CFG-12 |
 | Messages file (`message_*.properties`) | error-contract.md; lenses.md's section *Tests (TEST)* |
 | A scheduler, an outbound client (S3, HTTP) or a cache, besides its own row | REL-01, REL-08, PERF-05 and the rules they name: REL-02, REL-04, REL-09, OPS-03 (a purge job), OPS-05, OPS-06, CONC-01, ARCH-17, REST-13, REST-15 |
 | Anything else: a class in `config/` or `common/` (security, filters, the exception handler), a listener or executor, a build or deploy file (`pom.xml`, `spotbugs-exclude.xml`, a CI workflow, a Dockerfile), a kind this table doesn't name | every reference the pieces allow |

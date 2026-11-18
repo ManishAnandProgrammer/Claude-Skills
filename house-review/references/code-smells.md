@@ -140,7 +140,8 @@ Lines are counted without blank or comment lines.
 - **Not a finding when:** an invariant of an algorithm, format or protocol, kept with a
   why-comment (bcrypt reads 72 bytes; a UUID has 36 characters; a 256-bit token).
 - **Fix:** a configuration property read through a typed record or `Limits`; a named constant
-  only for invariants.
+  only for invariants. The record binds each setting as the type of what it means (a `Duration`, not a
+  number of minutes; a `URI`, a `Cron`): CFG-12.
 - **Severity:** Medium for a tunable in code; Low for other literals (Medium when the same literal
   is a contract across classes).
 

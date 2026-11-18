@@ -95,7 +95,8 @@
 ### JAVA-12: Libraries first
 - **Check:** no hand-written infrastructure where a maintained library or the platform does it:
   retry, circuit breaker, rate limit, caching, hashing (`DigestUtils`), string checks
-  (`StringUtils.hasText`), date math (`Duration`). A library's parser is not the input contract,
+  (`StringUtils.hasText`), date math (`Duration`; a setting is bound as one, never converted from a number of
+  minutes: CFG-12). A library's parser is not the input contract,
   though: what is valid stays the project's own, pinned by tests (SEC-05).
 - **Fix:** present the candidate libraries to the user before adding one (house rule).
 - **Severity:** Medium.
