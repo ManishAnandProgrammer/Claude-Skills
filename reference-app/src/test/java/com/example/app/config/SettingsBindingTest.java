@@ -127,7 +127,7 @@ class SettingsBindingTest {
     }
 
     @Test
-    @DisplayName("A minimum refuses the bare number a setting renamed from minutes still carries (JWT_ACCESS_TTL=15: 15 ms)")
+    @DisplayName("A minimum refuses the bare number a setting renamed from minutes still carries (15, now 15 ms)")
     void aMinimumRefusesAStrayBareNumber() {
         assertThatThrownBy(() -> bindValidated(Ttl.class, Map.of(PREFIX + ".access-token-ttl", "15"))).isInstanceOf(BindException.class);
         assertThat(bindValidated(Ttl.class, Map.of(PREFIX + ".access-token-ttl", "15m")).accessTokenTtl()).isEqualTo(Duration.ofMinutes(15));
@@ -172,10 +172,10 @@ class SettingsBindingTest {
     }
 
     @Test
-    @DisplayName("A cron binds as a Cron, \"-\" (switched off) included; a malformed one stops the binding")
+    @DisplayName("A cron binds as a Cron through its public constructor, \"-\" (switched off) included; a malformed one stops the binding")
     void aCronBindsAsACron() {
-        assertThat(bind(Schedule.class, Map.of(PREFIX + ".cron", "0 15 3 * * *")).cron()).isEqualTo(Cron.of("0 15 3 * * *"));
-        assertThat(bind(Schedule.class, Map.of(PREFIX + ".cron", "-")).cron()).isEqualTo(Cron.of(Cron.DISABLED));
+        assertThat(bind(Schedule.class, Map.of(PREFIX + ".cron", "0 15 3 * * *")).cron()).isEqualTo(new Cron("0 15 3 * * *"));
+        assertThat(bind(Schedule.class, Map.of(PREFIX + ".cron", "-")).cron()).isEqualTo(new Cron("-"));
         assertThatThrownBy(() -> bind(Schedule.class, Map.of(PREFIX + ".cron", "0 15 3 * *"))).isInstanceOf(BindException.class);
     }
 

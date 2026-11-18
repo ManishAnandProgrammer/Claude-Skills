@@ -26,7 +26,7 @@ class TenantProvisioningJobTest {
     private final TenantMigrationService migrations = mock(TenantMigrationService.class);
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
     private final TenantProvisioningJob job = new TenantProvisioningJob(migrator, migrations,
-            new TenantProvisioningJob.Settings(Cron.of("* * * * * *"), 10), meters);
+            new TenantProvisioningJob.Settings(new Cron("* * * * * *"), 10), meters);
     private final UUID failing = UUID.randomUUID();
     private final UUID next = UUID.randomUUID();
 

@@ -2,6 +2,8 @@ package com.example.app.media.service;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.context.properties.bind.BindException;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
@@ -33,6 +35,16 @@ class MediaPropertiesTest {
         assertThat(aws.region()).isEqualTo(Region.EU_WEST_1);
         assertThat(aws.endpoint()).isNull();
         assertThat(store.endpoint()).isEqualTo(URI.create("http://localhost:7070"));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource({"upload-url-expiry, 999ms", "upload-url-expiry, 8d", "read-url-expiry, 999ms", "read-url-expiry, 8d"})
+    @DisplayName("A URL expiry outside SigV4's 1 second to 7 days stops startup: the SDK would refuse every presign")
+    void urlExpiriesStayWithinWhatSigV4Signs(String key, String expiry) {
+        assertThatThrownBy(() -> bind(Map.of("app.media.region", "us-east-1", "app.media." + key, expiry)))
+                .isInstanceOf(BindException.class)
+                .hasRootCauseMessage("app.media." + key + " must be between 1s and 7d (SigV4)");
+        assertThat(bind(Map.of("app.media.region", "us-east-1", "app.media." + key, "7d"))).isNotNull();
     }
 
     @Test

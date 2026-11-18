@@ -58,16 +58,17 @@ class ArchRuleScopeTest {
 
     @Test
     @DisplayName("""
-            A settings record's number with its unit in its name, or text with a grammar, is refused, a held record's \
-            included; the same values typed by what they mean pass, and a count stays a number (CFG-12)""")
+            A settings record's number with its unit in its name, or text with a grammar, is refused, in a held record \
+            and a map's values too; the same values typed by what they mean pass, and a count stays a number (CFG-12)""")
     void settingsAreTypedByWhatTheyMean() {
         JavaClasses settings = new ClassFileImporter().importPackages("com.example.app.archunit.fixture.settings");
 
         List<String> violations = ConventionArchTest.settingsAreTypedByWhatTheyMean.evaluate(settings).getFailureReport().getDetails();
 
-        assertThat(violations).hasSize(6);
+        assertThat(violations).hasSize(8);
         assertThat(violations).allMatch(violation -> violation.contains(UntypedSettings.class.getName()));
-        for (String field : List.of("leaseMinutes", "timeoutMs", "apiUrl", "cron", "Client.readTimeoutSeconds", "Client.endpointUri")) {
+        for (String field : List.of("leaseMinutes", "timeoutSeconds", "UntypedSettings.seconds", "apiUrl", "UntypedSettings.cron",
+                "Client.readTimeoutMs", "Client.endpoint", "Store.baseUri")) {
             assertThat(violations).anyMatch(violation -> violation.contains(field + " is"));
         }
         assertThat(violations).noneMatch(violation -> violation.contains("batchSize"));

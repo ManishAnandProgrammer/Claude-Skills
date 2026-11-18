@@ -61,12 +61,13 @@ class ConventionArchTest {
     private static final String API = "/api";
     private static final String SECURITY = "..common.security..";
     private static final String VERSIONED_API = API + "/{version}/";
-    private static final List<String> NUMBERS = List.of("int", "long", Integer.class.getName(), Long.class.getName());
+    private static final List<String> NUMBERS = List.of("int", "long", "double", Integer.class.getName(), Long.class.getName(),
+            Double.class.getName());
     // A number with its unit in its name: the unit belongs in the value (a Duration, a Period, a DataSize).
     private static final Pattern UNIT_IN_THE_NAME = Pattern.compile(
             ".*(Ms|Millis|Seconds|Minutes|Hours|Days|Bytes|Kb|Mb)|millis|seconds|minutes|hours|days|bytes");
-    // Text with a grammar: an address is a URI, a schedule a Cron.
-    private static final Pattern TEXT_WITH_A_GRAMMAR = Pattern.compile(".*(Url|Uri|Cron)|url|uri|cron");
+    // Text with a grammar: an address is a URI, a schedule a Cron. A host name alone is no URI, so *Host stays text.
+    private static final Pattern TEXT_WITH_A_GRAMMAR = Pattern.compile(".*(Url|Uri|Endpoint|Cron)|url|uri|endpoint|cron");
 
     @ArchTest
     static final ArchRule noLob = noFields().should().beAnnotatedWith(Lob.class)

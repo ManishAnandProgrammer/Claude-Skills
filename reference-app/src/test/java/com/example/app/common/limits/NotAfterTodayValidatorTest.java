@@ -1,7 +1,6 @@
 package com.example.app.common.limits;
 
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -38,10 +37,11 @@ class NotAfterTodayValidatorTest {
         assertThat(validator.isValid(LocalDate.of(2001, 1, 2), null)).isEqualTo(valid);
     }
 
-    @Test
-    @DisplayName("A negative tolerance stops startup: it would refuse today itself")
-    void aNegativeToleranceIsRefused() {
-        assertThatThrownBy(() -> new NotAfterTodayProperties(Period.ofDays(-1)))
+    @ParameterizedTest(name = "{0}")
+    @CsvSource({"P-1D", "P3D", "P1M"})
+    @DisplayName("A tolerance below 0 or above 2 days stops startup (a negative one refuses today itself; 1m is a month)")
+    void aToleranceOutsideItsRangeIsRefused(Period tolerance) {
+        assertThatThrownBy(() -> new NotAfterTodayProperties(tolerance))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("app.limits.not-after-today.tolerance");
     }

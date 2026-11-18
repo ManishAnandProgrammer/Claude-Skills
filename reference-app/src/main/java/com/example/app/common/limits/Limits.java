@@ -7,7 +7,8 @@ import org.springframework.stereotype.Component;
 /**
  * The tunable limits under {@code app.limits.*} (config/limits.yml), read by key: the configuration
  * is the only place a number lives. A key that isn't configured is a bug and fails loudly;
- * {@code LimitsIntegrationTest} checks every key the code uses.
+ * {@code LimitsIntegrationTest} checks every key the code uses. Each is a count or a bound in the unit the API
+ * receives; a span of time is a typed setting instead ({@code app.limits.not-after-today}, NotAfterTodayProperties).
  */
 @Component
 @RequiredArgsConstructor

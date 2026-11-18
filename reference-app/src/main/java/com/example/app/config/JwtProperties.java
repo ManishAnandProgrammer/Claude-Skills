@@ -38,6 +38,8 @@ public record JwtProperties(@NotBlank String secret,
     private static final Duration MIN_ACCESS_TOKEN_TTL = Duration.ofSeconds(1);
     /** The review profile's {@code tokenRevocation: short-lived(15)}. */
     private static final Duration MAX_ACCESS_TOKEN_TTL = Duration.ofMinutes(15);
+    // Sessions last days; an hour's floor refuses a bare number of seconds or days, which binds as milliseconds.
+    private static final Duration MIN_REFRESH_TOKEN_TTL = Duration.ofHours(1);
 
     public JwtProperties {
         if (Objects.nonNull(secret) && secret.getBytes(StandardCharsets.UTF_8).length < MIN_SECRET_BYTES) {
@@ -49,8 +51,8 @@ public record JwtProperties(@NotBlank String secret,
                     app.jwt.access-token-ttl (JWT_ACCESS_TTL) must be between 1s and 15m: access tokens aren't \
                     checked against the database, so this bounds how long a revoked session lives""");
         }
-        if (Objects.nonNull(refreshTokenTtl) && !refreshTokenTtl.isPositive()) {
-            throw new IllegalArgumentException("app.jwt.refresh-token-ttl (JWT_REFRESH_TTL) must be positive");
+        if (Objects.nonNull(refreshTokenTtl) && refreshTokenTtl.compareTo(MIN_REFRESH_TOKEN_TTL) < 0) {
+            throw new IllegalArgumentException("app.jwt.refresh-token-ttl (JWT_REFRESH_TTL) must be at least 1h");
         }
         if (Objects.nonNull(rotationGrace) && Objects.nonNull(refreshTokenTtl)
                 && (rotationGrace.isNegative() || rotationGrace.compareTo(refreshTokenTtl) >= 0)) {

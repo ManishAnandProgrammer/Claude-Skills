@@ -25,20 +25,27 @@ record MediaProperties(@NotBlank String bucket,
                        @NotNull Region region,
                        URI endpoint,
                        boolean pathStyleAccess,
-                       @NotNull @DurationMin(millis = 1) Duration uploadUrlExpiry,
-                       @NotNull @DurationMin(millis = 1) Duration readUrlExpiry,
+                       @NotNull Duration uploadUrlExpiry,
+                       @NotNull Duration readUrlExpiry,
                        @NotNull @DurationMin(days = 0) Duration pendingLifetime,
                        @Valid @NotNull Client client) {
 
-    // SigV4 presigned URLs are valid for at most seven days.
+    // SigV4 signs a URL for at least one second and at most seven days: the SDK refuses any other expiry at each
+    // presign, so every upload or read URL would fail.
+    private static final Duration SHORTEST_SIGNATURE = Duration.ofSeconds(1);
     private static final Duration LONGEST_SIGNATURE = Duration.ofDays(7);
 
     MediaProperties {
-        if (Objects.nonNull(readUrlExpiry) && readUrlExpiry.compareTo(LONGEST_SIGNATURE) > 0) {
-            throw new IllegalArgumentException("app.media.read-url-expiry must be at most 7 days (SigV4)");
-        }
+        checkSignable("app.media.upload-url-expiry", uploadUrlExpiry);
+        checkSignable("app.media.read-url-expiry", readUrlExpiry);
         if (Objects.nonNull(endpoint) && (!endpoint.isAbsolute() || Objects.isNull(endpoint.getHost()))) {
             throw new IllegalArgumentException("app.media.endpoint must be empty (AWS) or an absolute URL with a host");
+        }
+    }
+
+    private static void checkSignable(String key, Duration expiry) {
+        if (Objects.nonNull(expiry) && (expiry.compareTo(SHORTEST_SIGNATURE) < 0 || expiry.compareTo(LONGEST_SIGNATURE) > 0)) {
+            throw new IllegalArgumentException(key + " must be between 1s and 7d (SigV4)");
         }
     }
 
