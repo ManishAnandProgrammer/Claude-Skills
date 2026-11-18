@@ -888,3 +888,86 @@ recurring cost is one entry per new controller, generated, and one per new class
 - **Generated code now brings two kinds of entry:** the relation method's (before) and each controller's
   `SPRING_ENDPOINT` (crud-gen 4.10, Step 7). Golden services and mappers log nothing, so generated code brings no
   `CRLF_INJECTION_LOGS`; a generated purge logs an `Instant` and a count, which FindSecBugs doesn't taint.
+
+## Typed settings (CFG-12; 2026-11-18)
+
+The owner's decision: "I want to utilise the flexibility of configuration properties and mold application logic
+properly". Settings are bound as typed values (`Duration`, `Period`, `DataSize`, enums, `URI`, maps keyed by an enum,
+small value records), never numbers with the unit in their name or text parsed later; a test profile can then set
+`200ms` or `2s` and exercise an expiry, a lease or a retention for real. No rule said it before: house-review named
+`Duration` only for date math (JAVA-12), crud-gen only in its purge job, so a `long ttlMinutes` passed review. The field
+evidence: news-pulse's `schedulerTickMs`, `reconcileIntervalMs`, `staleAfterMinutes`, `runTimeoutMinutes`,
+`accessTokenTtlMinutes`, `refreshTokenTtlDays`, `ttlMinutes`, a purge's `keepDays` over `LocalDate` rows (a `Period`),
+two URLs and six crons as `String`, environment variables with the unit in the name (`JWT_ACCESS_TTL_MINUTES=15`).
+- **CFG-12 in config-baseline.md**, beside CFG-10 (layout and startup checks) and CFG-11: a setting is configuration
+  whichever module holds it. Its Check names the type per meaning; Bounded; the unit in the value; the migration trap;
+  Detect; Not a finding (counts, a library's number-only property with a unit comment, a bound in the API's own
+  unit, invariants, business data, time zones); Severity Low, Medium where a wrong unit weakens a safeguard, High for
+  the trap. SMELL-17's Fix and JAVA-12 point to it.
+- **It loads where settings change.** Gate 2 loaded config-baseline.md for yml files and for classes in `config/`, but
+  a job's `Settings` or a module's `@ConfigurationProperties` record is Java of a feature module, which loaded the
+  core only: a new row loads CFG-10 and CFG-12 for a settings record or a startup check, besides its own row. `--focus
+  config` loads the whole file, CFG-12 with it.
+- **The migration trap is the rule's reason for High.** A bare number bound to a `Duration` is milliseconds (a
+  `Period`, days; a `DataSize`, bytes), so a `ttlMinutes` turned into a `Duration` under the same environment variable
+  silently becomes 15 ms. The fix is a rename of the property and its variable, the startup check refusing the old
+  names while set, and a minimum the stray number fails. Not chosen: `@DurationUnit(ChronoUnit.MINUTES)` as the
+  default migration (it keeps a bare number's old meaning, but the name still carries the unit and the next reader
+  writes `15m` beside it); it stays for a setting that can't be renamed yet, with its reason.
+- **Proven before claimed** (`SettingsBindingTest`, on Boot's own `Binder` and `ApplicationConversionService`, no
+  Spring context, with test-only records so no setting exists to show a type): the `Duration` formats (`500ms` to
+  `7d`, ISO), `Period` (`7d`, `2w`, `1y`), `DataSize` (`512KB`, 1024 bytes a KB), the bare numbers' units (ms, days,
+  bytes), a minimum refusing a stray bare number through the validation bind handler, `Map<Enum, Duration>` with
+  kebab-case keys, an enum, a `Locale`, a `MediaType`, a `URI`, `Cron` through its public constructor, a value through
+  its `of(String)` alone, malformed values refused. Two claims turned out other than expected and the rule says what is
+  true: a factory method is found only when it is **public** (a package-private `of` gives "no converter found"); a `URI` is not refused for what its
+  grammar forbids, Spring encodes it (`http://bad host/` binds as `http://bad%20host/`, absolute, with no host), so a
+  record checks what it relies on (absolute, a host). An empty `${VAR:}` binds a `URI` as null, which the media
+  endpoint relies on (AWS). The AWS SDK's `Region` binds through its `Region.of` (`MediaPropertiesTest`, in the media
+  piece: core copies have no AWS SDK).
+- **Cron:** `common/scheduling/Cron`, a record whose constructor runs `CronExpression.parse` (or accepts Spring's
+  `"-"`); no `of(String)`: the record's public constructor is what Spring's converter binds, so a factory would be a
+  second way to build one. The jobs keep `@Scheduled(cron = "${app.jobs.<job>.cron}")`: the annotation is
+  what Spring's scheduler observes (`tasks.scheduled.execution`), what gives each run its log context, and what
+  `ConventionArchTest`'s `@MultiInstanceSafe` rule finds. Not chosen: scheduling through the record
+  (`SchedulingConfigurer.addCronTask`), which would lose all three for a value Spring parses anyway; the record makes
+  the setting typed and names its key when the expression is wrong (before Spring's post-processor names only the
+  method).
+- **The reference, made to pass its own rule:** the three jobs' `cron` a `Cron` (and the tenancy-schema overlay's
+  provisioning job); `BreachedPasswordProperties.apiUrl` a `URI` (Spring's `RestClient.Builder.baseUrl(URI)`) checked
+  absolute with a host, since a relative one would fail every lookup and the check fails open;
+  `MediaProperties.endpoint` a nullable `URI` (the SDK's `endpointOverride(URI)`; the `URI.create` in the config class
+  went), checked the same way, and `region` the SDK's `Region`; `app.limits.not-after-today.tolerance-days` (a number of
+  days read by key at each request) the `Period` `app.limits.not-after-today.tolerance: 1d` in its own
+  `NotAfterTodayProperties`, days only, 0 to 2 (`1m` would be a month). **Bounds** where a zero, negative or too-large
+  value breaks something: the access-token lifetime's minimum is now really `1s` (it said "between 1s and 15m" but
+  checked only "positive", so `JWT_ACCESS_TTL=15`, 15 ms, passed), the refresh lifetime at least `1h` (a bare number of
+  seconds binds as minutes' worth of milliseconds), the rotation grace at least zero and below the refresh lifetime
+  (the brief's example of a rule across fields), both presigned-URL expiries within SigV4's 1 s to 7 days (only the read
+  URL's maximum was checked: anything else failed every presign, at each request), the impersonation token at most 15m
+  like an access token (nothing ends it early), `@DurationMin(millis = 1)` on the timeouts, leases, the lock timeout, the rate
+  limit's window and the slow-request threshold (a timeout or lock timeout of zero often means none at all, and a
+  zero-length window refills nothing), `@DurationMin(days = 0)` on the waits and the pending lifetime; the overlays'
+  copies of those records alike. db.yml's Hikari
+  and PgJDBC numbers got comments naming their units (milliseconds, seconds): the libraries' setters take a number.
+- **Enforcement: ArchUnit**, `ConventionArchTest.settingsAreTypedByWhatTheyMean`, so it travels with every copy through
+  bootstrap: every `@ConfigurationProperties` class and the application's records it holds (a nested group, a value
+  such as `RateLimit`, a map's values), refusing `int`/`long`/`double` (boxed too) named `*Ms|Millis|Seconds|Minutes|
+  Hours|Days|Bytes|Kb|Mb` (and those words alone) and `String` named `*Url|Uri|Endpoint|Cron` (a host name alone is no
+  URI). Proven red twice: on fixtures (`ArchRuleScopeTest`: eight planted violations, a nested record's and a map
+  value's included, none on the typed twin or a count; the fixtures carry `@ConfigurationProperties`, so the
+  application's scan binds them, empty, in the test contexts too: harmless) and on
+  the real code (the token purge's `cron` set back to `String` fails the rule naming it). Not chosen: a shell lint in
+  verify.sh (it would check the skills repository only, never a project, and grep can't see a record's components or
+  follow a nested record). What it can't see stays review: a mode kept as text, a conversion in code, a missing bound.
+  A bound in the API's own unit (`time-entry.max-minutes`) is a `Limits` key read by key, so it never meets the rule.
+- **The startup check of renamed names is rule and bootstrap text, not reference code:** the reference has no
+  deployment carrying an old name (its one rename, `tolerance-days`, is a yml key with no environment variable, and a
+  `Period`'s bare number is days, the old meaning), and a refusal of `tolerance-days` would ship into every new copy,
+  which never had the key: the reference's review profile records it as a convention (CFG-10, CFG-12). bootstrap's *Adapt* tells an existing project how to migrate (new names, the old ones refused at startup,
+  the environment files and manifests in the same commit).
+- **The test profile is unchanged:** no reference test relies on a configured short lease or lifetime; the lease,
+  grace and expiry tests move time in the database (`lease_until = now() - interval '1 second'`, a rotated token's
+  `revoked_at` an hour back), which is exact and needs no wait. A short value in the test profile would be invented.
+- **crud-gen:** its conventions say the type rule once; 4.12's `Settings` takes a `Cron`, a `Period` for a table ending
+  on a `LocalDate`, the yml value with its unit; the final checklist gains a line.
