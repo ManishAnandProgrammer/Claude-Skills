@@ -817,3 +817,74 @@ per commit left eight commits failing `verify`). Decided, the recommended option
   29 to about 50 minutes, measured with another project building on the same machine (the image stage, which
   runs no analysis, also took twice as long). Static analysis still runs in every copy: each copy's code is
   its own (the markers, the overlays), and the tenancy overlays' findings showed up only there.
+
+## Data retention and low-priority static analysis (2026-11-18)
+
+The owner asked whether crud-gen and house-review cover "scheduled jobs delete expired sign-in tokens", and if not
+to add it; the recommended options were taken. news-pulse had no purge for any of its accumulating tables (tokens,
+codes, sign-in challenges, daily quotas, finished operations, an audit log) until its phase 6g built them.
+- **OPS-03 sharpened, no new ID**: Check (every accumulating kind named; each new table gets the question), the
+  purge's shape, *by the data's end of life* (a rotated refresh token stays until it expires, or REST-15's reuse
+  detection stops working; a code until its expiry plus its attempt window), personal data, Detect, Not a finding,
+  and Severity Medium with **High when callers who aren't signed in can make the table grow** (signup codes,
+  challenges, anonymous submissions, webhook deliveries). Gate 2 now loads OPS-03 for an entity, a changeset and a
+  scheduler, and the `data` focus does too: before, a diff adding a log table never read it.
+- **No new profile key**: `retentionExceptions` (DATA-07's legal retention) already held "kept instead of deleted",
+  and news-pulse already used it for its kept AI runs; its note now covers OPS-03's kept-by-decision tables.
+- **The period is the developer's** (skills ask, never guess): crud-gen Step 1 asks kept or accumulating, and for
+  accumulating rows the period and the column; only an expiry's own lifetime gives a default (the token's day). A
+  non-interactive run generates no purge and lists the question, since a period has no golden value.
+- **The golden purge** stays the sign-in piece's `RefreshTokenPurgeJob`, reviewed against the new rule. Fixed: its
+  batch was `id IN (SELECT … LIMIT …)`, which DATA-29's own Detect names (the planner may rerun the subquery per
+  outer row and delete more than a batch in one transaction): now `= ANY (ARRAY(… FOR UPDATE SKIP LOCKED))`, a
+  repository constant whose shape and plan `RefreshTokenIndexIntegrationTest` checks, and instances purging at once
+  take disjoint rows instead of waiting on each other's locks (the `@MultiInstanceSafe` reason said "disjoint" before
+  it was true). The cutoff is taken once per run from the injected `Clock` (it was per batch), the cron is UTC
+  (`zone = "UTC"`: otherwise it follows the host's time zone), `keepAfterExpiry` can't be negative (`@DurationMin(days = 0)`;
+  a negative period deletes live tokens and the rotated ones' reuse detection), and the test profile switches the
+  cron off (`"-"`): a test run crossing 03:15 UTC could delete other tests' fixtures mid-run.
+- **Not added to the golden purge:** a deleted-rows counter (OPS-07: a mitigation metric needs a consumer and an
+  alert; none would read this one, and Spring's `tasks.scheduled.execution` timer already counts each run, its
+  duration and its outcome, the signal for a purge that fails or hangs); a per-job log context
+  (`ScheduledRunLogContext` already gives every `@Scheduled` run its own request id and endpoint, where news-pulse
+  wraps each job in `LogContext.runWithNewId`); a shared loop helper (news-pulse's `BatchedDeletes.untilShort(int,
+  IntSupplier)` serves its five purges, but the golden loop is six lines and a lambda-taking helper is what SMELL-29
+  keeps out of generated code: each job is a small class of its own).
+- **No second purge in the reference.** Its tables are business records (todo lists, todos, tags, time entries,
+  plans, their links and attachments), bounded by their key (upload policies, metadata, counters), or already
+  purged: `media_files` by its cleanup job, a status-based purge with leases (removed and never-attached files), the
+  case a "finished N days ago" purge would show; `refresh_tokens` by the token purge. No reference table accumulates
+  rows with children through a foreign key, so that case is rule text (OPS-03, crud-gen Step 2 and 4.12) until a real
+  table needs it (KISS). The tenancy overlays' `platform_audit` and `tenant_status_changes` are a trail of staff
+  actions, low in volume: their retention is the project's decision, asked by bootstrap's new *Tables that only
+  accumulate* item.
+- **crud-gen generates the purge** like the golden one (4.12: the job, the service's one-batch method, the
+  repository constant, the index in the entity's changeset, `app.jobs.<entity>-purge.*`, the test profile's `"-"`,
+  tests.md row 34 and the batch in row 28), per tenant under `TenantScope.runAs` with tenancy, as the overlay's media
+  jobs run. `verify.sh` generates no entity, so the golden purge is what its copies exercise (every copy with
+  sign-in runs both purge tests).
+
+**SpotBugs at low priority** (CFG-11's "low waits for JSON logs": the reference already writes JSON in its deployed
+profile, and news-pulse gated low in phase 6g, its C82). Measured before deciding, per copy, with the exclude files of
+the time: the reference 88 low findings, the every-piece schema copy 128, the row copy 123. In the reference:
+`SPRING_ENDPOINT` 45 in 9 controllers, `CRLF_INJECTION_LOGS` 33 in 14 classes, `UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR`
+3 (one filter), `SE_TRANSIENT_FIELD_NOT_RESTORED` 3 (`AppException`), and one each of `DB_DUPLICATE_SWITCH_CLAUSES`,
+`SERVLET_HEADER`, `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION`, `THROWS_METHOD_THROWS_CLAUSE_BASIC_EXCEPTION`; the overlays
+added the platform's controllers and logging classes, `SQL_INJECTION_JDBC` 2 (schema mode's constant statements) and
+`SE_NO_SERIALVERSIONID` 1 per mode (Hibernate's connection provider). No security defect among them, as in news-pulse
+(3 fixes of 208). Gated anyway, as the owner decided for news-pulse: the gate's value is the next low finding, which
+must now be looked at (a low `SQL_INJECTION_*` or `PATH_TRAVERSAL_*` is exactly what a review wants to see), and the
+recurring cost is one entry per new controller, generated, and one per new class that logs a value.
+- **Fixed:** the duplicate switch clause (`MvcExceptionCodes`: `MissingServletRequestParameterException` is a
+  `ServletRequestBindingException`, one case covers both); the range filter's fields (`TimeEntryFilter` compared its
+  bounds in its own method: a bean bound through setters, whose fields SpotBugs reads as never null-checked, since it
+  doesn't follow `Objects.isNull`). Ranges now go through `DateRanges.isOrdered` and the new `NumberRanges.isOrdered`,
+  the filters and the upload policy's request alike, so a generated range filter brings no entry.
+- **Excluded per class and pattern, with reasons:** `SPRING_ENDPOINT` per controller (informational; who may call
+  what is the role annotation and its tests), `CRLF_INJECTION_LOGS` per class that logs a value (the deployed profile's
+  encoder escapes line breaks; a new logging class still gets looked at for SEC-04), the rest each by class and
+  method. Each piece's entries sit in its markers, so a copy gets exactly its own; the overlays' files carry the
+  platform's.
+- **Generated code now brings two kinds of entry:** the relation method's (before) and each controller's
+  `SPRING_ENDPOINT` (crud-gen 4.10, Step 7). Golden services and mappers log nothing, so generated code brings no
+  `CRLF_INJECTION_LOGS`; a generated purge logs an `Instant` and a count, which FindSecBugs doesn't taint.
