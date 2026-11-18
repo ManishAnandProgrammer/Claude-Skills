@@ -12,7 +12,7 @@ project doesn't have.
 | Key | Value | Notes |
 |---|---|---|
 | `mainBranch` | `main` | Base for diff mode; read from git when the profile is written (`git symbolic-ref --short refs/remotes/origin/HEAD`, else the current branch of a new repository), never left at `main` unchecked |
-| `buildCommand` | `./mvnw -B verify` | Compile + full tests (run every review). Include env/JDK prefixes the project needs |
+| `buildCommand` | `./mvnw -B verify` | The full gate command, run every review: compile, every test, ArchUnit and the quality gates (coverage minimum, static analysis: CFG-11). Never `test` alone: green means this command. Include env/JDK prefixes the project needs |
 | `testCommand` | `same` | Separate test command, if any |
 | `sourceRoots` | `src/main/java` | |
 | `testRoots` | `src/test/java` | |

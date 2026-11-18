@@ -184,3 +184,46 @@ scrape is secured, `{{metricsAuth}}`).
   publish the schema).
 - The prod pool is set explicitly (e.g. 30/10), never the default 10.
 - **Severity:** Medium (High when a missing profile exposes docs or development defaults).
+
+## CFG-11: Build quality gates
+The build's gate command (the profile's `buildCommand`, normally `./mvnw -B verify`) fails on more than a red
+test: a **coverage minimum** and **static analysis with security rules** run in `verify`, and CI runs that same
+command. Reference: `pom.xml` (JaCoCo 0.8.16; SpotBugs 4.10.5 with FindSecBugs 1.14.0) and `spotbugs-exclude.xml`.
+- **Coverage** (JaCoCo): the agent with the test run, the report and `check` in `verify`, a line and a branch
+  minimum for the whole code base (`coverage.line.minimum`, `coverage.branch.minimum`). Lombok's generated code
+  (`lombok.addLombokGeneratedAnnotation = true` in `lombok.config`) and the generated JPA metamodel (`*_`) are not
+  counted, and nothing else is left out: excluding a hand-written class to pass the gate is a finding.
+  - **Set from measurement:** at least three clean runs, each minimum **a full point below the lowest measured
+    value**, rounded down, with a comment saying so. A minimum within a point of the measured level fails at
+    random: a branch or two vary between runs (a retry, a race a test provokes), and the varying branch is a
+    timing-dependent test to find (TEST-07), never a reason to lower the minimum.
+  - **Only ever raised.** A lowered minimum in a diff is a finding (Medium): the fix is the tests the change
+    lacks. A raise is set by the same rule.
+- **Static analysis** (SpotBugs + FindSecBugs): effort max, threshold medium, `check` in `verify`: any finding
+  of medium priority or above fails the build. A real finding is fixed. A false positive gets one `<Match>` in
+  the exclude file: its **class** (and method, where the finding is one method's) and **bug pattern**, with a
+  one-line reason on it (why the pattern is not a defect at that code: the generated metamodel, a record handing
+  out a list it was built from and no one keeps, an injected singleton whose sharing is the point, a constructor
+  that refuses bad settings at startup in a class Spring proxies, JAVA-03).
+  - Never a `<Package>`, a whole `category`, a priority or rank, or a class pattern wider than one class: a new
+    finding of the same kind elsewhere must still fail. The metamodel's naming pattern (`~.*_`) with its two
+    patterns (`UUF_UNUSED_PUBLIC_OR_PROTECTED_FIELD`, `UWF_UNWRITTEN_PUBLIC_OR_PROTECTED_FIELD`) is the one
+    pattern entry: the classes are generated.
+  - **An entity's relation method** (one that points a JPA relation at its argument: `EI_EXPOSE_REP2`) is an
+    entry per class and method like any other, with the reason "a JPA relation holds the managed entity; it
+    can't be a copy"; crud-gen generates it with the entity, and it is the only entry generated code brings.
+  - In a diff, **a new entry is reviewed like a deviation** (Step 4): its reason must hold at the code it names;
+    when it doesn't, the finding is the defect the entry hides. An entry whose class or method no longer exists
+    is stale (Low).
+- **CI** runs the gate command and keeps the coverage report and `target/spotbugsXml.xml` whether the build is
+  green or red. A project without CI says where the command runs (a pre-push check, the release build).
+- **Green means the gate command.** "Green at every commit" (a brief, a review commit by commit, crud-gen's
+  commit per entity) is `buildCommand` at that commit, never the tests alone: a batch that ran `test` per commit
+  left commits that fail `verify`.
+- **Not the gate:** SonarLint is an IDE aid, never what passes or fails a build; Error Prone (a compiler
+  setup next to Lombok), PMD (weak security rules) and a SonarQube server are not required. A project with
+  another tool that fails the build on security rules at medium and above meets the static-analysis half.
+- **Detect:** `pom.xml` (`build.gradle`): the two plugins, their `check` goals bound to `verify`, the minimums'
+  properties and their comment; the exclude file; the CI workflow's command and kept reports.
+- **Severity:** Medium for a missing gate, a lowered minimum, a minimum within the noise, or an entry that is a
+  package or a category; Low for an entry without its reason or a stale one.

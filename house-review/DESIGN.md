@@ -771,3 +771,49 @@ sharper Detect / Fix / Not-a-finding lines; no new rule ID. Decided:
 - **ArchUnit rule scopes are proven on fixtures** (`ArchRuleScopeTest`): a narrowed rule must still
   refuse what it is for. It found that ArchUnit's `NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING` checks field
   writes only; the house rule is now a plain dependency rule.
+
+## Build quality gates (CFG-11; 2026-11-18)
+
+The owner lifted the feature freeze for this one item (news-pulse phases 6b and 6e: SpotBugs found six real
+null-path bugs there; a coverage gate set within run-to-run noise failed at random; a batch that ran only `test`
+per commit left eight commits failing `verify`). Decided, the recommended options taken:
+- **Libraries** (libraries-first, the same choice news-pulse made on 2026-11-17): `spotbugs-maven-plugin`
+  4.10.5.0 with `findsecbugs-plugin` 1.14.0, effort max, threshold medium (low priority waits for JSON logs, as
+  news-pulse C61 decided), and `jacoco-maven-plugin` 0.8.16. Both run on JDK 25 and Boot 4.1.2 in the reference
+  (class files of major version 69 analysed and instrumented, no unsupported-version warning). Not chosen: Error
+  Prone (a compiler plugin set up next to Lombok's annotation processor on JDK 25), PMD (weak security rules),
+  a SonarQube server or SonarCloud (a service to run; revisit for a team). SonarLint is fine as an IDE aid and
+  never the gate.
+- **Both gates run in `verify`**, static analysis first, so CI and every "green" mean one command. "Green at
+  every commit" is that command, never `test` alone (house-review Step 2, crud-gen Step 7, CFG-11).
+- **The coverage minimum is measured, never guessed:** three clean runs at least, each minimum a full point
+  below the lowest run, rounded down, a comment on the property saying so; only ever raised. Lombok's code
+  (`lombok.addLombokGeneratedAnnotation`) and the metamodel don't count. A copy's minimums are its own: the
+  reference's measure the reference's suite (bootstrap step 4 measures the copy's).
+- **The exclude file holds false positives one class and pattern at a time,** each with its reason; the
+  metamodel's naming pattern is the one pattern entry. A new entry in a diff is reviewed like a deviation;
+  `verify.sh` refuses a `<Match>` without a class and a pattern, or with a package, a category, a priority or
+  a rank.
+- **Records copy their collections** (Effective Java item 50), which is what SpotBugs' `EI_EXPOSE_REP` asks
+  and what generated records must do for crud-gen's output to pass the gate with no new entry: a response or
+  an internal value `List.copyOf` / `Map.copyOf` in its compact constructor (the house wrappers already did);
+  a request body `Collections.unmodifiable*`, null-safe, because Jackson builds it before validation and a null
+  element must reach the constraint that names it. Checked: SpotBugs 4.10.5 accepts both shapes.
+- **What stays an entry** (the kinds, in the reference): the metamodel; `CT_CONSTRUCTOR_THROW` on Spring
+  singletons that refuse a missing setting at startup (open for proxies); `EI_EXPOSE_REP2` on a bean keeping an
+  injected singleton; `PREDICTABLE_RANDOM` on `Retry-After` jitter; `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` on a
+  managed entity held by a JPA relation or handed between the halves of one call.
+- **The entity's relation method is the one entry generated code brings** (the session owner's decision):
+  `EI_EXPOSE_REP2` on a method that points a JPA relation at its argument (golden `Todo.moveTo`) is inherent to
+  JPA (an entity is mutable and the relation holds it, never a copy), so crud-gen generates that entry with the
+  entity, per class and method, with one fixed reason. Any other finding in generated code is a reference bug.
+- **Each copy stage of `verify.sh` has its own coverage minimums**: a copy holds fewer tests than the reference
+  (core and sign-in alone measured 0.89 / 0.76 against the reference's 0.95 / 0.84), so it is measured and set
+  by the same rule, and the tenancy overlays' code, which only the tenancy copies run, is gated there.
+- **Each overlay carries its own exclude entries** the way it carries its code: an overlay's
+  `spotbugs-exclude.xml` replaces the reference's in a copy of that mode, pinned in `overlays/replaced.sha256`
+  like any replaced file.
+- **Cost:** the reference's `verify` went from 1 min 55 s to 2 min 38 s - 3 min 00 s; `verify.sh` from about
+  29 to about 50 minutes, measured with another project building on the same machine (the image stage, which
+  runs no analysis, also took twice as long). Static analysis still runs in every copy: each copy's code is
+  its own (the markers, the overlays), and the tenancy overlays' findings showed up only there.

@@ -21,7 +21,11 @@
   - mappers and services are public only because the layered layout puts them in different
     packages;
   - fields are `private final` where possible;
-  - DTOs are records;
+  - DTOs are records; a record's collection is copied in its compact constructor (`List.copyOf`,
+    `Map.copyOf`; a request body's wrapped read-only and null-safe, `Collections.unmodifiableSet`, since
+    Jackson builds it before validation and a null element must reach its constraint), which is also what
+    the static-analysis gate's `EI_EXPOSE_REP` asks (CFG-11); a record holding a managed entity is the
+    exception, its exclude entry saying so;
   - `final` is **not** required on local variables, parameters or classes (Spring proxies need
     non-final classes).
 - **Severity:** Low.

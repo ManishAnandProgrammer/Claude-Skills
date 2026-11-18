@@ -112,7 +112,8 @@ Architecture:
 
 ## Step 2: Build and test
 
-Run the profile's `buildCommand` and `testCommand` (normally one `verify` run). **Delegated
+Run the profile's `buildCommand` and `testCommand` (normally one `verify` run: the tests, ArchUnit and the
+quality gates, CFG-11). **Delegated
 reviewer:** when the caller hands over the results of a build of exactly the reviewed code (one
 `target/` and one Testcontainers set per working tree: a second build collides with work running
 there), use them instead and say so in the report's header, with the commit they came from.
@@ -122,6 +123,18 @@ there), use them instead and say so in the report's header, with the commit they
   diagnose them beyond reading the failure, unless they are in scope.
 - A red ArchUnit rule is a finding citing the rule name and its `because`. Don't hand-check what
   a green ArchUnit rule guarantees: list it under "Checked and fine (ArchUnit)".
+- A red quality gate is a finding the same way (CFG-11): a coverage minimum missed cites the counter, the
+  measured ratio and the minimum, and its fix is the tests the scoped change lacks (TEST-01); a SpotBugs
+  finding cites its bug pattern, class and method, under the rule it breaks where one fits (SEC-05 for an
+  injection, JAVA-08 for a null path, JAVA-03 for exposed state), else CFG-11. `verify` stops at the first
+  red gate, and static analysis runs before the coverage check: a red SpotBugs gate leaves coverage
+  unmeasured, so say so in the report rather than calling it green. Don't hand-check the patterns a green
+  SpotBugs gate covers (null paths, exposed internal state, the injection sinks FindSecBugs knows): list
+  them under "Checked and fine (gates)". A pattern the exclude file lists for a scoped class is checked by hand
+  at that class (its reason must hold, CFG-11).
+- **Green at a commit** means `buildCommand` at that commit, never the tests alone. A review that checks a
+  range commit by commit (`commit <a>..<b>`, a brief asking for every commit green) runs it at each one,
+  in a scratch worktree of that commit when the reviewed tree is in use.
 - Note the total duration. When an earlier report in `reportDir` records one, give the difference in
   one line.
 
@@ -159,7 +172,7 @@ section *Tests (TEST)*.
 | Changeset (`migrationsDir`), configuration (`application*.yml`, `config/*.yml`, `logback*.xml`) | the core without java.md; config-baseline.md |
 | Messages file (`message_*.properties`) | error-contract.md; lenses.md's section *Tests (TEST)* |
 | A scheduler, an outbound client (S3, HTTP) or a cache, besides its own row | REL-01, REL-08, PERF-05 and the rules they name: REL-02, REL-04, REL-09, OPS-05, OPS-06, CONC-01, ARCH-17, REST-13, REST-15 |
-| Anything else: a class in `config/` or `common/` (security, filters, the exception handler), a listener or executor, a build or deploy file, a kind this table doesn't name | every reference the pieces allow |
+| Anything else: a class in `config/` or `common/` (security, filters, the exception handler), a listener or executor, a build or deploy file (`pom.xml`, `spotbugs-exclude.xml`, a CI workflow, a Dockerfile), a kind this table doesn't name | every reference the pieces allow |
 
 When a file's kind, or whether a rule applies to it, is unclear, load the reference.
 
@@ -169,7 +182,7 @@ When a file's kind, or whether a rule applies to it, is unclear, load the refere
 |---|---|
 | `api` | rest-api.md, error-contract.md, REL-10, ARCH-13, DATA-10 (the indexes a new sort, filter or dropdown needs) |
 | `data` | persistence.md; lenses.md's section *Lens 8: Concurrency (CONC)*; REST-08, REST-09, ERR-03 |
-| `tests` | lenses.md's section *Tests (TEST)*; ERR-06, ERR-07, DATA-06, DATA-10 and DATA-19 (their **Detect** hints name test defects) |
+| `tests` | lenses.md's section *Tests (TEST)*; ERR-06, ERR-07, DATA-06, DATA-10 and DATA-19 (their **Detect** hints name test defects); CFG-11 (the coverage gate) |
 | `security` | REST-09, REST-14 to REST-18, REST-22, REST-25; TEST-02, TEST-03, TEST-04 |
 | `config` | config-baseline.md; DATA-19 |
 | `arch` | architecture.md, code-smells.md |
@@ -243,7 +256,11 @@ not as a new finding, so the same problem doesn't reappear in every module's rev
    - a marker with no register entry, or an entry with no marker: report as **stale (Low)**;
    - a marker whose code has changed so much that the reason no longer applies: report as
      **stale (Low)**.
-4. **Broken-window alarm:** when a rule has `deviationAlarm` (default 3) or more accepted
+4. **The exclude file is a register too** (`spotbugs-exclude.xml`, CFG-11): an entry the scope adds is
+   reviewed as a new deviation (its reason holds at the code it names, or the finding is the defect it
+   hides); an entry for a class or method that no longer exists is stale (Low). A lowered coverage
+   minimum is never a deviation: it is a finding.
+5. **Broken-window alarm:** when a rule has `deviationAlarm` (default 3) or more accepted
    deviations project-wide, report a **Medium** finding: "a pattern is forming". The fix is
    either to change the rule in the profile (with a reason) or to refactor the deviations.
 
@@ -344,7 +361,7 @@ Build: ok | failed · Tests: x passed, y failed · Duration: …
 (fixed, open, stale or rejected, with evidence)
 
 ## Checked and fine
-(short list, so the reader knows what was covered; ArchUnit-guaranteed rules separately)
+(short list, so the reader knows what was covered; ArchUnit- and gate-guaranteed rules separately)
 
 ## Not investigated enough
 (coverage gaps)
