@@ -599,8 +599,10 @@ if wants image; then
     [[ "$codes" == *429* ]] || { echo "FAILED: no 429 after repeated logins (rate limiting is off: is Redis reached?): $codes" >&2; exit 1; }
     [ "$(in_app 'curl -s -o /dev/null -w "%{http_code}" localhost:8080/actuator/prometheus')" = 404 ] \
         || { echo "FAILED: /actuator/prometheus answers on the public port" >&2; exit 1; }
-    in_app 'curl -sf localhost:8081/actuator/prometheus' | grep -q '^rate_limit' \
-        || { echo "FAILED: no rate-limit metrics on the management port" >&2; exit 1; }
+    # Read whole before the grep: grep -q stops at its first match, and under pipefail the curl it cut off would
+    # fail the check at random.
+    metrics="$(in_app 'curl -sf localhost:8081/actuator/prometheus')"
+    grep -q '^rate_limit' <<< "$metrics" || { echo "FAILED: no rate-limit metrics on the management port" >&2; exit 1; }
     # A path the security firewall refuses gets the house Problem Details with its request id, on the real
     # server (MockMvc never sends a rejected request to Boot's /error). Tomcat refuses an encoded '/', '\' or
     # NUL before any filter, with its own 400 page: no setting changes that, so only the status is checked.
