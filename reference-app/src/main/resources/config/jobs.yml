@@ -6,10 +6,13 @@ app:
       threads: 2
       # On shutdown, running jobs get this long to finish; within spring.lifecycle.timeout-per-shutdown-phase.
       shutdown-wait: 10s
+    # Deletes expired refresh tokens (RefreshTokenPurgeJob), every night at 03:15 UTC.
     refresh-token-purge:
       cron: "0 15 3 * * *"
-      # Tokens are deleted this long after they expired.
+      # Tokens are deleted this long after they expired: by expiry, never by revocation, since a rotated token must
+      # stay until it expires for its reuse to be seen.
       keep-after-expiry: 1d
+      # Rows per statement, each statement its own short transaction.
       batch-size: 1000
     # media:begin
     # Confirms attached files whose upload URL has expired: present -> UPLOADED, absent -> MISSING.

@@ -2,10 +2,12 @@ package com.example.app.user.service;
 
 import com.example.app.support.IntegrationTest;
 import com.example.app.support.WithoutTestTenant;
+import jakarta.validation.Validator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Duration;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,6 +18,9 @@ class RefreshTokenPurgeJobIntegrationTest extends IntegrationTest {
 
     @Autowired
     private RefreshTokenPurgeJob job;
+
+    @Autowired
+    private Validator validator;
 
     /** Inserts a token directly; {@code expiresAt} is an SQL expression relative to now. */
     private UUID insertToken(UUID userId, String expiresAt, boolean revoked) {
@@ -69,5 +74,16 @@ class RefreshTokenPurgeJobIntegrationTest extends IntegrationTest {
         Integer left = jdbc.queryForObject("select count(*) from refresh_tokens where user_id = ? and expires_at < now() - interval '1 day'",
                 Integer.class, userId);
         assertThat(left).isZero();
+    }
+
+    @Test
+    @DisplayName("A negative keep-after-expiry stops startup: it would delete live tokens and, with the rotated ones, the reuse detection")
+    void aNegativeKeepAfterExpiryIsRefused() {
+        RefreshTokenPurgeJob.Settings negative = new RefreshTokenPurgeJob.Settings("-", Duration.ofHours(-1), 1000);
+        RefreshTokenPurgeJob.Settings none = new RefreshTokenPurgeJob.Settings("-", Duration.ZERO, 1000);
+
+        assertThat(validator.validate(negative)).extracting(violation -> violation.getPropertyPath().toString())
+                .containsExactly("keepAfterExpiry");
+        assertThat(validator.validate(none)).isEmpty();
     }
 }

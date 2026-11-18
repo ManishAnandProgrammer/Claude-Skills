@@ -42,13 +42,19 @@ app:
     bucket: test-media
     region: us-east-1
     path-style-access: true
+  # media:end
   # The jobs run only when a test calls them, never on their own in the middle of another test.
   jobs:
+    # sign-in:begin
+    refresh-token-purge:
+      cron: "-"
+    # sign-in:end
+    # media:begin
     media-verification:
       cron: "-"
     media-cleanup:
       cron: "-"
-  # media:end
+    # media:end
 springdoc:
   api-docs:
     enabled: true

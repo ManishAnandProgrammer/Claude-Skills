@@ -14,12 +14,12 @@ a7c17b6cf7080c55bfe970621cc5841aa82f6246ba212fd983436555fac3390a  reference-app/
 b9f2fdf2584c4032e84fa0cc845d4fade2a81a6f03a7a74821b166271735ac1d  reference-app/src/main/java/com/example/app/user/controller/AuthController.java
 5b29eea3687be9e419905ae9ce03b6bf5ec40e6ebd3f5907a19dce002f6335e4  reference-app/src/main/java/com/example/app/user/domain/RefreshToken.java
 0908df5e7489ba338bc8c2974f585f98b473b7eaff0953b10860d2fd1a45c463  reference-app/src/main/java/com/example/app/user/service/AuthService.java
-954c83966399d176500abcbb07790361e6c044c634802ab2125b4d7fb4d8a8ef  reference-app/src/main/java/com/example/app/user/service/TokenService.java
+2918887fb34b82babfae49f802a6a33a686f5ba96dc9aeb1b012c4922f5c1c99  reference-app/src/main/java/com/example/app/user/service/TokenService.java
 3174e9f682a45de0f93449b50ca830a72d7a0ad856f9e4ac71eb34589424d41f  reference-app/src/test/java/com/example/app/support/IntegrationTest.java
 d63483c18ae6affa68c408fb3f5089c3bbb1ec62852c50fec13804867b8f6b8c  reference-app/src/test/java/com/example/app/support/PreviousReleaseDatabase.java
 3e28cb2231095c2b14e17bca8bc48964b71e97857261db0dc93f429277091555  reference-app/src/test/java/com/example/app/TestcontainersConfiguration.java
 dc753cd4479df79131184a6fa3d777e90faf993a5ea45484288b73f2206a116e  reference-app/src/test/java/com/example/app/todo/UpgradeFromPreviousReleaseIntegrationTest.java
-d9d11a9f1604519851f2bd9dbaabb8db6ab02f32ee032fd6c20f48cca10f776c  reference-app/src/test/java/com/example/app/user/service/RefreshTokenPurgeJobIntegrationTest.java
+f9bdae9414f06ceb5e0b8fc9095a559d8bc2032b4e8844620e88da867cfdaeba  reference-app/src/test/java/com/example/app/user/service/RefreshTokenPurgeJobIntegrationTest.java
 fd7d7db54567443c3c209ee2c63a90613d0828b61aaf34b52992599d7c154770  reference-app/src/test/java/com/example/app/user/service/SessionVersionServiceIntegrationTest.java
 7efd1562e9fb82b154a9ae62ccbe52b65726afb0c305b1f88c95872c01e76a55  reference-app/src/test/java/com/example/app/user/TokenPathIntegrationTest.java
 bfcd6a30352e8fe140a98745690052c852d5261a08cd9f314386585fbae4a265  reference-app/src/test/resources/db/upgrade/previous-release-seed.sql

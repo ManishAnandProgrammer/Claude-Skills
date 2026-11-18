@@ -25,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
@@ -147,10 +146,13 @@ class TokenService {
         return repository.findByTokenHash(tokenHash).orElseThrow(AppException.supply(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
     }
 
-    /** One batch of the purge; each batch is its own short transaction. */
+    /**
+     * One batch of the purge ({@code RefreshTokenPurgeJob}), in a short transaction of its own: up to
+     * {@code batchSize} tokens that expired before {@code expiredBefore}; the rows deleted.
+     */
     @Transactional
-    int deleteExpiredBatch(Duration keepAfterExpiry, int batchSize) {
-        return repository.deleteExpiredBefore(clock.instant().minus(keepAfterExpiry), batchSize);
+    int deleteExpiredBefore(Instant expiredBefore, int batchSize) {
+        return repository.deleteExpiredBefore(expiredBefore, batchSize);
     }
 
     private void refuseRevoked(RefreshToken token, Instant now) {

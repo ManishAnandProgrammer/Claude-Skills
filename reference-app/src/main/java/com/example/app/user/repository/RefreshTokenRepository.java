@@ -12,6 +12,21 @@ import java.util.UUID;
 
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID> {
 
+    /*
+     * One batch of the purge (RefreshTokenPurgeJob), a constant so that RefreshTokenIndexIntegrationTest plans
+     * exactly what the job runs. The batch is an ARRAY(...) of the locked ids, which PostgreSQL computes once (an
+     * init plan); as "id IN (SELECT ... LIMIT ...)" the planner may run the subquery again per outer row and delete
+     * more than one batch in one transaction (house-review DATA-29). SKIP LOCKED: instances purging at once take
+     * disjoint rows instead of waiting for each other's.
+     */
+    String DELETE_EXPIRED = """
+            DELETE FROM refresh_tokens
+            WHERE id = ANY (ARRAY(SELECT id
+                                    FROM refresh_tokens
+                                   WHERE expires_at < :expiredBefore
+                                   LIMIT :batchSize
+                                   FOR UPDATE SKIP LOCKED))""";
+
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
     /**
@@ -52,10 +67,8 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
              where t.user.id = :userId and t.revokedAt is null""")
     int revokeAllOfUser(UUID userId, RevocationReason reason, Instant now);
 
+    /** Deletes up to {@code batchSize} tokens that expired before {@code expiredBefore}; the rows deleted. */
     @Modifying
-    @Query(value = """
-            delete from refresh_tokens
-             where id in (select id from refresh_tokens where expires_at < :cutoff limit :batchSize)""",
-            nativeQuery = true)
-    int deleteExpiredBefore(Instant cutoff, int batchSize);
+    @Query(nativeQuery = true, value = DELETE_EXPIRED)
+    int deleteExpiredBefore(Instant expiredBefore, int batchSize);
 }
