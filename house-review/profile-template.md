@@ -67,7 +67,7 @@ project doesn't have.
 | `idStrategy` | `uuidv7` | DATA-09: `uuidv7`, `long-sequence`, ... |
 | `auditedTables` | `none` | DATA-08: tables with trigger-based change history |
 | `auditMechanism` | `pg-trigger` | DATA-08 |
-| `retentionExceptions` | `none` | DATA-07: tables kept for legal retention instead of deleted |
+| `retentionExceptions` | `none` | DATA-07, OPS-03: tables kept instead of deleted or purged (a legal retention; rows that only accumulate, kept by the owner's decision), each with its reason. Every other accumulating table has a purge job |
 
 ## Thresholds
 

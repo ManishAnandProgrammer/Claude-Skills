@@ -167,11 +167,11 @@ section *Tests (TEST)*.
 
 | Changed file | Loads |
 |---|---|
-| Java of a feature module: controller, API interface, request, response, filter and view records, entity and domain enums, repository and its implementation, service, facade, Manager, mapper, `*ConstraintErrorCodes` | the core; lenses.md's section *Lens 8: Concurrency (CONC)*; PERF-01 (the profile's `hotPaths` answer it on every change) |
+| Java of a feature module: controller, API interface, request, response, filter and view records, entity and domain enums, repository and its implementation, service, facade, Manager, mapper, `*ConstraintErrorCodes` | the core; lenses.md's section *Lens 8: Concurrency (CONC)*; PERF-01 (the profile's `hotPaths` answer it on every change); OPS-03 (an entity or its repository: are its rows kept or do they accumulate) |
 | Test (`testRoots`) | the core |
-| Changeset (`migrationsDir`), configuration (`application*.yml`, `config/*.yml`, `logback*.xml`) | the core without java.md; config-baseline.md |
+| Changeset (`migrationsDir`), configuration (`application*.yml`, `config/*.yml`, `logback*.xml`) | the core without java.md; config-baseline.md; OPS-03 (a changeset that creates a table) |
 | Messages file (`message_*.properties`) | error-contract.md; lenses.md's section *Tests (TEST)* |
-| A scheduler, an outbound client (S3, HTTP) or a cache, besides its own row | REL-01, REL-08, PERF-05 and the rules they name: REL-02, REL-04, REL-09, OPS-05, OPS-06, CONC-01, ARCH-17, REST-13, REST-15 |
+| A scheduler, an outbound client (S3, HTTP) or a cache, besides its own row | REL-01, REL-08, PERF-05 and the rules they name: REL-02, REL-04, REL-09, OPS-03 (a purge job), OPS-05, OPS-06, CONC-01, ARCH-17, REST-13, REST-15 |
 | Anything else: a class in `config/` or `common/` (security, filters, the exception handler), a listener or executor, a build or deploy file (`pom.xml`, `spotbugs-exclude.xml`, a CI workflow, a Dockerfile), a kind this table doesn't name | every reference the pieces allow |
 
 When a file's kind, or whether a rule applies to it, is unclear, load the reference.
@@ -181,7 +181,7 @@ When a file's kind, or whether a rule applies to it, is unclear, load the refere
 | Focus | Loads |
 |---|---|
 | `api` | rest-api.md, error-contract.md, REL-10, ARCH-13, DATA-10 (the indexes a new sort, filter or dropdown needs) |
-| `data` | persistence.md; lenses.md's section *Lens 8: Concurrency (CONC)*; REST-08, REST-09, ERR-03 |
+| `data` | persistence.md; lenses.md's section *Lens 8: Concurrency (CONC)*; REST-08, REST-09, ERR-03, OPS-03 |
 | `tests` | lenses.md's section *Tests (TEST)*; ERR-06, ERR-07, DATA-06, DATA-10 and DATA-19 (their **Detect** hints name test defects); CFG-11 (the coverage gate) |
 | `security` | REST-09, REST-14 to REST-18, REST-22, REST-25; TEST-02, TEST-03, TEST-04 |
 | `config` | config-baseline.md; DATA-19 |

@@ -254,7 +254,7 @@ is code-smells.md, java.md and architecture.md.
   - retries back off and count attempts, and the Nth failure is DEAD;
   - claim queries can't be starved by orphans;
   - "replay" really re-does the work;
-  - finished rows are purged (OPS-03);
+  - finished rows are purged by their finish time, never while running (OPS-03);
   - a sweep that ends work stuck in progress judges by when the work **started** (a claim the running
     thread sets, `started_at`), never by when it was queued or created: work that waited in a queue is
     otherwise ended as it starts. What never started has a limit of its own (the queue wait).
@@ -409,10 +409,50 @@ is code-smells.md, java.md and architecture.md.
   - configuration comes from env-bound typed properties.
 - **Severity:** Low / Medium.
 
-### OPS-03: Growth
-- **Check:** tables that only grow (tokens, codes, outbox, delivery logs, history) have retention
-  or purge jobs.
-- **Severity:** Medium.
+### OPS-03: Growth (retention and purge jobs)
+- **Check:** a table whose rows only accumulate has a purge job, or `{{retentionExceptions}}` lists it with the
+  owner's reason (kept by decision: a legal retention, rows another table still refers to). Accumulating rows are
+  tokens, one-time codes, sign-in challenges, an outbox, delivery or webhook logs, daily quotas and usage counters,
+  finished jobs or operations, history and audit rows: rows nobody edits again, added by every request or job of a
+  kind. Each table a change adds gets the question (kept or accumulating; crud-gen asks it), and its answer is in
+  the code (the job) or the profile (the exception).
+- **The purge** (golden: the sign-in piece's `RefreshTokenPurgeJob` over `TokenService.deleteExpiredBefore` and
+  `RefreshTokenRepository.DELETE_EXPIRED`, tests `RefreshTokenPurgeJobIntegrationTest`,
+  `RefreshTokenIndexIntegrationTest`):
+  - deletes in batches, each statement its own short transaction (a `@Transactional` one-batch method of the
+    table's service, called until a batch comes back short), so no transaction nears DATA-19's statement and lock
+    timeouts and no request waits long on its row locks;
+  - the batch is `id = ANY (ARRAY(SELECT id … WHERE <column> < :cutoff LIMIT :batchSize FOR UPDATE SKIP
+    LOCKED))`: computed once (DATA-29's shape), and instances purging at once take disjoint rows;
+  - the cutoff column has its index (partial when only some rows qualify: `WHERE finished_at IS NOT NULL`), and
+    the batch is planned on it in the index test (DATA-10);
+  - the `@Scheduled` method declares its multi-instance posture (ARCH-12);
+  - the retention period, the cron (`zone = "UTC"`) and the batch size are validated settings
+    (`app.jobs.<thing>-purge.*`; a period can never be negative), the cutoff taken once per run from the injected
+    `Clock`; the test profile switches the cron off (`"-"`) and the tests call the job;
+  - the run logs its cutoff and its count, one line per run (OPS-01); the scheduler's own
+    `tasks.scheduled.execution` timer has its duration and outcome. A counter of deleted rows only with a consumer
+    (OPS-07);
+  - rows with children through a foreign key: the children go first (their own batch, or in the parent's
+    statement), or the parent stays while a child refers to it (`NOT EXISTS` in the batch); never an
+    `ON DELETE CASCADE` added for the purge without a changeset comment saying so (a cascade deletes rows nobody
+    counted, inside the parent's batch, and from every other delete of the parent too).
+- **By the data's end of life, never by a status change that still matters:** a rotated or revoked refresh token
+  stays until it expires, or presenting it again is no longer seen as reuse and no longer ends the family
+  (REST-15); a one-time code until its expiry plus the window its attempts are counted over; a challenge until it
+  expires; finished work by its finish time, a running row never; a usage row once its day is past every reader.
+  The period is the developer's (a business decision, never a guess); only the data's own lifetime gives a default
+  (an expired token is useless once it expired).
+- **Personal data** (an email, a phone number, an address, a person's tokens): kept as long as anyone needs it, said
+  in the setting's comment, never forever (SEC-04; DATA-07: personal data is truly deletable).
+- **Detect:** an entity or changeset of an append-only kind (a `*_log`, `*_events`, `*_tokens`, `*_codes`,
+  `*_attempts`, `*_deliveries`, `*_history` table; rows with an `expires_at` or `finished_at`) without a purge job or
+  an exception; a purge by `revoked_at` or `created_at` where the rows have an expiry; a purge that deletes in one
+  statement, without its index, or with the period in code.
+- **Not a finding when:** business records the domain keeps (orders, stories, users, todos); a table in
+  `{{retentionExceptions}}` with its reason; a table bounded by its key (a row per account, a settings singleton).
+- **Severity:** Medium; **High** when callers who aren't signed in can make the table grow (signup codes, sign-in
+  challenges, anonymous submissions, webhook deliveries): the disk fills at an attacker's pace.
 
 ### OPS-04: A refusal is not an error
 - **Check:**
