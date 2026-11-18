@@ -40,6 +40,7 @@ tell the user to run the skills installer.
 | `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`) of a **configured maximum length** (`getLengthInDays`, `plan.max-days`), an **overlap filter with a lower index bound** (`plannedFrom`/`plannedTo`: `ends_on >= from`, `starts_on <= to` and the derived `starts_on >= from - (max - 1)`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 | `<ref>/todo/service/TagMergeManager.java` + `TagService.lockForMerge` / `finishMerge`, `TodoService.moveTagLinks`, `TagRepository.findForKeyUpdateByIdAndOwnerId`, `TodoRepository.lockAllCarryingTag`, `TodoTagRepository.addTargetWhereSourceIs`, `POST /tags/{id}/merge`; test `TagMergeIntegrationTest` | **A Manager** writing two aggregates in one transaction (`MANDATORY` halves, one lock order, a key lock, bulk statements, both rolled back on a failure) |
 | `<ref>/todo/service/TodoService.java` (`findById`, `notOwned`) + `TodoRepository.findVisibleWithTodoList`, `existsByIdAndRequesterId`, `TodoApi.NOT_YOURS`; test `TodoRequesterIntegrationTest` | **A record two parties see with different rights**: the owner does everything, the requester reads (403 `TODO_NOT_YOURS` on the rest), anyone else 404 |
+| `<ref>/user/service/RefreshTokenPurgeJob.java` + `TokenService.deleteExpiredBefore`, `RefreshTokenRepository.DELETE_EXPIRED`, `~/.claude/skills-reference/src/main/resources/config/jobs.yml` (`refresh-token-purge`); tests `RefreshTokenPurgeJobIntegrationTest`, `RefreshTokenIndexIntegrationTest` | **A purge job** for rows that accumulate (4.12): by the data's end of life, in batches of short transactions, its index, its settings |
 
 The rules behind the shape are the house-review references: `rest-api.md`, `error-contract.md`,
 `persistence.md`, `java.md`, `code-smells.md`, `lenses.md` (TEST-xx), `architecture.md`,
@@ -221,10 +222,18 @@ request or the profile already says. Record each answer in the crud profile's *D
   (4.3; without tenancy a person stays an id), or by id only;
 - **upload limits**: per upload purpose, the file sizes, file counts and content types (Step 5);
 - **overlap race**: with an exclusion constraint, whether DATA-35's rare 503 is accepted (the default) or
-  the endpoint's traffic makes it normal, so the scope is serialised.
+  the endpoint's traffic makes it normal, so the scope is serialised;
+- **retention** (house-review OPS-03): are the rows **kept** (a business record: an order, a todo, a person) or
+  do they **accumulate** (a log, an event, a token or code, an attempt, a delivery, finished work: rows nobody edits
+  again, added by every request or job of a kind)? For accumulating rows: **after how long** they are deleted, and
+  **from which column** (`expires_at`, `finished_at`, `created_at`): the data's end of life, never a status change
+  that still matters (a rotated token stays until it expires). The period is the developer's; an expiry column's
+  own lifetime is the only default (the golden token's day after expiry). Accumulating rows kept by the owner's
+  decision go in the review profile's `retentionExceptions` with the reason; otherwise 4.12 generates the purge.
 A golden value (`plan.dates`, the golden upload seed's limits) is an example, never an answer. When
 nobody can be asked (a non-interactive run), take the golden value, record it as **assumed**, and list it
-in the report.
+in the report; a retention period has no golden value: generate no purge, and list the entity's retention as an
+open question (OPS-03) in the report.
 
 ---
 
@@ -249,6 +258,7 @@ Check before generating:
 | A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one. Its "taken on update" test (tests.md row 11) means the writes that move a row **into** the live status or change the pair; when none does (the pair fixed at the create, no move back to live), the create's test is the whole duty: say so. When the entity also has a **date range**, ask the follow-up: "(a digits-only identifier, an ISBN, needs no `COLLATE "C"`: digits sort the same in every collation; a code with letters keeps it) does a finished record (past its `endsOn`, still `<LIVE>`) still block a new one?" (a student who completed a course retaking it). If not, the rule is either no overlapping live ranges, DATA-35's exclusion constraint `WHERE (status = '<LIVE>')`, or a decided terminal status (`COMPLETED`, set by a person or a job), never "live" read from the dates (DATA-37) | DATA-05, DATA-35, DATA-37 |
 | Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is not applied**, ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
 | A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column; a `moveTo` brings its exclude entry (Step 7) | DATA-33, CFG-11 |
+| Accumulating rows (Step 1's *retention*): the column the purge reads is `NOT NULL`, or the purge's index is partial on its set rows (`WHERE finished_at IS NOT NULL`: running work is never purged); its index goes into the entity's changeset (4.12). A table that references it by a foreign key: ask whether its rows go first or keep the parent; no `ON DELETE CASCADE` added for the purge without the changeset saying so | OPS-03, DATA-10 |
 | `Instant` for moments, `LocalDate` for picked dates, no time zones | JAVA-25 |
 | A display number comes from the metadata piece's gapless `Counters` (golden `Todo.number`: a fixed counter seeded by its changeset, after the highest number of the rows already there; with tenancy one per tenant, the TEN-18 row below), or without that piece from a sequence; a fixture inserting rows splices in a number (tests.md) | DATA-14 |
 
@@ -448,7 +458,9 @@ description and its 400 response name it.
 - **Range filters:** `<x>From` / `<x>To` for dates, `min<X>` / `max<X>` for numbers, both inclusive;
   each bound carries the field's own constraints (`@Min`, `@ConfiguredMax`); the filter has one
   `@CrossField(reportedOn = "<x>To", message = …) boolean is<X>RangeOrdered()` per range (true when either
-  bound is absent), so an inverted range is a 400 naming the range's end, the parameter a form shows the
+  bound is absent: `DateRanges.isOrdered` for days, `NumberRanges.isOrdered` for numbers, never the comparison
+  written in the filter, whose fields static analysis then reads as never null-checked, CFG-11), so an inverted
+  range is a 400 naming the range's end, the parameter a form shows the
   error under (`spentOnTo`, `maxMinutes`; golden `TimeEntryFilter`; ERR-07). Any other rule across fields
   takes the same shape, reported on the field that needs the other (golden
   `TodoFilter.isDueOnOrBeforeSortedByDueDate`, on `dueOnOrBefore`); a plain `@AssertTrue` is refused by
@@ -773,12 +785,40 @@ Golden `TodoController`: package-private, `implements <Entity>Api`, class-level
 shared root's writes (and its personal-data reads) carry the role Step 1 decided. A user-level resource needs no
 `@PreAuthorize` (every authenticated principal is a user); the dropdown carries
 `{{dropdownSecurity}}` explicitly because it is often shared by screens of different roles.
-Role checks are meta-annotations such as `@AdminOnly` (REST-25, golden `MetadataController`).
+Role checks are meta-annotations such as `@AdminOnly` (REST-25, golden `MetadataController`). Its
+`SPRING_ENDPOINT` entry goes into the exclude file with it (Step 7).
 
 ### 4.11 Dropdown (when the entity carries `{{dropdownAnnotation}}`)
 Read `references/dropdown.md`. Golden: `TodoListRepositoryImpl.findDropdownItems`,
 `TodoListService.dropdown`, `TodoListController.dropdown`. The label is a text key the cursor carries:
 size the cursor limit for it (4.2).
+
+### 4.12 Purge job (accumulating rows, Step 1's *retention*)
+Golden: the sign-in piece's `user/service/RefreshTokenPurgeJob` over `TokenService.deleteExpiredBefore` and
+`RefreshTokenRepository.DELETE_EXPIRED`, `config/jobs.yml`'s `refresh-token-purge`, the test profile's `"-"`; tests
+`RefreshTokenPurgeJobIntegrationTest`, `RefreshTokenIndexIntegrationTest`. Rules: house-review OPS-03. One small class
+per table, like the golden one; no shared purge framework.
+- **The job**, `<Entity>PurgeJob` in the module's `service/` package, package-private: `@Scheduled(cron =
+  "${app.jobs.<entity>-purge.cron}", zone = "UTC")` with `@MultiInstanceSafe` (ARCH-12: each batch locks its rows
+  `FOR UPDATE SKIP LOCKED`), the cutoff taken once from the injected `Clock` (now minus the period), the
+  loop over the service's batch until a batch comes back short, one log line with the cutoff and the count. Its
+  `Settings` record: `cron`, the period as a `Duration` named for the column (`keepAfterExpiry`, `keepAfterFinish`,
+  `keepFor`) with `@NotNull @DurationMin(days = 0)`, `batchSize` `@Positive`.
+- **The service** of the table's aggregate (ARCH-15; a member's rows through its root's service): `@Transactional
+  int delete<Ended>Before(Instant cutoff, int batchSize)`, one batch in a transaction of its own.
+- **The repository**: the statement as a constant, `DELETE FROM <table> WHERE id = ANY (ARRAY(SELECT id FROM <table>
+  WHERE <column> < :cutoff LIMIT :batchSize FOR UPDATE SKIP LOCKED))` (DATA-29's shape), and its `@Modifying
+  @Query(nativeQuery = true, value = …)` method. A table that references this one goes first in its own batch, or the
+  statement keeps a parent a child still names (`AND NOT EXISTS (…)`), as Step 2 decided.
+- **The index** in the entity's changeset: `idx_<table>_<column>` (partial `WHERE <column> IS NOT NULL` for a
+  nullable end; with row tenancy `(tenant_id, <column>)`).
+- **The settings** in `config/jobs.yml` under `app.jobs.<entity>-purge` (`cron` a night-time UTC time a few minutes
+  from the other purges, the developer's period with its reason as the comment, `batch-size: 1000`), and `cron: "-"`
+  in `application-test.yml`, where the tests call the job.
+- **With tenancy** a tenant table's purge runs once per tenant holding data, each under `TenantScope.runAs`, one
+  tenant's failure logged and the next tenant purged (golden: the tenancy overlay's `MediaCleanupJob.cleanUp`); in row
+  mode the statement names its tenant (`AND tenant_id = :tenantId` in the batch, TEN-37).
+- **Tests:** tests.md row 34, and the batch in the entity's index test (row 28).
 
 ---
 
@@ -804,15 +844,17 @@ Run `{{buildCommand}}`, the full gate command (`verify`: every test, ArchUnit, t
 static analysis with security rules, house-review CFG-11), never the tests alone: green means that command,
 at every commit a run makes (one per entity: each is built before it is committed). Fix every compile error,
 test failure and gate failure in the generated code; never report done on a red build. Generated code passes
-the gates with **no new entry in the exclude file and no lowered minimum**: a SpotBugs finding in a file that
-follows the golden files is a reference bug, fixed in the reference (the precedence above), never excluded in
+the gates with **no new entry in the exclude file but the two kinds below, and no lowered minimum**: a SpotBugs
+finding in a file that follows the golden files is a reference bug, fixed in the reference (the precedence above), never excluded in
 the project; a coverage drop means a test row the entity lacks (`references/tests.md`). Records copy their
 collections in a compact constructor as the golden ones do (`TodoResponse`: `List.copyOf`; `TodoCreateRequest`:
-`Collections.unmodifiableSet`, null-safe, so validation still sees a null). **The only entry generated code
+`Collections.unmodifiableSet`, null-safe, so validation still sees a null). **The only entries generated code
 brings:** a method of the generated entity that points a JPA relation at its argument (golden `Todo.moveTo`)
 gets its `<Match>` in the exclude file, generated with the entity: its class, that method and
-`EI_EXPOSE_REP2`, with the reason "a JPA relation holds the managed entity; it can't be a copy". Any other
-finding in generated code is a reference bug. **The red proof of a guard is the reference's**: each golden guard (a race, a lock, an
+`EI_EXPOSE_REP2`, with the reason "a JPA relation holds the managed entity; it can't be a copy"; and each
+generated controller gets its `SPRING_ENDPOINT` `<Match>` (its class and that pattern), under the file's
+`SPRING_ENDPOINT` comment, whose reason covers it (golden: the example's controllers). Any other finding in
+generated code is a reference bug. **The red proof of a guard is the reference's**: each golden guard (a race, a lock, an
 index, a scope) was proven red when it was written. The report names, for each generated guard test, the
 golden test it mirrors, so a reviewer checks the shape against a proven one; a claim of a red run that left
 no artifact is never made.
@@ -855,6 +897,9 @@ checklist's review item stays open until that reviewer's report is clean.
       a choice no rule forbids goes in the javadoc or the changeset comment.
 - [ ] With the session version: every generated write that changes access bumps it in its transaction
       and has its 401-then-refresh test (4.8, SEC-07).
-- [ ] `{{buildCommand}}` green at each commit, gates included (no new exclude entry, no lowered minimum);
+- [ ] Retention asked (Step 1): accumulating rows have their purge job, index, settings and tests (4.12), or the
+      review profile's `retentionExceptions` names the table with the owner's reason.
+- [ ] `{{buildCommand}}` green at each commit, gates included (no exclude entry but the relation method's and the
+      controllers' `SPRING_ENDPOINT`, no lowered minimum);
       each guard test names the golden test it mirrors (Step 7).
 - [ ] house-review clean (Step 8).
