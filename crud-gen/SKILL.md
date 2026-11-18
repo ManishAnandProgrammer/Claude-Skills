@@ -416,7 +416,13 @@ takes its collaborators through `@RequiredArgsConstructor` over `private final` 
 hand-written constructor; a public class whose fields include a package-private type takes
 `@RequiredArgsConstructor(access = AccessLevel.PACKAGE)` (JAVA-27: narrow the constructor, never widen the
 type). A `@Qualifier` on such a field needs the project's `lombok.config` line (bootstrap copies the
-file); a `@Value` never goes on a field (a `@ConfigurationProperties` record instead). **Naming** (SMELL-20): bodies `<Entity><Action>{{requestSuffix}}`, GET parameters
+file); a `@Value` never goes on a field (a `@ConfigurationProperties` record instead). **Settings are typed by what
+they mean** (house-review CFG-12), wherever this skill writes one (a purge job's `Settings`, an `app.*` key, a limit):
+a time span is a `Duration` (`5m`, `1d`; a span of calendar days a `Period`), a size a `DataSize`, an address a `URI`, a
+schedule the project's `Cron` (golden `common/scheduling/Cron`), a mode an enum, one value per case a `Map<SomeEnum,
+X>`; the unit lives in the value, never in the name (`keepAfterExpiry: 1d`, not `keepDays: 1`), and each bound is in
+the record (`@DurationMin`, `@Positive`). A number stays a number only for a count, or for a limit on a request field,
+in the field's own unit (a `limits.yml` key such as `max-minutes`). **Naming** (SMELL-20): bodies `<Entity><Action>{{requestSuffix}}`, GET parameters
 `<Entity>Filter`, responses `<Entity>Response`; list rows `<Entity>SummaryResponse` only when they
 leave out heavy fields (a `text` column with a limit over 1,000 characters, or a collection).
 
@@ -802,8 +808,11 @@ per table, like the golden one; no shared purge framework.
   "${app.jobs.<entity>-purge.cron}", zone = "UTC")` with `@MultiInstanceSafe` (ARCH-12: each batch locks its rows
   `FOR UPDATE SKIP LOCKED`), the cutoff taken once from the injected `Clock` (now minus the period), the
   loop over the service's batch until a batch comes back short, one log line with the cutoff and the count. Its
-  `Settings` record: `cron`, the period as a `Duration` named for the column (`keepAfterExpiry`, `keepAfterFinish`,
-  `keepFor`) with `@NotNull @DurationMin(days = 0)`, `batchSize` `@Positive`.
+  `Settings` record (typed, CFG-12): `@NotNull Cron cron` (the core piece's `common/scheduling/Cron`: a bad
+  expression stops startup; `"-"` is off), the period as a `Duration` named for the column (`keepAfterExpiry`,
+  `keepAfterFinish`, `keepFor`) with `@NotNull @DurationMin(days = 0)`, `batchSize` `@Positive`; a table whose end is
+  a `LocalDate` (a day, not an instant) keeps its period as a `Period` (`7d`), the cutoff `LocalDate.now(clock)`
+  minus it.
 - **The service** of the table's aggregate (ARCH-15; a member's rows through its root's service): `@Transactional
   int delete<Ended>Before(Instant cutoff, int batchSize)`, one batch in a transaction of its own.
 - **The repository**: the statement as a constant, `DELETE FROM <table> WHERE id = ANY (ARRAY(SELECT id FROM <table>
@@ -813,8 +822,9 @@ per table, like the golden one; no shared purge framework.
 - **The index** in the entity's changeset: `idx_<table>_<column>` (partial `WHERE <column> IS NOT NULL` for a
   nullable end; with row tenancy `(tenant_id, <column>)`).
 - **The settings** in `config/jobs.yml` under `app.jobs.<entity>-purge` (`cron` a night-time UTC time a few minutes
-  from the other purges, the developer's period with its reason as the comment, `batch-size: 1000`), and `cron: "-"`
-  in `application-test.yml`, where the tests call the job.
+  from the other purges, the developer's period with its unit and its reason as the comment, `keep-after-expiry: 30d`,
+  never a bare number, which a `Duration` reads as milliseconds; `batch-size: 1000`), and `cron: "-"` in
+  `application-test.yml`, where the tests call the job.
 - **With tenancy** a tenant table's purge runs once per tenant holding data, each under `TenantScope.runAs`, one
   tenant's failure logged and the next tenant purged (golden: the tenancy overlay's `MediaCleanupJob.cleanUp`); in row
   mode the statement names its tenant (`AND tenant_id = :tenantId` in the batch, TEN-37).
@@ -899,6 +909,9 @@ checklist's review item stays open until that reviewer's report is clean.
       and has its 401-then-refresh test (4.8, SEC-07).
 - [ ] Retention asked (Step 1): accumulating rows have their purge job, index, settings and tests (4.12), or the
       review profile's `retentionExceptions` names the table with the owner's reason.
+- [ ] Every setting the run added is typed by what it means (CFG-12: a `Duration`, `Period`, `DataSize`, `URI`, `Cron`
+      or enum, bounded in its record; the unit in the yml value, never in the key), and
+      `ConventionArchTest.settingsAreTypedByWhatTheyMean` is green.
 - [ ] `{{buildCommand}}` green at each commit, gates included (no exclude entry but the relation method's and the
       controllers' `SPRING_ENDPOINT`, no lowered minimum);
       each guard test names the golden test it mirrors (Step 7).
