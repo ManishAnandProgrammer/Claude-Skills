@@ -72,7 +72,7 @@ Fill values from the codebase, not from memory.
 |---|---|---|
 | `testRoot` | `src/test/java` | |
 | `testBase` | `com.example.support.IntegrationTest` | One shared context |
-| `buildCommand` | `./mvnw -B verify` | Step 7; include the JDK / env prefix |
+| `buildCommand` | `./mvnw -B verify` | Step 7: the full gate command (every test, ArchUnit, the coverage minimum and static analysis, house-review CFG-11), never `test` alone: green means this command; include the JDK / env prefix |
 
 ## Dropdown
 

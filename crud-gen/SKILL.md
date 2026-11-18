@@ -25,9 +25,9 @@ tell the user to run the skills installer.
 | Golden file (`<ref>` = `~/.claude/skills-reference/src/main/java/com/example/app`) | Shows |
 |---|---|
 | `<ref>/todo/domain/Todo.java`, `TodoList.java` | Entity: `@Getter @SuperBuilder`, protected constructor, `@Setter` only on free fields, state methods, a generated sort column |
-| `<ref>/todo/dto/request/TodoCreateRequest.java`, `TodoUpdateRequest.java`, `TodoStatusRequest.java` | Request records with `@MaxLength("<key>")`, `version` on updates |
+| `<ref>/todo/dto/request/TodoCreateRequest.java`, `TodoUpdateRequest.java`, `TodoStatusRequest.java` | Request records with `@MaxLength("<key>")`, `version` on updates; a collection wrapped read-only in the compact constructor, null-safe (Step 7's static analysis) |
 | `<ref>/todo/dto/request/TodoFilter.java`, `TodoListFilter.java` | Cursor filter, offset filter, sort enum, the `ids` filter |
-| `<ref>/todo/dto/response/TodoResponse.java`, `TodoSummaryResponse.java` | Detail and list-row records |
+| `<ref>/todo/dto/response/TodoResponse.java`, `TodoSummaryResponse.java` | Detail and list-row records; a collection copied (`List.copyOf`) in the compact constructor |
 | `<ref>/todo/mapper/TodoMapper.java` | Hand-written mapper |
 | `<ref>/todo/repository/**` | Repository, custom interface, Criteria **projection** impl with keyset or offset paging |
 | `<ref>/todo/service/TodoService.java`, `TodoListService.java` | Transactions, ownership, version checks, parent locking |
@@ -248,7 +248,7 @@ Check before generating:
 | A value the mapper normalises (an email lower-cased and trimmed) has a `CHECK` with the same expression (`email = lower(trim(email))`, golden `users`); trimming alone (a name the mapper `strip()`s) needs none, as its unique index's `lower(trim(…))` already covers it (golden `TodoList`, `Tag`) | DATA-05 |
 | A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one. Its "taken on update" test (tests.md row 11) means the writes that move a row **into** the live status or change the pair; when none does (the pair fixed at the create, no move back to live), the create's test is the whole duty: say so. When the entity also has a **date range**, ask the follow-up: "(a digits-only identifier, an ISBN, needs no `COLLATE "C"`: digits sort the same in every collation; a code with letters keeps it) does a finished record (past its `endsOn`, still `<LIVE>`) still block a new one?" (a student who completed a course retaking it). If not, the rule is either no overlapping live ranges, DATA-35's exclusion constraint `WHERE (status = '<LIVE>')`, or a decided terminal status (`COMPLETED`, set by a person or a job), never "live" read from the dates (DATA-37) | DATA-05, DATA-35, DATA-37 |
 | Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is not applied**, ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
-| A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column | DATA-33 |
+| A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column; a `moveTo` brings its exclude entry (Step 7) | DATA-33, CFG-11 |
 | `Instant` for moments, `LocalDate` for picked dates, no time zones | JAVA-25 |
 | A display number comes from the metadata piece's gapless `Counters` (golden `Todo.number`: a fixed counter seeded by its changeset, after the highest number of the rows already there; with tenancy one per tenant, the TEN-18 row below), or without that piece from a sequence; a fixture inserting rows splices in a number (tests.md) | DATA-14 |
 
@@ -549,7 +549,10 @@ the developer says it may not be empty (an optional set of tags may be empty); a
 label) sizes the cursor: `app.limits.text.cursor` must hold `(6 × its @MaxLength + 100) × 4/3`
 (Base64url JSON, a control character escaped in six bytes), so raise it when that is larger, and add
 the field's key to `LimitsIntegrationTest.CURSOR_TEXT_KEYS`; otherwise the next batch after a long
-value is a 400 on the cursor the server handed out (tests.md rows 16, 24).
+value is a 400 on the cursor the server handed out (tests.md rows 16, 24). A collection component is wrapped
+read-only in the compact constructor, null-safe (`tagIds = Objects.isNull(tagIds) ? null :
+Collections.unmodifiableSet(tagIds);`): Jackson builds the record before validation, so a null element still
+reaches its constraint, and static analysis finds no exposed collection (Step 7).
 
 ### 4.3 Responses (records)
 `<Entity>Response` (every field, FKs as ids, which stay beside a displayed parent's `{id, name}` record for
@@ -559,7 +562,8 @@ aggregate that clients display is `{id, <the parent's display field under its ow
 field renamed to a literal `name`; one record per referenced aggregate (`<Entity><Parent>Response`),
 a list of them for a many-to-many) for the detail; for list
 rows a `<Entity>SummaryResponse` without the heavy fields (*Conventions*, Naming), still ending with the audit
-fields. Golden: `TodoResponse`, `TodoSummaryResponse`. A list row's displayed parent name comes in
+fields. Golden: `TodoResponse`, `TodoSummaryResponse`. A collection component is copied in the compact
+constructor (`tags = List.copyOf(tags);`, Step 7's static analysis). A list row's displayed parent name comes in
 **two steps**, in the same module as across modules: the batch, then one lookup of the batch's parent
 ids for their names (golden `PlanService`'s facade batch lookup; statement count + 1), never a join in
 the keyset query (with tenancy the join carries the tenant predicate twice and its plan turns on the
@@ -796,8 +800,19 @@ PUT, actions and DELETE of the record, which stays unchanged, and that tenant's 
 with the new table).
 
 ## Step 7: Build and test
-Run `{{buildCommand}}`. Fix every compile error or test failure in the generated code; never report
-done on a red build. **The red proof of a guard is the reference's**: each golden guard (a race, a lock, an
+Run `{{buildCommand}}`, the full gate command (`verify`: every test, ArchUnit, the coverage minimum and
+static analysis with security rules, house-review CFG-11), never the tests alone: green means that command,
+at every commit a run makes (one per entity: each is built before it is committed). Fix every compile error,
+test failure and gate failure in the generated code; never report done on a red build. Generated code passes
+the gates with **no new entry in the exclude file and no lowered minimum**: a SpotBugs finding in a file that
+follows the golden files is a reference bug, fixed in the reference (the precedence above), never excluded in
+the project; a coverage drop means a test row the entity lacks (`references/tests.md`). Records copy their
+collections in a compact constructor as the golden ones do (`TodoResponse`: `List.copyOf`; `TodoCreateRequest`:
+`Collections.unmodifiableSet`, null-safe, so validation still sees a null). **The only entry generated code
+brings:** a method of the generated entity that points a JPA relation at its argument (golden `Todo.moveTo`)
+gets its `<Match>` in the exclude file, generated with the entity: its class, that method and
+`EI_EXPOSE_REP2`, with the reason "a JPA relation holds the managed entity; it can't be a copy". Any other
+finding in generated code is a reference bug. **The red proof of a guard is the reference's**: each golden guard (a race, a lock, an
 index, a scope) was proven red when it was written. The report names, for each generated guard test, the
 golden test it mirrors, so a reviewer checks the shape against a proven one; a claim of a red run that left
 no artifact is never made.
@@ -840,5 +855,6 @@ checklist's review item stays open until that reviewer's report is clean.
       a choice no rule forbids goes in the javadoc or the changeset comment.
 - [ ] With the session version: every generated write that changes access bumps it in its transaction
       and has its 401-then-refresh test (4.8, SEC-07).
-- [ ] Build green; each guard test names the golden test it mirrors (Step 7).
+- [ ] `{{buildCommand}}` green at each commit, gates included (no new exclude entry, no lowered minimum);
+      each guard test names the golden test it mirrors (Step 7).
 - [ ] house-review clean (Step 8).
