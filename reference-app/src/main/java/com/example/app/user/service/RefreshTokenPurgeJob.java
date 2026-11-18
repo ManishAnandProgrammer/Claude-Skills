@@ -1,5 +1,6 @@
 package com.example.app.user.service;
 
+import com.example.app.common.scheduling.Cron;
 import com.example.app.common.scheduling.MultiInstanceSafe;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -56,6 +57,6 @@ class RefreshTokenPurgeJob {
      */
     @Validated
     @ConfigurationProperties(prefix = "app.jobs.refresh-token-purge")
-    record Settings(@NotNull String cron, @NotNull @DurationMin(days = 0) Duration keepAfterExpiry, @Positive int batchSize) {
+    record Settings(@NotNull Cron cron, @NotNull @DurationMin(days = 0) Duration keepAfterExpiry, @Positive int batchSize) {
     }
 }

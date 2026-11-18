@@ -113,7 +113,6 @@ class LimitsIntegrationTest extends IntegrationTest {
                         () -> limits.getLong(method.getAnnotationOfType(ConfiguredMax.class).value()));
             }
         }
-        checkConfigured(missing, NotAfterTodayValidator.TOLERANCE_KEY, () -> limits.get(NotAfterTodayValidator.TOLERANCE_KEY));
 
         assertThat(checked).isPositive();
         assertThat(missing).isEmpty();

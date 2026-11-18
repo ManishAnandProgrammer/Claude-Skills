@@ -4,6 +4,7 @@ import com.example.app.common.logging.MdcTaskDecorator;
 import com.example.app.common.tenancy.TenantTaskDecorator;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -57,6 +58,6 @@ class SchedulingConfig {
      */
     @Validated
     @ConfigurationProperties(prefix = "app.jobs.scheduler")
-    record Settings(@Min(2) int threads, @NotNull Duration shutdownWait) {
+    record Settings(@Min(2) int threads, @NotNull @DurationMin(days = 0) Duration shutdownWait) {
     }
 }

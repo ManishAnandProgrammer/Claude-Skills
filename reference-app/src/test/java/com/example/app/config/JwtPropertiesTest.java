@@ -14,15 +14,29 @@ class JwtPropertiesTest {
     private static final Duration GRACE = Duration.ofSeconds(30);
 
     @Test
-    @DisplayName("The access-token lifetime must be positive and at most 15 minutes; the refresh one positive")
+    @DisplayName("The access-token lifetime must be between 1 second and 15 minutes; the refresh one positive")
     void tokenLifetimesAreBounded() {
         assertThatCode(() -> new JwtProperties(SECRET, "todo", Duration.ofMinutes(15), Duration.ofDays(30), GRACE)).doesNotThrowAnyException();
         assertThatThrownBy(() -> new JwtProperties(SECRET, "todo", Duration.ofMinutes(16), Duration.ofDays(30), GRACE))
                 .hasMessageContaining("JWT_ACCESS_TTL");
         assertThatThrownBy(() -> new JwtProperties(SECRET, "todo", Duration.ZERO, Duration.ofDays(30), GRACE))
                 .hasMessageContaining("JWT_ACCESS_TTL");
+        // JWT_ACCESS_TTL=15 left from a setting in minutes: bound as 15 ms.
+        assertThatThrownBy(() -> new JwtProperties(SECRET, "todo", Duration.ofMillis(15), Duration.ofDays(30), GRACE))
+                .hasMessageContaining("JWT_ACCESS_TTL");
         assertThatThrownBy(() -> new JwtProperties(SECRET, "todo", Duration.ofMinutes(15), Duration.ofDays(-1), GRACE))
                 .hasMessageContaining("JWT_REFRESH_TTL");
+    }
+
+    @Test
+    @DisplayName("The rotation grace is never negative and stays below the refresh-token lifetime")
+    void rotationGraceIsBelowTheRefreshLifetime() {
+        assertThatCode(() -> new JwtProperties(SECRET, "todo", Duration.ofMinutes(15), Duration.ofDays(30), Duration.ZERO))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> new JwtProperties(SECRET, "todo", Duration.ofMinutes(15), Duration.ofDays(30), Duration.ofSeconds(-1)))
+                .hasMessageContaining("app.jwt.rotation-grace");
+        assertThatThrownBy(() -> new JwtProperties(SECRET, "todo", Duration.ofMinutes(15), Duration.ofMinutes(1), Duration.ofMinutes(1)))
+                .hasMessageContaining("app.jwt.rotation-grace");
     }
 
     @Test

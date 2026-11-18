@@ -24,6 +24,7 @@ import jakarta.persistence.Lob;
 import jakarta.validation.constraints.AssertTrue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.data.repository.Repository;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,11 +35,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.regex.Pattern;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
@@ -54,9 +57,16 @@ import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_
 @AnalyzeClasses(packages = "com.example.app", importOptions = ImportOption.DoNotIncludeTests.class)
 class ConventionArchTest {
 
+    private static final String APP = "com.example.app";
     private static final String API = "/api";
     private static final String SECURITY = "..common.security..";
     private static final String VERSIONED_API = API + "/{version}/";
+    private static final List<String> NUMBERS = List.of("int", "long", Integer.class.getName(), Long.class.getName());
+    // A number with its unit in its name: the unit belongs in the value (a Duration, a Period, a DataSize).
+    private static final Pattern UNIT_IN_THE_NAME = Pattern.compile(
+            ".*(Ms|Millis|Seconds|Minutes|Hours|Days|Bytes|Kb|Mb)|millis|seconds|minutes|hours|days|bytes");
+    // Text with a grammar: an address is a URI, a schedule a Cron.
+    private static final Pattern TEXT_WITH_A_GRAMMAR = Pattern.compile(".*(Url|Uri|Cron)|url|uri|cron");
 
     @ArchTest
     static final ArchRule noLob = noFields().should().beAnnotatedWith(Lob.class)
@@ -93,6 +103,19 @@ class ConventionArchTest {
             .because("a limit on a getter checks a number derived from fields: reportedOn names the field a form shows it under (ERR-07)")
             // A project without such a getter yet.
             .allowEmptyShould(true);
+
+    /**
+     * A settings record and the records it holds (a nested group, a value such as {@code RateLimit}). A bound in the
+     * API's own unit ({@code time-entry.max-minutes} for a request field in minutes) is a {@code Limits} key, read by
+     * key, so it never meets this rule.
+     */
+    @ArchTest
+    static final ArchRule settingsAreTypedByWhatTheyMean = classes().that().areAnnotatedWith(ConfigurationProperties.class)
+            .should(bindEachValueAsWhatItMeans())
+            .because("""
+                    a setting is bound as the type of what it means, parsed and checked once at startup: a time span is a \
+                    Duration or a Period, a size a DataSize, an address a URI, a schedule a Cron, never a number with \
+                    the unit in its name or text parsed later (CFG-12)""");
 
     @ArchTest
     static final ArchRule noOptionalParameters = noCodeUnits().that().doNotHaveModifier(JavaModifier.SYNTHETIC)
@@ -306,6 +329,39 @@ class ConventionArchTest {
         }
         Optional<JavaClass> enclosing = base.getEnclosingClass();
         return base.getModifiers().contains(JavaModifier.PUBLIC) && (enclosing.isEmpty() || isVisibleEverywhere(enclosing.get()));
+    }
+
+    private static ArchCondition<JavaClass> bindEachValueAsWhatItMeans() {
+        return new ArchCondition<>("bind each value as what it means") {
+            @Override
+            public void check(JavaClass settings, ConditionEvents events) {
+                checkSettingsFields(settings, events, new HashSet<>());
+            }
+        };
+    }
+
+    /** The record's own fields, then those of every record of the application it holds, a map's or list's included. */
+    private static void checkSettingsFields(JavaClass settings, ConditionEvents events, Set<JavaClass> seen) {
+        if (!seen.add(settings)) {
+            return;
+        }
+        for (JavaField field : settings.getFields()) {
+            if (field.getModifiers().contains(JavaModifier.STATIC)) {
+                continue;
+            }
+            String type = field.getRawType().getName();
+            if (NUMBERS.contains(type) && UNIT_IN_THE_NAME.matcher(field.getName()).matches()) {
+                events.add(SimpleConditionEvent.violated(field, field.getFullName() + " is a number with its unit in its name"));
+            }
+            if (type.equals(String.class.getName()) && TEXT_WITH_A_GRAMMAR.matcher(field.getName()).matches()) {
+                events.add(SimpleConditionEvent.violated(field, field.getFullName() + " is text with a grammar"));
+            }
+            for (JavaClass held : field.getType().getAllInvolvedRawTypes()) {
+                if (held.getPackageName().startsWith(APP) && held.isAssignableTo(Record.class)) {
+                    checkSettingsFields(held, events, seen);
+                }
+            }
+        }
     }
 
     private static ArchCondition<JavaCodeUnit> haveAnOptionalParameter() {

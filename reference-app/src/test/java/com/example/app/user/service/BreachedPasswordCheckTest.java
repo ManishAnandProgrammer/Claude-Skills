@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.password.CompromisedPasswordChecker;
 import org.springframework.security.authentication.password.CompromisedPasswordDecision;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -38,7 +39,7 @@ class BreachedPasswordCheckTest {
     }
 
     private static BreachedPasswordProperties properties(boolean enabled) {
-        return new BreachedPasswordProperties(enabled, "http://unused/", Duration.ofSeconds(1), Duration.ofSeconds(1));
+        return new BreachedPasswordProperties(enabled, URI.create("http://unused/"), Duration.ofSeconds(1), Duration.ofSeconds(1));
     }
 
     private BreachedPasswordCheck check(boolean enabled, CompromisedPasswordChecker checker) {

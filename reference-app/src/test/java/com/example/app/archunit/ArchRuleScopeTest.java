@@ -5,6 +5,7 @@ import com.example.app.archunit.api.FixtureHelper;
 import com.example.app.archunit.fixture.dto.RangeRequest;
 import com.example.app.archunit.fixture.logging.JulCall;
 import com.example.app.archunit.fixture.settings.CheckedSettings;
+import com.example.app.archunit.fixture.settings.UntypedSettings;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
@@ -53,6 +54,23 @@ class ArchRuleScopeTest {
         assertThat(violations).hasSize(2);
         assertThat(violations).anyMatch(violation -> violation.contains("ExposingConstructor.<init>(" + HIDDEN + ")"));
         assertThat(violations).anyMatch(violation -> violation.contains("ExposingTypeArgument.all()"));
+    }
+
+    @Test
+    @DisplayName("""
+            A settings record's number with its unit in its name, or text with a grammar, is refused, a held record's \
+            included; the same values typed by what they mean pass, and a count stays a number (CFG-12)""")
+    void settingsAreTypedByWhatTheyMean() {
+        JavaClasses settings = new ClassFileImporter().importPackages("com.example.app.archunit.fixture.settings");
+
+        List<String> violations = ConventionArchTest.settingsAreTypedByWhatTheyMean.evaluate(settings).getFailureReport().getDetails();
+
+        assertThat(violations).hasSize(6);
+        assertThat(violations).allMatch(violation -> violation.contains(UntypedSettings.class.getName()));
+        for (String field : List.of("leaseMinutes", "timeoutMs", "apiUrl", "cron", "Client.readTimeoutSeconds", "Client.endpointUri")) {
+            assertThat(violations).anyMatch(violation -> violation.contains(field + " is"));
+        }
+        assertThat(violations).noneMatch(violation -> violation.contains("batchSize"));
     }
 
     private static boolean violates(ArchRule rule, Class<?> fixture) {

@@ -1,5 +1,6 @@
 package com.example.app.media.service;
 
+import com.example.app.common.scheduling.Cron;
 import com.example.app.common.scheduling.MultiInstanceSafe;
 import com.example.app.common.tenancy.TenantScope;
 import com.example.app.media.dto.internal.MediaFileKey;
@@ -8,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -102,6 +104,6 @@ class MediaCleanupJob {
      */
     @Validated
     @ConfigurationProperties(prefix = "app.jobs.media-cleanup")
-    record Settings(@NotNull String cron, @Positive int batchSize, @NotNull Duration lease) {
+    record Settings(@NotNull Cron cron, @Positive int batchSize, @NotNull @DurationMin(millis = 1) Duration lease) {
     }
 }

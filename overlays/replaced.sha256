@@ -3,12 +3,12 @@
 6d626d234a3309745e56d5c4cd792b70fd9cafa64fd006c524ab031d5f3e95e2  reference-app/src/main/java/com/example/app/common/logging/LogContext.java
 11f2b9179e3f61756c09217b66fb0a350e125ae5cf117be60dcfc177177b38c5  reference-app/src/main/java/com/example/app/common/logging/UserLogContextFilter.java
 ac927c2fcb5bf8f96e1846fb6d281a36f8e2dcf1a7e4317a438ab178a4b4f5ed  reference-app/src/main/java/com/example/app/common/security/CurrentUser.java
-5c8d9c14b22e49d3ecc068d4453714cf8c4defe06647c9f1cdeac2cebc4d4e9b  reference-app/src/main/java/com/example/app/config/LiquibaseConnectionConfig.java
-99c681fd5a53fd94206fa1794237fac7f77d49e15851b1623f9120029486dcb1  reference-app/src/main/java/com/example/app/config/SchedulingConfig.java
+e937d5fbe586315dc653c967072c5aeade16c8fd4124759f09b12ab18277b995  reference-app/src/main/java/com/example/app/config/LiquibaseConnectionConfig.java
+8c4238a60b307af3abc04535288691c965c81c2551dbe639b5c7984f9c960ace  reference-app/src/main/java/com/example/app/config/SchedulingConfig.java
 a60a3b85f4bedaf6f216a50f0056cea6db23a51b4907cc7963742df9ad81597b  reference-app/src/main/java/com/example/app/media/mapper/MediaFileMapper.java
 1789b719174017b17552e2592ee503869e35637a47e92bbbdd7de9255c194449  reference-app/src/main/java/com/example/app/media/repository/MediaFileRepository.java
-df56c1ae3f0a43839532337ae11c1fd9234ab6b5f8d8cf24e672b6afec2950fb  reference-app/src/main/java/com/example/app/media/service/MediaCleanupJob.java
-d257814bef6b090cdc55d347e9038da29ddc619c217abd5de9d25225da1aef32  reference-app/src/main/java/com/example/app/media/service/MediaVerificationJob.java
+a53f4fb282ba58cbb7d7743652fad59031c386fa07d88c01cb6433498e717dfc  reference-app/src/main/java/com/example/app/media/service/MediaCleanupJob.java
+566d6cb505f8310f532d78a05865273c4d0ce5a2acd8289673c5e91dcecea295  reference-app/src/main/java/com/example/app/media/service/MediaVerificationJob.java
 a7c17b6cf7080c55bfe970621cc5841aa82f6246ba212fd983436555fac3390a  reference-app/src/main/java/com/example/app/metadata/repository/CounterRepository.java
 76466a0bd180b6baf17f42c9b2a66c9df75fc272db755abffea63e2f8f6141f3  reference-app/src/main/java/com/example/app/user/controller/api/AuthApi.java
 b9f2fdf2584c4032e84fa0cc845d4fade2a81a6f03a7a74821b166271735ac1d  reference-app/src/main/java/com/example/app/user/controller/AuthController.java
@@ -19,7 +19,7 @@ b9f2fdf2584c4032e84fa0cc845d4fade2a81a6f03a7a74821b166271735ac1d  reference-app/
 d63483c18ae6affa68c408fb3f5089c3bbb1ec62852c50fec13804867b8f6b8c  reference-app/src/test/java/com/example/app/support/PreviousReleaseDatabase.java
 3e28cb2231095c2b14e17bca8bc48964b71e97857261db0dc93f429277091555  reference-app/src/test/java/com/example/app/TestcontainersConfiguration.java
 dc753cd4479df79131184a6fa3d777e90faf993a5ea45484288b73f2206a116e  reference-app/src/test/java/com/example/app/todo/UpgradeFromPreviousReleaseIntegrationTest.java
-f9bdae9414f06ceb5e0b8fc9095a559d8bc2032b4e8844620e88da867cfdaeba  reference-app/src/test/java/com/example/app/user/service/RefreshTokenPurgeJobIntegrationTest.java
+def8fdd9dcce98183068a657c55844a443c77137c50d9714e3ae01017e546cd3  reference-app/src/test/java/com/example/app/user/service/RefreshTokenPurgeJobIntegrationTest.java
 fd7d7db54567443c3c209ee2c63a90613d0828b61aaf34b52992599d7c154770  reference-app/src/test/java/com/example/app/user/service/SessionVersionServiceIntegrationTest.java
 7efd1562e9fb82b154a9ae62ccbe52b65726afb0c305b1f88c95872c01e76a55  reference-app/src/test/java/com/example/app/user/TokenPathIntegrationTest.java
 bfcd6a30352e8fe140a98745690052c852d5261a08cd9f314386585fbae4a265  reference-app/src/test/resources/db/upgrade/previous-release-seed.sql

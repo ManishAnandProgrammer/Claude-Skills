@@ -1,5 +1,6 @@
 package com.example.app.media.service;
 
+import com.example.app.common.scheduling.Cron;
 import com.example.app.tenant.api.Tenants;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -40,7 +41,7 @@ class MediaJobsPerTenantTest {
                 .thenThrow(new QueryTimeoutException("statement timeout"))
                 .thenReturn(List.of());
         MediaVerificationJob job = new MediaVerificationJob(mediaFiles, storage,
-                new MediaVerificationJob.Settings("-", 10, LEASE), new SimpleMeterRegistry(), tenants);
+                new MediaVerificationJob.Settings(Cron.of("-"), 10, LEASE), new SimpleMeterRegistry(), tenants);
 
         assertThatCode(job::verify).doesNotThrowAnyException();
         verify(mediaFiles, times(2)).leaseForVerification(10, LEASE);
@@ -54,7 +55,7 @@ class MediaJobsPerTenantTest {
                 .thenThrow(new QueryTimeoutException("statement timeout"))
                 .thenReturn(List.of());
         when(mediaFiles.leaseExpiredPending(anyInt(), any())).thenReturn(List.of());
-        MediaCleanupJob job = new MediaCleanupJob(mediaFiles, storage, new MediaCleanupJob.Settings("-", 10, LEASE), tenants);
+        MediaCleanupJob job = new MediaCleanupJob(mediaFiles, storage, new MediaCleanupJob.Settings(Cron.of("-"), 10, LEASE), tenants);
 
         assertThatCode(job::cleanUp).doesNotThrowAnyException();
         verify(mediaFiles, times(2)).leaseReleased(10, LEASE);

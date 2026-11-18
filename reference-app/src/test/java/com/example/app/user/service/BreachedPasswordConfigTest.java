@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Objects;
@@ -24,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** The real Have I Been Pwned checker, wired as in production, against a local range API. */
 class BreachedPasswordConfigTest {
@@ -83,7 +85,7 @@ class BreachedPasswordConfigTest {
     }
 
     private CompromisedPasswordChecker checker(String apiUrl, ObservationRegistry observationRegistry) {
-        BreachedPasswordProperties properties = new BreachedPasswordProperties(true, apiUrl,
+        BreachedPasswordProperties properties = new BreachedPasswordProperties(true, URI.create(apiUrl),
                 Duration.ofSeconds(1), READ_TIMEOUT);
         return new BreachedPasswordConfig().compromisedPasswordChecker(properties, meterRegistry, observationRegistry);
     }
@@ -94,6 +96,15 @@ class BreachedPasswordConfigTest {
 
     private double failures() {
         return meterRegistry.counter(BreachedPasswordCheck.UNAVAILABLE_METRIC).count();
+    }
+
+    @Test
+    @DisplayName("An API address without a scheme or a host stops startup: every lookup would fail, and the check fails open")
+    void anIncompleteApiUrlIsRefused() {
+        for (String apiUrl : new String[] {"/range/", "http://bad%20host/range/"}) {
+            assertThatThrownBy(() -> new BreachedPasswordProperties(true, URI.create(apiUrl), Duration.ofSeconds(1), READ_TIMEOUT))
+                    .hasMessageContaining("app.security.breached-passwords.api-url");
+        }
     }
 
     @Test

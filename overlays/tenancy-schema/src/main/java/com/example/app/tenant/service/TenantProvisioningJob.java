@@ -1,5 +1,6 @@
 package com.example.app.tenant.service;
 
+import com.example.app.common.scheduling.Cron;
 import com.example.app.common.scheduling.MultiInstanceSafe;
 import com.example.app.common.tenancy.TenantScope;
 import io.micrometer.core.instrument.Counter;
@@ -86,6 +87,6 @@ public class TenantProvisioningJob {
      */
     @Validated
     @ConfigurationProperties(prefix = "app.jobs.tenant-provisioning")
-    record Settings(@NotNull String cron, @Positive int batchSize) {
+    record Settings(@NotNull Cron cron, @Positive int batchSize) {
     }
 }

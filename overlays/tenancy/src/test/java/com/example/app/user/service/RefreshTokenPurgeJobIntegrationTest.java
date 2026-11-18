@@ -1,5 +1,6 @@
 package com.example.app.user.service;
 
+import com.example.app.common.scheduling.Cron;
 import com.example.app.support.IntegrationTest;
 import com.example.app.support.WithoutTestTenant;
 import jakarta.validation.Validator;
@@ -79,8 +80,8 @@ class RefreshTokenPurgeJobIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("A negative keep-after-expiry stops startup: it would delete live tokens and, with the rotated ones, the reuse detection")
     void aNegativeKeepAfterExpiryIsRefused() {
-        RefreshTokenPurgeJob.Settings negative = new RefreshTokenPurgeJob.Settings("-", Duration.ofHours(-1), 1000);
-        RefreshTokenPurgeJob.Settings none = new RefreshTokenPurgeJob.Settings("-", Duration.ZERO, 1000);
+        RefreshTokenPurgeJob.Settings negative = new RefreshTokenPurgeJob.Settings(Cron.of("-"), Duration.ofHours(-1), 1000);
+        RefreshTokenPurgeJob.Settings none = new RefreshTokenPurgeJob.Settings(Cron.of("-"), Duration.ZERO, 1000);
 
         assertThat(validator.validate(negative)).extracting(violation -> violation.getPropertyPath().toString())
                 .containsExactly("keepAfterExpiry");

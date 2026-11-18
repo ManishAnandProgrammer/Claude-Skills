@@ -34,6 +34,8 @@ public record JwtProperties(@NotBlank String secret,
                             @NotNull Duration rotationGrace) {
 
     private static final int MIN_SECRET_BYTES = 32;
+    // A token's exp is whole seconds; a bare number (JWT_ACCESS_TTL=15) binds as milliseconds and fails this.
+    private static final Duration MIN_ACCESS_TOKEN_TTL = Duration.ofSeconds(1);
     /** The review profile's {@code tokenRevocation: short-lived(15)}. */
     private static final Duration MAX_ACCESS_TOKEN_TTL = Duration.ofMinutes(15);
 
@@ -41,13 +43,20 @@ public record JwtProperties(@NotBlank String secret,
         if (Objects.nonNull(secret) && secret.getBytes(StandardCharsets.UTF_8).length < MIN_SECRET_BYTES) {
             throw new IllegalArgumentException("app.jwt.secret (JWT_SECRET) must be at least 32 bytes");
         }
-        if (Objects.nonNull(accessTokenTtl) && (!accessTokenTtl.isPositive() || accessTokenTtl.compareTo(MAX_ACCESS_TOKEN_TTL) > 0)) {
+        if (Objects.nonNull(accessTokenTtl) && (accessTokenTtl.compareTo(MIN_ACCESS_TOKEN_TTL) < 0
+                || accessTokenTtl.compareTo(MAX_ACCESS_TOKEN_TTL) > 0)) {
             throw new IllegalArgumentException("""
                     app.jwt.access-token-ttl (JWT_ACCESS_TTL) must be between 1s and 15m: access tokens aren't \
                     checked against the database, so this bounds how long a revoked session lives""");
         }
         if (Objects.nonNull(refreshTokenTtl) && !refreshTokenTtl.isPositive()) {
             throw new IllegalArgumentException("app.jwt.refresh-token-ttl (JWT_REFRESH_TTL) must be positive");
+        }
+        if (Objects.nonNull(rotationGrace) && Objects.nonNull(refreshTokenTtl)
+                && (rotationGrace.isNegative() || rotationGrace.compareTo(refreshTokenTtl) >= 0)) {
+            throw new IllegalArgumentException("""
+                    app.jwt.rotation-grace must be at least 0s and shorter than refresh-token-ttl: within it, a \
+                    rotated token presented again is taken for a client's duplicate, never for reuse""");
         }
     }
 }

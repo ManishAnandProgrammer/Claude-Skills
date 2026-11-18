@@ -2,6 +2,7 @@ package com.example.app.config;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.validator.constraints.time.DurationMin;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.JdbcConnectionDetails;
@@ -59,6 +60,6 @@ class LiquibaseConnectionConfig {
 
     @Validated
     @ConfigurationProperties(prefix = "app.liquibase")
-    record Settings(@NotNull Duration lockTimeout, @NotBlank String applicationName, String username, String password) {
+    record Settings(@NotNull @DurationMin(millis = 1) Duration lockTimeout, @NotBlank String applicationName, String username, String password) {
     }
 }

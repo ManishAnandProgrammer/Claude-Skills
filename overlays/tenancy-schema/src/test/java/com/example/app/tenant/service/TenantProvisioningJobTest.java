@@ -1,5 +1,6 @@
 package com.example.app.tenant.service;
 
+import com.example.app.common.scheduling.Cron;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -25,7 +26,7 @@ class TenantProvisioningJobTest {
     private final TenantMigrationService migrations = mock(TenantMigrationService.class);
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
     private final TenantProvisioningJob job = new TenantProvisioningJob(migrator, migrations,
-            new TenantProvisioningJob.Settings("* * * * * *", 10), meters);
+            new TenantProvisioningJob.Settings(Cron.of("* * * * * *"), 10), meters);
     private final UUID failing = UUID.randomUUID();
     private final UUID next = UUID.randomUUID();
 

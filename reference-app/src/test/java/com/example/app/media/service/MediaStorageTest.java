@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MediaStorageTest {
 
-    private static final MediaProperties PROPERTIES = new MediaProperties("bucket", "us-east-1", "", false,
+    private static final MediaProperties PROPERTIES = new MediaProperties("bucket", Region.US_EAST_1, null, false,
             Duration.ofMinutes(5), Duration.ofHours(1), Duration.ofHours(1),
             new MediaProperties.Client(Duration.ofSeconds(10), Duration.ofSeconds(3)));
 

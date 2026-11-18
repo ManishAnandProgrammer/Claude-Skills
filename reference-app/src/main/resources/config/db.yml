@@ -21,6 +21,7 @@ spring:
       pool-name: ${spring.application.name}-pool
       maximum-pool-size: ${DB_POOL_SIZE:10}
       minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # Hikari's times are bare milliseconds (its setters take a long, so 3s doesn't bind): 3000 is 3 s.
       # Fail fast: admission control is the queue; this is the backstop.
       connection-timeout: 3000
       validation-timeout: 1000
@@ -40,7 +41,8 @@ spring:
       data-source-properties:
         # Server-side limits for the app pool only (Liquibase opens its own connection).
         options: -c statement_timeout=25s -c lock_timeout=3s -c idle_in_transaction_session_timeout=30s
-        # Greater than statement_timeout, so the server cancels first and the connection survives.
+        # In seconds (PgJDBC's own unit). Greater than statement_timeout, so the server cancels first and the
+        # connection survives.
         socketTimeout: 30
         reWriteBatchedInserts: true
         tcpKeepAlive: true

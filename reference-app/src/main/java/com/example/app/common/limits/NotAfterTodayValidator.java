@@ -12,14 +12,12 @@ import java.util.Objects;
 @RequiredArgsConstructor
 class NotAfterTodayValidator implements ConstraintValidator<NotAfterToday, LocalDate> {
 
-    static final String TOLERANCE_KEY = "not-after-today.tolerance-days";
-
-    private final Limits limits;
+    private final NotAfterTodayProperties properties;
     private final Clock clock;
 
     @Override
     public boolean isValid(LocalDate value, ConstraintValidatorContext context) {
-        LocalDate latest = LocalDate.now(clock).plusDays(limits.get(TOLERANCE_KEY));
+        LocalDate latest = LocalDate.now(clock).plus(properties.tolerance());
         return Objects.isNull(value) || !value.isAfter(latest);
     }
 }

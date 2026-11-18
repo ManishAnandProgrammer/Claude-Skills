@@ -255,6 +255,7 @@ src/test/java/$reference_path/support/MediaStorageContainer.java
 src/test/java/$reference_path/media/api/FileCountRangeTest.java
 src/test/java/$reference_path/media/service/AllowedContentTypesTest.java
 src/test/java/$reference_path/media/service/MediaStorageTest.java
+src/test/java/$reference_path/media/service/MediaPropertiesTest.java
 src/test/java/$reference_path/media/service/MediaJobsIntegrationTest.java
 src/test/java/$reference_path/media/MediaFileIndexIntegrationTest.java
 src/test/java/$reference_path/media/UploadUrlIntegrationTest.java

@@ -2,6 +2,7 @@ package com.example.app.common.admission;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -21,5 +22,5 @@ import java.time.Duration;
  */
 @Validated
 @ConfigurationProperties(prefix = "app.admission")
-public record AdmissionProperties(@Positive int maxConcurrent, @NotNull Duration maxWait) {
+public record AdmissionProperties(@Positive int maxConcurrent, @NotNull @DurationMin(days = 0) Duration maxWait) {
 }

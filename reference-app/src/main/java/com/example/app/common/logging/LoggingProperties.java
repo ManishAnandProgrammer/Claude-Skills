@@ -2,6 +2,7 @@ package com.example.app.common.logging;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -11,6 +12,6 @@ import java.time.Duration;
 @ConfigurationProperties(prefix = "app.logging")
 public record LoggingProperties(@NotNull ClientIpMode clientIp, @Valid @NotNull RequestCompletion requestCompletion) {
 
-    public record RequestCompletion(boolean enabled, @NotNull Duration slowThreshold) {
+    public record RequestCompletion(boolean enabled, @NotNull @DurationMin(millis = 1) Duration slowThreshold) {
     }
 }

@@ -10,10 +10,10 @@ app:
     cursor-page:
       default-size: 20
       max-size: 100
-    # @NotAfterToday: how many days past today (UTC) a calendar date may be. Every time zone is at
-    # most 14 hours ahead of UTC, so 1 accepts every user's own today; clients check the exact day.
+    # @NotAfterToday: how far past today (UTC) a calendar date may be, in calendar days (a Period). Every time
+    # zone is at most 14 hours ahead of UTC, so 1d accepts every user's own today; clients check the exact day.
     not-after-today:
-      tolerance-days: 1
+      tolerance: 1d
     # Maximum lengths of text the API accepts, by field (@MaxLength("…") on request records).
     # The columns are text; these are the contract.
     text:
