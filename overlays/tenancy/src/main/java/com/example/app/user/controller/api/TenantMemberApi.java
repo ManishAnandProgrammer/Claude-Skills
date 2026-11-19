@@ -40,8 +40,6 @@ public interface TenantMemberApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (without TENANT_MEMBERS_MANAGE in this tenant)",
-            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     PaginationWrapper<TenantMemberResponse> all(@ParameterObject TenantMemberFilter filter);
@@ -52,8 +50,6 @@ public interface TenantMemberApi {
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
-            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (without TENANT_MEMBERS_MANAGE in this tenant)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = """
             TENANT_MEMBER_NOT_FOUND (not a member of this tenant: unknown, removed, or another tenant's)""",

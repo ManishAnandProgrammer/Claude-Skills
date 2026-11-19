@@ -110,8 +110,6 @@ public interface UserApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (without ACCOUNT_STATUS_CHANGE)",
-            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ListWrapper<UserResponse> lookUp(UserFilter filter);

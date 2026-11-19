@@ -23,8 +23,6 @@ public interface MetadataApi {
     @ApiResponse(responseCode = "200", description = "The configuration")
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (without METADATA_MANAGE)",
-            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = """
             METADATA_KEY_UNKNOWN (no fixed key of that name; a per-record configuration is not reached \
             here); METADATA_NOT_FOUND (declared, but not set up yet)""",
@@ -49,8 +47,6 @@ public interface MetadataApi {
             REQUEST_UNREADABLE (not JSON, a field of the wrong type, an unknown field; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
-            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (without METADATA_MANAGE)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "METADATA_KEY_UNKNOWN, METADATA_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

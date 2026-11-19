@@ -41,8 +41,6 @@ public interface UploadPolicyApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (without UPLOAD_POLICY_MANAGE)",
-            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "UPLOAD_POLICY_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",

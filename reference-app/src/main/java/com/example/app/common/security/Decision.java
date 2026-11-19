@@ -3,6 +3,7 @@ package com.example.app.common.security;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -28,7 +29,8 @@ public final class Decision {
     }
 
     public static Decision refused(ErrorCode refusal, Object... arguments) {
-        return new Decision(Objects.requireNonNull(refusal, "refusal"), List.of(arguments));
+        // Arrays.asList, not List.of: an argument may be null, as AppException.of takes it.
+        return new Decision(Objects.requireNonNull(refusal, "refusal"), Arrays.asList(arguments.clone()));
     }
 
     public boolean isAllowed() {

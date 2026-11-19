@@ -23,12 +23,12 @@ import com.example.app.todo.dto.request.TodoListUpdateRequest;
 import com.example.app.todo.dto.response.TodoListResponse;
 import com.example.app.todo.mapper.TodoListMapper;
 import com.example.app.todo.repository.TodoListRepository;
-import java.util.EnumSet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 

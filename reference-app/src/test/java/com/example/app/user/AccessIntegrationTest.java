@@ -16,6 +16,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -83,5 +84,20 @@ class AccessIntegrationTest extends IntegrationTest {
         assertThat(response.path("areas").values().stream().map(JsonNode::asString).toList())
                 .containsExactlyElementsOf(areas.stream().map(Area::name).toList());
         assertThat(response.propertyNames()).containsExactlyInAnyOrder("areas", "permissions");
+    }
+
+    @Test
+    @DisplayName("Permission and Area are enum schemas of their own in the OpenAPI document, and /users/me/access refers to them")
+    void apiDocsPublishThePermissionAndAreaEnums() throws Exception {
+        JsonNode docs = JSON.readTree(getAs(null, "/v3/api-docs").andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode schemas = docs.path("components").path("schemas");
+
+        assertThat(schemas.path("Permission").path("enum").values().stream().map(JsonNode::asString).toList())
+                .containsExactlyElementsOf(Arrays.stream(Permission.values()).map(Permission::name).toList());
+        assertThat(schemas.path("Area").path("enum").values().stream().map(JsonNode::asString).toList())
+                .containsExactlyElementsOf(Arrays.stream(Area.values()).map(Area::name).toList());
+        JsonNode access = schemas.path("AccessResponse").path("properties");
+        assertThat(access.path("permissions").path("items").path("$ref").asString()).isEqualTo("#/components/schemas/Permission");
+        assertThat(access.path("areas").path("items").path("$ref").asString()).isEqualTo("#/components/schemas/Area");
     }
 }
