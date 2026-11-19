@@ -32,7 +32,8 @@ Fill values from the codebase, not from memory.
 | `MapWrapper` | `com.example.common.wrapper.MapWrapper` | Values keyed by name (`MapWrapper.fromMap`) |
 | `Limits` / `MaxLength` / `ConfiguredMax` | `com.example.common.limits.*` | Configurable limits: `@MaxLength("<entity>.<field>")` on request Strings, numbers in `app.limits.*` (`config/limits.yml`) |
 | `TextSearch` | `com.example.common.pagination.TextSearch` | Case-insensitive contains (`position()`), no LIKE escaping |
-| `controllerSecurity` | `none` | Role annotation per module, e.g. `@AdminOnly` (`common/security`) for an admin-only module, or `none`; never a `hasRole` string (REST-25) |
+| `Permission` / `Role` | `com.example.common.security.Permission` / `com.example.user.domain.Role` | house-review AUTHZ-01, AUTHZ-02: every generated handler declares `@Requires(Permission.<ENTITY>_<ACTION>[_OWN])` (or `@SignedIn` for the dropdown, `@Public` never without the owner's word); the constants and each role's lines are generated with the entity, from the developer's answers (Step 1, *Permissions*), recorded in *Decisions per entity*. Never a role annotation or a `hasRole` string |
+| `Requires` / `SignedIn` / `Public` | `com.example.common.security.*` | The three handler declarations (AUTHZ-03) |
 
 ## Error contract (house-review error-contract.md; created by `/crud-gen bootstrap`)
 
@@ -81,7 +82,7 @@ Fill values from the codebase, not from memory.
 | `dropdownAnnotation` | `com.example.common.dropdown.DropdownCandidate` | House annotation (references/dropdown.md); created by bootstrap |
 | `DropdownItem` | `com.example.common.dropdown.DropdownItem` | Record `{value, label}`: one shape for every dropdown |
 | `DropdownFilter` | `com.example.common.dropdown.DropdownFilter` | Extends `CursorFilter` (`size`, `after`) with `status`, `sortDirection`, `query`; subclassed for the annotation's mandatory and optional filters |
-| `dropdownSecurity` | `@PreAuthorize("isAuthenticated()")` | The user's standard; ask when the resource is more restricted |
+| `dropdownSecurity` | `@SignedIn` + `for` | house-review AUTHZ-08: the handler is `@SignedIn`, the service checks the required `for=<Permission>` (`DropdownFor.check`: 403 unless held, 400 `DROPDOWN_REACH_UNSUPPORTED` for a reach it doesn't list) and narrows to its reach in the same query |
 
 ## Media
 
@@ -107,7 +108,8 @@ These override the skill's defaults. Leave empty to follow the pattern exactly.
 
 <!--
 One section per generated entity, "### <Entity> (<date>)", with the owner's answers to the skill's
-questions and their reasons: aggregate root or member, owned or shared and who writes and reads, the list
+questions and their reasons: aggregate root or member, owned or shared and who writes and reads, its
+permissions (the actions, their reach, which roles get each, the prerequisites) and its policy's rules, the list
 kind and its consumer, retired or deleted, how a person is erased, kept or accumulating (and for accumulating
 rows the period and the column the purge reads), each picked parent's picker, the
 answers to Step 1's "Ask, don't guess" list (each marked assumed when nobody could be asked), the open

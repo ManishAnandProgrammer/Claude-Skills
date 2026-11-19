@@ -120,15 +120,15 @@ without it (member), or does it have its own lifecycle (root)?". Record the answ
 is the table **shared** (a catalogue, reference data, staff records: nobody owns a row)? For a shared
 root, ask **who may write** (create, update, actions, delete, its upload purposes) and **who may
 read**, and record both in the crud profile's *Decisions per entity* and the service's javadoc. **Without tenancy**, while signup is public
-(the `sign-in` piece), every internet account is a USER: refuse `controllerSecurity: none` for a shared
-root's writes; they carry a role (`@AdminOnly`, or the project's own role annotation, REST-25). **With
+(the `sign-in` piece), every internet account is a USER: refuse a shared root whose writes USER may make; they
+carry a permission only the writing roles hold (*Permissions* below). **With
 tenancy** the public signup reaches no tenant data: a tenant token needs a membership that an ADMIN of
 that tenant granted (an account without one can't sign in, `TenantPlanesIntegrationTest
 .accountWithoutMembershipIsRefused`), so "every member writes the tenant's customers" is a sound owner
-decision: record it with that reason; the role check is then the owner's call, not a rule. A field that names a
+decision: record it with that reason; which roles hold the writes is then the owner's call, not a rule. A field that names a
 person (a name, an email, a phone) on a shared root asks the same for reads: list, get, filters and
-dropdown carry the role unless the owner decides that every account may search those people (record
-it). The role that writes a shared root gets that resource named in its javadoc (`Role`: "ADMIN: desk
+the dropdown's `for` need a permission the writers' roles hold unless the owner decides that every account may
+search those people (record it). The role that writes a shared root gets that resource named in its javadoc (`Role`: "ADMIN: desk
 staff: the catalogue, loans, settings") **when its first write is generated**, whether or not the
 convention was decided at bootstrap; when every role writes it, it is named on each. Check first that
 `Role`'s javadoc is true for the pieces the project has (with tenancy the role is the membership's,
@@ -145,10 +145,31 @@ exists, while the answer is cheapest:
 - **how is a person erased?** A root with personal fields (name, email, photo) that children will
   reference can no longer simply be deleted (DATA-07 says personal data is truly deletable; DATA-33's
   `*_IN_USE` refuses it): ask the erasure path (delete the children first, anonymise the person's
-  fields, or cascade) and record it. Golden role checks: `UploadPolicyController` (open read, `@AdminOnly` write) and
-`MetadataController` (admin-only), with their 403 tests (`UploadPolicyIntegrationTest`,
-`MetadataIntegrationTest.onlyAdminsReachTheApi`). A shared root has no `ownerId`: `findById`, no
-owner parameter, unscoped lists (tests.md *Shared tables*).
+  fields, or cascade) and record it. Golden permission checks: `UploadPolicyController` (`@SignedIn` read,
+`@Requires(Permission.UPLOAD_POLICY_MANAGE)` write) and `MetadataController` (`@Requires(Permission.METADATA_MANAGE)`),
+with their 403 tests (`UploadPolicyIntegrationTest`, `MetadataIntegrationTest.onlyAdminsReachTheApi`) beside the generated
+one (`EndpointContractIntegrationTest.everyRequiredPermissionIsChecked`). A shared root has no `ownerId`: `findById`,
+no owner parameter, unscoped lists (tests.md *Shared tables*).
+
+**Permissions** (house-review AUTHZ-01, AUTHZ-02; **ask, never guess**: they are business rules): ask the developer
+(1) **which actions** the entity's handlers split into (the default offer: `READ`, `CREATE`, `EDIT`, `DELETE`; an
+action of its own such as `APPROVE` when a state change is one; several handlers may share one, as a todo's
+update, status, tags and time entries share `TODO_EDIT_OWN`); (2) **the reach** of each: `_OWN` (the caller's own
+records: an owned entity), `_ASSIGNED` (records the module says are theirs to work: ask what assigns them), none
+(every record: a shared root); (3) **which roles get each**, role by role (roles don't include each other, so a
+permission two roles hold is on both lists); (4) **its menu `Area`** (an existing one, or a new constant: ask its
+name); (5) **the prerequisites** (an edit needs the read that opens the record: offer `EDIT`/`DELETE`/`CREATE` →
+`READ`, and let the developer change it). Record the answers in *Decisions per entity*. The generation then adds
+the constants to `{{Permission}}` (`<ENTITY>_<ACTION>[_OWN|_ASSIGNED]`, its area, reach and prerequisites: golden
+`Permission`'s `TODO_*`) and each role's lines to `{{Role}}` (golden `Role.USER`, `Role.ADMIN`), in the same commit;
+`RoleTest` fails a role missing a prerequisite, `PermissionTest` a reach that disagrees with its name or an unused
+area. **An owned entity** (a reach other than none, or a second party such as a requester) gets a
+`<Entity>Policy` in its service package (golden `TodoPolicy`, tested by a table like `TodoPolicyTest`): a `Decision`
+per rule (`read`, `edit`, an action's own), the list's condition (`listScope`, a `PredicateSpecification` its
+Criteria list adds), and the rules Step 1 and Step 3 found (a second party's rights, a terminal status that freezes the
+record, an amount and the module setting that bounds it; never a role's column). A response carries
+`allowedActions` only for an action whose answer differs between records the caller sees, from the same policy
+method (AUTHZ-07; golden `TodoAllowedActionsResponse`).
 
 **Module** (if `{{modules}}` is set): every generated class goes under `{{appPackage}}` with
 `{module}` substituted; cross-module access follows `{{moduleContracts}}` (architecture.md
@@ -190,9 +211,11 @@ with its race, tests.md row 23; or the column is `updatable = false`). A parent 
 "the list's `query` is the picker" is recorded in the crud profile's *Decisions per entity* (Conventions
 are for departures from a house rule). Never leave it unasked:
 the picker is the first screen that needs it. Whichever it is, check that the picker can be used by
-**every role that writes the child** and searches the **label the screen shows**: a list behind
-`@AdminOnly` (the tenancy piece's `GET /tenant-members`, which searches emails) is no picker for a rota
-every member writes. For a person reference with tenancy, a `Members`-backed members dropdown readable
+**every role that writes the child** and searches the **label the screen shows**: a list behind a
+permission the writers don't hold (the tenancy piece's `GET /tenant-members`, `TENANT_MEMBERS_MANAGE`, which
+searches emails) is no picker for a rota every member writes. A dropdown is shared by every screen that picks
+the resource: the screen names the write in `for` (the child's `<CHILD>_CREATE[_OWN]`), and the dropdown lists that
+permission's reach (AUTHZ-08, references/dropdown.md). For a person reference with tenancy, a `Members`-backed members dropdown readable
 by every member is the fitting picker. It is a use case, not in the tenancy piece: a project that needs
 one generates it with this skill as a dropdown of the user module (`GET /tenant-members/dropdown`, label
 the full name, `query` on it, over `Members`, references/dropdown.md) and reviews it with house-review
@@ -787,12 +810,14 @@ codes). Add the case where it helps the client (`"TODO_NOT_FOUND (missing, or an
 ### 4.10 Controller
 Golden `TodoController`: package-private, `implements <Entity>Api`, class-level
 `@RequestMapping("{{urlPrefix}}/<resource-plural>")`, methods with relative paths and
-`version = "v1+"` (the current baseline; REST-07), 201/204 with `@ResponseStatus`, `{{controllerSecurity}}`, nothing but the service call. A
-shared root's writes (and its personal-data reads) carry the role Step 1 decided. A user-level resource needs no
-`@PreAuthorize` (every authenticated principal is a user); the dropdown carries
-`{{dropdownSecurity}}` explicitly because it is often shared by screens of different roles.
-Role checks are meta-annotations such as `@AdminOnly` (REST-25, golden `MetadataController`). Its
-`SPRING_ENDPOINT` entry goes into the exclude file with it (Step 7).
+`version = "v1+"` (the current baseline; REST-07), 201/204 with `@ResponseStatus`, nothing but the service call.
+**Every handler declares exactly one of** `@Requires(Permission.<ENTITY>_<ACTION>[_OWN])` (the permission Step 1's
+*Permissions* gave it), `@SignedIn` (the dropdown, which checks its `for` in the service: `{{dropdownSecurity}}`) or
+`@Public` (never without the owner's word, and then a public path in the security chain): ArchUnit
+`handlersDeclareWhoMayCallThem` fails the build otherwise, and `EndpointContractIntegrationTest` calls every
+`@Requires` handler without its permission (403) with no test to write (house-review AUTHZ-03, AUTHZ-09). Never a
+role annotation or a `@PreAuthorize` string (REST-25). The write paths call the policy (4.8: `policy.x(...).orThrow()`
+after the load). Its `SPRING_ENDPOINT` entry goes into the exclude file with it (Step 7).
 
 ### 4.11 Dropdown (when the entity carries `{{dropdownAnnotation}}`)
 Read `references/dropdown.md`. Golden: `TodoListRepositoryImpl.findDropdownItems`,
@@ -844,7 +869,7 @@ Read `references/tests.md` and follow the golden test classes. With `{{tenancy}}
 generate `EntityNameTenantIsolationIntegrationTest` (golden: the skills repo's
 `overlays/tenancy/src/test/java/com/example/app/todo/TodoTenantIsolationIntegrationTest.java`):
 another tenant's member holding the role that writes the record (`newUserIn(newTenant())`, or
-`newUserIn(newTenant(), "ADMIN")` for an `@AdminOnly` root: row 15b) gets 404 with the code on GET,
+`newUserIn(newTenant(), "ADMIN")` for a root whose writes only ADMIN's role holds: row 15b) gets 404 with the code on GET,
 PUT, actions and DELETE of the record, which stays unchanged, and that tenant's lists never show it (TEN-13). With
 `{{tenancy}}` = `row`, also tests.md row 15c (a native query of the entity, and the catalogue guard run
 with the new table).
@@ -888,8 +913,13 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] A changed error shape or pointer (a cross-field error moved to its end field, a new code on an
       existing call): an entry, marked *breaking*, in each changelog the review profile's
       `publishedContracts` names (a UI, another service; ARCH-13, REST-20).
-- [ ] A shared root: writes carry a role, personal-data reads decided, both in the profiles (Step 1).
-- [ ] A convention changed during the run (`controllerSecurity`, what a role means): the class
+- [ ] A shared root: writes carry a permission the writing roles alone hold, personal-data reads decided, both in
+      the profiles (Step 1).
+- [ ] Permissions asked, never guessed (Step 1): the actions, reach, roles, area and prerequisites in *Decisions per
+      entity*; the constants in `Permission` and each role's lines in `Role`; every handler `@Requires`/`@SignedIn`/
+      `@Public`; an owned entity's `<Entity>Policy` with its list scope and its table test; `RoleTest`,
+      `PermissionTest` and `EndpointContractIntegrationTest` green.
+- [ ] A convention changed during the run (what a role holds, what a permission means): the class
       javadoc of the services generated earlier, `Role`'s javadoc and the profiles say the new rule
       (grep them). A role that now writes a shared root names it in `Role`'s javadoc (Step 1).
 - [ ] A text key a cursor carries: `app.limits.text.cursor` holds it and its key is in

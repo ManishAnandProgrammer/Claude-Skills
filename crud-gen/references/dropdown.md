@@ -9,9 +9,22 @@ come with bootstrap's `core` piece. **Golden code:**
 `~/.claude/skills-reference/src/main/java/com/example/app/common/dropdown/` (the types, with the
 annotation's full contract) and, for one entity, `todo/repository/impl/TodoListRepositoryImpl`
 (`findDropdownItems`), `todo/service/TodoListService` (`dropdown`),
-`todo/controller/TodoListController` (`dropdown`). An entity with mandatory or optional filters
-subclasses `{{DropdownFilter}}` as `<Entity>DropdownFilter`, one field per dot-path entry,
+`todo/controller/TodoListController` (`dropdown`), `common/dropdown/DropdownFor`. An entity with mandatory or
+optional filters subclasses `{{DropdownFilter}}` as `<Entity>DropdownFilter`, one field per dot-path entry,
 `@NotNull` for mandatory ones.
+
+**One dropdown per resource, named by the action it serves** (house-review AUTHZ-08): every screen that picks the
+resource (an attendance sheet, a fees report, a todo's create) calls the same endpoint with a required
+`for=<Permission>`: the permission of the action the options feed. The server refuses it (403 `ACCESS_DENIED`)
+unless the caller holds it, narrows the options to its reach (`Permission.reach()`), and answers 400
+`DROPDOWN_REACH_UNSUPPORTED` at `for` for a reach this dropdown doesn't list. Ask the developer which reaches the
+dropdown lists (an owned entity: `OWN`; a shared root: `ALL`; `ASSIGNED`: what assigns them) and which permissions
+its screens will name (recorded in *Decisions per entity*); never a dropdown per screen, never a READ permission of
+its own, never public. **A dropdown stays one query:** the `for` check is in memory, the reach is one more
+condition of the same Criteria query (none for `ALL`, the owner column for `OWN`, one indexed join for `ASSIGNED`),
+and a **dependent dropdown** (classes of a school, a todo list's todos) takes its parent id as a mandatory filter,
+a plain condition of that same `WHERE`, with **no separate parent check and no walk up the chain**: an
+out-of-reach parent yields an empty page, and nothing leaks. The write the options feed checks everything again.
 
 ## What to generate per entity (naming fixed: `findDropdownItems`, `dropdown`, `dropdown`)
 1. **Repository** (Criteria, never `@Query`): a **projection**
@@ -24,17 +37,21 @@ subclasses `{{DropdownFilter}}` as `<Entity>DropdownFilter`, one field per dot-p
    sortKey)`), write the cursor from it, and map the batch to `DropdownItem` before it leaves the
    repository; the cursor's key is then the sort column's (its size in `app.limits.text.cursor`, 4.2,
    when it is text).
-2. **Service:** `CursorWrapper<DropdownItem> dropdown(<Filter> filter)` builds the wrapper from the
-   repository's `CursorBatch`; refuses an inapplicable
+2. **Service:** `CursorWrapper<DropdownItem> dropdown(Permission action, <Filter> filter)` first calls
+   `DropdownFor.check(action, currentUser.permissions(), EnumSet.of(<the reaches it lists>))`, passes the reach's
+   condition (the caller's id for `OWN`) to the repository, and builds the wrapper from the repository's
+   `CursorBatch`; refuses an inapplicable
    `status`; the batch size from `Paging.cursorSize(filter)`. `cacheable = true` only when the
    developer asked for it (SKILL.md Step 1, *Ask, don't guess*), with `@CacheEvict` on writes and a shared cache when `{{instances}}` is
    `multiple`.
 3. **API interface:** `@Operation(summary = "Options for the <label> dropdown")`, the description
-   lists the defaults and the batching; `@ApiResponse` 200, 400, 401, 503 (403 only when
-   `{{dropdownSecurity}}` checks a role).
-4. **Controller:** `dropdown(@Valid <Filter> filter)` returning the service result;
-   `{{dropdownSecurity}}` (default `isAuthenticated()`; ask when the resource's reads need a role).
-   A dropdown never lists items the caller couldn't fetch.
+   lists the defaults, the batching and what `for` does; `for` is a parameter of the interface method
+   (`@Parameter(name = DropdownFor.PARAMETER, required = true, example = "<a permission its screens name>")`, its
+   schema the Permission enum); `@ApiResponse` 200, 400 (`DROPDOWN_REACH_UNSUPPORTED`, `for` missing or
+   unknown, then the filter's), 401, 403 (`ACCESS_DENIED`: the permission `for` names isn't held), 503.
+4. **Controller:** `@SignedIn`, `dropdown(@RequestParam(DropdownFor.PARAMETER) Permission action, @Valid <Filter>
+   filter)` returning the service result (`for` is a Java keyword, so it is a parameter of its own, never a filter
+   property). A dropdown never lists items outside the action's reach.
 
 When the pre-flight finds a resource that other screens pick from (another entity references it)
 but no `@DropdownCandidate`, ask whether to add one.
@@ -63,4 +80,11 @@ but no `@DropdownCandidate`, ask whether to add one.
   continues (golden `dropdownCursorOfTheLongestNameIsAccepted`; the cursor limit, SKILL.md 4.2).
 - Mandatory filter missing: 400 naming it. Optional filter: a presence and absence pair.
 - No token: 401. Scoped reads: another user's items never appear (a presence check first).
+- `for`: missing 400 `REQUEST_PARAMETER_MISSING`, unknown 400 `REQUEST_PARAMETER_INVALID` at `for`; a permission
+  the caller doesn't hold 403 `ACCESS_DENIED` with no statement run (`IntegrationTest.holding` with every other
+  permission); a held permission of a reach the dropdown doesn't list 400 `DROPDOWN_REACH_UNSUPPORTED` at `for`;
+  each permission its screens name lists the same options (golden `theDropdownNeedsFor`,
+  `aForTheCallerDoesntHoldIs403`, `aForOfAnotherReachIs400`, `everyOwnReachForListsTheSameOptions`).
+- One statement per call, `for` included (golden `dropdownRunsOneStatement`); a dependent dropdown also with an
+  out-of-reach parent: an empty page, one statement.
 - Cacheable: a write evicts it.
