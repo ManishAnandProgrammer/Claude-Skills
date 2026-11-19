@@ -16,7 +16,7 @@ is code-smells.md, java.md and architecture.md.
 - **Shared resources** (a table nobody owns: a catalogue, reference data, staff records; no owner
   column, no owner predicate in its service): with public signup (the `sign-in` piece) every internet
   account is a USER, so each write (POST, PUT, PATCH, DELETE, upload purposes for its files) needs a
-  role (`@AdminOnly` or the project's own, REST-25). Rows naming people (a borrower's name, an email,
+  permission USER doesn't hold (`@Requires(Permission.X)`, granted to the roles that write it: AUTHZ-02). Rows naming people (a borrower's name, an email,
   a phone) need the same decision for reads: list, get, filters and dropdown. The decision is in the
   profiles' conventions; the tests prove a USER's 403 with a valid body. **With tenancy** the rule is
   different: the public signup reaches no tenant data (a tenant token needs a membership a tenant ADMIN
@@ -621,8 +621,8 @@ resilience or failure-injection test is Medium).
   - **a list over a shared, company-wide table** (types, employees, anything admin-managed) shows
     every other test's rows: each test scopes its list calls by a filter only its own rows match (a
     fresh parent id, a unique `query` token), never asserting a page's absolute contents or total.
-    Row 15 ("another user's record is 404") doesn't apply to records nobody owns; the role tests
-    (row 14) cover who may see them.
+    Row 15 ("another user's record is 404") doesn't apply to records nobody owns; the permission tests
+    (row 14, and the generated 403 test: AUTHZ-09) cover who may see them.
 - **Shared fixtures and time:**
   - fixtures several classes use (an employee linked to an account, a manager, a role beyond ADMIN)
     live in a project base that extends the test base (`<Project>IntegrationTest`), a role's

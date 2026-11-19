@@ -102,7 +102,7 @@ live there, not in the skills.
   `scripts/overlay-replacements.sh`); row mode's table changes are `tenancy-row` blocks in the
   reference's changesets and entities. `crud-gen/references/bootstrap.md` explains the layout.
 - `house-review/SKILL.md`: the review process.
-- `house-review/references/`: the rules: rest-api, code-smells, java, persistence, lenses,
+- `house-review/references/`: the rules: rest-api, authorization, code-smells, java, persistence, lenses,
   architecture, error-contract, config-baseline, metadata, media, tenancy (its test matrices in
   tenancy-matrices); deep-passes holds the architecture and resilience passes of path and
   whole-codebase reviews.

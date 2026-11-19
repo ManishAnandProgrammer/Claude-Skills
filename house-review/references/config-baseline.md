@@ -216,7 +216,7 @@ command. Reference: `pom.xml` (JaCoCo 0.8.16; SpotBugs 4.10.5 with FindSecBugs 1
     entry per class and method like any other, with the reason "a JPA relation holds the managed entity; it
     can't be a copy"; crud-gen generates it with the entity.
   - **Low priority's informational kinds**, one entry per class: `SPRING_ENDPOINT` per controller (FindSecBugs
-    marks every handler for a reviewer; who may call it is its role annotation and its tests), which crud-gen
+    marks every handler for a reviewer; who may call it is its `@Requires`/`@SignedIn`/`@Public` and its tests, AUTHZ-03), which crud-gen
     generates with the controller; `CRLF_INJECTION_LOGS` per class that logs a value, while every deployed profile
     writes JSON lines (CFG-07: the encoder escapes a line break; a text log in a deployed profile makes the finding
     real). These and the relation method are the only entries generated code brings. A filter (a bean bound through

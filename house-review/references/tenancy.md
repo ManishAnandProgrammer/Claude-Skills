@@ -196,7 +196,7 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   refresh token checks it was issued after the token's own membership; a path that takes the role or the
   tenant from the presented token; `users.tenant_id`; the role read from `users.role` into a tenant token or
   any response (`/users/me` carries no role with tenancy: the membership's is in `GET /users/me/tenants`);
-  `@PreAuthorize`/`@AdminOnly` as the only check on an endpoint that grants or keeps roles; a members
+  an endpoint that grants or keeps roles checked by its `@Requires` alone (the token's permissions, AUTHZ-10); a members
   service that takes no caller id; a membership lookup by user or by id alone on a tenant-plane path
   (it reaches the person's membership in another tenant).
 - **Severity:** Medium; High for the role check of member changes (a removed ADMIN keeps control).

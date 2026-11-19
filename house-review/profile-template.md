@@ -54,7 +54,8 @@ project doesn't have.
 | `NotXss` | `escape-on-output` | A JSON API whose clients render text as text; or the FQN of the anti-XSS validator. Never `none`: REST-10 then finds every free-text field |
 | `NoEmoji` | `none` | FQN of the no-emoji constraint, for `noEmojiFields` |
 | `noEmojiFields` | `none` | Fields where `@NoEmoji` applies (codes, identifiers) |
-| `dropdownSecurity` | `@PreAuthorize("isAuthenticated()")` | REST-13: the dropdowns' read check; a role only when the resource's reads need one |
+| `dropdownSecurity` | `@SignedIn` + `for` | REST-13, AUTHZ-08: a dropdown is `@SignedIn` and takes a required `for=<Permission>` (403 unless held, the options narrowed to its reach, one query) |
+| `authorization` | `permissions` | AUTHZ-xx: `permissions` (Level 1: `Permission` and `Role` in code, `@Requires` on every handler, a policy per owned resource), or `roles-piece` (Level 2: roles in tables an admin edits) once the project has that piece. A project still on role annotations is `none`: every role check is then an AUTHZ-02 finding, migrated Level 1 first (guides/existing-project.md) |
 | `tokenRevocation` | `short-lived(15)` | `blacklist` (jti blacklist with a TTL, any store, no DB connection on a cache hit), `short-lived(<max minutes>)`, or `session-version` (the bootstrap piece: a version per account or membership in every token, checked per request through Redis; SEC-07) |
 | `edgeRateLimiter` | `none` | e.g. `nginx`: the edge proxy is the IP limiter in prod (REST-14) |
 | `metricsAuth` | `pending` | How the metrics scrape is secured (CFG-06); health stays unauthenticated |

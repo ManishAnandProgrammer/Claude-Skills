@@ -66,7 +66,7 @@ a finding**. Profile keys are written `{{key}}`.
   - **204**: any success with no body, not only DELETE;
   - 400: the request's own values are wrong (validation, a value outside an allowed range);
   - 401: missing or invalid token;
-  - 403: role missing;
+  - 403: permission missing (`ACCESS_DENIED`), or the action refused on this record;
   - **404**: not found, *or not yours* (REST-16);
   - 409: a valid request that conflicts with current state, or a duplicate (ERR-05);
   - **429 + `Retry-After`**: rate limited;
@@ -286,14 +286,17 @@ types.
     value, with indexes `(scope columns, sortField, valueField)`;
   - results are scoped like the resource's reads: a dropdown never lists items the caller couldn't
     fetch;
-  - security per `{{dropdownSecurity}}` (default `isAuthenticated()`);
+  - security per `{{dropdownSecurity}}` (default `@SignedIn` with a required `for=<Permission>`: the
+    dropdown is shared by every screen that picks the resource, refuses a `for` the caller doesn't hold and
+    lists the options of its reach, in one query; AUTHZ-08);
   - `cacheable` only where the developer asked for it (the crud profile's *Decisions per entity*),
     with eviction on writes, and a shared cache (or a confirmed reason) when `{{instances}}` is
     `multiple`;
   - documented in the API interface and tested.
 - **Also:** a picker for a write offers exactly what that write accepts (the roles an assignee may have,
   the statuses a parent may be in): one definition both use (a constant or a method of the owning module),
-  and a test that a value the dropdown leaves out is refused by the write.
+  and a test that a value the dropdown leaves out is refused by the write. The screen names that write in
+  `for` (AUTHZ-08); a dependent dropdown's parent is a plain filter of the same query.
 - **Also:** a screen that needs a picker has its dropdown (an assignee picker for "reassign"); a
   resource other screens pick from (another entity references it) without `@DropdownCandidate` is
   worth asking about.
@@ -350,22 +353,22 @@ types.
 
 ### REST-16: Authorization
 - **Check:**
-  - role checks on every protected method;
+  - a permission on every handler (`@Requires`, or `@SignedIn` / `@Public` by declaration: AUTHZ-03);
   - ownership checks on every user-owned record;
   - **404** when the caller can't know the record exists (another user's or tenant's record), so
     ids can't be enumerated;
   - **403** when the caller can see the record but this action isn't allowed (view yes, edit
-    no), with a specific `errorCode`; and for a missing role;
+    no), with a specific `errorCode`; and for a missing permission (`ACCESS_DENIED`);
   - **a record two parties see with different rights** (a leave request: the requester edits and
     cancels, their manager decides): one visibility rule (`visibleTo(caller, record)`, 404 for
     anyone else), then a 403 code per refused action (`<ENTITY>_NOT_YOURS`,
     `<ENTITY>_DECISION_NOT_ALLOWED`). A relationship that grants the right (the requester's
     manager) is read under the same lock as the record it decides, or a reassignment between the
     read and the write lets the former party act. The tests cover each party × each action, plus a
-    stranger (404) and the relationship changing (TEST-02). Reference: a todo's requester reads it
-    (`TodoService.findById`, `TodoRepository.findVisibleWithTodoList`) and gets 403 `TODO_NOT_YOURS` on
-    every other call (`TodoService.notOwned`), `TodoRequesterIntegrationTest`. Ask for the parties and
-    their actions before generating.
+    stranger (404) and the relationship changing (TEST-02). The rules are the owning module's policy
+    (AUTHZ-04). Reference: a todo's requester reads it (`TodoPolicy.read`) and gets 403 `TODO_NOT_YOURS` on
+    every other call (`TodoPolicy.edit`), `TodoPolicyTest`, `TodoRequesterIntegrationTest`. Ask for the
+    parties and their actions before generating.
 - **Detect:** endpoints that take an id and load a user-owned record without comparing it to
   the caller; `/users/{id}/...` where `/users/me/...` is meant.
 - **Severity:** Critical (IDOR) or High.
@@ -412,7 +415,7 @@ types.
   - response fields;
   - the status codes actually returned, including those from exceptions thrown by the service
     and mapped by the handler;
-  - the role required.
+  - the permission required (the `403` names it: `ACCESS_DENIED (without X)`).
 
   Any mismatch is a finding. Also check the consumers in `{{publishedContracts}}` (frontend
   changelog, k6 scripts); non-OpenAPI contracts follow ARCH-13. In **diff mode**, a change to a request or response DTO, a
@@ -479,26 +482,21 @@ types.
   added when a screen asks for it.
 - **Severity:** Medium.
 
-### REST-25: Role names are declared once
-- **Check:** role names are never string literals at use sites. Each role check is a
-  meta-annotation declared once in `common/security` (`@AdminOnly` carrying
-  `@PreAuthorize("hasRole('ADMIN')")`), and endpoints use the annotation. A renamed or misspelt role
-  then fails in one place, not silently on one endpoint.
-- **A new role** needs, in one change: its annotation next to `@AdminOnly`, a constant in the `Role`
-  enum, a changeset widening the role check constraint (`ck_users_role` in the reference,
-  widened for `ADMIN` by `0007-users-admin-role.sql`), and the test base's `new<Role>()` (through
-  `newUserWithRole`). Without the changeset the first user given the role fails the insert.
-- **Roles don't include each other**, and the house ships no role hierarchy: an account has exactly
-  one role, `hasRole('USER')` is false for an ADMIN, and every check that names roles lists each role
-  it lets in, so it reads on its own line: an upload purpose's roles (`UploadPurpose("USER", "ADMIN")`;
-  `UploadUrlIntegrationTest`: a role it doesn't list is 403, a test skipped when it lists them all), a
-  role annotation declared once with `hasAnyRole('ADMIN', 'MANAGER')`. USER-level endpoints carry no
-  role check, so every role passes them. A `RoleHierarchy` bean is a finding unless the profile
-  records it as a deviation: it must then be read by method security **and** `CurrentUser.hasRole`,
-  and the copied media 403 tests rewritten against it.
-- Role names that live in data or in another module's code (`UploadPurpose("USER")`, where the media
-  module can't depend on the user module's enum) are checked by a test against the `Role` constants
-  (reference: `UploadPurposeTest`).
-- **Detect:** `hasRole('` or `hasAnyRole('` outside `common/security`; a `Role` constant with no
-  changeset widening the constraint.
+### REST-25: Permissions are declared once
+- **Check:** no permission or role name is a string literal at a use site. A handler names its permission
+  as an enum constant (`@Requires(Permission.TODO_EDIT_OWN)`), the one meta-annotation declared in
+  `common/security`, or is `@SignedIn` or `@Public`; a renamed or misspelt permission then fails at compile
+  time, not silently on one endpoint. Roles are groups of permissions (`Role` lists them) and nothing checks
+  a role. The rules are `references/authorization.md` (AUTHZ-01 to AUTHZ-03).
+- **A new role** needs, in one change: its constant in `Role` with its permissions, a changeset widening the
+  role check constraint (`ck_users_role` in the reference, widened for `ADMIN` by
+  `0007-users-admin-role.sql`), and the test base's `new<Role>()` (through `newUserWithRole`). Without the
+  changeset the first user given the role fails the insert. **A new permission** needs its constant and a line
+  in each role that gets it (AUTHZ-02).
+- **Roles don't include each other**, and the house ships no role hierarchy: an account has exactly one
+  role, and a permission two roles share is listed on both. A check the request's data decides (an upload
+  purpose's permissions, a dropdown's `for`) names permissions too (`UploadPurpose(TODO_CREATE_OWN,
+  TODO_EDIT_OWN)`; `UploadPurposeTest`, AUTHZ-10).
+- **Detect:** `hasRole(`, `hasAnyRole(`, `hasAuthority('` or `@PreAuthorize` outside `common/security`
+  (ArchUnit); a `RoleHierarchy`; a `Role` constant with no changeset widening the constraint.
 - **Severity:** Medium.

@@ -971,3 +971,71 @@ two URLs and six crons as `String`, environment variables with the unit in the n
   `revoked_at` an hour back), which is exact and needs no wait. A short value in the test profile would be invented.
 - **crud-gen:** its conventions say the type rule once; 4.12's `Settings` takes a `Cron`, a `Period` for a table ending
   on a `LocalDate`, the yml value with its unit; the final checklist gains a line.
+
+## Authorization: permissions, roles and policies (AUTHZ; 2026-11-19)
+
+The owner's ERP pain: code checked role names (`@RolesAllowed("TEACHER")`), the frontend copied the role →
+permission lists, and once roles became admin-built data and two people with one role needed different
+capabilities, the two copies drifted (an endpoint shipped without its permission on the frontend); amount rules
+("an accountant gives concessions up to 2,000, an admin any amount") ended up in the roles. The decision
+(2026-11-19), the default of every house project, is `references/authorization.md`:
+- **Level 1 (default):** `Permission` (an enum of capabilities in `common/security`, each a Spring authority of its
+  name, with its menu `Area`, its `Reach` and its prerequisites), `Role` listing its permissions in code, one role
+  per account (per membership with tenancy), the token carrying the role and the converter mapping it to its
+  permissions. Every handler declares exactly one of `@Requires(Permission.X)`, `@SignedIn`, `@Public` (ArchUnit).
+  Record rules (reach, state, amounts, dates, relationships, the module's limits) are a `<Resource>Policy` of plain
+  `if`s returning a `Decision`, which also owns the list's condition. `GET /users/me/access` answers the areas and
+  permissions; `allowedActions` only where a button depends on the record. Dropdowns are shared per resource and
+  named by the action they serve (`for=<Permission>`).
+- **Level 2 (the `roles` piece, later):** `roles`, `role_permissions`, `user_roles (valid_until)`,
+  `user_permissions (ALLOW|DENY)`, effective = roles + ALLOWs − DENYs, read per request from PostgreSQL. Written down
+  now as rules *with the roles piece*, so moving changes no endpoint, policy or client.
+
+**Why this shape** (evaluated against two LLM designs and the industry): Spring Security's own group tables
+(`groups`, `group_members`, `group_authorities`) are Level 2's shape, so Level 2 is Spring's model, not ours.
+Laravel Policies, Pundit (with its `Scope`), ASP.NET resource handlers and Symfony voters all split a yes/no
+permission from a per-resource policy: the `@Requires`/`<Resource>Policy` split. Dynamics 365's access levels (User,
+Business Unit, Parent: Child BU, Organization) are the reach suffixes. SAP keeps approval amounts in the release
+strategy, never the role: limits are the module's settings. AWS IAM and Azure: an explicit deny wins (Level 2).
+Jira's `GET /mypermissions` and GitHub's `permissions` on a repository are `/me/access` and `allowedActions`.
+**Rejected:** Spring ACL (a row per record per person duplicates the business relationships the policy already
+reads, and breaks paging: a list can't be one query); Keycloak authorization services, SpiceDB/OpenFGA (a second
+system holding a copy of the relationships); Casbin (a policy language of its own, rules as data); Redis permission
+caches and revocation keys (the session-version piece already bounds staleness; Level 2 reads PostgreSQL); `ltree`
+scope trees; role-level DENY (a role only allows, so "what may this role do" stays a list); limits in role tables.
+
+**Decided while building it:**
+- **Annotation templates, proven first:** a probe test (deleted after) showed Spring Security 7.1's
+  `SecurityAnnotationScanners.requireUnique` resolves `{value}` templates by default and converts an enum attribute to
+  its name: `@PreAuthorize("hasAuthority('{value}')")` on `@Requires(Permission value())` grants the holder and refuses
+  another authority with no `AnnotationTemplateExpressionDefaults` bean; a literal `{value}` authority never matches.
+  So no `AuthorizationManager` of our own.
+- **`TokenPermissions`** (`common/security`), implemented by sign-in's `RolePermissions`: the converter in `config`
+  can't see `user.domain.Role` (config reaches a feature only through its api, and core copies without sign-in), and
+  it is Level 2's seam: the same interface then reads the tables. A core copy without sign-in implements it for its
+  identity provider (bootstrap warns).
+- **Spring's `FACTOR_BEARER`:** Spring Security 7's `JwtAuthenticationConverter.convert` (final) adds it to every
+  token; it is how the caller signed in, not a role or a permission, so the rule says "nothing else but Spring's factor
+  authority" and the converter test checks that.
+- **Validation runs before method security** on a controller (arguments are resolved before the proxied method), so
+  an invalid body is 400 before a caller without the permission gets 403; the generated 403 test sends a valid body
+  from the schema's examples (a plan status example changed from `DONE` to `CANCELLED`, since `DONE` needs a date).
+- **Platform staff** (tenancy) have one role and their own chain, so platform handlers are `@SignedIn` (a staff
+  token is the only one that reaches them); a second staff role brings platform permissions. Staff tokens map to no
+  permission (an unknown role grants nothing).
+- **Member and account changes** keep reading the caller's role under the lock (TEN-08) and ask it
+  `role.grants(TENANT_MEMBERS_MANAGE)` / `ACCOUNT_STATUS_CHANGE`; the last-ADMIN rules stay about the role.
+- **`TodoPolicy`**: the todo has no state rule, so the golden shows reach only: the owner edits, the requester reads
+  (`TODO_NOT_YOURS` on a change), anyone else 404; the list's condition is a `PredicateSpecification` the repository
+  adds to its Criteria query (the policy lives in `service`, and a repository can't call up); writes now lock by id and
+  then decide (a refused caller holds the lock only until its rollback). `allowedActions.edit` is the same method.
+  The todo list keeps its owner condition in its queries (its only rule): AUTHZ-04's *Not a finding*.
+- **Shared dropdowns:** `for` is a `@RequestParam` beside the filter (`for` is a Java keyword, so no filter
+  property), checked in memory by `DropdownFor.check`; the todo-list and tag dropdowns list `OWN` only, so an
+  all-records permission is 400 `DROPDOWN_REACH_UNSUPPORTED`. A dependent dropdown is a rule and crud-gen's
+  generation (its parent a plain filter of the one query); the reference's two dropdowns have no parent, so it has no
+  golden yet.
+- **Permission names** for the reference: `TODO_LIST_*`, `TODO_*`, `TAG_*`, `PLAN_*` with `READ`, `CREATE`, `EDIT`,
+  `DELETE` and `_OWN` (each module is per owner, the create included: you create your own), EDIT/DELETE/CREATE
+  needing READ; `ACCOUNT_STATUS_CHANGE`, `TENANT_MEMBERS_MANAGE`, `METADATA_MANAGE`, `UPLOAD_POLICY_MANAGE` by
+  capability (the brief's examples). Areas `TODOS`, `ACCOUNTS`, `SETTINGS`.

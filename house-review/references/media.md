@@ -50,23 +50,22 @@ signed PUT per file) → the browser PUTs to S3 → the owner's create or update
 ### MEDIA-04: The purpose says who may upload; the owner's write attaches
 - **Check:**
   - `POST /upload-urls` checks only "may this person upload for this purpose", which the
-    `UploadPurpose` constant names (a role). The purpose arrives in the body, so this one check is
-    `purpose.mayUpload(currentUser::hasRole)` in the service (403 `ACCESS_DENIED`), not an annotation
-    (REST-25 covers checks a method can name up front). `UploadPurposeTest.onlyTheNamedRolesMayUpload`
-    unit-tests the refusal, so it stays tested when a purpose names every role and the endpoint's 403
-    tests are skipped;
+    `UploadPurpose` constant names (its permissions). The purpose arrives in the body, so this one check is
+    `purpose.mayUpload(currentUser::holds)` in the service (403 `ACCESS_DENIED`), not an annotation
+    (`@Requires` covers checks a method can name up front; AUTHZ-10). `UploadPurposeTest
+    .onlyTheNamedPermissionsMayUpload` unit-tests the refusal, so it stays tested when every role holds the
+    purpose's permissions and the endpoint's 403 tests are skipped;
   - attaching happens inside the owning resource's own create or update (`POST /todos`,
     `PUT /todos/{id}`), which keeps its own checks (whose record, is it editable), takes the count
     range from `Uploads.fileCountRange(purpose)` and calls `Uploads.claim`;
   - the media module has no hook, callback or per-purpose switch into feature modules;
-  - **the purpose's role is the role of whoever writes the owning record**, not of the person the
+  - **the purpose's permissions are those of the writes that attach its files**, not of the person the
     file is about: the claim requires the uploader to be the claimer (MEDIA-05), so if admins edit
-    employees, admins upload their photos (`EMPLOYEE_PHOTO("ADMIN")`). When the record's subject may
-    change the file too (an employee's own photo), that is a second write path with its own checks,
-    and the purpose names both roles. A purpose lists **every** role that writes the record: roles
-    don't include each other (the house ships no hierarchy, REST-25), and with tenancy a
-    tenant's owner is its ADMIN, so a record every member edits is `STUDENT_PHOTO("USER", "ADMIN")`;
-    a purpose naming `USER` alone shuts the owner out.
+    employees, the purpose names the employee's edit (`EMPLOYEE_PHOTO(Permission.EMPLOYEE_EDIT)`). When the
+    record's subject may change the file too (an employee's own photo), that is a second write path with its
+    own checks and its own permission (`EMPLOYEE_PHOTO_EDIT_OWN`), and the purpose names both. A purpose names
+    **every** write that attaches its files (the create and the edit: `TODO_ATTACHMENT(TODO_CREATE_OWN,
+    TODO_EDIT_OWN)`); which roles hold them is the roles' lists (AUTHZ-02), never the purpose's.
 - **Detect:** an `attach` endpoint in the media module; an interface in `media` implemented by a
   feature module; `switch (purpose)` in media code.
 - **Severity:** High (an attach outside the owner's write skips the owner's rules).

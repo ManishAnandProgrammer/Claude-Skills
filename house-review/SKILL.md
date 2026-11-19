@@ -14,6 +14,7 @@ The rules are fixed and identical across projects. They live in `references/`:
 | File | Rule IDs | Covers |
 |---|---|---|
 | `references/rest-api.md` | REST-xx | Endpoints, status codes, errors, validation, authorization, OpenAPI and doc drift |
+| `references/authorization.md` | AUTHZ-xx | Permissions and roles in code, `@Requires`/`@SignedIn`/`@Public` on every handler, a policy per owned resource with its list filter, `/users/me/access` and `allowedActions`, shared dropdowns named by `for`, the authorization tests; Level 2 (the roles piece) marked as such |
 | `references/code-smells.md` | SMELL-xx | Code smells, Clean Code, Refactoring |
 | `references/java.md` | JAVA-xx | Effective Java and the house Java conventions |
 | `references/persistence.md` | DATA-xx | Transactions, connections, deletes, history, ids, locking, indexes |
@@ -168,6 +169,7 @@ section *Tests (TEST)*.
 | Changed file | Loads |
 |---|---|
 | Java of a feature module: controller, API interface, request, response, filter and view records, entity and domain enums, repository and its implementation, service, facade, Manager, mapper, `*ConstraintErrorCodes` | the core; lenses.md's section *Lens 8: Concurrency (CONC)*; PERF-01 (the profile's `hotPaths` answer it on every change); OPS-03 (an entity or its repository: are its rows kept or do they accumulate) |
+| A controller or API interface, a `*Policy`, a dropdown, the `Role` enum, or anything in `common/security`, besides its own row | authorization.md |
 | Test (`testRoots`) | the core |
 | Changeset (`migrationsDir`), configuration (`application*.yml`, `config/*.yml`, `logback*.xml`) | the core without java.md; config-baseline.md; OPS-03 (a changeset that creates a table) |
 | A settings record in any module (a `@ConfigurationProperties` class or record, a job's `Settings`, a group or value record they hold) or a startup check, besides its own row | config-baseline.md's CFG-10 and CFG-12 |
@@ -184,7 +186,7 @@ When a file's kind, or whether a rule applies to it, is unclear, load the refere
 | `api` | rest-api.md, error-contract.md, REL-10, ARCH-13, DATA-10 (the indexes a new sort, filter or dropdown needs) |
 | `data` | persistence.md; lenses.md's section *Lens 8: Concurrency (CONC)*; REST-08, REST-09, ERR-03, OPS-03 |
 | `tests` | lenses.md's section *Tests (TEST)*; ERR-06, ERR-07, DATA-06, DATA-10 and DATA-19 (their **Detect** hints name test defects); CFG-11 (the coverage gate) |
-| `security` | REST-09, REST-14 to REST-18, REST-22, REST-25; TEST-02, TEST-03, TEST-04 |
+| `security` | authorization.md; REST-09, REST-14 to REST-18, REST-22, REST-25; TEST-02, TEST-03, TEST-04 |
 | `config` | config-baseline.md; DATA-19 |
 | `arch` | architecture.md, code-smells.md |
 
