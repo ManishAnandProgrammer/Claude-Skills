@@ -89,6 +89,12 @@
         <Class name="com.example.app.common.logging.RequestCompletionLogFilter"/>
         <Bug pattern="CRLF_INJECTION_LOGS"/>
     </Match>
+    <!-- change-history:begin -->
+    <Match>
+        <Class name="com.example.app.common.persistence.ChangeHistoryActor"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <!-- change-history:end -->
     <!-- sign-in:begin -->
     <Match>
         <Class name="com.example.app.common.ratelimit.RedisRateLimiter"/>

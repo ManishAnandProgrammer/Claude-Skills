@@ -23,7 +23,7 @@
 #      2g. core + sign-in + tenancy-schema: schema per tenant alone, staff-only registration (no tenant
 #          table but the tenant's members and the tests' probe), with real database roles; every test runs;
 #      2h. every piece: core + sign-in + example + metadata + media + tenancy-schema +
-#          tenant-registration + session-version. The todo, plan, metadata and media tables in the tenant
+#          tenant-registration + session-version + change-history. The todo, plan, metadata and media tables in the tenant
 #          changelog, the media keys per tenant, the cross-tenant tests, self-registration, the session
 #          version per membership (a platform changeset); every test runs, the reference's own tests
 #          inside the test tenant;
@@ -31,7 +31,7 @@
 #          the tenant's members and the tests' probe), with real database roles (the app role
 #          NOBYPASSRLS): the hook, the policies' guard, the isolation tests; every test runs;
 #      2j. every piece with row mode: core + sign-in + example + metadata + media + tenancy-row +
-#          tenant-registration + session-version. Every reference table a tenant table under its forced
+#          tenant-registration + session-version + change-history. Every reference table a tenant table under its forced
 #          policy (the catalogue guard), composite keys, seeds on TenantProvisioned, the cross-tenant
 #          tests, the session version per membership; every test runs, the reference's own tests inside
 #          the test tenant;
@@ -39,7 +39,9 @@
 #          (2l), row mode (2m): the pieces' own code and tests with none of the example's samples to lean on;
 #          every test runs;
 #      the session version is opt-in: every copy without it (2, 2b, 2c, 2e, 2g, 2i, 2d) is checked for
-#      none of its traces (no column, claim, filter, endpoint or configuration key);
+#      none of its traces (no column, claim, filter, endpoint or configuration key); so is the change history
+#      (the reference, 2h, 2j, 2k, 2l and 2m have it; 2, 2b, 2c, 2e, 2f, 2g, 2i and 2d have none of its traces:
+#      no table, trigger function, actor, job or setting);
 #      2d. core alone (a project signing users in elsewhere), without sign-in's Redis and Bucket4j
 #          dependencies: main and test code compile and the unit tests pass. Its integration and
 #          ArchUnit tests are left out: the integration tests sign users in through sign-in, and the
@@ -94,6 +96,16 @@ no_session_version() {
     if grep -rqE "$SESSION_VERSION_TRACES" "$@"; then
         echo "FAILED: session-version entries in a copy without the session-version piece:" >&2
         grep -rlE "$SESSION_VERSION_TRACES" "$@" | head -5 >&2
+        exit 1
+    fi
+}
+# What the change-history piece leaves in a copy (its table, function, actor, job and settings); a copy without it has
+# none of it.
+CHANGE_HISTORY_TRACES='change-history|ChangeHistory|audit_log|audit_row_change|app\.user_id|[Cc]hange history'
+no_change_history() {
+    if grep -rqE "$CHANGE_HISTORY_TRACES" "$@"; then
+        echo "FAILED: change-history entries in a copy without the change-history piece:" >&2
+        grep -rlE "$CHANGE_HISTORY_TRACES" "$@" | head -5 >&2
         exit 1
     fi
 }
@@ -274,6 +286,7 @@ if wants 2; then
         && [ -f "$project/src/main/resources/db/changelog/changes/0007-users-admin-role.sql" ] \
         || { echo "FAILED: the ADMIN role or the account suspension endpoint is missing from the sign-in copy" >&2; exit 1; }
     no_session_version "$project/src" "$project/docs" "$project/compose.yaml" "$project/.env.example"
+    no_change_history "$project/src" "$project/docs" "$project/compose.yaml" "$project/.env.example"
     # Bootstrap renames the application; tests must not depend on the reference's name.
     sed -i 's/\${APP_NAME:reference}/${APP_NAME:smoke}/' "$project/src/main/resources/application.yml"
     grep -q 'APP_NAME:smoke' "$project/src/main/resources/application.yml" || { echo "FAILED: could not rename the smoke application" >&2; exit 1; }
@@ -295,6 +308,7 @@ if wants 2b; then
     grep -rqE "Attachment|UploadPurpose|MEDIA_(BUCKET|STORAGE)|UPLOAD_|media_files|awssdk" "$example/src" && { echo "FAILED: media entries left in an example copy without the media piece" >&2; exit 1; }
     [ -f "$example/src/test/java/com/acme/example/metadata/MetadataIntegrationTest.java" ] || { echo "FAILED: the metadata samples' tests are missing from the copy with both pieces" >&2; exit 1; }
     no_session_version "$example/src" "$example/docs"
+    no_change_history "$example/src" "$example/docs"
     # Coverage measured 2026-11-18 at lines 95.64 %, branches 84.76 %; only ever raised.
     mvn_verify "$example" "$WORK/example.log" "$UPGRADE" -Dcoverage.line.minimum=0.94 -Dcoverage.branch.minimum=0.83
     upgraded "$example"
@@ -313,6 +327,7 @@ if wants 2c; then
     grep -rqE "(example|metadata):(begin|end)|TODO_LIST|todo-list|TodoListSettings" "$meta/src" && { echo "FAILED: samples or markers left in a metadata copy without the example piece" >&2; exit 1; }
     [ -f "$meta/src/main/resources/db/changelog/changes/0007-users-admin-role.sql" ] || { echo "FAILED: the ADMIN role changeset is missing from the metadata copy" >&2; exit 1; }
     no_session_version "$meta/src" "$meta/docs"
+    no_change_history "$meta/src" "$meta/docs"
     # Coverage measured 2026-11-18 at lines 84.73 %, branches 74.80 %; only ever raised.
     mvn_verify "$meta" "$WORK/meta.log" -Dcoverage.line.minimum=0.83 -Dcoverage.branch.minimum=0.73
 fi
@@ -332,6 +347,7 @@ if wants 2e; then
         || { echo "FAILED: the ADMIN role is missing from the media copy (its policy admin endpoint needs it)" >&2; exit 1; }
     [ -f "$media/src/main/resources/db/changelog/changes/0010-todo-attachments.sql" ] && { echo "FAILED: the todo attachments changeset in a copy without the example" >&2; exit 1; }
     no_session_version "$media/src" "$media/docs"
+    no_change_history "$media/src" "$media/docs"
     # The media endpoints' own tests arrive with the piece (skipped until the project declares a purpose).
     for endpoint_test in UploadUrlIntegrationTest UploadPolicyIntegrationTest PresignedUploadIntegrationTest; do
         [ -f "$media/src/test/java/com/acme/media/media/$endpoint_test.java" ] || { echo "FAILED: $endpoint_test is missing from the media copy" >&2; exit 1; }
@@ -362,6 +378,7 @@ if wants 2f; then
     grep -rqE "membership_id|MEMBERSHIP_CLAIM|TenantDeactivated|MembershipService" "$files/src" && { echo "FAILED: the session version's tenancy parts in a copy without tenancy" >&2; exit 1; }
     grep -q "SESSION_VERSION_STALE" "$files/src/main/java/com/acme/files/user/domain/Role.java" \
         || { echo "FAILED: the Role javadoc doesn't say a role change reaches the next request with the session version" >&2; exit 1; }
+    no_change_history "$files/src" "$files/docs"
     # The display number comes with the metadata piece (Counters): not in this copy.
     [ -f "$files/src/main/resources/db/changelog/changes/0026-todo-numbers.sql" ] && { echo "FAILED: the todo numbers in a copy without the metadata piece" >&2; exit 1; }
     for attachment in main/java/com/acme/files/todo/domain/TodoAttachment.java test/java/com/acme/files/todo/TodoAttachmentsIntegrationTest.java \
@@ -397,6 +414,7 @@ if wants 2g; then
     grep -q "UPDATE users" "$tenancy/src/main/java/com/acme/tenancy/user/domain/Role.java" \
         && { echo "FAILED: the Role javadoc of a tenancy copy names the users.role statement (the role is the membership's)" >&2; exit 1; }
     no_session_version "$tenancy/src" "$tenancy/docs"
+    no_change_history "$tenancy/src" "$tenancy/docs"
     # Accounts are global: platform staff suspend them, never a tenant ADMIN through the tenant plane.
     grep -q '"/{id}/status"' "$tenancy/src/main/java/com/acme/tenancy/user/controller/UserController.java" \
         && { echo "FAILED: the tenant-plane account suspension endpoint in a tenancy copy" >&2; exit 1; }
@@ -421,8 +439,8 @@ if wants 2h; then
     sed -e 's/package com.acme.smoke;/package com.acme.tenants;/' -e 's/SmokeApplication/TenantsApplication/g' \
         "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$tenants/src/main/java/com/acme/tenants/TenantsApplication.java"
     "$REPO/scripts/bootstrap-copy.sh" --target "$tenants" --package com.acme.tenants \
-        --with core,sign-in,example,metadata,media,tenancy-schema,tenant-registration,session-version > "$WORK/copy-tenants.log" 2>&1
-    grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version):(begin|else|end)" "$tenants/src" "$tenants/compose.yaml" "$tenants/.env.example" "$tenants/docs" \
+        --with core,sign-in,example,metadata,media,tenancy-schema,tenant-registration,session-version,change-history > "$WORK/copy-tenants.log" 2>&1
+    grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version|change-history):(begin|else|end)" "$tenants/src" "$tenants/compose.yaml" "$tenants/.env.example" "$tenants/docs" \
         && { echo "FAILED: markers left in the copy with every piece" >&2; exit 1; }
     grep -rqE "TenantOwnedEntity|app\.tenant_id|ROW LEVEL SECURITY" "$tenants/src" && { echo "FAILED: row mode in a schema-per-tenant copy" >&2; exit 1; }
     grep -q "0002-todo-lists.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" && grep -q "0009-media-files.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" \
@@ -440,6 +458,11 @@ if wants 2h; then
         || { echo "FAILED: the todo numbers or the tenant schemas' previous-release seed are missing from the schema-per-tenant copy" >&2; exit 1; }
     [ -f "$tenants/src/main/java/com/acme/tenants/user/api/Users.java" ] \
         && { echo "FAILED: the accounts' facade in a tenancy copy (a person in a tenant is a member: Members)" >&2; exit 1; }
+    # The change history: one platform table and function, the example's triggers in every tenant schema.
+    grep -q "0035-change-history.sql" "$tenants/src/main/resources/db/changelog/platform.yaml" \
+        && grep -q "0036-todos-change-history.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" \
+        && ! grep -q "0036-todos-change-history.sql" "$tenants/src/main/resources/db/changelog/platform.yaml" \
+        || { echo "FAILED: the change history isn't the platform's, with the example's triggers in the tenant changelog" >&2; exit 1; }
     # Coverage measured 2026-11-18 at lines 95.99 %, branches 84.78 %; only ever raised.
     mvn_verify "$tenants" "$WORK/tenants.log" "$UPGRADE" -Dcoverage.line.minimum=0.94 -Dcoverage.branch.minimum=0.83
     upgraded "$tenants"
@@ -460,6 +483,7 @@ if wants 2i; then
     grep -rqE "TenantSchemas|search_path|tenant_template|TenantMigration" "$rows/src" && { echo "FAILED: schema-per-tenant code in a row-mode copy" >&2; exit 1; }
     [ -f "$rows/src/main/java/com/acme/rows/config/LazyConnectionConfig.java" ] && { echo "FAILED: the lazy proxy in a row-mode copy (the hook borrows lazily)" >&2; exit 1; }
     no_session_version "$rows/src" "$rows/docs"
+    no_change_history "$rows/src" "$rows/docs"
     [ -f "$rows/src/main/resources/db/changelog/platform.yaml" ] && { echo "FAILED: two masters in a row-mode copy" >&2; exit 1; }
     [ -f "$rows/src/main/java/com/acme/rows/user/controller/TenantRegistrationController.java" ] \
         && { echo "FAILED: the public registration endpoint in a copy without tenant-registration" >&2; exit 1; }
@@ -480,8 +504,8 @@ if wants 2j; then
     sed -e 's/package com.acme.smoke;/package com.acme.rowtenants;/' -e 's/SmokeApplication/RowtenantsApplication/g' \
         "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$rowtenants/src/main/java/com/acme/rowtenants/RowtenantsApplication.java"
     "$REPO/scripts/bootstrap-copy.sh" --target "$rowtenants" --package com.acme.rowtenants \
-        --with core,sign-in,example,metadata,media,tenancy-row,tenant-registration,session-version > "$WORK/copy-rowtenants.log" 2>&1
-    grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version):(begin|else|end)" "$rowtenants/src" "$rowtenants/compose.yaml" "$rowtenants/.env.example" "$rowtenants/docs" \
+        --with core,sign-in,example,metadata,media,tenancy-row,tenant-registration,session-version,change-history > "$WORK/copy-rowtenants.log" 2>&1
+    grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version|change-history):(begin|else|end)" "$rowtenants/src" "$rowtenants/compose.yaml" "$rowtenants/.env.example" "$rowtenants/docs" \
         && { echo "FAILED: markers left in the row-mode copy with every piece" >&2; exit 1; }
     rowmaster="$rowtenants/src/main/resources/db/changelog/db.changelog-master.yaml"
     # The platform's changesets first: every tenant table references tenants.
@@ -514,7 +538,7 @@ fi
 every_piece_but_the_example() {
     local id="$1" name="$2" tenancy="$3" line_minimum="$4" branch_minimum="$5" dir pieces
     dir="$WORK/$name"
-    pieces="core,sign-in,metadata,media,session-version${tenancy:+,$tenancy}"
+    pieces="core,sign-in,metadata,media,session-version,change-history${tenancy:+,$tenancy}"
     mkdir -p "$dir/src/main/java/com/acme/$name"
     cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$dir/"
     sed -e "s|<artifactId>reference-app</artifactId>|<artifactId>$name</artifactId>|" -e "s|<name>reference-app</name>|<name>$name</name>|" \
@@ -522,7 +546,7 @@ every_piece_but_the_example() {
     sed -e "s/package com.acme.smoke;/package com.acme.$name;/" -e "s/SmokeApplication/${name^}Application/g" \
         "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$dir/src/main/java/com/acme/$name/${name^}Application.java"
     "$REPO/scripts/bootstrap-copy.sh" --target "$dir" --package "com.acme.$name" --with "$pieces" > "$WORK/copy-$name.log" 2>&1
-    grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version):(begin|else|end)" "$dir/src" "$dir/compose.yaml" "$dir/.env.example" "$dir/docs" \
+    grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version|change-history):(begin|else|end)" "$dir/src" "$dir/compose.yaml" "$dir/.env.example" "$dir/docs" \
         && { echo "FAILED: markers left in the $id copy" >&2; exit 1; }
     grep -rqE "TODO_LIST|TODO_ATTACHMENT|todo_lists|TodoListSettings|com\.acme\.$name\.(todo|planning)\b" "$dir/src" \
         && { echo "FAILED: the example's entries left in the $id copy, which has no example" >&2; exit 1; }
@@ -565,6 +589,7 @@ if wants 2d; then
         && { echo "FAILED: Redis rate limiting, media or their markers left in a core copy" >&2; exit 1; }
     [ -d "$core/src/main/java/com/acme/core/user" ] && { echo "FAILED: the user module in a core copy" >&2; exit 1; }
     no_session_version "$core/src" "$core/docs"
+    no_change_history "$core/src" "$core/docs"
     # The unit tests alone can't reach the suite's coverage minimum: static analysis runs, coverage doesn't.
     mvn_verify "$core" "$WORK/core.log" -Dtest='!*IntegrationTest,!*ArchTest' -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true
 fi

@@ -49,6 +49,9 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
             "tenant_memberships", "login and 'my tenants' read a user's memberships across tenants",
             "platform_users", "platform staff, who belong to no tenant",
             "platform_audit", "staff actions, written on the platform plane",
+            // change-history:begin
+            "audit_log", "the change history: every tenant's changes in one table, each with its tenant_id; compliance only",
+            // change-history:end
             "databasechangelog", "Liquibase's own",
             "databasechangeloglock", "Liquibase's own");
 

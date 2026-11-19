@@ -49,6 +49,10 @@ app:
     refresh-token-purge:
       cron: "-"
     # sign-in:end
+    # change-history:begin
+    change-history-purge:
+      cron: "-"
+    # change-history:end
     # media:begin
     media-verification:
       cron: "-"

@@ -1058,3 +1058,28 @@ scope trees; role-level DENY (a role only allows, so "what may this role do" sta
   With tenancy there is no tenant-plane lookup (accounts are global; the member list is `TENANT_MEMBERS_MANAGE`'s),
   so the constant exists without tenancy only.
 
+**Level 2 batch, Phase 1 (2026-11-19): the `change-history` piece (DATA-08).** AUTHZ-11 audits the four role
+tables, and the reference had no change history (`auditedTables: none`), so DATA-08 got a piece of its own,
+opt-in like the session version, which `roles` requires and any project can take alone. The reference runs with
+it (its golden stays live code); every copy without it is checked for none of its traces. Built from the owner's
+news-pulse (changeset 0048, its actor listener and purge job), in the reference's own names:
+- **One generic function**, `audit_row_change()`, its arguments the columns never copied (`password_hash`): a
+  function per table drifts, and a column list to copy would let a new secret column in by default. An UPDATE
+  keeps the changed columns only, both sides: whole rows on every update would make it the largest table.
+- **Who, once per new write transaction**, from a `TransactionExecutionListener`'s `afterBegin` (Spring's own
+  hook, no AOP of ours), transaction-local: a session-level setting on a pooled connection would name the
+  previous caller in the next borrower's writes (the red proof). It never throws: an exception out of a listener
+  leaves the transaction's resources bound to the thread; the failure is rethrown at the commit instead.
+- **Retention:** 365 days by default and a floor of 90 (a slip such as `7d`, or a bare number read as
+  milliseconds, stops the startup instead of deleting the history the next night); compliance sets the value.
+  The purge is the refresh-token purge's shape (batches of ids computed once, SKIP LOCKED, `@MultiInstanceSafe`).
+- **Tenancy:** one platform table per database rather than one per tenant schema: the purge stays one job, and a
+  tenant's rows carry their table's schema (schema per tenant) or their row's `tenant_id` (row mode). The
+  function names `platform.audit_log` in schema per tenant (a tenant's transaction has its own schema alone on
+  the search path) and the tenant changesets' triggers name `platform.audit_row_change()`. Row mode lists the
+  table as a platform table in the catalogue guard. UPDATE stays granted to the application's role: the trigger
+  refuses it, and the purge's `FOR UPDATE SKIP LOCKED` needs the privilege (a revoke failed the purge in row mode).
+- **What it audits:** `users` (with sign-in; `password_hash` excluded), `tenant_memberships` with tenancy, and with
+  the example its todo lists and todos, so the golden shows a real table. Personal data (an email, a name) is
+  copied: a project that must erase a person also erases their history rows, or excludes the columns.
+

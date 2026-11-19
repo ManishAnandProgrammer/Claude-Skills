@@ -444,13 +444,33 @@ its whole duration, and a pool runs dry long before CPU or the database does.
 - **Severity:** Medium (High when deleted rows leak or block unique keys).
 
 ### DATA-08: Change history (PostgreSQL triggers)
+Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `ChangeHistoryPurgeJob`,
+`ChangeHistoryRetention`, changesets `0035-change-history.sql` and `0036-todos-change-history.sql`, tests
+`common/persistence/ChangeHistoryIntegrationTest` and `ChangeHistoryActorTest`).
 - **Check:**
-  - tables in `{{auditedTables}}` get history from one generic trigger function writing to an
-    append-only `audit_log` (old and new rows as `jsonb`);
+  - tables in `{{auditedTables}}` get history from **one generic trigger function** writing to an
+    append-only `audit_log`: the table (and its schema), the row's id, the operation, the row as `jsonb` (an
+    INSERT the new row, a DELETE the old one, an UPDATE only the changed columns, both sides; an update that
+    changes nothing writes nothing), when, who. A table without its trigger, or a function per table, is a
+    finding;
+  - **secrets and hashes are never copied:** the trigger's arguments name the excluded columns
+    (`audit_row_change('password_hash')`), and a new secret or hash column on an audited table joins them in the
+    changeset that adds it;
+  - an UPDATE of `audit_log` is refused by a trigger (not a revoked privilege: the purge's `FOR UPDATE SKIP
+    LOCKED` needs UPDATE); no foreign keys (a row outlives what it describes);
   - the app passes the acting user with `set_config('app.user_id', …, true)`: transaction-local,
-    **once per transaction**, never at session level on pooled connections;
-  - audit tables are for compliance only, never queried by business logic.
-- **Severity:** Medium.
+    **once per new write transaction** (a Spring `TransactionExecutionListener`'s `afterBegin`; read-only and
+    joined transactions skipped), never at session level on pooled connections; null outside a signed-in request;
+  - the listener **never throws**: a failed statement is rethrown at the commit (a synchronization's
+    `beforeCommit`), so the transaction rolls back and the caller gets the database's error; never
+    rollback-only (a silent 2xx), never writes without their author;
+  - the table only grows: a purge job deletes past a retention (OPS-03), a typed `Duration` with a minimum
+    (CFG-12), in batches of ids computed once (DATA-29), `@MultiInstanceSafe`;
+  - audit tables are for compliance only, never queried by business logic; no entity maps them.
+  - **With tenancy** the table is the platform's, one per database: a tenant's rows carry their table's schema
+    (schema per tenant, the function's insert names `platform.audit_log`) or their row's `tenant_id` (row mode,
+    listed as a platform table in the catalogue guard).
+- **Severity:** Medium (High when a secret or hash is copied).
 
 ### DATA-09: Primary keys are time-ordered
 - **Check:** new tables use time-ordered ids per `{{idStrategy}}` (UUIDv7 or TSID).

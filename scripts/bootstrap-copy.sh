@@ -42,6 +42,12 @@
 #              every request against Redis (the database when Redis is down); every access change raises it
 #              in its own transaction, so older tokens are refused at once (401 SESSION_VERSION_STALE), and
 #              DELETE /users/me/sessions signs out everywhere. Per account, or per membership with tenancy
+#     change-history
+#              opt-in: every insert, update and delete of the audited tables written by one PostgreSQL trigger
+#              function to the append-only audit_log (the row before and after as jsonb, when, who: the caller's
+#              id set transaction-locally by ChangeHistoryActor), its secrets and hashes never copied, and the
+#              purge job past the retention (house-review DATA-08). Audits users (with sign-in, and the
+#              memberships with tenancy) and, with the example, the todo lists and todos
 #   sign-in (account suspension), metadata, media and the tenancy pieces have admin endpoints: each brings
 #   the ADMIN role and the test base's newAdmin() (the "admin" markers), and its permissions: their constants in
 #   common/security/Permission and Area, and their lines in Role (house-review AUTHZ-01, AUTHZ-02).
@@ -57,7 +63,7 @@
 # Shared files (ErrorCode, messages, limits, db.yml, compose.yaml, .env.example, Role, test base,
 # ArchUnit) mark a piece's entries with "<piece>:begin" / "<piece>:end" comment lines (sign-in,
 # example, metadata, media, admin, tenancy, tenancy-schema, tenancy-row, tenant-registration,
-# session-version): without that piece
+# session-version, change-history): without that piece
 # those blocks are left out; blocks may nest (a media block inside an example block arrives only with
 # both). A block may hold "<piece>:else": its lines after that marker are commented out in the
 # reference and replace the block's first part without the piece (uncommented: "// ", "# ", "-- " or
@@ -95,7 +101,7 @@ done
 if [ -n "$render_mode" ]; then
     [ -n "$render_file" ] || die "--render needs a mode and a golden file"
     # Every piece but the other tenancy modes: the golden code as a project of that mode reads it.
-    everything="core,sign-in,example,metadata,media,session-version"
+    everything="core,sign-in,example,metadata,media,session-version,change-history"
     case "$render_mode" in
         none) pieces="$everything" ;;
         row) pieces="$everything,tenancy-row,tenant-registration" ;;
@@ -223,6 +229,10 @@ src/test/java/$reference_path/todo
 src/test/java/$reference_path/planning
 src/test/resources/db/upgrade/previous-release-seed.sql
 LIST
+            # The todo lists and todos in the change history.
+            if chosen_piece change-history; then
+                echo "src/main/resources/db/changelog/changes/0036-todos-change-history.sql"
+            fi
             # The metadata piece's sample configuration and the tests that exercise the mechanism through it.
             if chosen_piece metadata; then cat <<LIST
 src/main/java/$reference_path/metadata/api/TodoListSettings.java
@@ -364,7 +374,18 @@ LIST
                 echo "src/main/resources/db/changelog/changes/0021-users-session-version.sql"
             fi
             ;;
-        *) die "unknown piece: $1 (core, sign-in, example, metadata, media, tenancy-schema, tenancy-row, tenant-registration, session-version)" ;;
+        change-history)
+            # The actor, the purge (core's common/ holds them, named here), the changeset and their tests.
+            cat <<LIST
+src/main/java/$reference_path/common/persistence/ChangeHistoryActor.java
+src/main/java/$reference_path/common/persistence/ChangeHistoryRetention.java
+src/main/java/$reference_path/common/persistence/ChangeHistoryPurgeJob.java
+src/main/resources/db/changelog/changes/0035-change-history.sql
+src/test/java/$reference_path/common/persistence/ChangeHistoryIntegrationTest.java
+src/test/java/$reference_path/common/persistence/ChangeHistoryActorTest.java
+LIST
+            ;;
+        *) die "unknown piece: $1 (core, sign-in, example, metadata, media, tenancy-schema, tenancy-row, tenant-registration, session-version, change-history)" ;;
     esac
 }
 
@@ -380,6 +401,7 @@ dependencies_for() {
         tenancy-row) echo "(none beyond core: Hibernate's multi-tenancy and @TenantId, already there)" ;;
         tenant-registration) echo "(none beyond sign-in)" ;;
         session-version) echo "(none beyond core and sign-in: Redis and Resilience4j's circuit breaker, already there)" ;;
+        change-history) echo "(none beyond core: PostgreSQL triggers and Spring's TransactionExecutionListener)" ;;
     esac
 }
 
@@ -396,7 +418,7 @@ dest_for() {
 # with it, only the marker lines (and an ":else" part) go. In reference files a tenancy block is
 # commented out instead: kept uncommented with the piece, dropped without it.
 kept_markers=","
-for optional in sign-in example metadata media admin tenancy tenancy-schema tenancy-row tenant-registration session-version; do
+for optional in sign-in example metadata media admin tenancy tenancy-schema tenancy-row tenant-registration session-version change-history; do
     if { [ "$optional" = admin ] && admin_chosen; } || { [ "$optional" = tenancy ] && tenancy_chosen; } || chosen_piece "$optional"; then
         kept_markers+="$optional,"
     fi
@@ -406,7 +428,7 @@ done
 piece_filter() {
     KEPT="$kept_markers" SOURCE="$1" perl -ne '
         BEGIN { @open = (); $last_blank = 0; $dropped = 0; }
-        if (/\b(sign-in|example|metadata|media|admin|tenancy-schema|tenancy-row|tenancy|tenant-registration|session-version):(begin|else|end)\b/) {
+        if (/\b(sign-in|example|metadata|media|admin|tenancy-schema|tenancy-row|tenancy|tenant-registration|session-version|change-history):(begin|else|end)\b/) {
             my ($piece, $marker) = ($1, $2);
             my $kept = index($ENV{KEPT}, ",$piece,") >= 0;
             my $commented = $ENV{SOURCE} eq "reference" && $piece =~ /^tenan/;
@@ -532,7 +554,7 @@ if chosen_piece tenancy-row; then
     echo "note: tenancy needs the database roles before the first start (docs/tenancy-runbook.md; compose.yaml creates them locally), and DB_OWNER_USER / DB_OWNER_PASSWORD" >&2
 fi
 # Every file any piece can name, whatever was chosen: a directory copy never takes another piece's file.
-all_pieces="core sign-in example metadata media tenancy-schema tenancy-row tenant-registration session-version"
+all_pieces="core sign-in example metadata media tenancy-schema tenancy-row tenant-registration session-version change-history"
 with_reference_prefix() { sed -e '/^overlays\//!s|^|reference-app/|'; }
 named_files="$(pieces="${all_pieces// /,}"; for piece in $all_pieces; do files_for "$piece"; done | with_reference_prefix)"
 # Core files a tenancy mode replaces: its connection hook borrows lazily, so the lazy proxy goes; a person in
@@ -567,7 +589,7 @@ done
 # support/PreviousReleaseDatabase). A later platform changeset that tenant tables don't need goes in
 # platform_changesets only, never in first_changesets.
 first_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql 0020-tenant-members-list.sql 0021-users-session-version.sql 0022-memberships-session-version.sql"
-platform_changesets="$first_changesets 0027-users-status.sql 0028-platform-users-deactivation.sql 0030-platform-list-indexes.sql 0032-tenants-name-indexes.sql"
+platform_changesets="$first_changesets 0027-users-status.sql 0028-platform-users-deactivation.sql 0030-platform-list-indexes.sql 0032-tenants-name-indexes.sql 0035-change-history.sql"
 # $1: platform, tenant, first, rest or all; the copied changesets of that kind, in order.
 changesets_of() {
     local want="$1" changeset name

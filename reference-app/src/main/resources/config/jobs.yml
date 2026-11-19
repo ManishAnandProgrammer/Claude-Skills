@@ -14,6 +14,16 @@ app:
       keep-after-expiry: 1d
       # Rows per statement, each statement its own short transaction.
       batch-size: 1000
+    # change-history:begin
+    # Deletes change history past its retention (ChangeHistoryPurgeJob), every night at 03:45 UTC.
+    change-history-purge:
+      cron: "0 45 3 * * *"
+      # How long a change is kept: at least 90 days (a shorter value stops the startup). Set it to what the
+      # project's compliance asks for.
+      keep-for: 365d
+      # Rows per statement, each statement its own short transaction.
+      batch-size: 1000
+    # change-history:end
     # media:begin
     # Confirms attached files whose upload URL has expired: present -> UPLOADED, absent -> MISSING.
     media-verification:

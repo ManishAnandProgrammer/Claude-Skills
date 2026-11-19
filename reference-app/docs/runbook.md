@@ -155,6 +155,26 @@ GC logs and out-of-memory heap dumps are already in `/diagnostics/<start>/`.
 Keep the notes, the query output and the files in `/diagnostics`. Write down the cause, what fixed
 it, and the guard (a test, a limit, an alert) that would have caught it earlier.
 
+<!-- change-history:begin -->
+## Who changed a row
+
+The change history (`audit_log`, the change-history piece) holds every insert, update and delete of the audited
+tables: the row as `jsonb` (an update's changed columns only), when, and the signed-in caller's id (`actor_id`;
+none for a signup, a job or a statement in psql). It is for answers, not for the application: read it with the
+database owner's credentials, for example one row's history, oldest first:
+
+```sql
+SELECT changed_at, operation, actor_id, old_row, new_row FROM audit_log
+ WHERE table_name = 'users' AND row_id = '<id>' ORDER BY changed_at;
+```
+<!-- tenancy:begin -->
+<!-- With tenancy the table is the platform's (`platform.audit_log` with schema per tenant): `table_schema` names a -->
+<!-- tenant schema's rows, or in row mode `tenant_id` names the row's tenant. -->
+<!-- tenancy:end -->
+Secrets and hashes are never copied. The table refuses an UPDATE; rows leave it only past
+`app.jobs.change-history-purge.keep-for` (the nightly purge).
+<!-- change-history:end -->
+
 ## Before upgrading a live database
 
 A release whose changesets change existing rows (a backfill, a new `NOT NULL` column, a new unique key):
