@@ -6,6 +6,9 @@ import com.example.app.support.QueryPlan;
 import com.example.app.support.WithoutTestTenant;
 import com.example.app.tenant.service.TenantMigrations;
 import com.example.app.tenant.service.TenantProvisioningJob;
+// roles:begin
+import liquibase.integration.spring.SpringLiquibase;
+// roles:end
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -61,6 +64,12 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     @Autowired
     @LiquibaseDataSource
     private DataSource ownerDataSource;
+    // roles:begin
+
+    /** The platform's Liquibase, which a deploy runs at every start. */
+    @Autowired
+    private SpringLiquibase platformLiquibase;
+    // roles:end
 
     /** The schemas as a deploy leaves them: the run migrates what is missing, so a second one changes nothing. */
     private JdbcTemplate migratedOwner() {
@@ -105,6 +114,40 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         }
     }
 
+    // roles:begin
+    @Test
+    @DisplayName("""
+            Each seeded schema copied its tenant's memberships' roles into its own tables and emptied them on the \
+            platform (0037, expand); the column goes at the next platform run once no schema has one left (0039, \
+            contract), and the accounts' role column is gone (0038)""")
+    void eachSchemaCopiedItsMembershipsRoles() throws Exception {
+        JdbcTemplate owner = migratedOwner();
+
+        for (UUID tenant : PROVISIONED) {
+            assertThat(owner.queryForObject("select count(*) from %s.roles where built_in in ('USER', 'ADMIN')"
+                    .formatted(TenantSchemas.of(tenant)), Integer.class)).as(tenant.toString()).isEqualTo(2);
+        }
+        String alpha = TenantSchemas.of(ALPHA);
+        assertThat(owner.queryForObject("""
+                select string_agg(a.user_id || ':' || r.built_in, ',' order by a.user_id)
+                  from %1$s.user_roles a join %1$s.roles r on r.id = a.role_id
+                 where a.user_id::text like '01890000-%%' and a.valid_until is null""".formatted(alpha), String.class))
+                .isEqualTo("01890000-0000-7000-8000-000000000001:ADMIN,01890000-0000-7000-8000-000000000002:USER");
+        assertThat(owner.queryForObject("""
+                select count(*) from information_schema.columns
+                 where table_schema = 'platform' and table_name = 'users' and column_name = 'role'""", Integer.class)).isZero();
+
+        platformLiquibase.afterPropertiesSet();
+
+        assertThat(owner.queryForObject("""
+                select count(*) from information_schema.columns
+                 where table_schema = 'platform' and table_name = 'tenant_memberships' and column_name = 'role'""", Integer.class))
+                .isZero();
+        assertThat(owner.queryForList("select id from platform.databasechangelog", String.class))
+                .contains("0039-memberships-role-contract");
+    }
+
+    // roles:end
     @Test
     @DisplayName("""
             The upgrade changed no account and no staff member: the suspended account still SUSPENDED, the others \

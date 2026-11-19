@@ -1,5 +1,10 @@
 package com.example.app.user.controller.api;
 
+import com.example.app.common.dropdown.DropdownFilter;
+import com.example.app.common.dropdown.DropdownFor;
+import com.example.app.common.dropdown.DropdownItem;
+import com.example.app.common.security.Permission;
+import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.user.dto.request.AccessRoleCreateRequest;
@@ -8,6 +13,7 @@ import com.example.app.user.dto.request.AccessRoleUpdateRequest;
 import com.example.app.user.dto.response.AccessRoleResponse;
 import com.example.app.user.dto.response.AccessRoleSummaryResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -36,6 +42,33 @@ public interface AccessRoleApi {
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     PaginationWrapper<AccessRoleSummaryResponse> all(@ParameterObject AccessRoleFilter filter);
+
+    @Operation(summary = "Options for the role dropdown", description = """
+            The roles the action for names may use, as {value, label}: those whose every permission you hold, so a \
+            screen that gives a person a role offers only roles you may give (safety rule 1; a role holding a \
+            permission code no Permission names is left out too). Ordered by name (sortDirection DESC reverses \
+            it), in batches: pageInfo.nextCursor goes back as after for the next batch; size sets the batch \
+            (default and maximum from configuration). Narrow it with query (a case-insensitive part of the name). \
+            Roles have no active flag: status is ACTIVE, the default, or a 400.""")
+    @ApiResponse(responseCode = "200", description = "The options")
+    @ApiResponse(responseCode = "400", description = """
+            DROPDOWN_REACH_UNSUPPORTED (for names a permission of your own records: see errors); \
+            REQUEST_PARAMETER_MISSING or REQUEST_PARAMETER_INVALID at for (none, or no permission); \
+            VALIDATION_FAILED (size, query or after out of range); REQUEST_PARAMETER_INVALID (a status but \
+            ACTIVE, an unknown sortDirection, a non-numeric size, or an after that is tampered or from the other \
+            direction; see errors)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (you don't hold the permission for names)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    CursorWrapper<DropdownItem> dropdown(
+            @Parameter(name = DropdownFor.PARAMETER, required = true, example = "ACCESS_GRANT", description = """
+                    The permission of the action the options serve (ACCESS_GRANT to give a person a role, \
+                    ROLES_MANAGE to pick one to edit): 403 ACCESS_DENIED unless you hold it""") Permission action,
+            @ParameterObject DropdownFilter filter);
 
     @Operation(summary = "One role with its permissions")
     @ApiResponse(responseCode = "200", description = "The role")

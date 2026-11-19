@@ -18,10 +18,17 @@
 -- tenancy-row:begin
 -- * Row mode: the four are tenant tables (a tenant's roles, its members' assignments and grants), each with its
 --   tenant_id, forced row-level security and keys that keep a row inside its tenant (TEN-33); a person is a member
---   of the tenant, (user_id, tenant_id) -> members. Every tenant that exists gets its built-in roles here; a new one
---   would get them at its activation. Designed, not built: bootstrap refuses roles with tenancy for now, so these
---   row-mode lines have never run. The membership's role column goes.
+--   of the tenant, (user_id, tenant_id) -> members (TEN-16). Every tenant that exists gets its built-in roles here,
+--   whatever its status (TEN-34); a new one gets them at its activation (TenantMemberManager, from the Role enum).
+--   The memberships' role column goes, and the accounts' (with tenancy it never decided anything).
 -- tenancy-row:end
+-- tenancy-schema:begin
+-- * Schema per tenant: a tenant changeset (tenant.yaml), so the four live in every tenant schema, a person a member
+--   of it, user_id -> members (TEN-16), and every new schema gets the built-in roles from the seed below. Each
+--   schema copies its own tenant's memberships' roles and empties them in the platform's table as it goes; the
+--   platform's changesets make that column nullable first (0038) and drop it once no schema is left to copy
+--   (0039, expand then contract: tenant schemas migrate one after another, TenantMigrations).
+-- tenancy-schema:end
 -- bootstrap-copy.sh copies this file with the roles piece.
 
 --changeset dev:0037-roles
@@ -44,9 +51,10 @@ CREATE TABLE roles (
     CONSTRAINT fk_roles_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenants (id),
     -- The target of the members' rows' composite keys, tenant_id last (TEN-33).
     CONSTRAINT uq_roles_id_tenant_id UNIQUE (id, tenant_id),
-    CONSTRAINT uq_roles_code UNIQUE (code, tenant_id),
+    -- No owner or parent column: the tenant leads (TEN-33).
+    CONSTRAINT uq_roles_code UNIQUE (tenant_id, code),
     -- One copy of each built-in role per tenant.
-    CONSTRAINT uq_roles_built_in UNIQUE (built_in, tenant_id),
+    CONSTRAINT uq_roles_built_in UNIQUE (tenant_id, built_in),
     -- tenancy-row:else
     -- CONSTRAINT uq_roles_code UNIQUE (code),
     -- -- One copy of each built-in role.
@@ -79,8 +87,8 @@ CREATE TABLE role_permissions (
     CONSTRAINT pk_role_permissions PRIMARY KEY (id),
     -- tenancy-row:begin
     CONSTRAINT fk_role_permissions_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenants (id),
-    -- Once per role. Leading with role_id, it serves the role's key and the per-request read's join.
-    CONSTRAINT uq_role_permissions_role_id_permission UNIQUE (role_id, permission, tenant_id),
+    -- Once per role. Leading with role_id and the tenant, it serves the role's key and the per-request read's join.
+    CONSTRAINT uq_role_permissions_role_id_permission UNIQUE (role_id, tenant_id, permission),
     CONSTRAINT fk_role_permissions_role_id FOREIGN KEY (role_id, tenant_id) REFERENCES roles (id, tenant_id)
     -- tenancy-row:else
     -- -- Once per role. Leading with role_id, it serves the role's key and the per-request read's join.
@@ -113,15 +121,20 @@ CREATE TABLE user_roles (
     CONSTRAINT pk_user_roles PRIMARY KEY (id),
     -- tenancy-row:begin
     CONSTRAINT fk_user_roles_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenants (id),
-    -- A role once per person. Leading with user_id, it serves the person's key and the per-request read.
-    CONSTRAINT uq_user_roles_user_id_role_id UNIQUE (user_id, role_id, tenant_id),
+    -- A role once per person. Leading with user_id and the tenant, it serves the person's key and the per-request read.
+    CONSTRAINT uq_user_roles_user_id_role_id UNIQUE (user_id, tenant_id, role_id),
     -- The tenant's own member, never the platform's users (TEN-16).
     CONSTRAINT fk_user_roles_user_id FOREIGN KEY (user_id, tenant_id) REFERENCES members (user_id, tenant_id),
     CONSTRAINT fk_user_roles_role_id FOREIGN KEY (role_id, tenant_id) REFERENCES roles (id, tenant_id)
     -- tenancy-row:else
     -- -- A role once per person. Leading with user_id, it serves the person's key and the per-request read.
     -- CONSTRAINT uq_user_roles_user_id_role_id UNIQUE (user_id, role_id),
+    -- tenancy-schema:begin
+    -- -- The schema's own member, never the platform's users (TEN-16).
+    -- CONSTRAINT fk_user_roles_user_id FOREIGN KEY (user_id) REFERENCES members (user_id),
+    -- tenancy-schema:else
     -- CONSTRAINT fk_user_roles_user_id FOREIGN KEY (user_id) REFERENCES users (id),
+    -- tenancy-schema:end
     -- CONSTRAINT fk_user_roles_role_id FOREIGN KEY (role_id) REFERENCES roles (id)
     -- tenancy-row:end
 );
@@ -151,13 +164,17 @@ CREATE TABLE user_permissions (
     CONSTRAINT pk_user_permissions PRIMARY KEY (id),
     -- tenancy-row:begin
     CONSTRAINT fk_user_permissions_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenants (id),
-    -- One grant per person and permission. Leading with user_id, it serves the person's key and the read.
-    CONSTRAINT uq_user_permissions_user_id_permission UNIQUE (user_id, permission, tenant_id),
+    -- One grant per person and permission. Leading with user_id and the tenant, it serves the person's key and the read.
+    CONSTRAINT uq_user_permissions_user_id_permission UNIQUE (user_id, tenant_id, permission),
     CONSTRAINT fk_user_permissions_user_id FOREIGN KEY (user_id, tenant_id) REFERENCES members (user_id, tenant_id),
     -- tenancy-row:else
     -- -- One grant per person and permission. Leading with user_id, it serves the person's key and the read.
     -- CONSTRAINT uq_user_permissions_user_id_permission UNIQUE (user_id, permission),
+    -- tenancy-schema:begin
+    -- CONSTRAINT fk_user_permissions_user_id FOREIGN KEY (user_id) REFERENCES members (user_id),
+    -- tenancy-schema:else
     -- CONSTRAINT fk_user_permissions_user_id FOREIGN KEY (user_id) REFERENCES users (id),
+    -- tenancy-schema:end
     -- tenancy-row:end
     CONSTRAINT ck_user_permissions_effect CHECK (effect IN ('ALLOW', 'DENY'))
 );
@@ -176,6 +193,10 @@ ALTER TABLE roles REPLICA IDENTITY USING INDEX uq_roles_id_tenant_id;
 ALTER TABLE role_permissions REPLICA IDENTITY USING INDEX uq_role_permissions_role_id_permission;
 ALTER TABLE user_roles REPLICA IDENTITY USING INDEX uq_user_roles_user_id_role_id;
 ALTER TABLE user_permissions REPLICA IDENTITY USING INDEX uq_user_permissions_user_id_permission;
+-- A member lives in one tenant: without the dependency the planner multiplies the person's share by the tenant's
+-- (TEN-33).
+CREATE STATISTICS st_user_roles_user_id_tenant_id (dependencies) ON user_id, tenant_id FROM user_roles;
+CREATE STATISTICS st_user_permissions_user_id_tenant_id (dependencies) ON user_id, tenant_id FROM user_permissions;
 ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE roles FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON roles
@@ -200,18 +221,32 @@ CREATE POLICY tenant_isolation ON user_permissions
 --rollback DROP POLICY tenant_isolation ON user_roles;
 --rollback DROP POLICY tenant_isolation ON role_permissions;
 --rollback DROP POLICY tenant_isolation ON roles;
+--rollback DROP STATISTICS st_user_permissions_user_id_tenant_id;
+--rollback DROP STATISTICS st_user_roles_user_id_tenant_id;
 -- tenancy-row:end
 
 --changeset dev:0037-roles-change-history
 -- Before the seeds, so the history starts with them.
+-- tenancy-schema:begin
+-- The platform's function, named with its schema: a tenant's transaction has its own schema alone on the search_path.
 CREATE TRIGGER audit_roles AFTER INSERT OR UPDATE OR DELETE ON roles
-    FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+    FOR EACH ROW EXECUTE FUNCTION platform.audit_row_change();
 CREATE TRIGGER audit_role_permissions AFTER INSERT OR UPDATE OR DELETE ON role_permissions
-    FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+    FOR EACH ROW EXECUTE FUNCTION platform.audit_row_change();
 CREATE TRIGGER audit_user_roles AFTER INSERT OR UPDATE OR DELETE ON user_roles
-    FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+    FOR EACH ROW EXECUTE FUNCTION platform.audit_row_change();
 CREATE TRIGGER audit_user_permissions AFTER INSERT OR UPDATE OR DELETE ON user_permissions
-    FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+    FOR EACH ROW EXECUTE FUNCTION platform.audit_row_change();
+-- tenancy-schema:else
+-- CREATE TRIGGER audit_roles AFTER INSERT OR UPDATE OR DELETE ON roles
+--     FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+-- CREATE TRIGGER audit_role_permissions AFTER INSERT OR UPDATE OR DELETE ON role_permissions
+--     FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+-- CREATE TRIGGER audit_user_roles AFTER INSERT OR UPDATE OR DELETE ON user_roles
+--     FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+-- CREATE TRIGGER audit_user_permissions AFTER INSERT OR UPDATE OR DELETE ON user_permissions
+--     FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+-- tenancy-schema:end
 --rollback DROP TRIGGER audit_user_permissions ON user_permissions;
 --rollback DROP TRIGGER audit_user_roles ON user_roles;
 --rollback DROP TRIGGER audit_role_permissions ON role_permissions;
@@ -221,6 +256,9 @@ CREATE TRIGGER audit_user_permissions AFTER INSERT OR UPDATE OR DELETE ON user_p
 -- The built-in roles as the Role enum listed them when this was written: literal rows, never read from the enum
 -- (a migration must give the same rows on every run). A new permission comes with a changeset of its own granting
 -- it to the built-in roles that should hold it (BuiltInRolesIntegrationTest compares them on a fresh database).
+-- tenancy-schema:begin
+-- Every tenant schema runs it, the template and each new one too: a new tenant's built-in roles come from here.
+-- tenancy-schema:end
 -- tenancy-row:begin
 -- One copy per tenant that exists; row-level security is lifted for this changeset's transaction only, so the owner
 -- writes every tenant's rows (docs/tenancy-runbook.md, section 4).
@@ -275,27 +313,81 @@ SELECT uuidv7(), r.tenant_id, r.id, p.permission, now(), now(), 0
 -- tenancy-row:begin
 ALTER TABLE role_permissions FORCE ROW LEVEL SECURITY;
 ALTER TABLE roles FORCE ROW LEVEL SECURITY;
+-- The rollback runs as the owner with no tenant, whom the forced policies hide every row from: lifted the same way.
+--rollback ALTER TABLE user_roles NO FORCE ROW LEVEL SECURITY;
+--rollback ALTER TABLE role_permissions NO FORCE ROW LEVEL SECURITY;
+--rollback ALTER TABLE roles NO FORCE ROW LEVEL SECURITY;
 -- tenancy-row:end
 --rollback DELETE FROM user_roles;
 --rollback DELETE FROM role_permissions;
 --rollback DELETE FROM roles;
-
---changeset dev:0037-role-column-to-assignments splitStatements:false
 -- tenancy-row:begin
--- Each membership's one role becomes its member's assignment of the tenant's built-in role of that name, then the
--- membership's role column goes (the tables are the one source).
+--rollback ALTER TABLE roles FORCE ROW LEVEL SECURITY;
+--rollback ALTER TABLE role_permissions FORCE ROW LEVEL SECURITY;
+--rollback ALTER TABLE user_roles FORCE ROW LEVEL SECURITY;
+-- tenancy-row:end
+
+-- tenancy-schema:begin
+--changeset dev:0037-role-column-to-assignments
+--preconditions onFail:MARK_RAN
+-- Only while the platform's column is there: once 0039 dropped it, a new schema has nothing to copy.
+--precondition-sql-check expectedResult:1 SELECT count(*) FROM information_schema.columns WHERE table_schema = 'platform' AND table_name = 'tenant_memberships' AND column_name = 'role'
+-- This schema's tenant's memberships, found through the platform's migration record of the schema (as 0017 finds
+-- them): each one's role becomes its member's assignment of the built-in role of that name, then the platform's
+-- copy is emptied, in this schema's transaction. None in the template; a schema being provisioned copies nothing
+-- (its owner's ADMIN role comes from TenantMemberManager) but empties its tenant's too.
+INSERT INTO user_roles (id, user_id, role_id, created_at, updated_at, version)
+SELECT uuidv7(), m.user_id, r.id, now(), now(), 0
+  FROM tenant_memberships m
+  JOIN tenant_migrations t ON t.tenant_id = m.tenant_id
+  JOIN members mb ON mb.user_id = m.user_id
+  JOIN roles r ON r.built_in = m.role
+ WHERE t.schema_name = current_schema()
+   AND t.status <> 'PROVISIONING';
+UPDATE tenant_memberships m
+   SET role = NULL
+  FROM tenant_migrations t
+ WHERE t.tenant_id = m.tenant_id
+   AND t.schema_name = current_schema();
+--rollback UPDATE tenant_memberships m SET role = CASE WHEN EXISTS (SELECT 1 FROM user_roles a JOIN roles r ON r.id = a.role_id WHERE a.user_id = m.user_id AND r.built_in = 'ADMIN') THEN 'ADMIN' ELSE 'USER' END FROM tenant_migrations t WHERE t.tenant_id = m.tenant_id AND t.schema_name = current_schema();
+--rollback DELETE FROM user_roles;
+-- tenancy-schema:end
+-- tenancy-row:begin
+--changeset dev:0037-role-column-to-assignments
+-- Each membership's one role becomes its member's assignment of the tenant's built-in role of that name (a
+-- membership of a PENDING tenant registered after 0017 has no member row yet: its owner's ADMIN role comes at its
+-- activation), then the role columns go: the memberships' and, with tenancy meaningless, the accounts'.
+-- Every tenant's rows are read and written: row-level security is lifted for this changeset's transaction only.
+ALTER TABLE members NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE roles NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE user_roles NO FORCE ROW LEVEL SECURITY;
 INSERT INTO user_roles (id, tenant_id, user_id, role_id, created_at, updated_at, version)
 SELECT uuidv7(), m.tenant_id, m.user_id, r.id, now(), now(), 0
   FROM tenant_memberships m
+  JOIN members mb ON mb.user_id = m.user_id AND mb.tenant_id = m.tenant_id
   JOIN roles r ON r.tenant_id = m.tenant_id AND r.built_in = m.role;
 ALTER TABLE user_roles FORCE ROW LEVEL SECURITY;
+ALTER TABLE roles FORCE ROW LEVEL SECURITY;
+ALTER TABLE members FORCE ROW LEVEL SECURITY;
 ALTER TABLE tenant_memberships DROP COLUMN role;
+ALTER TABLE users DROP COLUMN role;
+--rollback ALTER TABLE users ADD COLUMN role text NOT NULL DEFAULT 'USER';
+--rollback ALTER TABLE users ADD CONSTRAINT ck_users_role CHECK (role IN ('USER', 'ADMIN'));
+--rollback ALTER TABLE users ALTER COLUMN role DROP DEFAULT;
 --rollback ALTER TABLE tenant_memberships ADD COLUMN role text;
---rollback UPDATE tenant_memberships m SET role = coalesce((SELECT max(r.built_in) FROM user_roles a JOIN roles r ON r.id = a.role_id WHERE a.user_id = m.user_id AND a.tenant_id = m.tenant_id), 'USER');
+--rollback ALTER TABLE roles NO FORCE ROW LEVEL SECURITY;
+--rollback ALTER TABLE user_roles NO FORCE ROW LEVEL SECURITY;
+--rollback UPDATE tenant_memberships m SET role = CASE WHEN EXISTS (SELECT 1 FROM user_roles a JOIN roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id WHERE a.user_id = m.user_id AND a.tenant_id = m.tenant_id AND r.built_in = 'ADMIN') THEN 'ADMIN' ELSE 'USER' END;
+--rollback DELETE FROM user_roles;
+--rollback ALTER TABLE user_roles FORCE ROW LEVEL SECURITY;
+--rollback ALTER TABLE roles FORCE ROW LEVEL SECURITY;
 --rollback ALTER TABLE tenant_memberships ALTER COLUMN role SET NOT NULL;
 --rollback ALTER TABLE tenant_memberships ADD CONSTRAINT ck_tenant_memberships_role CHECK (role IN ('USER', 'ADMIN'));
--- tenancy-row:else
+--rollback CREATE INDEX idx_tenant_memberships_tenant_id_role_created_at_id ON tenant_memberships (tenant_id, role, created_at, id);
+-- tenancy-row:end
+-- tenancy:begin
+-- tenancy:else
+-- --changeset dev:0037-role-column-to-assignments splitStatements:false
 -- -- Each account's one role becomes its assignment of the built-in role of that name, then the column goes.
 -- DO $$
 -- BEGIN
@@ -312,4 +404,4 @@ ALTER TABLE tenant_memberships DROP COLUMN role;
 -- --rollback UPDATE users u SET role = CASE WHEN EXISTS (SELECT 1 FROM user_roles a JOIN roles r ON r.id = a.role_id WHERE a.user_id = u.id AND r.built_in = 'ADMIN') THEN 'ADMIN' ELSE 'USER' END;
 -- --rollback ALTER TABLE users ALTER COLUMN role SET NOT NULL;
 -- --rollback ALTER TABLE users ADD CONSTRAINT ck_users_role CHECK (role IN ('USER', 'ADMIN'));
--- tenancy-row:end
+-- tenancy:end

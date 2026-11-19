@@ -49,12 +49,21 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
                 """.formatted(refreshToken, tenantId));
     }
 
-    /** The email of the tenant's first ADMIN, whom newTenant() created. */
+    // roles:begin
+    /** The email of the tenant's owner, whom newTenant() created: its oldest membership, holding its ADMIN role. */
     private String ownerOf(TestTenant tenant) {
         return jdbc.queryForObject("""
                 select u.email from tenant_memberships m join users u on u.id = m.user_id
-                where m.tenant_id = ? and m.role = 'ADMIN' order by m.id limit 1""", String.class, tenant.id());
+                where m.tenant_id = ? order by m.id limit 1""", String.class, tenant.id());
     }
+    // roles:else
+    // /** The email of the tenant's first ADMIN, whom newTenant() created. */
+    // private String ownerOf(TestTenant tenant) {
+    //     return jdbc.queryForObject("""
+    //             select u.email from tenant_memberships m join users u on u.id = m.user_id
+    //             where m.tenant_id = ? and m.role = 'ADMIN' order by m.id limit 1""", String.class, tenant.id());
+    // }
+    // roles:end
 
     private static String tenantOf(String accessToken) {
         String payload = new String(Base64.getUrlDecoder().decode(accessToken.split("\\.")[1]), StandardCharsets.UTF_8);
@@ -103,24 +112,67 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
         assertThat(jdbc.queryForObject("select status from users where id = ?", String.class, member.id())).isEqualTo("ACTIVE");
     }
 
+    // roles:begin
     @Test
     @DisplayName("""
-            The last ADMIN with an ACTIVE account of an open tenant isn't suspended (409 TENANT_MEMBER_LAST_ADMIN); \
-            with another active ADMIN they are, and that ADMIN then is the last""")
-    void aTenantKeepsAnActiveAdmin() throws Exception {
+            The last active member holding for good what manages an open tenant isn't suspended (409 \
+            ACCESS_LAST_MANAGER, counted in the tenant's own data); with another one they are, and that one then is \
+            the last; one holding it until a date never counts""")
+    void aTenantKeepsAnActiveManager() throws Exception {
         TestTenant tenant = newTenant();
         String owner = ownerOf(tenant);
+        TestUser expiring = newUserIn(tenant, "ADMIN");
+        sqlIn(tenant, "update user_roles set valid_until = now() + interval '30 days' where user_id = ?", expiring.id());
 
         changeStatus(platformToken(), owner, "SUSPENDED")
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_LAST_ADMIN"));
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_LAST_MANAGER"));
         TestUser second = newUserIn(tenant, "ADMIN");
         changeStatus(platformToken(), owner, "SUSPENDED").andExpect(status().isOk());
         changeStatus(platformToken(), second.email(), "SUSPENDED")
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_LAST_ADMIN"));
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_LAST_MANAGER"));
+        assertThat(jdbc.queryForObject("select status from users where id = ?", String.class, second.id())).isEqualTo("ACTIVE");
     }
 
+    @Test
+    @DisplayName("""
+            A suspension counts each of the person's tenants in its own data: the last manager of one tenant isn't \
+            suspended for being a plain member of another""")
+    void aSuspensionCountsEveryTenantOfThePerson() throws Exception {
+        TestTenant managed = newTenant();
+        TestTenant joined = newTenant();
+        TestUser person = newUserIn(joined, "USER");
+        addMember(managed, person.id(), "ADMIN");
+        String managedOwner = ownerOf(managed);
+        changeStatus(platformToken(), managedOwner, "SUSPENDED").andExpect(status().isOk());
+
+        changeStatus(platformToken(), person.email(), "SUSPENDED")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_LAST_MANAGER"));
+        changeStatus(platformToken(), managedOwner, "ACTIVE").andExpect(status().isOk());
+        changeStatus(platformToken(), person.email(), "SUSPENDED").andExpect(status().isOk());
+    }
+
+    // roles:else
+    // @Test
+    // @DisplayName("""
+    //         The last ADMIN with an ACTIVE account of an open tenant isn't suspended (409 TENANT_MEMBER_LAST_ADMIN); \
+    //         with another active ADMIN they are, and that ADMIN then is the last""")
+    // void aTenantKeepsAnActiveAdmin() throws Exception {
+    //     TestTenant tenant = newTenant();
+    //     String owner = ownerOf(tenant);
+    //
+    //     changeStatus(platformToken(), owner, "SUSPENDED")
+    //             .andExpect(status().isConflict())
+    //             .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_LAST_ADMIN"));
+    //     TestUser second = newUserIn(tenant, "ADMIN");
+    //     changeStatus(platformToken(), owner, "SUSPENDED").andExpect(status().isOk());
+    //     changeStatus(platformToken(), second.email(), "SUSPENDED")
+    //             .andExpect(status().isConflict())
+    //             .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_LAST_ADMIN"));
+    // }
+    // roles:end
     @Test
     @DisplayName("A CLOSED tenant's only ADMIN may be suspended: a closed tenant needs no manager")
     void aClosedTenantsAdminIsSuspended() throws Exception {

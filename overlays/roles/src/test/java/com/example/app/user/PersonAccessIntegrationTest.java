@@ -55,7 +55,11 @@ class PersonAccessIntegrationTest extends RolesFixtures {
                 .andExpect(jsonPath("$.response.held[?(@.permission == '%s')].personallyAllowed".formatted(NEEDED)).value(hasItem(false)))
                 .andExpect(jsonPath("$.response.removed[0].permission").value(NEEDING.name()))
                 .andExpect(jsonPath("$.response.removed[0].reason").value("DENIED"));
-        getAs(admin, userAccess(UUID.randomUUID())).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorCode").value("USER_NOT_FOUND"));
+        // tenancy:begin
+        getAs(admin, userAccess(UUID.randomUUID())).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_NOT_FOUND"));
+        // tenancy:else
+        // getAs(admin, userAccess(UUID.randomUUID())).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorCode").value("USER_NOT_FOUND"));
+        // tenancy:end
     }
 
     @Test
@@ -137,7 +141,11 @@ class PersonAccessIntegrationTest extends RolesFixtures {
     }
 
     @Test
-    @DisplayName("Safety rule 7: two admins changing each other at once queue on their rows; the second finds itself denied")
+    // tenancy:begin
+    @DisplayName("Safety rule 7: two admins changing each other at once queue on their tenant's row; the second finds itself denied")
+    // tenancy:else
+    // @DisplayName("Safety rule 7: two admins changing each other at once queue on their rows; the second finds itself denied")
+    // tenancy:end
     void twoChangesOfOnePersonQueue() throws Exception {
         TestUser first = newAdmin();
         TestUser second = newAdmin();
@@ -145,9 +153,15 @@ class PersonAccessIntegrationTest extends RolesFixtures {
         CountDownLatch release = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(3);
         try {
-            // Holds both admins' rows, so both changes wait at their lock and none reads anything first.
+            // tenancy:begin
+            // Holds the tenant's row, which every access change in it locks first: both changes wait there.
             Future<?> holder = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-                jdbc.queryForList("select id from users where id in (?, ?) order by id for update", first.id(), second.id());
+                jdbc.queryForList("select id from tenants where id = ? for update", testTenant().id());
+            // tenancy:else
+            // // Holds both admins' rows, so both changes wait at their lock and none reads anything first.
+            // Future<?> holder = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            //     jdbc.queryForList("select id from users where id in (?, ?) order by id for update", first.id(), second.id());
+            // tenancy:end
                 locked.countDown();
                 awaitQuietly(release);
             }));
@@ -171,23 +185,48 @@ class PersonAccessIntegrationTest extends RolesFixtures {
         }
     }
 
+    // tenancy:begin
+    // example:begin
+    // With tenancy the one prerequisite outside the example's is ACCESS_GRANT's own (TENANT_MEMBERS_MANAGE), which every
+    // granter holds both of: the example's plans give the pair, the granter denied the dependent one.
     @Test
     @DisplayName("Safety rule 1 on the result: taking a DENY away that would hand back a permission the caller lacks is 403 ACCESS_NOT_HELD")
     void takingADenyAwayHandsBackNothingTheCallerLacks() throws Exception {
         String admin = newAdmin().accessToken();
         TestUser person = newUser();
-        assign(admin, person.id(), createRole(admin, NEEDED, NEEDING), null).andExpect(status().isOk());
-        putAs(admin, userPermission(person.id(), NEEDED), grantJson("DENY")).andExpect(status().isOk());
-        assertThat(myPermissions(person.accessToken())).doesNotContain(NEEDED.name(), NEEDING.name());
+        assign(admin, person.id(), createRole(admin, Permission.PLAN_READ_OWN, Permission.PLAN_EDIT_OWN), null).andExpect(status().isOk());
+        sql("delete from user_roles where user_id = ? and role_id = (select id from roles where built_in = 'USER')", person.id());
+        putAs(admin, userPermission(person.id(), Permission.PLAN_READ_OWN), grantJson("DENY")).andExpect(status().isOk());
+        assertThat(myPermissions(person.accessToken())).doesNotContain("PLAN_READ_OWN", "PLAN_EDIT_OWN");
         TestUser granter = newUserHolding(Permission.ACCESS_GRANT, NEEDED);
+        putAs(admin, userPermission(granter.id(), Permission.PLAN_EDIT_OWN), grantJson("DENY")).andExpect(status().isOk());
 
-        deleteAs(granter.accessToken(), userPermission(person.id(), NEEDED))
+        deleteAs(granter.accessToken(), userPermission(person.id(), Permission.PLAN_READ_OWN))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
-        putAs(granter.accessToken(), userPermission(person.id(), NEEDED), grantJson("ALLOW"))
+        putAs(granter.accessToken(), userPermission(person.id(), Permission.PLAN_READ_OWN), grantJson("ALLOW"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
-        assertThat(myPermissions(person.accessToken())).doesNotContain(NEEDED.name(), NEEDING.name());
+        assertThat(myPermissions(person.accessToken())).doesNotContain("PLAN_READ_OWN", "PLAN_EDIT_OWN");
     }
 
+    // example:end
+    // tenancy:else
+    // @Test
+    // @DisplayName("Safety rule 1 on the result: taking a DENY away that would hand back a permission the caller lacks is 403 ACCESS_NOT_HELD")
+    // void takingADenyAwayHandsBackNothingTheCallerLacks() throws Exception {
+    //     String admin = newAdmin().accessToken();
+    //     TestUser person = newUser();
+    //     assign(admin, person.id(), createRole(admin, NEEDED, NEEDING), null).andExpect(status().isOk());
+    //     putAs(admin, userPermission(person.id(), NEEDED), grantJson("DENY")).andExpect(status().isOk());
+    //     assertThat(myPermissions(person.accessToken())).doesNotContain(NEEDED.name(), NEEDING.name());
+    //     TestUser granter = newUserHolding(Permission.ACCESS_GRANT, NEEDED);
+    //
+    //     deleteAs(granter.accessToken(), userPermission(person.id(), NEEDED))
+    //             .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
+    //     putAs(granter.accessToken(), userPermission(person.id(), NEEDED), grantJson("ALLOW"))
+    //             .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
+    //     assertThat(myPermissions(person.accessToken())).doesNotContain(NEEDED.name(), NEEDING.name());
+    // }
+    // tenancy:end
     @Test
     @DisplayName("Safety rule 3 counts a suspended person's grants: a superior suspended is still above (403 ACCESS_TARGET_HOLDS_MORE)")
     void aSuspendedSuperiorIsStillAbove() throws Exception {

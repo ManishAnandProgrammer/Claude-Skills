@@ -76,8 +76,14 @@ and ends the access tokens at once (the session version).
 <!-- session-version:else -->
 <!-- (the access tokens already issued expire within their 15 minutes). -->
 <!-- session-version:end -->
-The last active ADMIN of an open tenant is refused (409): make another member ADMIN first, or suspend the
-tenant.
+<!-- roles:begin -->
+A suspension that would leave an open tenant without another active member holding, for good, each of
+`ROLES_MANAGE`, `ACCESS_GRANT` and `TENANT_MEMBERS_MANAGE` is refused (409 `ACCESS_LAST_MANAGER`): give
+another member those first (its built-in `ADMIN` role), or suspend the tenant.
+<!-- roles:else -->
+<!-- The last active ADMIN of an open tenant is refused (409): make another member ADMIN first, or suspend the -->
+<!-- tenant. -->
+<!-- roles:end -->
 
 ## 3. Tenants
 
@@ -91,6 +97,22 @@ tenant.
 - **A tenant still PENDING after its approval**: the counter `tenant.provisioning.failed` rose (alert on
   any increase: the approval itself answered 202), and the log has `Tenant provisioning failed` with the
   cause (a module's seeding). Fix it, then approve the tenant again: provisioning runs again.
+<!-- roles:begin -->
+- **A tenant's roles** are its own rows (`roles`, `role_permissions`, `user_roles`, `user_permissions`, each with
+  its `tenant_id`): the built-in ones are copied from the `Role` enum at its activation, its owner holds the
+  built-in `ADMIN` from then, every member added later the built-in `USER`, and every other role or grant is a
+  tenant admin's (`PUT /api/v1/users/{id}/roles/{roleId}`).
+- **Nobody manages a tenant any more** (no active member holds `ROLES_MANAGE`, `ACCESS_GRANT` or
+  `TENANT_MEMBERS_MANAGE` for good: a DENY or an edit made by hand, a restore). The application refuses every
+  change that would cause it (409 `ACCESS_LAST_MANAGER`), so it only happens outside it. As the owner role, in one
+  transaction told the tenant (section 4), give one trusted member the tenant's built-in `ADMIN` and remove any DENY of those three on them:
+  `INSERT INTO user_roles (id, tenant_id, user_id, role_id, created_at, updated_at, version) SELECT uuidv7(),
+  r.tenant_id, '<their user id>', r.id, now(), now(), 0 FROM roles r WHERE r.built_in = 'ADMIN' ON CONFLICT DO
+  NOTHING;` and `DELETE FROM user_permissions WHERE user_id = '<their user id>' AND effect = 'DENY' AND permission
+  IN ('ROLES_MANAGE', 'ACCESS_GRANT', 'TENANT_MEMBERS_MANAGE');`. Check the built-in `ADMIN` still holds the three
+  (`SELECT permission FROM role_permissions p JOIN roles r ON r.id = p.role_id WHERE r.built_in = 'ADMIN';`). It
+  applies on their next request; write down who asked and why.
+<!-- roles:end -->
 
 ## 4. Data fixes and seeds as the owner
 

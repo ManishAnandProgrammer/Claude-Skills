@@ -65,14 +65,14 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            A rollback that writes rows lifts FORCE on their table around the write, and a backfill that inserts \
-            rows has a rollback that removes them (a DELETE so wrapped, or the table dropped)""")
+            A rollback that writes rows of a table under a forced policy lifts FORCE on it around the write, and a \
+            backfill that inserts rows has a rollback that removes them (a DELETE so wrapped, or the table dropped)""")
     void rollbacksOfBackfillsLiftTheForcedPolicy() throws IOException {
         List<String> wrong = new ArrayList<>();
         for (Changeset changeset : changesets()) {
             for (int index = 0; index < changeset.rollback().size(); index++) {
                 Matcher write = ROW_WRITE.matcher(changeset.rollback().get(index));
-                if (write.find() && !forceLiftedAround(changeset.rollback(), index, write.group(1))) {
+                if (write.find() && isForced(write.group(1)) && !forceLiftedAround(changeset.rollback(), index, write.group(1))) {
                     wrong.add(changeset.id() + ": its rollback writes " + write.group(1) + " under the forced policy");
                 }
             }
@@ -182,6 +182,14 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
     }
 
     /** {@code ALTER TABLE <table> NO FORCE …} before the statement at {@code index}, {@code … FORCE …} after it. */
+    /** A table under a forced policy now: a platform table (the memberships' role, restored) has none to lift. */
+    private boolean isForced(String table) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                select coalesce(bool_or(c.relforcerowsecurity), false)
+                  from pg_class c
+                 where c.relname = lower(?) and c.relkind = 'r'""", Boolean.class, table));
+    }
+
     private static boolean forceLiftedAround(List<String> rollback, int index, String table) {
         String lift = "alter table " + table.toLowerCase(Locale.ROOT) + " no force row level security";
         String restore = "alter table " + table.toLowerCase(Locale.ROOT) + " force row level security";

@@ -20,6 +20,9 @@ import org.hibernate.annotations.OptimisticLock;
 
 import java.util.EnumSet;
 import java.util.HashSet;
+// tenancy-row:begin
+import java.util.Locale;
+// tenancy-row:end
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -67,6 +70,21 @@ public class AccessRole extends TenantOwnedEntity {
         return role;
     }
 
+    // tenancy-row:begin
+    /**
+     * A copy of a built-in role as the {@link Role} enum lists it now, for a new tenant (row mode's activation): its
+     * code and {@code built_in} the constant's name, its name the constant's in words ({@code ADMIN}: "Admin"), as
+     * the roles changeset seeds them.
+     */
+    public static AccessRole copyOf(Role builtIn) {
+        String code = builtIn.name();
+        String name = code.charAt(0) + code.substring(1).toLowerCase(Locale.ROOT).replace('_', ' ');
+        AccessRole role = AccessRole.builder().code(code).name(name).builtIn(code).build();
+        role.replacePermissions(builtIn.permissions());
+        return role;
+    }
+
+    // tenancy-row:end
     public void rename(String newName) {
         name = newName.strip();
     }

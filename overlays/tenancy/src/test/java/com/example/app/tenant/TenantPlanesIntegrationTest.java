@@ -99,13 +99,21 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A tenant token names its tenant, the membership's role and the tenant audience")
+    // roles:begin
+    @DisplayName("A tenant token names its tenant and the tenant audience, and no role (the roles piece reads the access per request)")
+    // roles:else
+    // @DisplayName("A tenant token names its tenant, the membership's role and the tenant audience")
+    // roles:end
     void tokensCarryTheTenant() throws Exception {
         TestTenant tenant = newTenant();
         TestUser user = newUserIn(tenant);
 
         assertThat(claim(user.accessToken(), "$.tenant_id")).isEqualTo(tenant.id().toString());
-        assertThat(claim(user.accessToken(), "$.roles[0]")).isEqualTo("USER");
+        // roles:begin
+        assertThat(claim(user.accessToken(), "$")).doesNotContain("roles");
+        // roles:else
+        // assertThat(claim(user.accessToken(), "$.roles[0]")).isEqualTo("USER");
+        // roles:end
         assertThat(claim(user.accessToken(), "$.aud")).contains("tenant");
     }
 
@@ -170,24 +178,30 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBERSHIP_REQUIRED"));
     }
 
+    // roles:begin
+    // roles:else
+    // @Test
+    // @DisplayName("Refresh and switch-tenant read the membership's role at the issue, never the presented token's: a role change reaches the next one")
+    // void tokenIssuesReadTheCurrentRole() throws Exception {
+    //     TestTenant first = newTenant();
+    //     TestTenant second = newTenant();
+    //     TestUser user = newUserIn(first);
+    //     addMember(second, user.id(), "USER");
+    //     sql("update tenant_memberships set role = 'ADMIN' where tenant_id = ? and user_id = ?", first.id(), user.id());
+    //     sql("update tenant_memberships set role = 'ADMIN' where tenant_id = ? and user_id = ?", second.id(), user.id());
+    //
+    //     ResultActions refreshed = refresh(user.refreshToken()).andExpect(status().isOk());
+    //     assertThat(claim(read(refreshed, "$.response.accessToken"), "$.roles[0]")).isEqualTo("ADMIN");
+    //     ResultActions switched = switchTenant(read(refreshed, "$.response.refreshToken"), second.id()).andExpect(status().isOk());
+    //     assertThat(claim(read(switched, "$.response.accessToken"), "$.roles[0]")).isEqualTo("ADMIN");
+    // }
+    // roles:end
     @Test
-    @DisplayName("Refresh and switch-tenant read the membership's role at the issue, never the presented token's: a role change reaches the next one")
-    void tokenIssuesReadTheCurrentRole() throws Exception {
-        TestTenant first = newTenant();
-        TestTenant second = newTenant();
-        TestUser user = newUserIn(first);
-        addMember(second, user.id(), "USER");
-        sql("update tenant_memberships set role = 'ADMIN' where tenant_id = ? and user_id = ?", first.id(), user.id());
-        sql("update tenant_memberships set role = 'ADMIN' where tenant_id = ? and user_id = ?", second.id(), user.id());
-
-        ResultActions refreshed = refresh(user.refreshToken()).andExpect(status().isOk());
-        assertThat(claim(read(refreshed, "$.response.accessToken"), "$.roles[0]")).isEqualTo("ADMIN");
-        ResultActions switched = switchTenant(read(refreshed, "$.response.refreshToken"), second.id()).andExpect(status().isOk());
-        assertThat(claim(read(switched, "$.response.accessToken"), "$.roles[0]")).isEqualTo("ADMIN");
-    }
-
-    @Test
-    @DisplayName("Switch-tenant issues tokens for another membership with its role; login then picks it as the most recent")
+    // roles:begin
+    @DisplayName("Switch-tenant issues tokens for another membership, which hold what the person holds there; login then picks it as the most recent")
+    // roles:else
+    // @DisplayName("Switch-tenant issues tokens for another membership with its role; login then picks it as the most recent")
+    // roles:end
     void switchTenantMovesToAnotherMembership() throws Exception {
         TestTenant first = newTenant();
         TestTenant second = newTenant();
@@ -197,7 +211,11 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
         ResultActions switched = switchTenant(user.refreshToken(), second.id()).andExpect(status().isOk());
         String accessToken = read(switched, "$.response.accessToken");
         assertThat(claim(accessToken, "$.tenant_id")).isEqualTo(second.id().toString());
-        assertThat(claim(accessToken, "$.roles[0]")).isEqualTo("ADMIN");
+        // roles:begin
+        getAs(accessToken, "/api/v1/tenant-members").andExpect(status().isOk());
+        // roles:else
+        // assertThat(claim(accessToken, "$.roles[0]")).isEqualTo("ADMIN");
+        // roles:end
         refresh(user.refreshToken())
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));

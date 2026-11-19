@@ -18,7 +18,10 @@ public class MembershipMapper {
                 membership.getTenantId(),
                 tenant.name(),
                 tenant.status().name(),
-                membership.getRole(),
+                // roles:begin
+                // roles:else
+                // membership.getRole(),
+                // roles:end
                 membership.getTenantId().equals(currentTenantId),
                 membership.getLastUsedAt(),
                 membership.getCreatedAt(),
@@ -33,8 +36,11 @@ public class MembershipMapper {
                 user.getId(),
                 user.getEmail(),
                 user.getFullName(),
-                membership.getRole(),
-                membership.getVersion(),
+                // roles:begin
+                // roles:else
+                // membership.getRole(),
+                // membership.getVersion(),
+                // roles:end
                 membership.getCreatedAt(),
                 membership.getUpdatedAt(),
                 membership.getCreatedBy(),

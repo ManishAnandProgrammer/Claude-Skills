@@ -128,6 +128,29 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         assertThat(QueryPlan.indexesScanned(newest)).as(newest).contains("idx_todos_owner_id_created_at_id");
     }
 
+    // roles:begin
+    @Test
+    @DisplayName("""
+            The roles changeset gave every seeded tenant, whatever its status, its built-in roles, made each \
+            membership's role its member's assignment of the tenant's copy, for good, and dropped the role columns""")
+    void eachSeededMembershipsRoleBecameAnAssignment() throws SQLException {
+        for (UUID tenant : TENANTS) {
+            assertThat(inTenant(tenant, "select count(*) from roles where built_in in ('USER', 'ADMIN')")).as(tenant.toString()).isEqualTo(2);
+        }
+        String assignments = """
+                select string_agg(a.user_id || ':' || r.built_in, ',' order by a.user_id)
+                  from user_roles a join roles r on r.id = a.role_id and r.tenant_id = a.tenant_id
+                 where a.user_id::text like '01890000-%' and a.valid_until is null""";
+        assertThat(textInTenant(ALPHA, assignments))
+                .isEqualTo("01890000-0000-7000-8000-000000000001:ADMIN,01890000-0000-7000-8000-000000000002:USER");
+        assertThat(textInTenant(SIGMA, assignments)).isEqualTo("01890000-0000-7000-8000-000000000006:ADMIN");
+        assertThat(textInTenant(PI, assignments)).isEqualTo("01890000-0000-7000-8000-000000000007:ADMIN");
+        assertThat(jdbc.queryForObject("""
+                select count(*) from information_schema.columns
+                 where table_name in ('users', 'tenant_memberships') and column_name = 'role'""", Integer.class)).isZero();
+    }
+
+    // roles:end
     @Test
     @DisplayName("A member who left can't be named on a new todo: 404 TENANT_MEMBER_NOT_FOUND")
     void aMemberWhoLeftIsNotNamed() throws Exception {

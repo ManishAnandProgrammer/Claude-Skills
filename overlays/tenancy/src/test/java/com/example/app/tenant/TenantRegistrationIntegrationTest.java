@@ -69,7 +69,11 @@ class TenantRegistrationIntegrationTest extends IntegrationTest {
         getAs(read(signedIn, "$.response.accessToken"), "/api/v1/users/me/tenants")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response[0].tenantId").value(tenantId.toString()))
-                .andExpect(jsonPath("$.response[0].role").value("ADMIN"))
+                // roles:begin
+                .andExpect(jsonPath("$.response[0].role").doesNotExist())
+                // roles:else
+                // .andExpect(jsonPath("$.response[0].role").value("ADMIN"))
+                // roles:end
                 .andExpect(jsonPath("$.response[0].tenantStatus").value("ACTIVE"));
         postAs(platformToken(), "/api/v1/platform/tenants/" + tenantId + "/approve", "")
                 .andExpect(status().isConflict())
@@ -87,8 +91,14 @@ class TenantRegistrationIntegrationTest extends IntegrationTest {
         register(foreign, user.email(), "Wrong-Horse-9").andExpect(status().isAccepted()).andExpect(content().string(""));
 
         UUID tenantId = tenantNamed(mine);
-        assertThat(jdbc.queryForObject("select role from tenant_memberships where tenant_id = ? and user_id = ?",
-                String.class, tenantId, user.id())).isEqualTo("ADMIN");
+        // roles:begin
+        // Its owner's membership; their ADMIN role is the tenant's own data, given at its provisioning.
+        assertThat(jdbc.queryForObject("select count(*) from tenant_memberships where tenant_id = ? and user_id = ?",
+                Integer.class, tenantId, user.id())).isOne();
+        // roles:else
+        // assertThat(jdbc.queryForObject("select role from tenant_memberships where tenant_id = ? and user_id = ?",
+        //         String.class, tenantId, user.id())).isEqualTo("ADMIN");
+        // roles:end
         assertThat(tenantsNamed(foreign)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from users where email = ?", Integer.class, user.email())).isOne();
     }

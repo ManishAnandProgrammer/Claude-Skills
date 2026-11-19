@@ -3,6 +3,9 @@ package com.example.app.user.service;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 // tenancy:begin
+// roles:begin
+// import com.example.app.common.tenancy.TenantScope;
+// roles:end
 // tenancy:else
 import com.example.app.common.security.Permission;
 // tenancy:end
@@ -21,6 +24,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 // roles:begin
+// tenancy:begin
+// import java.util.List;
+// tenancy:end
 // roles:else
 import java.util.List;
 // roles:end
@@ -39,9 +45,16 @@ import java.util.UUID;
  *   <!-- tenancy:begin -->
  *
  * <p>With tenancy, accounts are global and platform staff suspend them ({@code PATCH /platform/users/{id}/status}):
- * a tenant ADMIN changes memberships, never an account. A person who is the last ADMIN with an ACTIVE account
- * of a tenant isn't suspended (409 {@code TENANT_MEMBER_LAST_ADMIN}): make another member ADMIN first, or
- * suspend the tenant.</p>
+ * a tenant ADMIN changes memberships, never an account.
+ *   <!-- roles:begin -->
+ <!-- * A suspension that would leave an open tenant without another active member holding, for good, each permission -->
+ <!-- * that manages it isn't made (409 {@code ACCESS_LAST_MANAGER}, safety rule 6 per tenant): give another member -->
+ <!-- * those first, or suspend the tenant.</p> -->
+ *   <!-- roles:else -->
+ <!-- * A person who is the last ADMIN with an ACTIVE account -->
+ <!-- * of a tenant isn't suspended (409 {@code TENANT_MEMBER_LAST_ADMIN}): make another member ADMIN first, or -->
+ <!-- * suspend the tenant.</p> -->
+ *   <!-- roles:end -->
  *   <!-- tenancy:else -->
  *
  *   <!-- roles:begin -->
@@ -79,14 +92,29 @@ public class AccountStatusService {
     }
 
     // tenancy:begin
+    // roles:begin
+    // /**
+    //  * Platform staff's change. 404 {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}, 409
+    //  * {@code ACCESS_LAST_MANAGER}. A suspension counts, in each open tenant of the person's, the other active members
+    //  * holding what manages it for good: each tenant's own data, read under its scope in a short transaction of its
+    //  * own, while this one holds the tenant's row, which every access change there locks first.
+    //  */
+    // roles:else
     // /** Platform staff's change. 404 {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}, 409 {@code TENANT_MEMBER_LAST_ADMIN}. */
+    // roles:end
     // @Transactional
     // public ObjectWrapper<UserResponse> changeStatus(UUID userId, UserStatusRequest request) {
     //     User target = users.lockForStatusChange(List.of(userId)).stream().findFirst()
     //             .orElseThrow(AppException.supply(ErrorCode.USER_NOT_FOUND));
     //     target.checkVersion(request.version());
     //     if (request.status() == UserStatus.SUSPENDED && target.isActive()) {
+    //         // roles:begin
+    //         for (UUID tenantId : memberships.lockOpenTenantsOf(userId)) {
+    //             TenantScope.runAs(tenantId, () -> access.requireManagersRemainWithout(userId));
+    //         }
+    //         // roles:else
     //         memberships.requireAnotherAdminWhereAdmin(userId);
+    //         // roles:end
     //     }
     //     return ObjectWrapper.withObject(apply(target, request.status()));
     // }

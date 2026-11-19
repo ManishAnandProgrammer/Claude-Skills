@@ -17,9 +17,15 @@ public record AccessRoleUpdateRequest(
         @NotBlank @MaxLength("role.name")
         String name,
 
+        // tenancy:begin
         @Schema(description = """
                 All its permissions, replacing the ones it has: only ones you hold, and each one's prerequisites too""",
-                example = "[\"ACCOUNT_READ\"]")
+                example = "[\"TENANT_MEMBERS_MANAGE\"]")
+        // tenancy:else
+        // @Schema(description = """
+        //         All its permissions, replacing the ones it has: only ones you hold, and each one's prerequisites too""",
+        //         example = "[\"ACCOUNT_READ\"]")
+        // tenancy:end
         @NotNull @ConfiguredMaxSize("role.max-permissions")
         Set<@NotNull Permission> permissions,
 

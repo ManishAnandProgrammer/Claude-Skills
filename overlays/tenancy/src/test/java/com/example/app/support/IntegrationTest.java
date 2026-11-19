@@ -304,14 +304,28 @@ public abstract class IntegrationTest {
     }
 
     // admin:begin
-    /** A signed-up user given {@code role} (no endpoint grants one), signed in again so the token carries it. */
+    // roles:begin
+    /**
+     * A signed-up user holding the test tenant's built-in {@code role} alone (the roles piece: its copy in the
+     * tenant's roles table, by SQL, so a test of anything else needs no admin to give it), signed in again as every
+     * other fixture is.
+     */
     protected TestUser newUserWithRole(String role) throws Exception {
         TestUser user = newUser();
-        assertThat(sql("update users set role = ? where id = ?", role, user.id())).isEqualTo(1);
-        // The token's role is the membership's.
-        assertThat(sql("update tenant_memberships set role = ? where user_id = ?", role, user.id())).isEqualTo(1);
+        sql("delete from user_roles where user_id = ?", user.id());
+        giveBuiltInRole(testTenant(), user.id(), role);
         return signIn(user);
     }
+    // roles:else
+    // /** A signed-up user given {@code role} (no endpoint grants one), signed in again so the token carries it. */
+    // protected TestUser newUserWithRole(String role) throws Exception {
+    //     TestUser user = newUser();
+    //     assertThat(sql("update users set role = ? where id = ?", role, user.id())).isEqualTo(1);
+    //     // The token's role is the membership's.
+    //     assertThat(sql("update tenant_memberships set role = ? where user_id = ?", role, user.id())).isEqualTo(1);
+    //     return signIn(user);
+    // }
+    // roles:end
 
     protected TestUser newAdmin() throws Exception {
         return newUserWithRole("ADMIN");
@@ -586,13 +600,45 @@ public abstract class IntegrationTest {
      * (house-review TEN-17), as {@code MembershipService} writes both.
      */
     protected void addMember(TestTenant tenant, UUID userId, String role) {
+        // roles:begin
         assertThat(sql("""
-                insert into tenant_memberships (id, tenant_id, user_id, role, created_at, updated_at, version)
-                values (gen_random_uuid(), ?, ?, ?, now(), now(), 0)
-                """, tenant.id(), userId, role)).isEqualTo(1);
+                insert into tenant_memberships (id, tenant_id, user_id, created_at, updated_at, version)
+                values (uuidv7(), ?, ?, now(), now(), 0)
+                """, tenant.id(), userId)).isEqualTo(1);
         TenantScope.runAs(tenant.id(), () -> new TransactionTemplate(transactionManager)
                 .executeWithoutResult(status -> members.save(Member.of(userId))));
+        // The member's role is the tenant's own data (the roles piece), as TenantMemberManager gives it.
+        giveBuiltInRole(tenant, userId, role);
+        // roles:else
+        // assertThat(sql("""
+        //         insert into tenant_memberships (id, tenant_id, user_id, role, created_at, updated_at, version)
+        //         values (gen_random_uuid(), ?, ?, ?, now(), now(), 0)
+        //         """, tenant.id(), userId, role)).isEqualTo(1);
+        // TenantScope.runAs(tenant.id(), () -> new TransactionTemplate(transactionManager)
+        //         .executeWithoutResult(status -> members.save(Member.of(userId))));
+        // roles:end
     }
+    // roles:begin
+
+    /** A tenant the test didn't create itself, by its id: a member's, or one an upgrade seeded. */
+    protected static TestTenant tenant(UUID id) {
+        return new TestTenant(id);
+    }
+
+    /** The tenant's built-in {@code role}, for good, given to its member by SQL (a fixture, as the operator's runbook does). */
+    protected void giveBuiltInRole(TestTenant tenant, UUID userId, String role) {
+        // tenancy-row:begin
+        assertThat(sqlIn(tenant, """
+                insert into user_roles (id, tenant_id, user_id, role_id, created_at, updated_at, version)
+                select uuidv7(), tenant_id, ?, id, now(), now(), 0 from roles where built_in = ?""", userId, role)).isEqualTo(1);
+        // tenancy-row:end
+        // tenancy-schema:begin
+        assertThat(sqlIn(tenant, """
+                insert into user_roles (id, user_id, role_id, created_at, updated_at, version)
+                select uuidv7(), ?, id, now(), now(), 0 from roles where built_in = ?""", userId, role)).isEqualTo(1);
+        // tenancy-schema:end
+    }
+    // roles:end
 
     /**
      * Finishes the approved tenants' provisioning now: with schema per tenant the job runs at once instead

@@ -42,10 +42,15 @@
 #          session-version + change-history + roles (Level 2). Every Level 1 test runs unchanged (but those that
 #          asserted the role column or claim: roles:else blocks), with the roles piece's own: the tables, the per-request read, the
 #          endpoints and the safety rules; the upgrade path copies each seeded account's role into an assignment;
+#      2o, 2p. the same with row mode (2o) and schema per tenant (2p), tenant-registration included: the roles are each
+#          tenant's, a person's access is on their member row, adding and removing a member are access changes under
+#          the safety rules counted per tenant, staff's suspension counts every tenant of the person; the upgrade path
+#          copies each seeded membership's role (row mode in one changeset, schema per tenant per schema, then the
+#          platform's column dropped once every schema copied: expand, contract);
 #      the session version is opt-in: every copy without it (2, 2b, 2c, 2e, 2g, 2i, 2d) is checked for
 #      none of its traces (no column, claim, filter, endpoint or configuration key); so is the change history
-#      (the reference, 2h, 2j, 2k, 2l, 2m and 2n have it; 2, 2b, 2c, 2e, 2f, 2g, 2i and 2d have none of its traces:
-#      no table, trigger function, actor, job or setting);
+#      (the reference, 2h, 2j, 2k, 2l, 2m, 2n, 2o and 2p have it; 2, 2b, 2c, 2e, 2f, 2g, 2i and 2d have none of its
+#      traces: no table, trigger function, actor, job or setting); and so is the roles piece (only 2n, 2o and 2p have it);
 #      2d. core alone (a project signing users in elsewhere), without sign-in's Redis and Bucket4j
 #          dependencies: main and test code compile and the unit tests pass. Its integration and
 #          ArchUnit tests are left out: the integration tests sign users in through sign-in, and the
@@ -65,11 +70,11 @@
 # While iterating, --only runs just the named stages (comma list of the ids below); step 0 and the
 # setup the copies share always run:
 #   scripts/verify.sh --only 2i,2j
-#   ids: reference (1), 2, 2b, 2c, 2e, 2f, 2g, 2h, 2i, 2j, 2k, 2l, 2m, 2n, 2d, image (3)
+#   ids: reference (1), 2, 2b, 2c, 2e, 2f, 2g, 2h, 2i, 2j, 2k, 2l, 2m, 2n, 2o, 2p, 2d, image (3)
 # A partial run never records the fingerprint, so a push still needs one full run.
 set -euo pipefail
 
-STAGES="reference 2 2b 2c 2e 2f 2g 2h 2i 2j 2k 2l 2m 2n 2d image"
+STAGES="reference 2 2b 2c 2e 2f 2g 2h 2i 2j 2k 2l 2m 2n 2o 2p 2d image"
 # The highest changeset number of the release in production (main): the upgrade path starts from it.
 # Raise it, and extend the previous-release seeds, when a release ships. The pieces' range alone (0001-0099):
 # the reference has no project changesets (a project passes <pieces>,<project>, PreviousReleaseDatabase).
@@ -108,7 +113,7 @@ no_session_version() {
 CHANGE_HISTORY_TRACES='change-history|ChangeHistory|audit_log|audit_row_change|app\.user_id|[Cc]hange history'
 # What the roles piece leaves in a copy (its tables, entities, endpoints, error codes and permissions); a copy without it
 # has none of it, and keeps Level 1 as it is.
-ROLES_TRACES='roles:(begin|else|end)|AccessRole|RoleAssignment|PersonalGrant|PersonAccess|user_roles|user_permissions|role_permissions|ROLES_MANAGE|ACCESS_GRANT|ACCESS_LAST_MANAGER|ACCESS_NOT_HELD|PermissionsUnreadable|[Rr]oles piece'
+ROLES_TRACES='roles:(begin|else|end)|AccessRole|RoleAssignment|PersonalGrant|PersonAccess|TenantMemberManager|TenantAccess|user_roles|user_permissions|role_permissions|ROLES_MANAGE|ACCESS_GRANT|ACCESS_LAST_MANAGER|ACCESS_NOT_HELD|PermissionsUnreadable|memberships-role|[Rr]oles piece'
 no_roles() {
     if grep -rqE "$ROLES_TRACES" "$@"; then
         echo "FAILED: roles entries in a copy without the roles piece:" >&2
@@ -580,6 +585,28 @@ every_piece_with_roles() {
     grep -q "PersonAccessService" "$dir/src/main/java/com/acme/$name/user/service/RolePermissions.java" \
         && ls "$dir/src/main/resources/db/changelog/changes/"*-roles.sql > /dev/null \
         || { echo "FAILED: the roles piece's TokenPermissions or changeset is missing from the $id copy" >&2; exit 1; }
+    local changes="$dir/src/main/resources/db/changelog/changes" user="$dir/src/main/java/com/acme/$name/user"
+    if [ -n "$tenancy" ]; then
+        # A member's role change is the assignment endpoints; adding and removing a member are the Manager's.
+        [ -f "$user/service/TenantMemberManager.java" ] && [ ! -f "$user/dto/request/TenantMemberUpdateRequest.java" ] \
+            && [ ! -f "$dir/src/test/java/com/acme/$name/user/TenantMemberIntegrationTest.java" ] \
+            && [ -f "$dir/src/test/java/com/acme/$name/user/TenantAccessIntegrationTest.java" ] \
+            && [ ! -f "$user/dto/internal/AccountCreated.java" ] \
+            || { echo "FAILED: the members' role change or the tenant access Manager isn't the roles piece's in the $id copy" >&2; exit 1; }
+    else
+        [ -f "$user/dto/internal/AccountCreated.java" ] && [ ! -f "$user/service/TenantMemberManager.java" ] \
+            || { echo "FAILED: signup's first role or the tenant Manager is wrong in the $id copy without tenancy" >&2; exit 1; }
+    fi
+    if [[ "$tenancy" == *tenancy-schema* ]]; then
+        # The roles in every tenant schema; the platform's role column expanded, then contracted once every schema copied.
+        local platform="$dir/src/main/resources/db/changelog/platform.yaml" tenant="$dir/src/main/resources/db/changelog/tenant.yaml"
+        grep -q "0037-roles.sql" "$tenant" && ! grep -q "0037-roles.sql" "$platform" \
+            && [ "$(grep -n "0038-memberships-role-expand.sql" "$platform" | cut -d: -f1)" -lt "$(grep -n "0039-memberships-role-contract.sql" "$platform" | cut -d: -f1)" ] \
+            || { echo "FAILED: the roles changesets aren't the tenant's (0037) and the platform's (0038, 0039) in the $id copy" >&2; exit 1; }
+    else
+        [ ! -f "$changes/0038-memberships-role-expand.sql" ] && [ ! -f "$changes/0039-memberships-role-contract.sql" ] \
+            || { echo "FAILED: schema per tenant's role-column changesets in the $id copy" >&2; exit 1; }
+    fi
     mvn_verify "$dir" "$WORK/$name.log" "$UPGRADE" -Dcoverage.line.minimum="$line_minimum" -Dcoverage.branch.minimum="$branch_minimum"
     upgraded "$dir"
 }
@@ -588,6 +615,18 @@ if wants 2n; then
     echo "[2n/3] bootstrap-copy with every piece and the roles piece, without tenancy (package com.acme.roles)"
     # Coverage measured 2026-11-19 at lines 95.33 %, branches 84.92 %; only ever raised.
     every_piece_with_roles 2n roles "" 0.94 0.83
+fi
+
+if wants 2o; then
+    echo "[2o/3] bootstrap-copy with every piece and the roles piece, row mode (package com.acme.rowroles)"
+    # Coverage measured 2026-11-19 at lines 0.00 %, branches 0.00 %; only ever raised.
+    every_piece_with_roles 2o rowroles "tenancy-row,tenant-registration" 0.50 0.50
+fi
+
+if wants 2p; then
+    echo "[2p/3] bootstrap-copy with every piece and the roles piece, schema per tenant (package com.acme.schemaroles)"
+    # Coverage measured 2026-11-19 at lines 0.00 %, branches 0.00 %; only ever raised.
+    every_piece_with_roles 2p schemaroles "tenancy-schema,tenant-registration" 0.50 0.50
 fi
 
 # Every piece but the example, per tenancy mode: what a project starts from before its first entity.

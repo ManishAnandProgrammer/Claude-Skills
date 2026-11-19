@@ -32,8 +32,12 @@ class TenantMembershipRepositoryImpl implements CustomTenantMembershipRepository
     private final EntityManager entityManager;
 
     /**
-     * One tenant's members: the membership holds the role and the version, the account its email and
-     * name. A platform table without a policy, so the tenant is a predicate of every statement.
+     *   <!-- roles:begin -->
+     * One tenant's members: the membership holds when they joined, the account their email and name.
+     *   <!-- roles:else -->
+     <!-- * One tenant's members: the membership holds the role and the version, the account its email and -->
+     <!-- * name. -->
+     *   <!-- roles:end --> A platform table without a policy, so the tenant is a predicate of every statement.
      */
     @Override
     public Page<TenantMemberResponse> findByFilter(TenantMemberFilter filter, UUID tenantId, Pageable pageable) {
@@ -43,7 +47,10 @@ class TenantMembershipRepositoryImpl implements CustomTenantMembershipRepository
         Join<TenantMembership, User> user = root.join(TenantMembership_.user);
         query.select(builder.construct(TenantMemberResponse.class,
                 user.get(User_.id), user.get(User_.email), user.get(User_.fullName),
-                root.get(TenantMembership_.role), root.get(TenantMembership_.version),
+                // roles:begin
+                // roles:else
+                // root.get(TenantMembership_.role), root.get(TenantMembership_.version),
+                // roles:end
                 root.get(TenantMembership_.createdAt), root.get(TenantMembership_.updatedAt),
                 root.get(TenantMembership_.createdBy), root.get(TenantMembership_.updatedBy)));
         query.where(matching(builder, root, user, tenantId, filter).toArray(new Predicate[0]));
@@ -66,9 +73,12 @@ class TenantMembershipRepositoryImpl implements CustomTenantMembershipRepository
             // The membership's own user_id column, which uq_tenant_memberships_user_id_tenant_id leads with.
             predicates.add(root.get(TenantMembership_.user).get(User_.id).in(filter.getIds()));
         }
-        if (filter.requireRolePredicate()) {
-            predicates.add(builder.equal(root.get(TenantMembership_.role), filter.getRole()));
-        }
+        // roles:begin
+        // roles:else
+        // if (filter.requireRolePredicate()) {
+        //     predicates.add(builder.equal(root.get(TenantMembership_.role), filter.getRole()));
+        // }
+        // roles:end
         if (filter.requireQueryPredicate()) {
             predicates.add(TextSearch.contains(builder, user.get(User_.email), filter.getQuery()));
         }

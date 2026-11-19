@@ -20,6 +20,19 @@ import java.util.UUID;
         number of tenants), so no tenant ADMIN does this: they add, change and remove memberships.""")
 public interface PlatformUserApi {
 
+    // roles:begin
+    /** What a suspension never does to an open tenant. */
+    String LAST_MANAGER_NOTE = """
+             A person whose suspension would leave an open tenant without another active member holding, for \
+            good, each permission that manages it (its roles, people's access, its members) is not suspended: give \
+            another member those first, or suspend the tenant.""";
+    // roles:else
+    // /** What a suspension never does to an open tenant. */
+    // String LAST_MANAGER_NOTE = """
+    //          A person who is the last ADMIN with an ACTIVE account of an open tenant is not suspended: \
+    //         make another member ADMIN first, or suspend the tenant.""";
+    // roles:end
+
     @Operation(summary = "Find an account by its email address", description = """
             The account with this exact address (ignoring case and surrounding spaces), or an empty list: its \
             id, status and version, which a status change and an impersonation take. No role: an account's \
@@ -38,8 +51,7 @@ public interface PlatformUserApi {
             and\s""" + UserApi.ACCESS_TOKENS_END + """
             ) and refuses it every new one: login, refresh, switch-tenant and impersonation answer \
             403 AUTH_ACCOUNT_SUSPENDED. ACTIVE lets it sign in again; the sessions the suspension ended stay \
-            ended. A person who is the last ADMIN with an ACTIVE account of an open tenant is not suspended: \
-            make another member ADMIN first, or suspend the tenant.""")
+            ended.""" + PlatformUserApi.LAST_MANAGER_NOTE)
     @ApiResponse(responseCode = "200", description = "The account with its new status and version")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (a malformed id)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -47,10 +59,17 @@ public interface PlatformUserApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // roles:begin
     @ApiResponse(responseCode = "409", description = """
-            OPTIMISTIC_LOCK_CONFLICT (a stale version), TENANT_MEMBER_LAST_ADMIN (the last active ADMIN of an \
-            open tenant)""",
+            OPTIMISTIC_LOCK_CONFLICT (a stale version), ACCESS_LAST_MANAGER (no other active member of an open \
+            tenant would hold, for good, a permission that manages it)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // roles:else
+    // @ApiResponse(responseCode = "409", description = """
+    //         OPTIMISTIC_LOCK_CONFLICT (a stale version), TENANT_MEMBER_LAST_ADMIN (the last active ADMIN of an \
+    //         open tenant)""",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // roles:end
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<UserResponse> changeStatus(@Parameter(description = "The account's id") UUID id, UserStatusRequest request);

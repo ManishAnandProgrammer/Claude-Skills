@@ -7,7 +7,7 @@ import java.util.List;
 
 @Schema(description = "A permission a person holds now, and where it comes from")
 public record HeldPermissionResponse(
-        @Schema(description = "The permission", example = "ACCOUNT_READ") Permission permission,
+        @Schema(description = "The permission", example = "ROLES_MANAGE") Permission permission,
         @Schema(description = "The codes of their roles that give it", example = "[\"ADMIN\"]") List<String> roles,
         @Schema(description = "Whether a personal ALLOW gives it", example = "false") boolean personallyAllowed) {
 

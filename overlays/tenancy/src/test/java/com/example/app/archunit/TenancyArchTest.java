@@ -126,7 +126,14 @@ class TenancyArchTest {
     @Test
     @DisplayName("Only the hook and the migrator write search_path, and no other code names a schema in SQL (TEN-20, TEN-21)")
     void onlyTheHookSetsTheSchema() throws Exception {
-        Set<String> allowed = Set.of("TransactionLocalSchemaProvider.java", "TenantSchemaMigrator.java", "TenantSchemas.java");
+        // roles:begin
+        // The roles piece's per-request read joins the member's access in their schema with the platform's account,
+        // membership and tenant in one statement, so it names the platform's tables (house-review AUTHZ-11).
+        Set<String> allowed = Set.of("TransactionLocalSchemaProvider.java", "TenantSchemaMigrator.java", "TenantSchemas.java",
+                "RoleAssignmentRepositoryImpl.java");
+        // roles:else
+        // Set<String> allowed = Set.of("TransactionLocalSchemaProvider.java", "TenantSchemaMigrator.java", "TenantSchemas.java");
+        // roles:end
         List<String> offenders = new ArrayList<>();
         for (Path source : mainSources()) {
             if (allowed.contains(source.getFileName().toString())) {

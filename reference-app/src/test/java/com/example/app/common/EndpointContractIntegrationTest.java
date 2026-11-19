@@ -308,7 +308,7 @@ class EndpointContractIntegrationTest extends IntegrationTest {
         for (Endpoint endpoint : endpoints()) {
             // A list under a parent reads its cursor before it looks the parent up: an unknown parent's id is enough.
             if (endpoint.method().equals("GET") && endpoint.hasQueryParameter("after")) {
-                MockHttpServletResponse answer = send(endpoint, endpoint.pathWith("after=bm90LWEtY3Vyc29y"), tokenFor(endpoint, token), null);
+                MockHttpServletResponse answer = sendWithEveryPermission(endpoint, endpoint.pathWith("after=bm90LWEtY3Vyc29y"), token);
                 if (!isProblem(answer, 400, "REQUEST_PARAMETER_INVALID") || !parameterOf(answer).equals("after")) {
                     accepted.add(endpoint.name() + " answered " + answer.getStatus() + " " + answer.getContentAsString());
                 }
@@ -474,6 +474,19 @@ class EndpointContractIntegrationTest extends IntegrationTest {
         return token;
     }
     // tenancy:end
+
+    /**
+     * As a caller holding every permission (staff, on a platform endpoint), so an endpoint's own checks of the caller
+     * (a dropdown's {@code for} among them) pass and only what the request carries can be refused.
+     */
+    private MockHttpServletResponse sendWithEveryPermission(Endpoint endpoint, String path, String token) throws Exception {
+        // tenancy:begin
+        // if (endpoint.pattern().startsWith(PLATFORM_PREFIX)) {
+        //     return send(endpoint, path, platformToken(), null);
+        // }
+        // tenancy:end
+        return sendAs(endpoint, path, holding(token, EnumSet.allOf(Permission.class)), null);
+    }
 
     private MockHttpServletResponse send(Endpoint endpoint, String path, String token, String body) throws Exception {
         MockHttpServletRequestBuilder request = request(HttpMethod.valueOf(endpoint.method()), path);

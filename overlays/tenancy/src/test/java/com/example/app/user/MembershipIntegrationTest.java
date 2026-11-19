@@ -16,7 +16,11 @@ class MembershipIntegrationTest extends IntegrationTest {
     private static final String MY_TENANTS = "/api/v1/users/me/tenants";
 
     @Test
-    @DisplayName("Lists every tenant the user belongs to with the role there, the token's own marked current; /users/me has no role")
+    // roles:begin
+    @DisplayName("Lists every tenant the user belongs to, the token's own marked current, and no role (the roles piece's own); /users/me has none")
+    // roles:else
+    // @DisplayName("Lists every tenant the user belongs to with the role there, the token's own marked current; /users/me has no role")
+    // roles:end
     void listsTheUsersTenants() throws Exception {
         TestTenant first = newTenant();
         TestTenant second = newTenant();
@@ -27,11 +31,19 @@ class MembershipIntegrationTest extends IntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response", hasSize(2)))
                 .andExpect(jsonPath("$.response[0].tenantId").value(first.id().toString()))
-                .andExpect(jsonPath("$.response[0].role").value("USER"))
+                // roles:begin
+                .andExpect(jsonPath("$.response[0].role").doesNotExist())
+                // roles:else
+                // .andExpect(jsonPath("$.response[0].role").value("USER"))
+                // roles:end
                 .andExpect(jsonPath("$.response[0].current").value(true))
                 .andExpect(jsonPath("$.response[0].tenantName").isNotEmpty())
                 .andExpect(jsonPath("$.response[1].tenantId").value(second.id().toString()))
-                .andExpect(jsonPath("$.response[1].role").value("ADMIN"))
+                // roles:begin
+                .andExpect(jsonPath("$.response[1].role").doesNotExist())
+                // roles:else
+                // .andExpect(jsonPath("$.response[1].role").value("ADMIN"))
+                // roles:end
                 .andExpect(jsonPath("$.response[1].current").value(false))
                 .andExpect(jsonPath("$.response[1].tenantStatus").value("ACTIVE"));
         getAs(user.accessToken(), "/api/v1/users/me")

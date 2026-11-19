@@ -1,8 +1,13 @@
 package com.example.app.user.controller;
 
+import com.example.app.common.dropdown.DropdownFilter;
+import com.example.app.common.dropdown.DropdownFor;
+import com.example.app.common.dropdown.DropdownItem;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.security.Permission;
 import com.example.app.common.security.Requires;
+import com.example.app.common.security.SignedIn;
+import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.user.controller.api.AccessRoleApi;
@@ -23,6 +28,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -42,6 +48,14 @@ class AccessRoleController implements AccessRoleApi {
     @Requires(Permission.ROLES_MANAGE)
     public PaginationWrapper<AccessRoleSummaryResponse> all(@Valid AccessRoleFilter filter) {
         return service.findByFilter(filter);
+    }
+
+    @Override
+    @GetMapping(path = "/dropdown", version = "v1+")
+    @SignedIn
+    public CursorWrapper<DropdownItem> dropdown(@RequestParam(DropdownFor.PARAMETER) Permission action,
+                                                @Valid DropdownFilter filter) {
+        return service.dropdown(action, filter);
     }
 
     @Override

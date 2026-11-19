@@ -8,9 +8,15 @@ import java.util.UUID;
 
 @Schema(description = "Whom to act as in the tenant, and why")
 public record ImpersonationRequest(
+        // roles:begin
         @Schema(description = """
-                A member of the tenant; absent: the ADMIN with the oldest membership, who is not always \
-                the owner (an owner can be demoted or removed)""")
+                A member of the tenant; absent: of the members who manage its members for good, the one with the \
+                oldest membership (normally the owner)""")
+        // roles:else
+        // @Schema(description = """
+        //         A member of the tenant; absent: the ADMIN with the oldest membership, who is not always \
+        //         the owner (an owner can be demoted or removed)""")
+        // roles:end
         UUID userId,
 
         @Schema(description = "Why, for the audit trail: a ticket reference for example; required", example = "SUP-1234")

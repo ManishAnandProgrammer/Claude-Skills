@@ -52,8 +52,12 @@
 #              tables an admin edits (roles, role_permissions), a person's roles and personal grants (user_roles,
 #              user_permissions: ALLOW or DENY, each until a date or for good), the effective permissions read
 #              from PostgreSQL on every request in one statement; the built-in roles seeded from the Role
-#              enum; the account's role column and the token's roles claim gone (not yet with a tenancy piece).
-#              From overlays/roles: no endpoint or policy changes; the account's role field goes
+#              enum; the account's role column and the token's roles claim gone. With a tenancy piece the roles are
+#              the tenant's and a person's access is on their member row (house-review TEN-16): row mode's tables
+#              carry tenant_id under forced policies, schema per tenant's live in every tenant schema (the
+#              membership's role copied per schema, then dropped by the platform's 0039 once every schema has),
+#              and the members' role field and role change go. From overlays/roles: no endpoint or policy
+#              changes; the account's role field goes
 #   sign-in (account suspension), metadata, media and the tenancy pieces have admin endpoints: each brings
 #   the ADMIN role and the test base's newAdmin() (the "admin" markers), and its permissions: their constants in
 #   common/security/Permission and Area, and their lines in Role (house-review AUTHZ-01, AUTHZ-02).
@@ -389,6 +393,19 @@ LIST
             # Its own layer: the tables' entities, the per-request read, the endpoints, their tests; and its
             # replacement of sign-in's RolePermissions (TokenPermissions read from the tables).
             echo "overlays/roles/src"
+            # With tenancy, adding and removing a member change their access too: the Manager over both services.
+            if tenancy_chosen; then cat <<LIST
+overlays/roles/src/main/java/$reference_path/user/service/TenantMemberManager.java
+overlays/roles/src/test/java/$reference_path/user/TenantAccessIntegrationTest.java
+LIST
+            fi
+            # Schema per tenant: the platform's half, the memberships' role column made nullable, then dropped once
+            # every tenant schema copied its roles (expand, contract).
+            if chosen_piece tenancy-schema; then cat <<LIST
+overlays/roles/src/main/resources/db/changelog/changes/0038-memberships-role-expand.sql
+overlays/roles/src/main/resources/db/changelog/changes/0039-memberships-role-contract.sql
+LIST
+            fi
             ;;
         change-history)
             # The actor, the purge (core's common/ holds them, named here), the changeset and their tests.
@@ -564,9 +581,6 @@ fi
 if chosen_piece session-version && ! chosen_piece sign-in; then
     die "session-version needs sign-in: it checks the tokens sign-in issues"
 fi
-if chosen_piece roles && tenancy_chosen; then
-    die "the roles piece doesn't come with a tenancy piece yet: Level 2 per tenant is designed (house-review AUTHZ-11) but not built"
-fi
 if chosen_piece roles && { ! chosen_piece sign-in || ! chosen_piece change-history; }; then
     die "roles needs sign-in (its people are sign-in's accounts) and change-history (its four tables are audited, house-review AUTHZ-11)"
 fi
@@ -582,10 +596,18 @@ with_reference_prefix() { sed -e '/^overlays\//!s|^|reference-app/|'; }
 named_files="$(pieces="${all_pieces// /,}"; for piece in $all_pieces; do files_for "$piece"; done | with_reference_prefix)"
 # Core files a tenancy mode replaces: its connection hook borrows lazily, so the lazy proxy goes; a person in
 # a tenant is a member (user.api.Members), so the accounts' facade goes too.
+# With the roles piece a new account's first role is signup's (AccountCreated): a tenant's members get theirs when added.
 replaced_by_tenancy="reference-app/src/main/java/$reference_path/config/LazyConnectionConfig.java
 reference-app/src/test/java/$reference_path/config/LazyConnectionIntegrationTest.java
-reference-app/src/main/java/$reference_path/user/api/Users.java"
-replaced() { tenancy_chosen && grep -qxF "$1" <<< "$replaced_by_tenancy"; }
+reference-app/src/main/java/$reference_path/user/api/Users.java
+overlays/roles/src/main/java/$reference_path/user/dto/internal/AccountCreated.java"
+# Files the roles piece replaces: a member's role change becomes the assignment endpoints (one source of access), and
+# the members' tests about their role become TenantAccessIntegrationTest.
+replaced_by_roles="overlays/tenancy/src/main/java/$reference_path/user/dto/request/TenantMemberUpdateRequest.java
+overlays/tenancy/src/test/java/$reference_path/user/TenantMemberIntegrationTest.java"
+replaced() {
+    { tenancy_chosen && grep -qxF "$1" <<< "$replaced_by_tenancy"; } || { chosen_piece roles && grep -qxF "$1" <<< "$replaced_by_roles"; }
+}
 named_alone() { grep -qxF "$1" <<< "$named_files"; }
 for piece in "${chosen[@]}"; do
     while IFS= read -r entry; do
@@ -612,7 +634,7 @@ done
 # support/PreviousReleaseDatabase). A later platform changeset that tenant tables don't need goes in
 # platform_changesets only, never in first_changesets.
 first_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql 0020-tenant-members-list.sql 0021-users-session-version.sql 0022-memberships-session-version.sql"
-platform_changesets="$first_changesets 0027-users-status.sql 0028-platform-users-deactivation.sql 0030-platform-list-indexes.sql 0032-tenants-name-indexes.sql 0035-change-history.sql"
+platform_changesets="$first_changesets 0027-users-status.sql 0028-platform-users-deactivation.sql 0030-platform-list-indexes.sql 0032-tenants-name-indexes.sql 0035-change-history.sql 0038-memberships-role-expand.sql 0039-memberships-role-contract.sql"
 # $1: platform, tenant, first, rest or all; the copied changesets of that kind, in order.
 changesets_of() {
     local want="$1" changeset name

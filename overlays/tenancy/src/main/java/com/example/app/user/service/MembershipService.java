@@ -3,7 +3,10 @@ package com.example.app.user.service;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.pagination.Paging;
-import com.example.app.common.security.Permission;
+// roles:begin
+// roles:else
+// import com.example.app.common.security.Permission;
+// roles:end
 import com.example.app.common.tenancy.TenantContext;
 import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
@@ -12,22 +15,34 @@ import com.example.app.tenant.api.TenantCreated;
 // session-version:begin
 import com.example.app.tenant.api.TenantDeactivated;
 // session-version:end
-import com.example.app.tenant.api.TenantProvisioned;
+// roles:begin
+// roles:else
+// import com.example.app.tenant.api.TenantProvisioned;
+// roles:end
 import com.example.app.tenant.api.TenantStatus;
 import com.example.app.tenant.api.TenantView;
 import com.example.app.tenant.api.Tenants;
 import com.example.app.user.api.MemberView;
 import com.example.app.user.api.Members;
 import com.example.app.user.domain.Member;
-import com.example.app.user.domain.Role;
+// roles:begin
+// roles:else
+// import com.example.app.user.domain.Role;
+// roles:end
 import com.example.app.user.domain.TenantMembership;
 import com.example.app.user.domain.User;
 // session-version:begin
 import com.example.app.user.dto.internal.MembershipSessionVersion;
 // session-version:end
-import com.example.app.user.dto.request.TenantMemberAddRequest;
+// roles:begin
+// roles:else
+// import com.example.app.user.dto.request.TenantMemberAddRequest;
+// roles:end
 import com.example.app.user.dto.request.TenantMemberFilter;
-import com.example.app.user.dto.request.TenantMemberUpdateRequest;
+// roles:begin
+// roles:else
+// import com.example.app.user.dto.request.TenantMemberUpdateRequest;
+// roles:end
 import com.example.app.user.dto.response.MembershipResponse;
 import com.example.app.user.dto.response.TenantMemberResponse;
 import com.example.app.user.mapper.MembershipMapper;
@@ -46,10 +61,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+// roles:begin
+import java.util.ArrayList;
+// roles:end
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+// roles:begin
+// roles:else
+// import java.util.Objects;
+// roles:end
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -57,14 +78,25 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * Who belongs to which tenant, with which role. Tokens are issued for one membership at a time. Every
+ *   <!-- roles:begin -->
+ * Who belongs to which tenant: their access there is the tenant's own (the roles piece: {@code PersonAccessService}),
+ * and a change that touches both, adding or removing a member, is {@code TenantMemberManager}'s, which calls the
+ * membership's half here in its transaction. Tokens are issued for one membership at a time. Every
+ *   <!-- roles:else -->
+ <!-- * Who belongs to which tenant, with which role. Tokens are issued for one membership at a time. Every -->
+ *   <!-- roles:end -->
  * membership has its person in the tenant's own {@code members} table, written in the same transaction
  * (house-review TEN-17): the tenant's tables reference that row, never the platform's users. Other
  * modules ask {@link Members} whether a person belongs to the current tenant.
  *   <!-- session-version:begin -->
  *
  * <p>Each membership has a session version, which its tokens carry: every change of a membership's access
- * (role change, removal, the tenant's suspension, the member signing out everywhere) raises it in the
+ *   <!-- roles:begin -->
+ * (its removal, the tenant's suspension, the member signing out everywhere; with the roles piece a change of roles or
+ * grants needs none, since every request reads them) raises it in the
+ *   <!-- roles:else -->
+ <!-- * (role change, removal, the tenant's suspension, the member signing out everywhere) raises it in the -->
+ *   <!-- roles:end -->
  * change's transaction and publishes {@link SessionVersionsRaised}, so the member's older tokens are
  * refused on their next request.</p>
  *   <!-- session-version:end -->
@@ -84,7 +116,10 @@ public class MembershipService implements Members {
     private final MembershipMapper mapper;
     private final Paging paging;
     private final Clock clock;
-    private final MemberRateLimits rateLimits;
+    // roles:begin
+    // roles:else
+    // private final MemberRateLimits rateLimits;
+    // roles:end
     // session-version:begin
     private final ApplicationEventPublisher events;
     // session-version:end
@@ -104,7 +139,11 @@ public class MembershipService implements Members {
     }
 
     /**
-     * The current tenant's members, for its ADMINs: the rows carry the version a role change sends back.
+     *   <!-- roles:begin -->
+     * The current tenant's members, for whoever manages them (their roles are {@code GET /users/{id}/access}'s).
+     *   <!-- roles:else -->
+     <!-- * The current tenant's members, for its ADMINs: the rows carry the version a role change sends back. -->
+     *   <!-- roles:end -->
      * Removed members are not listed (their membership is deleted; their row in the tenant's own data
      * stays, marked left).
      */
@@ -143,49 +182,36 @@ public class MembershipService implements Members {
                 .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_NOT_FOUND, userId));
     }
 
+    // roles:begin
+    /** 404 {@code TENANT_MEMBER_NOT_FOUND} for an account that isn't a member of the current tenant. */
+    void requireMember(UUID userId) {
+        if (!isMember(userId)) {
+            throw AppException.of(ErrorCode.TENANT_MEMBER_NOT_FOUND, userId);
+        }
+    }
+
     /**
-     * A tenant ADMIN adds an existing account to the caller's tenant: 429 {@code RATE_LIMITED} past the
-     * caller's limit (MemberRateLimits), 404 {@code TENANT_MEMBER_ACCOUNT_NOT_FOUND} without an account, 409
-     * {@code TENANT_MEMBER_EXISTS} (the unique pair) when it is already a member.
+     * The membership's half of adding an existing account to the caller's tenant ({@code TenantMemberManager.add},
+     * which has checked the caller under the tenant's lock): 404 {@code TENANT_MEMBER_ACCOUNT_NOT_FOUND} without an
+     * account, 409 {@code TENANT_MEMBER_EXISTS} (the unique pair) when it is already a member.
      */
-    @Transactional
-    public ObjectWrapper<TenantMemberResponse> addMember(UUID callerId, TenantMemberAddRequest request) {
-        // Before the first statement, so the connection isn't borrowed while Redis answers.
-        rateLimits.add(callerId);
-        UUID tenantId = lockAsCurrentAdmin(callerId);
-        User user = users.findByEmail(request.email())
-                .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_ACCOUNT_NOT_FOUND));
-        TenantMembership membership = repository.saveAndFlush(TenantMembership.of(user, tenantId, request.role()));
+    @Transactional(propagation = Propagation.MANDATORY)
+    TenantMembership add(String email) {
+        User user = users.findByEmail(email).orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_ACCOUNT_NOT_FOUND));
+        TenantMembership membership = repository.saveAndFlush(TenantMembership.of(user, TenantContext.id()));
         joinTenantData(user.getId());
-        return ObjectWrapper.withObject(mapper.toMemberResponse(membership));
-    }
-
-    /** A tenant ADMIN changes another member's role; the tenant keeps at least one ADMIN. */
-    @Transactional
-    public ObjectWrapper<TenantMemberResponse> changeRole(UUID callerId, UUID userId, TenantMemberUpdateRequest request) {
-        TenantMembership membership = otherMemberUnderTenantLock(callerId, userId);
-        membership.checkVersion(request.version());
-        if (membership.getRole() == Role.ADMIN && request.role() != Role.ADMIN) {
-            requireAnotherAdmin(membership.getTenantId());
-        }
-        membership.changeRole(request.role());
-        repository.flush();
-        // session-version:begin
-        bumpSessionVersion(membership.getId());
-        // session-version:end
-        return ObjectWrapper.withObject(mapper.toMemberResponse(membership));
+        return membership;
     }
 
     /**
-     * A tenant ADMIN removes another member; the account stays, the tenant keeps at least one ADMIN. The
-     * person's row in the tenant's data stays, marked left: their records still reference it.
+     * The membership's half of a removal ({@code TenantMemberManager.remove}, which has taken the person's access
+     * away): the account stays, the person's row in the tenant's data stays, marked left (their records still
+     * reference it). 404 {@code TENANT_MEMBER_NOT_FOUND}.
      */
-    @Transactional
-    public void removeMember(UUID callerId, UUID userId) {
-        TenantMembership membership = otherMemberUnderTenantLock(callerId, userId);
-        if (membership.getRole() == Role.ADMIN) {
-            requireAnotherAdmin(membership.getTenantId());
-        }
+    @Transactional(propagation = Propagation.MANDATORY)
+    void remove(UUID userId) {
+        TenantMembership membership = repository.findByUserIdAndTenantId(userId, TenantContext.id())
+                .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_NOT_FOUND, userId));
         // session-version:begin
         // Raised before the row goes, so Redis gets a number no token carries: a request that read the old
         // one just before the commit can't fill it back.
@@ -196,83 +222,183 @@ public class MembershipService implements Members {
         repository.flush();
     }
 
-    /**
-     * 403 {@code TENANT_MEMBER_OWN_CHANGE} for the caller's own membership, 404
-     * {@code TENANT_MEMBER_NOT_FOUND} for a user who isn't a member here.
-     */
-    private TenantMembership otherMemberUnderTenantLock(UUID callerId, UUID userId) {
-        if (userId.equals(callerId)) {
-            throw AppException.of(ErrorCode.TENANT_MEMBER_OWN_CHANGE);
-        }
-        UUID tenantId = lockAsCurrentAdmin(callerId);
-        return repository.findByUserIdAndTenantId(userId, tenantId)
-                .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_NOT_FOUND, userId));
+    /** The response a member's add or GET answers. */
+    TenantMemberResponse toMemberResponse(TenantMembership membership) {
+        return mapper.toMemberResponse(membership);
     }
 
     /**
-     * Locks the caller's tenant, then 403 {@code ACCESS_DENIED} unless the caller's role there grants
-     * {@code TENANT_MEMBERS_MANAGE} now.
-     * The token's role is up to one lifetime old: a removed or demoted ADMIN could otherwise add
-     * themselves back, or promote an account of theirs, and undo the change for good. Read under
-     * the lock, so of two ADMINs demoting each other at once the second finds itself demoted.
-     */
-    private UUID lockAsCurrentAdmin(UUID callerId) {
-        UUID tenantId = TenantContext.current();
-        tenants.lockForMemberChange(tenantId);
-        boolean mayManageMembers = repository.findByUserIdAndTenantId(callerId, tenantId)
-                .filter(membership -> membership.getRole().grants(Permission.TENANT_MEMBERS_MANAGE))
-                .isPresent();
-        if (!mayManageMembers) {
-            throw AppException.of(ErrorCode.ACCESS_DENIED);
-        }
-        return tenantId;
-    }
-
-    /**
-     * 409 {@code TENANT_MEMBER_LAST_ADMIN} unless the tenant has an ADMIN besides the one changing. The
-     * caller is a current ADMIN and never changes their own membership, so the API can't reach it
-     * today; it stays as the rule's own guard for any later path (staff, an invitation flow).
-     */
-    private void requireAnotherAdmin(UUID tenantId) {
-        if (repository.countByTenantIdAndRole(tenantId, Role.ADMIN) < 2) {
-            throw AppException.of(ErrorCode.TENANT_MEMBER_LAST_ADMIN);
-        }
-    }
-
-    /**
-     * Before an account's suspension (platform staff): 409 {@code TENANT_MEMBER_LAST_ADMIN} when the person is
-     * the last ADMIN with an ACTIVE account of a tenant that is still open (neither CLOSED nor REJECTED), so
-     * every tenant keeps someone who manages it. Each tenant where they are ADMIN is locked first, in id order,
-     * as a member change locks it: of two suspensions of a tenant's last two ADMINs, the second counts after
-     * the first committed. In the suspension's transaction (hence MANDATORY).
+     * Before an account's suspension (platform staff): the tenants where the person is a member and that are still
+     * open (neither CLOSED nor REJECTED), each locked in id order as every access change there locks it first, so
+     * that what the caller then counts in each of them can't change before the suspension commits. In the
+     * suspension's transaction (hence MANDATORY).
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    void requireAnotherAdminWhereAdmin(UUID userId) {
-        List<UUID> tenantIds = repository.findTenantIdsWhereAdmin(userId);
+    List<UUID> lockOpenTenantsOf(UUID userId) {
+        List<UUID> tenantIds = repository.findTenantIdsByUserId(userId);
         Set<UUID> openTenantIds = tenants.findAllById(tenantIds).stream()
                 .filter(tenant -> tenant.status() != TenantStatus.CLOSED && tenant.status() != TenantStatus.REJECTED)
                 .map(TenantView::id)
                 .collect(Collectors.toSet());
+        List<UUID> locked = new ArrayList<>();
         for (UUID tenantId : tenantIds) {
             if (openTenantIds.contains(tenantId)) {
                 tenants.lockForMemberChange(tenantId);
-                if (repository.countOtherActiveAdmins(tenantId, userId) == 0) {
-                    throw AppException.of(ErrorCode.TENANT_MEMBER_LAST_ADMIN);
-                }
+                locked.add(tenantId);
             }
         }
+        return locked;
     }
 
+    /** Of these members of the current tenant, the one with the oldest membership: impersonation's default. */
+    Optional<UUID> oldestOf(Collection<UUID> userIds) {
+        if (userIds.isEmpty()) {
+            return Optional.empty();
+        }
+        return repository.findFirstByTenantIdAndUserIdInOrderById(TenantContext.id(), userIds)
+                .map(membership -> membership.getUser().getId());
+    }
+    // roles:else
+    // /**
+    //  * A tenant ADMIN adds an existing account to the caller's tenant: 429 {@code RATE_LIMITED} past the
+    //  * caller's limit (MemberRateLimits), 404 {@code TENANT_MEMBER_ACCOUNT_NOT_FOUND} without an account, 409
+    //  * {@code TENANT_MEMBER_EXISTS} (the unique pair) when it is already a member.
+    //  */
+    // @Transactional
+    // public ObjectWrapper<TenantMemberResponse> addMember(UUID callerId, TenantMemberAddRequest request) {
+    //     // Before the first statement, so the connection isn't borrowed while Redis answers.
+    //     rateLimits.add(callerId);
+    //     UUID tenantId = lockAsCurrentAdmin(callerId);
+    //     User user = users.findByEmail(request.email())
+    //             .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_ACCOUNT_NOT_FOUND));
+    //     TenantMembership membership = repository.saveAndFlush(TenantMembership.of(user, tenantId, request.role()));
+    //     joinTenantData(user.getId());
+    //     return ObjectWrapper.withObject(mapper.toMemberResponse(membership));
+    // }
+    //
+    // /** A tenant ADMIN changes another member's role; the tenant keeps at least one ADMIN. */
+    // @Transactional
+    // public ObjectWrapper<TenantMemberResponse> changeRole(UUID callerId, UUID userId, TenantMemberUpdateRequest request) {
+    //     TenantMembership membership = otherMemberUnderTenantLock(callerId, userId);
+    //     membership.checkVersion(request.version());
+    //     if (membership.getRole() == Role.ADMIN && request.role() != Role.ADMIN) {
+    //         requireAnotherAdmin(membership.getTenantId());
+    //     }
+    //     membership.changeRole(request.role());
+    //     repository.flush();
+    //     // session-version:begin
+    //     bumpSessionVersion(membership.getId());
+    //     // session-version:end
+    //     return ObjectWrapper.withObject(mapper.toMemberResponse(membership));
+    // }
+    //
+    // /**
+    //  * A tenant ADMIN removes another member; the account stays, the tenant keeps at least one ADMIN. The
+    //  * person's row in the tenant's data stays, marked left: their records still reference it.
+    //  */
+    // @Transactional
+    // public void removeMember(UUID callerId, UUID userId) {
+    //     TenantMembership membership = otherMemberUnderTenantLock(callerId, userId);
+    //     if (membership.getRole() == Role.ADMIN) {
+    //         requireAnotherAdmin(membership.getTenantId());
+    //     }
+    //     // session-version:begin
+    //     // Raised before the row goes, so Redis gets a number no token carries: a request that read the old
+    //     // one just before the commit can't fill it back.
+    //     bumpSessionVersion(membership.getId());
+    //     // session-version:end
+    //     repository.delete(membership);
+    //     members.findByUserId(userId).ifPresent(member -> member.leave(clock.instant()));
+    //     repository.flush();
+    // }
+    //
+    // /**
+    //  * 403 {@code TENANT_MEMBER_OWN_CHANGE} for the caller's own membership, 404
+    //  * {@code TENANT_MEMBER_NOT_FOUND} for a user who isn't a member here.
+    //  */
+    // private TenantMembership otherMemberUnderTenantLock(UUID callerId, UUID userId) {
+    //     if (userId.equals(callerId)) {
+    //         throw AppException.of(ErrorCode.TENANT_MEMBER_OWN_CHANGE);
+    //     }
+    //     UUID tenantId = lockAsCurrentAdmin(callerId);
+    //     return repository.findByUserIdAndTenantId(userId, tenantId)
+    //             .orElseThrow(AppException.supply(ErrorCode.TENANT_MEMBER_NOT_FOUND, userId));
+    // }
+    //
+    // /**
+    //  * Locks the caller's tenant, then 403 {@code ACCESS_DENIED} unless the caller's role there grants
+    //  * {@code TENANT_MEMBERS_MANAGE} now.
+    //  * The token's role is up to one lifetime old: a removed or demoted ADMIN could otherwise add
+    //  * themselves back, or promote an account of theirs, and undo the change for good. Read under
+    //  * the lock, so of two ADMINs demoting each other at once the second finds itself demoted.
+    //  */
+    // private UUID lockAsCurrentAdmin(UUID callerId) {
+    //     UUID tenantId = TenantContext.current();
+    //     tenants.lockForMemberChange(tenantId);
+    //     boolean mayManageMembers = repository.findByUserIdAndTenantId(callerId, tenantId)
+    //             .filter(membership -> membership.getRole().grants(Permission.TENANT_MEMBERS_MANAGE))
+    //             .isPresent();
+    //     if (!mayManageMembers) {
+    //         throw AppException.of(ErrorCode.ACCESS_DENIED);
+    //     }
+    //     return tenantId;
+    // }
+    //
+    // /**
+    //  * 409 {@code TENANT_MEMBER_LAST_ADMIN} unless the tenant has an ADMIN besides the one changing. The
+    //  * caller is a current ADMIN and never changes their own membership, so the API can't reach it
+    //  * today; it stays as the rule's own guard for any later path (staff, an invitation flow).
+    //  */
+    // private void requireAnotherAdmin(UUID tenantId) {
+    //     if (repository.countByTenantIdAndRole(tenantId, Role.ADMIN) < 2) {
+    //         throw AppException.of(ErrorCode.TENANT_MEMBER_LAST_ADMIN);
+    //     }
+    // }
+    //
+    // /**
+    //  * Before an account's suspension (platform staff): 409 {@code TENANT_MEMBER_LAST_ADMIN} when the person is
+    //  * the last ADMIN with an ACTIVE account of a tenant that is still open (neither CLOSED nor REJECTED), so
+    //  * every tenant keeps someone who manages it. Each tenant where they are ADMIN is locked first, in id order,
+    //  * as a member change locks it: of two suspensions of a tenant's last two ADMINs, the second counts after
+    //  * the first committed. In the suspension's transaction (hence MANDATORY).
+    //  */
+    // @Transactional(propagation = Propagation.MANDATORY)
+    // void requireAnotherAdminWhereAdmin(UUID userId) {
+    //     List<UUID> tenantIds = repository.findTenantIdsWhereAdmin(userId);
+    //     Set<UUID> openTenantIds = tenants.findAllById(tenantIds).stream()
+    //             .filter(tenant -> tenant.status() != TenantStatus.CLOSED && tenant.status() != TenantStatus.REJECTED)
+    //             .map(TenantView::id)
+    //             .collect(Collectors.toSet());
+    //     for (UUID tenantId : tenantIds) {
+    //         if (openTenantIds.contains(tenantId)) {
+    //             tenants.lockForMemberChange(tenantId);
+    //             if (repository.countOtherActiveAdmins(tenantId, userId) == 0) {
+    //                 throw AppException.of(ErrorCode.TENANT_MEMBER_LAST_ADMIN);
+    //             }
+    //         }
+    //     }
+    // }
+    // roles:end
+
     /**
-     * The new tenant's owner becomes its ADMIN, in the creating transaction: an email without an account
-     * is 404 {@code TENANT_OWNER_NOT_FOUND} and no tenant is created (invitations come later).
+     *   <!-- roles:begin -->
+     * The new tenant's owner becomes its member, in the creating transaction (its built-in ADMIN role comes with
+     * the tenant's own tables, at provisioning: {@code TenantMemberManager.provisioned}): an email without an
+     *   <!-- roles:else -->
+     <!-- * The new tenant's owner becomes its ADMIN, in the creating transaction: an email without an account -->
+     *   <!-- roles:end -->
+     * account is 404 {@code TENANT_OWNER_NOT_FOUND} and no tenant is created (invitations come later).
      */
     @EventListener
     @Transactional
     public void addOwner(TenantCreated created) {
         User owner = users.findByEmail(created.ownerEmail())
                 .orElseThrow(AppException.supply(ErrorCode.TENANT_OWNER_NOT_FOUND));
-        repository.save(TenantMembership.of(owner, created.tenantId(), Role.ADMIN));
+        // roles:begin
+        repository.save(TenantMembership.of(owner, created.tenantId()));
+        // roles:else
+        // repository.save(TenantMembership.of(owner, created.tenantId(), Role.ADMIN));
+        // roles:end
     }
 
     /**
@@ -281,13 +407,26 @@ public class MembershipService implements Members {
      * may not write a tenant row). In the activating transaction, under the tenant's scope; approving
      * again finds the row and adds none.
      */
-    @EventListener
-    @Transactional
-    public void addOwnerToTenantData(TenantProvisioned provisioned) {
-        TenantMembership owner = repository.findFirstByTenantIdAndRoleOrderById(provisioned.tenantId(), Role.ADMIN)
-                .orElseThrow(() -> new IllegalStateException("A provisioned tenant without its owner: " + provisioned.tenantId()));
+    // roles:begin
+    // TenantMemberManager.provisioned's, which then gives the owner the tenant's ADMIN role. Before the tenant's
+    // first activation nobody can add a member (that needs a token of the ACTIVE tenant), so the owner's is the
+    // tenant's oldest membership; the owner's id.
+    @Transactional(propagation = Propagation.MANDATORY)
+    UUID addOwnerToTenantData(UUID tenantId) {
+        TenantMembership owner = repository.findFirstByTenantIdOrderById(tenantId)
+                .orElseThrow(() -> new IllegalStateException("A provisioned tenant without its owner: " + tenantId));
         joinTenantData(owner.getUser().getId());
+        return owner.getUser().getId();
     }
+    // roles:else
+    // @EventListener
+    // @Transactional
+    // public void addOwnerToTenantData(TenantProvisioned provisioned) {
+    //     TenantMembership owner = repository.findFirstByTenantIdAndRoleOrderById(provisioned.tenantId(), Role.ADMIN)
+    //             .orElseThrow(() -> new IllegalStateException("A provisioned tenant without its owner: " + provisioned.tenantId()));
+    //     joinTenantData(owner.getUser().getId());
+    // }
+    // roles:end
 
     /** The person's row in the current tenant's data: a new one, or theirs from before, no longer marked left. */
     private void joinTenantData(UUID userId) {
@@ -330,14 +469,26 @@ public class MembershipService implements Members {
         repository.markUsed(membership.getId(), now);
     }
 
-    /** The member staff act as: the given user, else the ADMIN with the oldest membership. 404 {@code MEMBERSHIP_NOT_FOUND}. */
+    // roles:begin
+    /**
+     * The membership staff act as, of the member {@code ImpersonationService} chose (the given one, or the oldest who
+     * manages the tenant's members). 404 {@code MEMBERSHIP_NOT_FOUND}.
+     */
     @Transactional(readOnly = true, noRollbackFor = AppException.class)
     TenantMembership forImpersonation(UUID tenantId, UUID userId) {
-        Optional<TenantMembership> membership = Objects.isNull(userId)
-                ? repository.findFirstByTenantIdAndRoleOrderById(tenantId, Role.ADMIN)
-                : repository.findByUserIdAndTenantId(userId, tenantId);
-        return membership.orElseThrow(AppException.supply(ErrorCode.MEMBERSHIP_NOT_FOUND, tenantId));
+        return repository.findByUserIdAndTenantId(userId, tenantId)
+                .orElseThrow(AppException.supply(ErrorCode.MEMBERSHIP_NOT_FOUND, tenantId));
     }
+    // roles:else
+    // /** The member staff act as: the given user, else the ADMIN with the oldest membership. 404 {@code MEMBERSHIP_NOT_FOUND}. */
+    // @Transactional(readOnly = true, noRollbackFor = AppException.class)
+    // TenantMembership forImpersonation(UUID tenantId, UUID userId) {
+    //     Optional<TenantMembership> membership = Objects.isNull(userId)
+    //             ? repository.findFirstByTenantIdAndRoleOrderById(tenantId, Role.ADMIN)
+    //             : repository.findByUserIdAndTenantId(userId, tenantId);
+    //     return membership.orElseThrow(AppException.supply(ErrorCode.MEMBERSHIP_NOT_FOUND, tenantId));
+    // }
+    // roles:end
 
     /** The user's membership of that tenant, if any: the tenant a refresh token was issued for (switch-tenant). */
     Optional<TenantMembership> findForTenant(User user, UUID tenantId) {

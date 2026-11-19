@@ -119,9 +119,15 @@ class RolePermissionsIntegrationTest extends RolesFixtures {
         String admin = newAdmin().accessToken();
         TestUser user = newUserWithRole("USER");
         String role = createRole(admin, NEEDED);
+        // tenancy-row:begin
         sql("""
-                insert into role_permissions (id, role_id, permission, created_at, updated_at, version)
-                values (uuidv7(), ?::uuid, 'A_REMOVED_PERMISSION', now(), now(), 0)""", role);
+                insert into role_permissions (id, tenant_id, role_id, permission, created_at, updated_at, version)
+                select uuidv7(), tenant_id, id, 'A_REMOVED_PERMISSION', now(), now(), 0 from roles where id = ?::uuid""", role);
+        // tenancy-row:else
+        // sql("""
+        //         insert into role_permissions (id, role_id, permission, created_at, updated_at, version)
+        //         values (uuidv7(), ?::uuid, 'A_REMOVED_PERMISSION', now(), now(), 0)""", role);
+        // tenancy-row:end
 
         assign(admin, user.id(), role, null).andExpect(status().isOk());
 

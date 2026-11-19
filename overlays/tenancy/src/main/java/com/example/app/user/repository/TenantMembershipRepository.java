@@ -1,6 +1,9 @@
 package com.example.app.user.repository;
 
-import com.example.app.user.domain.Role;
+// roles:begin
+// roles:else
+// import com.example.app.user.domain.Role;
+// roles:end
 import com.example.app.user.domain.TenantMembership;
 // session-version:begin
 import com.example.app.user.dto.internal.MembershipSessionVersion;
@@ -38,30 +41,46 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
              order by m.lastUsedAt desc nulls last, m.id""")
     List<TenantMembership> findByUserIdMostRecentlyUsedFirst(UUID userId);
 
-    /** The user is fetched with it: the token is built outside this read's transaction. */
-    @EntityGraph(attributePaths = "user")
-    Optional<TenantMembership> findFirstByTenantIdAndRoleOrderById(UUID tenantId, Role role);
+    // roles:begin
+    /** The tenant's oldest membership: before its first activation, its owner's (nobody else can join yet). */
+    Optional<TenantMembership> findFirstByTenantIdOrderById(UUID tenantId);
 
-    long countByTenantIdAndRole(UUID tenantId, Role role);
+    /** Of these accounts, the one with the tenant's oldest membership. */
+    Optional<TenantMembership> findFirstByTenantIdAndUserIdInOrderById(UUID tenantId, Collection<UUID> userIds);
 
-    /** The tenants where the user is an ADMIN, in id order (the order their locks are taken in). */
+    /** The tenants the user belongs to, in id order (the order their locks are taken in). */
     @Query("""
             select m.tenantId from TenantMembership m
-             where m.user.id = :userId and m.role = com.example.app.user.domain.Role.ADMIN
+             where m.user.id = :userId
              order by m.tenantId""")
-    List<UUID> findTenantIdsWhereAdmin(UUID userId);
+    List<UUID> findTenantIdsByUserId(UUID userId);
 
-    /** The tenant's ADMINs besides {@code userId} whose account is ACTIVE: the ones who could still manage it. */
-    @Query("""
-            select count(m) from TenantMembership m
-             where m.tenantId = :tenantId and m.role = com.example.app.user.domain.Role.ADMIN and m.user.id <> :userId
-               and m.user.status = com.example.app.user.domain.UserStatus.ACTIVE""")
-    long countOtherActiveAdmins(UUID tenantId, UUID userId);
-
+    // roles:else
+    // /** The user is fetched with it: the token is built outside this read's transaction. */
+    // @EntityGraph(attributePaths = "user")
+    // Optional<TenantMembership> findFirstByTenantIdAndRoleOrderById(UUID tenantId, Role role);
+    //
+    // long countByTenantIdAndRole(UUID tenantId, Role role);
+    //
+    // /** The tenants where the user is an ADMIN, in id order (the order their locks are taken in). */
+    // @Query("""
+    //         select m.tenantId from TenantMembership m
+    //          where m.user.id = :userId and m.role = com.example.app.user.domain.Role.ADMIN
+    //          order by m.tenantId""")
+    // List<UUID> findTenantIdsWhereAdmin(UUID userId);
+    //
+    // /** The tenant's ADMINs besides {@code userId} whose account is ACTIVE: the ones who could still manage it. */
+    // @Query("""
+    //         select count(m) from TenantMembership m
+    //          where m.tenantId = :tenantId and m.role = com.example.app.user.domain.Role.ADMIN and m.user.id <> :userId
+    //            and m.user.status = com.example.app.user.domain.UserStatus.ACTIVE""")
+    // long countOtherActiveAdmins(UUID tenantId, UUID userId);
+    //
+    // roles:end
     /**
      * Stamps a token issue on the membership. A machine-written stamp, not an edit (DATA-24's exception):
-     * it sets neither {@code version} nor {@code updated_at}, so the version an ADMIN sends back on a role
-     * change stays current through the member's sign-ins, and two token issues at once never conflict. It
+     * it sets neither {@code version} nor {@code updated_at}, so the membership's version stays what its last
+     * change left through the member's sign-ins, and two token issues at once never conflict. It
      * clears the persistence context, so a membership read before it is detached (its fields stay readable).
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)

@@ -20,6 +20,14 @@ import java.util.UUID;
         only what you hold yourself.""")
 public interface PersonAccessApi {
 
+    // tenancy:begin
+    /** The person isn't one here: not a member of the caller's tenant (unknown, removed, or another tenant's). */
+    String PERSON_NOT_FOUND = "TENANT_MEMBER_NOT_FOUND (not a member of this tenant)";
+    // tenancy:else
+    // /** The person isn't one here: no such account. */
+    // String PERSON_NOT_FOUND = "USER_NOT_FOUND";
+    // tenancy:end
+
     String RULES_403 = """
             ACCESS_OWN_CHANGE (your own access), ACCESS_TARGET_HOLDS_MORE (they hold a permission you don't), \
             ACCESS_NOT_HELD (it gives a permission you don't hold)""";
@@ -33,7 +41,7 @@ public interface PersonAccessApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND",
+    @ApiResponse(responseCode = "404", description = PERSON_NOT_FOUND,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -48,7 +56,7 @@ public interface PersonAccessApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = RULES_403,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND, ROLE_NOT_FOUND, ROLE_GONE (deleted meanwhile)",
+    @ApiResponse(responseCode = "404", description = PERSON_NOT_FOUND + ", ROLE_NOT_FOUND, ROLE_GONE (deleted meanwhile)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "ACCESS_LAST_MANAGER",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -64,7 +72,7 @@ public interface PersonAccessApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = "ACCESS_OWN_CHANGE, ACCESS_TARGET_HOLDS_MORE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND",
+    @ApiResponse(responseCode = "404", description = PERSON_NOT_FOUND,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "ACCESS_LAST_MANAGER",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -84,7 +92,7 @@ public interface PersonAccessApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = RULES_403,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND",
+    @ApiResponse(responseCode = "404", description = PERSON_NOT_FOUND,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "ACCESS_LAST_MANAGER",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -100,7 +108,7 @@ public interface PersonAccessApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = RULES_403,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND",
+    @ApiResponse(responseCode = "404", description = PERSON_NOT_FOUND,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "ACCESS_LAST_MANAGER",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

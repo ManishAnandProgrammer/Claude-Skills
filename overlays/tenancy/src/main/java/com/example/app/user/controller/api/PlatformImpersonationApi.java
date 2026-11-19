@@ -20,11 +20,20 @@ import java.util.UUID;
         is not.""")
 public interface PlatformImpersonationApi {
 
+    // roles:begin
     @Operation(summary = "Act as a tenant's member", description = """
-            Returns a short-lived tenant token for the member (default: the ADMIN with the oldest \
-            membership, not always the owner), with your platform account as its actor (claim act.sub). It \
-            works on every tenant endpoint with the member's role; there is no refresh token. The application's support-access policy may refuse \
-            it (by default it allows every request).""")
+            Returns a short-lived tenant token for the member (default: of the members who manage the tenant's \
+            members for good, the one with the oldest membership, normally the owner), with your platform account \
+            as its actor (claim act.sub). It works on every tenant endpoint with what the member holds there; \
+            there is no refresh token. The application's support-access policy may refuse it (by default it \
+            allows every request).""")
+    // roles:else
+    // @Operation(summary = "Act as a tenant's member", description = """
+    //         Returns a short-lived tenant token for the member (default: the ADMIN with the oldest \
+    //         membership, not always the owner), with your platform account as its actor (claim act.sub). It \
+    //         works on every tenant endpoint with the member's role; there is no refresh token. The application's support-access policy may refuse \
+    //         it (by default it allows every request).""")
+    // roles:end
     @ApiResponse(responseCode = "201", description = "A token for the tenant; refreshToken is null")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -34,7 +43,11 @@ public interface PlatformImpersonationApi {
             TENANT_NOT_ACTIVE (with tenantStatus), SUPPORT_ACCESS_DENIED, AUTH_ACCOUNT_SUSPENDED (the member's \
             account is suspended: staff act as nobody who may not sign in)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "MEMBERSHIP_NOT_FOUND (no such member, or no ADMIN)",
+    // roles:begin
+    @ApiResponse(responseCode = "404", description = "MEMBERSHIP_NOT_FOUND (no such member, or nobody who manages the members)",
+    // roles:else
+    // @ApiResponse(responseCode = "404", description = "MEMBERSHIP_NOT_FOUND (no such member, or no ADMIN)",
+    // roles:end
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

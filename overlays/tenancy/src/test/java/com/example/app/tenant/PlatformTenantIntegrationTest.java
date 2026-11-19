@@ -70,9 +70,15 @@ class PlatformTenantIntegrationTest extends IntegrationTest {
         // The version a client sends back on its next change is the current one.
         getAs(staff, TENANTS + "/" + tenantId).andExpect(jsonPath("$.response.version").value(answeredVersion));
 
-        String role = jdbc.queryForObject("select role from tenant_memberships where tenant_id = ? and user_id = ?::uuid",
-                String.class, tenantId, ownerId);
-        assertThat(role).isEqualTo("ADMIN");
+        // roles:begin
+        // The owner's membership; their ADMIN role is the tenant's own data, given at its provisioning.
+        assertThat(jdbc.queryForObject("select count(*) from tenant_memberships where tenant_id = ? and user_id = ?::uuid",
+                Integer.class, tenantId, ownerId)).isOne();
+        // roles:else
+        // String role = jdbc.queryForObject("select role from tenant_memberships where tenant_id = ? and user_id = ?::uuid",
+        //         String.class, tenantId, ownerId);
+        // assertThat(role).isEqualTo("ADMIN");
+        // roles:end
         String source = jdbc.queryForObject("""
                 select source from tenant_status_changes where tenant_id = ? and from_status is null and to_status = 'PENDING'
                 """, String.class, tenantId);

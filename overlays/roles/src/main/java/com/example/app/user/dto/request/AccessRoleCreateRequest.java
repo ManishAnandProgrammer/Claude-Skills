@@ -22,9 +22,15 @@ public record AccessRoleCreateRequest(
         @NotBlank @MaxLength("role.name")
         String name,
 
+        // tenancy:begin
         @Schema(description = """
                 Its permissions (GET /permissions lists them with their prerequisites): only ones you hold, and each \
-                one's prerequisites too, never filled in for you""", example = "[\"ACCOUNT_READ\"]")
+                one's prerequisites too, never filled in for you""", example = "[\"TENANT_MEMBERS_MANAGE\"]")
+        // tenancy:else
+        // @Schema(description = """
+        //         Its permissions (GET /permissions lists them with their prerequisites): only ones you hold, and each \
+        //         one's prerequisites too, never filled in for you""", example = "[\"ACCOUNT_READ\"]")
+        // tenancy:end
         @NotNull @ConfiguredMaxSize("role.max-permissions")
         Set<@NotNull Permission> permissions) {
 

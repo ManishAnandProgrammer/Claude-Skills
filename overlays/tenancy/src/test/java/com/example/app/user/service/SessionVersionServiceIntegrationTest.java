@@ -3,8 +3,11 @@ package com.example.app.user.service;
 import com.example.app.common.security.SessionVersions;
 import com.example.app.common.tenancy.TenantScope;
 import com.example.app.support.IntegrationTest;
-import com.example.app.user.domain.Role;
-import com.example.app.user.dto.request.TenantMemberUpdateRequest;
+// roles:begin
+// roles:else
+// import com.example.app.user.domain.Role;
+// import com.example.app.user.dto.request.TenantMemberUpdateRequest;
+// roles:end
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -110,30 +113,56 @@ class SessionVersionServiceIntegrationTest extends IntegrationTest {
         assertThat(sessionVersions.isCurrent(revoked)).isTrue();
     }
 
+    // roles:begin
     @Test
-    @DisplayName("A rolled-back role change raises nothing and leaves Redis alone; the same change committed raises both")
-    void aRolledBackRoleChangeRaisesNothing() throws Exception {
+    @DisplayName("A rolled-back removal raises nothing and leaves Redis alone; the same removal committed raises Redis's copy")
+    void aRolledBackRemovalRaisesNothing() throws Exception {
         TestTenant tenant = newTenant();
-        TestUser admin = newUserIn(tenant, "ADMIN");
         TestUser member = newUserIn(tenant, "USER");
         UUID membership = membershipOf(member, tenant);
         assertThat(sessionVersions.isCurrent(decoded(member.accessToken()))).isTrue();
         assertThat(cached(membership)).isEqualTo("0");
-        TenantMemberUpdateRequest promotion = new TenantMemberUpdateRequest(Role.ADMIN, 0L);
 
         TenantScope.runAs(tenant.id(), () -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-            memberships.changeRole(admin.id(), member.id(), promotion);
+            memberships.remove(member.id());
             status.setRollbackOnly();
         }));
 
         assertThat(storedVersion(membership)).isZero();
         assertThat(cached(membership)).isEqualTo("0");
         assertThat(sessionVersions.isCurrent(decoded(member.accessToken()))).isTrue();
-        TenantScope.runAs(tenant.id(), () -> memberships.changeRole(admin.id(), member.id(), promotion));
-        assertThat(storedVersion(membership)).isOne();
+        TenantScope.runAs(tenant.id(), () -> new TransactionTemplate(transactionManager)
+                .executeWithoutResult(status -> memberships.remove(member.id())));
         assertThat(cached(membership)).isEqualTo("1");
+        assertThat(sessionVersions.isCurrent(decoded(member.accessToken()))).isFalse();
     }
 
+    // roles:else
+    // @Test
+    // @DisplayName("A rolled-back role change raises nothing and leaves Redis alone; the same change committed raises both")
+    // void aRolledBackRoleChangeRaisesNothing() throws Exception {
+    //     TestTenant tenant = newTenant();
+    //     TestUser admin = newUserIn(tenant, "ADMIN");
+    //     TestUser member = newUserIn(tenant, "USER");
+    //     UUID membership = membershipOf(member, tenant);
+    //     assertThat(sessionVersions.isCurrent(decoded(member.accessToken()))).isTrue();
+    //     assertThat(cached(membership)).isEqualTo("0");
+    //     TenantMemberUpdateRequest promotion = new TenantMemberUpdateRequest(Role.ADMIN, 0L);
+    //
+    //     TenantScope.runAs(tenant.id(), () -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+    //         memberships.changeRole(admin.id(), member.id(), promotion);
+    //         status.setRollbackOnly();
+    //     }));
+    //
+    //     assertThat(storedVersion(membership)).isZero();
+    //     assertThat(cached(membership)).isEqualTo("0");
+    //     assertThat(sessionVersions.isCurrent(decoded(member.accessToken()))).isTrue();
+    //     TenantScope.runAs(tenant.id(), () -> memberships.changeRole(admin.id(), member.id(), promotion));
+    //     assertThat(storedVersion(membership)).isOne();
+    //     assertThat(cached(membership)).isEqualTo("1");
+    // }
+    //
+    // roles:end
     @Test
     @DisplayName("A token newer than Redis's copy (a publish that was lost) is decided by the database: current, so accepted")
     void aTokenNewerThanTheCacheAsksTheDatabase() throws Exception {

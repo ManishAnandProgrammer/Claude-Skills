@@ -69,8 +69,14 @@ and ends the access tokens at once (the session version).
 <!-- session-version:else -->
 <!-- (the access tokens already issued expire within their 15 minutes). -->
 <!-- session-version:end -->
-The last active ADMIN of an open tenant is refused (409): make another member ADMIN first, or suspend the
-tenant.
+<!-- roles:begin -->
+A suspension that would leave an open tenant without another active member holding, for good, each of
+`ROLES_MANAGE`, `ACCESS_GRANT` and `TENANT_MEMBERS_MANAGE` is refused (409 `ACCESS_LAST_MANAGER`): give
+another member those first (its built-in `ADMIN` role), or suspend the tenant.
+<!-- roles:else -->
+<!-- The last active ADMIN of an open tenant is refused (409): make another member ADMIN first, or suspend the -->
+<!-- tenant. -->
+<!-- roles:end -->
 
 ## 3. Tenants
 
@@ -82,6 +88,25 @@ tenant.
   `TENANT_NOT_ACTIVE` with `tenantStatus: PENDING` meanwhile.
 - **A tenant rejected after approval** but before provisioning ran gets no schema: its
   `tenant_migrations` row becomes `CANCELLED`.
+<!-- roles:begin -->
+- **A tenant's roles** are its own, in its schema (`roles`, `role_permissions`, `user_roles`,
+  `user_permissions`): its owner holds the built-in `ADMIN` from its provisioning, every member added later the
+  built-in `USER`, and every other role or grant is a tenant admin's (`PUT /api/v1/users/{id}/roles/{roleId}`).
+- **Nobody manages a tenant any more** (no active member holds `ROLES_MANAGE`, `ACCESS_GRANT` or
+  `TENANT_MEMBERS_MANAGE` for good: a DENY or an edit made by hand, a restore). The application refuses every
+  change that would cause it (409 `ACCESS_LAST_MANAGER`), so it only happens outside it. As the owner role, give
+  one trusted member the tenant's built-in `ADMIN` and remove any DENY of those three on them, in the tenant's
+  schema (`t_<tenant id without dashes>`):
+  `INSERT INTO t_<id>.user_roles (id, user_id, role_id, created_at, updated_at, version) SELECT uuidv7(),
+  '<their user id>', r.id, now(), now(), 0 FROM t_<id>.roles r WHERE r.built_in = 'ADMIN' ON CONFLICT DO NOTHING;`
+  and `DELETE FROM t_<id>.user_permissions WHERE user_id = '<their user id>' AND effect = 'DENY' AND permission IN
+  ('ROLES_MANAGE', 'ACCESS_GRANT', 'TENANT_MEMBERS_MANAGE');`. Check the built-in `ADMIN` still holds the three
+  (`SELECT permission FROM t_<id>.role_permissions p JOIN t_<id>.roles r ON r.id = p.role_id WHERE r.built_in =
+  'ADMIN';`). It applies on their next request; write down who asked and why.
+- **The memberships' old role column** goes once every tenant schema has copied its roles (changeset 0039 checks
+  it at each start): while a schema's migration fails (`tenant_migrations.status = 'FAILED'`), the column stays
+  with that tenant's roles in it; fix the schema (section 5) and the next start after its migration drops it.
+<!-- roles:end -->
 
 ## 4. Restore order
 

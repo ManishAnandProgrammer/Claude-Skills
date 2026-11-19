@@ -26,16 +26,26 @@ class TenantMemberIndexIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    // roles:begin
     private static final String MEMBER_ROWS = """
-            select u.id, u.email, u.full_name, m.role, m.version, m.created_at, m.updated_at, m.created_by, m.updated_by
+            select u.id, u.email, u.full_name, m.created_at, m.updated_at, m.created_by, m.updated_by
               from tenant_memberships m
               join users u on u.id = m.user_id""";
+    // roles:else
+    // private static final String MEMBER_ROWS = """
+    //         select u.id, u.email, u.full_name, m.role, m.version, m.created_at, m.updated_at, m.created_by, m.updated_by
+    //           from tenant_memberships m
+    //           join users u on u.id = m.user_id""";
+    // roles:end
 
     /** Each offered filter and order with the index that serves it. */
     static Stream<Arguments> offeredFiltersAndOrders() {
         return Stream.of(
                 Arguments.of("members, NEWEST and OLDEST (one index, read either way)", "idx_tenant_memberships_tenant_id_created_at_id"),
-                Arguments.of("members by role, NEWEST and OLDEST", "idx_tenant_memberships_tenant_id_role_created_at_id"),
+                // roles:begin
+                // roles:else
+                // Arguments.of("members by role, NEWEST and OLDEST", "idx_tenant_memberships_tenant_id_role_created_at_id"),
+                // roles:end
                 Arguments.of("members by account ids", "uq_tenant_memberships_user_id_tenant_id"));
     }
 

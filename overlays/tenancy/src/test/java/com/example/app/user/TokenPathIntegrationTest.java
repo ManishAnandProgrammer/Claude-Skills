@@ -12,6 +12,9 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+// roles:begin
+import java.util.List;
+// roles:end
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,7 +79,11 @@ class TokenPathIntegrationTest extends IntegrationTest {
             DEMOTED_MEMBER    | REFRESH       | 200 | T:USER
             DEMOTED_MEMBER    | SWITCH_TENANT | 200 | T:USER
             DEMOTED_MEMBER    | IMPERSONATION | 201 | T:USER
-            DEMOTED_MEMBER    | NEXT_REQUEST  | 401 | SESSION_VERSION_STALE
+            // roles:begin
+            DEMOTED_MEMBER    | NEXT_REQUEST  | 403 | ACCESS_DENIED
+            // roles:else
+            // DEMOTED_MEMBER    | NEXT_REQUEST  | 401 | SESSION_VERSION_STALE
+            // roles:end
             SUSPENDED_USER    | LOGIN         | 403 | AUTH_ACCOUNT_SUSPENDED
             SUSPENDED_USER    | REFRESH       | 401 | AUTH_INVALID_REFRESH_TOKEN
             SUSPENDED_USER    | SWITCH_TENANT | 401 | AUTH_INVALID_REFRESH_TOKEN
@@ -93,7 +100,7 @@ class TokenPathIntegrationTest extends IntegrationTest {
             """)
     // session-version:else
     // // An access token issued before the change lives out its lifetime (at most app.jwt.access-token-ttl)
-    // // wherever no request reads the row the change wrote.
+    // // wherever no request reads the row the change wrote (with the roles piece every request reads the access).
     // @ParameterizedTest(name = "{0} × {1}: {2} {3}")
     // @CsvSource(delimiter = '|', textBlock = """
     //         REMOVED_MEMBER    | LOGIN         | 200 | B:USER
@@ -105,7 +112,11 @@ class TokenPathIntegrationTest extends IntegrationTest {
     //         DEMOTED_MEMBER    | REFRESH       | 200 | T:USER
     //         DEMOTED_MEMBER    | SWITCH_TENANT | 200 | T:USER
     //         DEMOTED_MEMBER    | IMPERSONATION | 201 | T:USER
+    //         // roles:begin
+    //         DEMOTED_MEMBER    | NEXT_REQUEST  | 403 | ACCESS_DENIED
+    //         // roles:else
     //         DEMOTED_MEMBER    | NEXT_REQUEST  | 200 | -
+    //         // roles:end
     //         SUSPENDED_USER    | LOGIN         | 403 | AUTH_ACCOUNT_SUSPENDED
     //         SUSPENDED_USER    | REFRESH       | 401 | AUTH_INVALID_REFRESH_TOKEN
     //         SUSPENDED_USER    | SWITCH_TENANT | 401 | AUTH_INVALID_REFRESH_TOKEN
@@ -161,13 +172,23 @@ class TokenPathIntegrationTest extends IntegrationTest {
         switch (subject) {
             case REMOVED_MEMBER -> deleteAs(person.owner().accessToken(), MEMBERS + "/" + person.id())
                     .andExpect(status().isNoContent());
+            // roles:begin
             case DEMOTED_MEMBER -> {
-                Long version = jdbc.queryForObject("select version from tenant_memberships where tenant_id = ? and user_id = ?",
-                        Long.class, person.t().id(), person.id());
-                putAs(person.owner().accessToken(), MEMBERS + "/" + person.id(), """
-                        {"role": "USER", "version": %d}
-                        """.formatted(version)).andExpect(status().isOk());
+                // The roles piece's demotion: the tenant's USER role given, its ADMIN role taken.
+                giveBuiltInRole(person.t(), person.id(), "USER");
+                String adminRole = queryIn(person.t(), "select id::text as id from roles where built_in = 'ADMIN'").getFirst().get("id").toString();
+                deleteAs(person.owner().accessToken(), "/api/v1/users/" + person.id() + "/roles/" + adminRole)
+                        .andExpect(status().isNoContent());
             }
+            // roles:else
+            // case DEMOTED_MEMBER -> {
+            //     Long version = jdbc.queryForObject("select version from tenant_memberships where tenant_id = ? and user_id = ?",
+            //             Long.class, person.t().id(), person.id());
+            //     putAs(person.owner().accessToken(), MEMBERS + "/" + person.id(), """
+            //             {"role": "USER", "version": %d}
+            //             """.formatted(version)).andExpect(status().isOk());
+            // }
+            // roles:end
             case SUSPENDED_USER -> {
                 Number version = read(getAs(platformToken(), "/api/v1/platform/users?email=" + person.email())
                         .andExpect(status().isOk()), "$.response[0].version");
@@ -226,14 +247,32 @@ class TokenPathIntegrationTest extends IntegrationTest {
         return JSON.readTree(answer.andReturn().getResponse().getContentAsString()).path("response");
     }
 
-    /** {@code T:USER}: the token is for the person's tenant T, with role USER; {@code B:USER} for B. */
-    private static void assertIssuedFor(MockHttpServletResponse answer, Person person, String outcome) throws Exception {
+    // roles:begin
+    /**
+     * {@code T:USER}: the token is for the person's tenant T, where they hold the USER role alone (no member
+     * management), {@code B:USER} for B. The token carries no role (the roles piece): what it holds is read as every
+     * request reads it.
+     */
+    private void assertIssuedFor(MockHttpServletResponse answer, Person person, String outcome) throws Exception {
         String accessToken = JSON.readTree(answer.getContentAsString()).path("response").path("accessToken").asString();
         String payload = new String(Base64.getUrlDecoder().decode(accessToken.split("\\.")[1]), StandardCharsets.UTF_8);
         String tenant = outcome.startsWith("T") ? person.t().id().toString() : person.b().id().toString();
         Object tenantClaim = JsonPath.read(payload, "$.tenant_id");
-        Object roleClaim = JsonPath.read(payload, "$.roles[0]");
         assertThat(tenantClaim).hasToString(tenant);
-        assertThat(roleClaim).hasToString(outcome.substring(outcome.indexOf(':') + 1));
+        assertThat(payload).doesNotContain("\"roles\"");
+        List<String> held = read(getAs(accessToken, "/api/v1/users/me/access").andExpect(status().isOk()), "$.response.permissions");
+        assertThat(held).as(outcome).doesNotContain("TENANT_MEMBERS_MANAGE");
     }
+    // roles:else
+    // /** {@code T:USER}: the token is for the person's tenant T, with role USER; {@code B:USER} for B. */
+    // private static void assertIssuedFor(MockHttpServletResponse answer, Person person, String outcome) throws Exception {
+    //     String accessToken = JSON.readTree(answer.getContentAsString()).path("response").path("accessToken").asString();
+    //     String payload = new String(Base64.getUrlDecoder().decode(accessToken.split("\\.")[1]), StandardCharsets.UTF_8);
+    //     String tenant = outcome.startsWith("T") ? person.t().id().toString() : person.b().id().toString();
+    //     Object tenantClaim = JsonPath.read(payload, "$.tenant_id");
+    //     Object roleClaim = JsonPath.read(payload, "$.roles[0]");
+    //     assertThat(tenantClaim).hasToString(tenant);
+    //     assertThat(roleClaim).hasToString(outcome.substring(outcome.indexOf(':') + 1));
+    // }
+    // roles:end
 }

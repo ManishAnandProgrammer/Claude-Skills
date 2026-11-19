@@ -3,7 +3,10 @@ package com.example.app.user.dto.request;
 import com.example.app.common.limits.ConfiguredMaxSize;
 import com.example.app.common.limits.MaxLength;
 import com.example.app.common.pagination.PageFilter;
-import com.example.app.user.domain.Role;
+// roles:begin
+// roles:else
+// import com.example.app.user.domain.Role;
+// roles:end
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -12,7 +15,10 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
-import java.util.Objects;
+// roles:begin
+// roles:else
+// import java.util.Objects;
+// roles:end
 import java.util.UUID;
 
 /** The members page is an admin screen that needs page numbers and a total, so it is offset-paged. */
@@ -30,9 +36,12 @@ public class TenantMemberFilter extends PageFilter {
     @Schema(description = "Case-insensitive 'contains' match on the email")
     private String query;
 
-    @Schema(description = "Only members with this role in this tenant; absent: every role")
-    private Role role;
-
+    // roles:begin
+    // roles:else
+    // @Schema(description = "Only members with this role in this tenant; absent: every role")
+    // private Role role;
+    //
+    // roles:end
     @NotNull
     @Schema(description = "Order of the page", defaultValue = "NEWEST", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     private TenantMemberSort sort = TenantMemberSort.NEWEST;
@@ -44,8 +53,11 @@ public class TenantMemberFilter extends PageFilter {
     public boolean requireQueryPredicate() {
         return StringUtils.hasText(query);
     }
-
-    public boolean requireRolePredicate() {
-        return Objects.nonNull(role);
-    }
+    // roles:begin
+    // roles:else
+    //
+    // public boolean requireRolePredicate() {
+    //     return Objects.nonNull(role);
+    // }
+    // roles:end
 }

@@ -2,11 +2,17 @@ package com.example.app.user;
 
 import com.example.app.support.IntegrationTest;
 import com.example.app.support.WithoutTestTenant;
-import com.example.app.user.domain.Role;
+// roles:begin
+// roles:else
+// import com.example.app.user.domain.Role;
+// roles:end
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+// roles:begin
+// roles:else
+// import org.junit.jupiter.params.ParameterizedTest;
+// import org.junit.jupiter.params.provider.EnumSource;
+// roles:end
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.UUID;
@@ -15,33 +21,70 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
-import static org.hamcrest.Matchers.everyItem;
+// roles:begin
+// roles:else
+// import static org.hamcrest.Matchers.everyItem;
+// roles:end
 import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.is;
+// roles:begin
+// roles:else
+// import static org.hamcrest.Matchers.is;
+// roles:end
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// roles:begin
 /**
- * A tenant ADMIN reads their tenant's members: the list and one member, each with the version a role
- * change sends back. Every test makes its own tenants: the members list is the tenant's whole team.
+ * A tenant ADMIN reads their tenant's members: the list and one member (their roles are the roles piece's, read with
+ * {@code GET /users/{id}/access}). Every test makes its own tenants: the members list is the tenant's whole team.
  */
+// roles:else
+// /**
+//  * A tenant ADMIN reads their tenant's members: the list and one member, each with the version a role
+//  * change sends back. Every test makes its own tenants: the members list is the tenant's whole team.
+//  */
+// roles:end
 @WithoutTestTenant
 class TenantMemberListIntegrationTest extends IntegrationTest {
 
     private static final String MEMBERS = "/api/v1/tenant-members";
 
-    /** An account that signed up and was added through the API: its membership id is the application's (UUIDv7). */
+    // roles:begin
+    /**
+     * An account that signed up and was added through the API: its membership id is the application's (UUIDv7). A
+     * {@code role} other than USER is given by fixture (the add gives USER; GET /users/{id}/access shows it).
+     */
     private UUID addedThroughTheApi(TestUser admin, String emailPrefix, String role) throws Exception {
         String email = uniqueEmail(emailPrefix);
         rawSignup(email, PASSWORD).andExpect(status().isCreated());
         ResultActions added = postAs(admin.accessToken(), MEMBERS, """
-                {"email": "%s", "role": "%s"}
-                """.formatted(email, role)).andExpect(status().isCreated());
-        return UUID.fromString(read(added, "$.response.userId"));
+                {"email": "%s"}
+                """.formatted(email)).andExpect(status().isCreated());
+        UUID userId = UUID.fromString(read(added, "$.response.userId"));
+        if (!role.equals("USER")) {
+            giveBuiltInRole(tenantOf(admin), userId, role);
+        }
+        return userId;
     }
 
+    /** The admin's tenant: the fixtures make each admin a member of one tenant. */
+    private TestTenant tenantOf(TestUser admin) {
+        return tenant(jdbc.queryForObject("select tenant_id from tenant_memberships where user_id = ?", UUID.class, admin.id()));
+    }
+
+    // roles:else
+    // /** An account that signed up and was added through the API: its membership id is the application's (UUIDv7). */
+    // private UUID addedThroughTheApi(TestUser admin, String emailPrefix, String role) throws Exception {
+    //     String email = uniqueEmail(emailPrefix);
+    //     rawSignup(email, PASSWORD).andExpect(status().isCreated());
+    //     ResultActions added = postAs(admin.accessToken(), MEMBERS, """
+    //             {"email": "%s", "role": "%s"}
+    //             """.formatted(email, role)).andExpect(status().isCreated());
+    //     return UUID.fromString(read(added, "$.response.userId"));
+    // }
+    // roles:end
     private ResultActions getWithQuery(TestUser admin, String query) throws Exception {
         return mvc.perform(get(MEMBERS).param("query", query).header("Authorization", "Bearer " + admin.accessToken()));
     }
@@ -69,7 +112,11 @@ class TenantMemberListIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A member's GET answers the row: account id, email, name, role, version and the audit fields")
+    // roles:begin
+    @DisplayName("A member's GET answers the row: account id, email, name and the audit fields")
+    // roles:else
+    // @DisplayName("A member's GET answers the row: account id, email, name, role, version and the audit fields")
+    // roles:end
     void getReturnsTheMember() throws Exception {
         TestTenant tenant = newTenant();
         TestUser admin = newUserIn(tenant, "ADMIN");
@@ -81,15 +128,22 @@ class TenantMemberListIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.userId").value(colleague.toString()))
                 .andExpect(jsonPath("$.response.email").value(email))
                 .andExpect(jsonPath("$.response.fullName").value("Test User"))
-                .andExpect(jsonPath("$.response.role").value("USER"))
-                .andExpect(jsonPath("$.response.version").value(0))
+                // roles:begin
+                // roles:else
+                // .andExpect(jsonPath("$.response.role").value("USER"))
+                // .andExpect(jsonPath("$.response.version").value(0))
+                // roles:end
                 .andExpect(jsonPath("$.response.createdAt").isNotEmpty())
                 .andExpect(jsonPath("$.response.updatedAt").isNotEmpty())
                 .andExpect(jsonPath("$.response.createdBy").value(admin.id().toString()))
                 .andExpect(jsonPath("$.response.updatedBy").value(admin.id().toString()));
         getAs(admin.accessToken(), MEMBERS + "?ids=" + colleague)
                 .andExpect(jsonPath("$.response[0].email").value(email))
-                .andExpect(jsonPath("$.response[0].version").value(0))
+                // roles:begin
+                .andExpect(jsonPath("$.response[0].version").doesNotExist())
+                // roles:else
+                // .andExpect(jsonPath("$.response[0].version").value(0))
+                // roles:end
                 .andExpect(jsonPath("$.response[0].createdBy").value(admin.id().toString()));
     }
 
@@ -131,36 +185,38 @@ class TenantMemberListIntegrationTest extends IntegrationTest {
         assertThat(queryIn(tenant, "select left_at from members where user_id = ?", removed).getFirst().get("left_at")).isNotNull();
     }
 
-    @Test
-    @DisplayName("The version a row answers changes the role (200); the same version again is 409 OPTIMISTIC_LOCK_CONFLICT")
-    void theListsVersionChangesTheRole() throws Exception {
-        TestTenant tenant = newTenant();
-        TestUser admin = newUserIn(tenant, "ADMIN");
-        UUID colleague = addedThroughTheApi(admin, "colleague", "USER");
-        // A sign-in in between: it stamps the membership, and the version the list answers stays current.
-        login(jdbc.queryForObject("select email from users where id = ?", String.class, colleague), PASSWORD)
-                .andExpect(status().isOk());
-        Integer listed = read(getAs(admin.accessToken(), MEMBERS + "?ids=" + colleague), "$.response[0].version");
-        Integer detailed = read(getAs(admin.accessToken(), MEMBERS + "/" + colleague), "$.response.version");
-        assertThat(detailed).isEqualTo(listed);
-
-        putAs(admin.accessToken(), MEMBERS + "/" + colleague, """
-                {"role": "ADMIN", "version": %d}
-                """.formatted(listed))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response.version").value(listed + 1));
-        String body = putAs(admin.accessToken(), MEMBERS + "/" + colleague, """
-                {"role": "USER", "version": %d}
-                """.formatted(listed))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errorCode").value("OPTIMISTIC_LOCK_CONFLICT"))
-                .andReturn().getResponse().getContentAsString();
-        assertNoInternals(body);
-        getAs(admin.accessToken(), MEMBERS + "/" + colleague)
-                .andExpect(jsonPath("$.response.role").value("ADMIN"))
-                .andExpect(jsonPath("$.response.version").value(listed + 1));
-    }
-
+    // roles:begin
+    // roles:else
+    // @Test
+    // @DisplayName("The version a row answers changes the role (200); the same version again is 409 OPTIMISTIC_LOCK_CONFLICT")
+    // void theListsVersionChangesTheRole() throws Exception {
+    //     TestTenant tenant = newTenant();
+    //     TestUser admin = newUserIn(tenant, "ADMIN");
+    //     UUID colleague = addedThroughTheApi(admin, "colleague", "USER");
+    //     // A sign-in in between: it stamps the membership, and the version the list answers stays current.
+    //     login(jdbc.queryForObject("select email from users where id = ?", String.class, colleague), PASSWORD)
+    //             .andExpect(status().isOk());
+    //     Integer listed = read(getAs(admin.accessToken(), MEMBERS + "?ids=" + colleague), "$.response[0].version");
+    //     Integer detailed = read(getAs(admin.accessToken(), MEMBERS + "/" + colleague), "$.response.version");
+    //     assertThat(detailed).isEqualTo(listed);
+    //
+    //     putAs(admin.accessToken(), MEMBERS + "/" + colleague, """
+    //             {"role": "ADMIN", "version": %d}
+    //             """.formatted(listed))
+    //             .andExpect(status().isOk())
+    //             .andExpect(jsonPath("$.response.version").value(listed + 1));
+    //     String body = putAs(admin.accessToken(), MEMBERS + "/" + colleague, """
+    //             {"role": "USER", "version": %d}
+    //             """.formatted(listed))
+    //             .andExpect(status().isConflict())
+    //             .andExpect(jsonPath("$.errorCode").value("OPTIMISTIC_LOCK_CONFLICT"))
+    //             .andReturn().getResponse().getContentAsString();
+    //     assertNoInternals(body);
+    //     getAs(admin.accessToken(), MEMBERS + "/" + colleague)
+    //             .andExpect(jsonPath("$.response.role").value("ADMIN"))
+    //             .andExpect(jsonPath("$.response.version").value(listed + 1));
+    // }
+    // roles:end
     @Test
     @DisplayName("A USER member is 403 ACCESS_DENIED on the list and a member's GET; without a token 401")
     void onlyAdminsReadTheMembers() throws Exception {
@@ -249,30 +305,35 @@ class TenantMemberListIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response[*].userId", contains(third.toString(), second.toString(), first.toString())));
         getAs(admin.accessToken(), MEMBERS + ids + "&sort=OLDEST")
                 .andExpect(jsonPath("$.response[*].userId", contains(first.toString(), second.toString(), third.toString())));
-        getAs(admin.accessToken(), MEMBERS + ids + "&sort=OLDEST&role=ADMIN")
-                .andExpect(jsonPath("$.response[*].userId", contains(first.toString(), third.toString())));
-        getAs(admin.accessToken(), MEMBERS + ids + "&sort=NEWEST&role=ADMIN")
-                .andExpect(jsonPath("$.response[*].userId", contains(third.toString(), first.toString())));
+        // roles:begin
+        // roles:else
+        // getAs(admin.accessToken(), MEMBERS + ids + "&sort=OLDEST&role=ADMIN")
+        //         .andExpect(jsonPath("$.response[*].userId", contains(first.toString(), third.toString())));
+        // getAs(admin.accessToken(), MEMBERS + ids + "&sort=NEWEST&role=ADMIN")
+        //         .andExpect(jsonPath("$.response[*].userId", contains(third.toString(), first.toString())));
+        // roles:end
     }
 
-    @ParameterizedTest
-    @EnumSource(Role.class)
-    @DisplayName("role lists the members with that role only")
-    void filterByRoleReturnsOnlyMatching(Role role) throws Exception {
-        TestTenant tenant = newTenant();
-        TestUser admin = newUserIn(tenant, "ADMIN");
-        UUID asked = addedThroughTheApi(admin, "asked", role.name());
-        Role other = role == Role.ADMIN ? Role.USER : Role.ADMIN;
-        UUID notAsked = addedThroughTheApi(admin, "not-asked", other.name());
-        getAs(admin.accessToken(), MEMBERS).andExpect(jsonPath("$.response[*].userId", hasItem(notAsked.toString())));
-
-        getAs(admin.accessToken(), MEMBERS + "?role=" + role.name())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response[*].userId", hasItem(asked.toString())))
-                .andExpect(jsonPath("$.response[*].userId", not(hasItem(notAsked.toString()))))
-                .andExpect(jsonPath("$.response[*].role", everyItem(is(role.name()))));
-    }
-
+    // roles:begin
+    // roles:else
+    // @ParameterizedTest
+    // @EnumSource(Role.class)
+    // @DisplayName("role lists the members with that role only")
+    // void filterByRoleReturnsOnlyMatching(Role role) throws Exception {
+    //     TestTenant tenant = newTenant();
+    //     TestUser admin = newUserIn(tenant, "ADMIN");
+    //     UUID asked = addedThroughTheApi(admin, "asked", role.name());
+    //     Role other = role == Role.ADMIN ? Role.USER : Role.ADMIN;
+    //     UUID notAsked = addedThroughTheApi(admin, "not-asked", other.name());
+    //     getAs(admin.accessToken(), MEMBERS).andExpect(jsonPath("$.response[*].userId", hasItem(notAsked.toString())));
+    //
+    //     getAs(admin.accessToken(), MEMBERS + "?role=" + role.name())
+    //             .andExpect(status().isOk())
+    //             .andExpect(jsonPath("$.response[*].userId", hasItem(asked.toString())))
+    //             .andExpect(jsonPath("$.response[*].userId", not(hasItem(notAsked.toString()))))
+    //             .andExpect(jsonPath("$.response[*].role", everyItem(is(role.name()))));
+    // }
+    // roles:end
     @Test
     @DisplayName("query matches part of the email, ignoring case; % in it matches only a %; another tenant's member never")
     void filterByQueryReturnsOnlyMatching() throws Exception {
@@ -352,15 +413,27 @@ class TenantMemberListIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("An unknown sort or role and a non-numeric page are 400 REQUEST_PARAMETER_INVALID naming only the parameters")
+    // roles:begin
+    @DisplayName("An unknown sort and a non-numeric page are 400 REQUEST_PARAMETER_INVALID naming only the parameters")
     void unconvertibleFilterValuesAre400() throws Exception {
         TestUser admin = newUserIn(newTenant(), "ADMIN");
 
-        String body = getAs(admin.accessToken(), MEMBERS + "?sort=EMAIL&role=OWNER&page=first")
+        String body = getAs(admin.accessToken(), MEMBERS + "?sort=EMAIL&page=first")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.errors[*].parameter", containsInAnyOrder("sort", "role", "page")))
-                .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("invalid value", "invalid value", "invalid value")))
+                .andExpect(jsonPath("$.errors[*].parameter", containsInAnyOrder("sort", "page")))
+                .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("invalid value", "invalid value")))
+    // roles:else
+    // @DisplayName("An unknown sort or role and a non-numeric page are 400 REQUEST_PARAMETER_INVALID naming only the parameters")
+    // void unconvertibleFilterValuesAre400() throws Exception {
+    //     TestUser admin = newUserIn(newTenant(), "ADMIN");
+    //
+    //     String body = getAs(admin.accessToken(), MEMBERS + "?sort=EMAIL&role=OWNER&page=first")
+    //             .andExpect(status().isBadRequest())
+    //             .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+    //             .andExpect(jsonPath("$.errors[*].parameter", containsInAnyOrder("sort", "role", "page")))
+    //             .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("invalid value", "invalid value", "invalid value")))
+    // roles:end
                 .andReturn().getResponse().getContentAsString();
         assertThat(body).doesNotContain("java.", "com.example", "Exception");
         getAs(admin.accessToken(), MEMBERS + "/not-a-uuid")

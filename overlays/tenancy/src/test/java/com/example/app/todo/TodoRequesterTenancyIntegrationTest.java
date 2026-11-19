@@ -118,9 +118,15 @@ class TodoRequesterTenancyIntegrationTest extends IntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_MEMBER_NOT_FOUND"));
 
+        // roles:begin
         postAs(admin.accessToken(), MEMBERS, """
-                {"email": "%s", "role": "USER"}
+                {"email": "%s"}
                 """.formatted(requester.email())).andExpect(status().isCreated());
+        // roles:else
+        // postAs(admin.accessToken(), MEMBERS, """
+        //         {"email": "%s", "role": "USER"}
+        //         """.formatted(requester.email())).andExpect(status().isCreated());
+        // roles:end
         postTodo(admin, listId, requester.id())
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.response.requester.fullName").isNotEmpty());

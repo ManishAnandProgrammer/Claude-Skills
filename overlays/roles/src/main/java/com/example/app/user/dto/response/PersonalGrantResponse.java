@@ -8,7 +8,7 @@ import java.util.UUID;
 
 @Schema(description = "A permission given to or taken from a person, whatever their roles give")
 public record PersonalGrantResponse(
-        @Schema(description = "A Permission code (one that names no permission grants nothing)", example = "ACCOUNT_STATUS_CHANGE")
+        @Schema(description = "A Permission code (one that names no permission grants nothing)", example = "ACCESS_GRANT")
         String permission,
         @Schema(description = "ALLOW or DENY", example = "DENY") GrantEffect effect,
         @Schema(description = "When it stops; null for good (past it, it does nothing)") Instant validUntil,

@@ -40,10 +40,18 @@ import java.util.UUID;
  * Issues, rotates and revokes tokens. Access tokens are short-lived JWTs (not checked against the
  * database); refresh tokens are random, stored hashed, single use.
  *
- * <p>With tenancy, a tenant token is for one membership: its {@code tenant_id} claim, the membership's
- * role, audience {@code tenant}. The tenant must be ACTIVE whenever tokens are issued (login, refresh,
- * switch), so a suspension takes effect within one access-token lifetime. Platform staff get an access
- * token with audience {@code platform}, no tenant and no refresh token.</p>
+ *   <!-- roles:begin -->
+ * <p>With tenancy, a tenant token is for one membership: its {@code tenant_id} claim, audience {@code tenant}, and
+ * nothing about access (the roles piece reads the member's roles and grants in the tenant on every request). The
+ * tenant must be ACTIVE whenever tokens are issued (login, refresh, switch), and every request reads its status
+ * with the member's access. Platform staff get an access token with audience {@code platform}, no tenant and no
+ * refresh token.</p>
+ *   <!-- roles:else -->
+ <!-- * <p>With tenancy, a tenant token is for one membership: its {@code tenant_id} claim, the membership's -->
+ <!-- * role, audience {@code tenant}. The tenant must be ACTIVE whenever tokens are issued (login, refresh, -->
+ <!-- * switch), so a suspension takes effect within one access-token lifetime. Platform staff get an access -->
+ <!-- * token with audience {@code platform}, no tenant and no refresh token.</p> -->
+ *   <!-- roles:end -->
  *
  * <p>Every issue for an account (login, refresh, switch, impersonation, a password change) starts with the
  * account's row, share-locked and ACTIVE ({@code UserService.activeForTokenIssue}), before it touches a
@@ -153,7 +161,10 @@ class TokenService {
                 .issuedAt(now)
                 .expiresAt(now.plus(impersonation.tokenTtl()))
                 .subject(membership.getUser().getId().toString())
-                .claim(RolePermissions.ROLES_CLAIM, List.of(membership.getRole().name()))
+                // roles:begin
+                // roles:else
+                // .claim(RolePermissions.ROLES_CLAIM, List.of(membership.getRole().name()))
+                // roles:end
                 .claim(TenantContext.TENANT_CLAIM, membership.getTenantId().toString())
                 .claim(CurrentUser.ACTOR_CLAIM, Map.of(CurrentUser.ACTOR_SUBJECT, staffId.toString()))
                 // session-version:begin
@@ -174,7 +185,10 @@ class TokenService {
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .subject(staff.getId().toString())
-                .claim(RolePermissions.ROLES_CLAIM, List.of(staff.getRole().name()))
+                // roles:begin
+                // roles:else
+                // .claim(RolePermissions.ROLES_CLAIM, List.of(staff.getRole().name()))
+                // roles:end
                 .build();
         return new TokenResponse(encode(claims), TOKEN_TYPE, properties.accessTokenTtl().toSeconds(), null);
     }
@@ -300,10 +314,17 @@ class TokenService {
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .subject(user.getId().toString())
-                .claim(RolePermissions.ROLES_CLAIM, List.of(membership.getRole().name()))
+                // roles:begin
+                // roles:else
+                // .claim(RolePermissions.ROLES_CLAIM, List.of(membership.getRole().name()))
+                // roles:end
                 .claim(TenantContext.TENANT_CLAIM, membership.getTenantId().toString())
                 // session-version:begin
-                // From the same row as the role: a token never pairs a newer number with an older role.
+                // roles:begin
+                // From the membership's row, read at the issue.
+                // roles:else
+                // // From the same row as the role: a token never pairs a newer number with an older role.
+                // roles:end
                 .claim(SessionVersions.CLAIM, membership.getSessionVersion())
                 .claim(SessionVersionService.MEMBERSHIP_CLAIM, membership.getId().toString())
                 // session-version:end

@@ -273,6 +273,12 @@
         <Class name="com.example.app.user.service.MembershipService"/>
         <Bug pattern="CRLF_INJECTION_LOGS"/>
     </Match>
+    <!-- roles:begin -->
+    <Match>
+        <Class name="com.example.app.user.service.TenantMemberManager"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <!-- roles:end -->
     <Match>
         <Class name="com.example.app.user.service.PlatformAuthService"/>
         <Bug pattern="CRLF_INJECTION_LOGS"/>

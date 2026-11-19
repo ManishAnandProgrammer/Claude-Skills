@@ -4,6 +4,9 @@ import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.security.StaffAccounts;
+// roles:begin
+import com.example.app.common.tenancy.TenantScope;
+// roles:end
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.tenant.api.PlatformAudit;
 import com.example.app.tenant.api.SupportAccessPolicy;
@@ -19,6 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+// roles:begin
+import java.util.Objects;
+// roles:end
 import java.util.UUID;
 
 /**
@@ -37,6 +43,9 @@ public class ImpersonationService {
     static final String AUDIT_ACTION = "IMPERSONATION";
 
     private final MembershipService memberships;
+    // roles:begin
+    private final PersonAccessService access;
+    // roles:end
     private final TokenService tokenService;
     private final Tenants tenants;
     private final SupportAccessPolicy policy;
@@ -56,7 +65,16 @@ public class ImpersonationService {
             throw AppException.of(ErrorCode.AUTHENTICATION_REQUIRED);
         }
         tenants.requireActive(tenantId);
-        TenantMembership membership = memberships.forImpersonation(tenantId, request.userId());
+        // roles:begin
+        // Who manages the tenant is its own data (the roles piece), read in its scope; a named member is taken as named.
+        UUID member = Objects.isNull(request.userId())
+                ? TenantScope.callAs(tenantId, access::defaultToImpersonate)
+                        .orElseThrow(AppException.supply(ErrorCode.MEMBERSHIP_NOT_FOUND, tenantId))
+                : request.userId();
+        TenantMembership membership = memberships.forImpersonation(tenantId, member);
+        // roles:else
+        // TenantMembership membership = memberships.forImpersonation(tenantId, request.userId());
+        // roles:end
         UUID userId = membership.getUser().getId();
         audit.record(tenantId, AUDIT_ACTION, "userId=%s, reason=%s".formatted(userId, request.reason()));
         if (!policy.allows(new SupportAccessRequest(staffId, tenantId, userId, request.reason()))) {

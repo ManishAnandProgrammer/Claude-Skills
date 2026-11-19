@@ -40,11 +40,24 @@ class ImpersonationIntegrationTest extends IntegrationTest {
         return postAs(platformToken(), "/api/v1/platform/tenants/" + tenantId + "/impersonations", body);
     }
 
+    // roles:begin
+    /** The tenant's owner: its oldest membership (the roles piece gave it the tenant's ADMIN role). */
     private UUID ownerOf(TestTenant tenant) {
-        return jdbc.queryForObject("""
-                select user_id from tenant_memberships where tenant_id = ? and role = 'ADMIN' order by id limit 1
-                """, UUID.class, tenant.id());
+        return jdbc.queryForObject("select user_id from tenant_memberships where tenant_id = ? order by id limit 1",
+                UUID.class, tenant.id());
     }
+
+    /** What the token may do in its tenant, read where every check reads it. */
+    private List<String> permissionsOf(String accessToken) throws Exception {
+        return read(getAs(accessToken, "/api/v1/users/me/access").andExpect(status().isOk()), "$.response.permissions");
+    }
+    // roles:else
+    // private UUID ownerOf(TestTenant tenant) {
+    //     return jdbc.queryForObject("""
+    //             select user_id from tenant_memberships where tenant_id = ? and role = 'ADMIN' order by id limit 1
+    //             """, UUID.class, tenant.id());
+    // }
+    // roles:end
 
     private int auditRows(TestTenant tenant, String detail) {
         Integer rows = jdbc.queryForObject("""
@@ -65,7 +78,11 @@ class ImpersonationIntegrationTest extends IntegrationTest {
 
         assertThat(claim(token, "$.tenant_id")).isEqualTo(tenant.id().toString());
         assertThat(claim(token, "$.sub")).isEqualTo(owner.toString());
-        assertThat(claim(token, "$.roles[0]")).isEqualTo("ADMIN");
+        // roles:begin
+        assertThat(permissionsOf(token)).contains("TENANT_MEMBERS_MANAGE", "ROLES_MANAGE", "ACCESS_GRANT");
+        // roles:else
+        // assertThat(claim(token, "$.roles[0]")).isEqualTo("ADMIN");
+        // roles:end
         assertThat(claim(token, "$.act.sub")).isNotEmpty().isNotEqualTo(owner.toString());
         getAs(token, "/api/v1/users/me")
                 .andExpect(status().isOk())
@@ -83,7 +100,11 @@ class ImpersonationIntegrationTest extends IntegrationTest {
                 {"userId": "%s", "reason": "SUP-1235"}
                 """.formatted(member.id())).andExpect(status().isCreated()), "$.response.accessToken");
         assertThat(claim(token, "$.sub")).isEqualTo(member.id().toString());
-        assertThat(claim(token, "$.roles[0]")).isEqualTo("USER");
+        // roles:begin
+        assertThat(permissionsOf(token)).doesNotContain("TENANT_MEMBERS_MANAGE");
+        // roles:else
+        // assertThat(claim(token, "$.roles[0]")).isEqualTo("USER");
+        // roles:end
 
         impersonate(tenant.id(), """
                 {"userId": "%s", "reason": "SUP-1235"}
@@ -92,6 +113,27 @@ class ImpersonationIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.errorCode").value("MEMBERSHIP_NOT_FOUND"));
     }
 
+    // roles:begin
+    @Test
+    @DisplayName("""
+            By default staff act as the oldest member who manages the tenant's members for good: once the owner holds \
+            USER alone, a later ADMIN""")
+    void theDefaultMemberManagesTheMembers() throws Exception {
+        TestTenant tenant = newTenant();
+        UUID owner = ownerOf(tenant);
+        TestUser later = newUserIn(tenant, "ADMIN");
+        TestUser latest = newUserIn(tenant, "ADMIN");
+        sqlIn(tenant, "delete from user_roles where user_id = ?", owner);
+        giveBuiltInRole(tenant, owner, "USER");
+
+        String token = read(impersonate(tenant.id(), """
+                {"reason": "SUP-1236"}
+                """).andExpect(status().isCreated()), "$.response.accessToken");
+
+        assertThat(claim(token, "$.sub")).isEqualTo(later.id().toString()).isNotEqualTo(latest.id().toString());
+    }
+
+    // roles:end
     @Test
     @DisplayName("Without a reason it is 400 VALIDATION_FAILED naming reason: every token issued is on record with one")
     void reasonIsRequired() throws Exception {

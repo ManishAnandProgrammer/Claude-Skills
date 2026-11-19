@@ -110,8 +110,11 @@ public enum ErrorCode {
     // /** Members are existing accounts (invitations come later). */
     // TENANT_MEMBER_ACCOUNT_NOT_FOUND,
     // TENANT_MEMBER_EXISTS,
+    // roles:begin
+    // roles:else
     // /** Every tenant keeps an ADMIN with an ACTIVE account: the last one can't be demoted, removed or suspended. */
     // TENANT_MEMBER_LAST_ADMIN,
+    // roles:end
     // /** Nobody changes or removes their own membership (house-review SEC-02): a rule that never depends on state, so 403. */
     // TENANT_MEMBER_OWN_CHANGE,
     // tenancy:end

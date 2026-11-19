@@ -184,6 +184,13 @@ public class UserService implements Users {
     }
 
     // roles:begin
+    // tenancy:begin
+    // /** The account with this id, locked for update until the caller's transaction ends (platform staff's status change). */
+    // @Transactional(propagation = Propagation.MANDATORY)
+    // List<User> lockForStatusChange(Collection<UUID> userIds) {
+    //     return repository.findAllForUpdate(userIds);
+    // }
+    // tenancy:end
     // roles:else
     /**
      * The accounts with these ids, locked for update in id order until the caller's transaction ends (an
