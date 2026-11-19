@@ -41,9 +41,10 @@ import java.util.UUID;
  * suspend the tenant.</p>
  *   <!-- tenancy:else -->
  *
- * <p>An application ADMIN does it ({@code PATCH /users/{id}/status}), never to their own account, and only
- * while they are an ACTIVE ADMIN themselves, read under the lock that serialises these changes, whatever
- * their token says. So the last ADMIN can never be suspended: only another active ADMIN can suspend one.</p>
+ * <p>An account whose role grants {@code ACCOUNT_STATUS_CHANGE} (an application ADMIN) does it
+ * ({@code PATCH /users/{id}/status}), never to their own account, and only while that account is ACTIVE and its
+ * role grants it, read under the lock that serialises these changes, whatever their token says. So the last
+ * active holder of the permission can never be suspended: only another one can.</p>
  *   <!-- tenancy:end -->
  */
 @Service
@@ -78,10 +79,10 @@ public class AccountStatusService {
     // }
     // tenancy:else
     /**
-     * An ADMIN's change of another account: 403 {@code USER_OWN_STATUS_CHANGE} for the caller's own; the
-     * caller and the target locked together (id order), then 403 {@code ACCESS_DENIED} unless the caller is
-     * an ACTIVE account whose role grants {@code ACCOUNT_STATUS_CHANGE} now (of two ADMINs suspending each other at once, the second finds itself suspended),
-     * 404 {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}.
+     * A change of another account: 403 {@code USER_OWN_STATUS_CHANGE} for the caller's own; the caller and the
+     * target locked together (id order), then 403 {@code ACCESS_DENIED} unless the caller is an ACTIVE account
+     * whose role grants {@code ACCOUNT_STATUS_CHANGE} now (of two ADMINs suspending each other at once, the
+     * second finds itself suspended), 404 {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}.
      */
     @Transactional
     public ObjectWrapper<UserResponse> changeStatus(UUID callerId, UUID userId, UserStatusRequest request) {
@@ -89,10 +90,10 @@ public class AccountStatusService {
             throw AppException.of(ErrorCode.USER_OWN_STATUS_CHANGE);
         }
         List<User> locked = users.lockForStatusChange(List.of(callerId, userId));
-        boolean callerIsActiveAdmin = locked.stream()
+        boolean callerMayChangeStatus = locked.stream()
                 .anyMatch(user -> user.getId().equals(callerId) && user.isActive()
                         && user.getRole().grants(Permission.ACCOUNT_STATUS_CHANGE));
-        if (!callerIsActiveAdmin) {
+        if (!callerMayChangeStatus) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
         }
         User target = locked.stream().filter(user -> user.getId().equals(userId)).findFirst()

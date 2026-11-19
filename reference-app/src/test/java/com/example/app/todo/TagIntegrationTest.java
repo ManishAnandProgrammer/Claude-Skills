@@ -1,6 +1,8 @@
 package com.example.app.todo;
 
 import com.example.app.common.dropdown.DropdownStatus;
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Reach;
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,8 +15,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -24,6 +30,7 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -684,6 +691,51 @@ class TagIntegrationTest extends IntegrationTest {
 
         assertThat(statementsFor(one, DROPDOWN + "&size=20")).isEqualTo(1);
         assertThat(statementsFor(many, DROPDOWN + "&size=20")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("The dropdown needs for: without it 400 REQUEST_PARAMETER_MISSING, with an unknown permission 400 REQUEST_PARAMETER_INVALID at for")
+    void theDropdownNeedsFor() throws Exception {
+        String token = newUser().accessToken();
+
+        getAs(token, TAGS + "/dropdown")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_MISSING"));
+        getAs(token, TAGS + "/dropdown?for=NOT_A_PERMISSION")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                .andExpect(jsonPath("$.errors[0].parameter").value("for"));
+    }
+
+    @Test
+    @DisplayName("A for the caller doesn't hold is 403 ACCESS_DENIED, whatever else they hold, before any statement")
+    void aForTheCallerDoesntHoldIs403() throws Exception {
+        TestUser user = newUser();
+        Set<Permission> allButIt = EnumSet.allOf(Permission.class);
+        allButIt.remove(Permission.TODO_EDIT_OWN);
+        // Whatever a caller's first request reads once (and later requests don't) is read here, before the count.
+        getAs(user.accessToken(), TAGS).andExpect(status().isOk());
+
+        statistics().clear();
+        mvc.perform(get(DROPDOWN).with(holding(user.accessToken(), allButIt)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+        assertThat(statistics().getPrepareStatementCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("A held for whose reach is every record is 400 DROPDOWN_REACH_UNSUPPORTED at for: this dropdown lists your own tags only")
+    void aForOfAnotherReachIs400() throws Exception {
+        Optional<Permission> everyRecord = Arrays.stream(Permission.values())
+                .filter(permission -> permission.reach() == Reach.ALL)
+                .findFirst();
+        assumeTrue(everyRecord.isPresent(), "no permission reaches every record among these pieces");
+        String holdingIt = newUser().accessToken();
+
+        mvc.perform(get(TAGS + "/dropdown?for=" + everyRecord.get()).with(holding(holdingIt, EnumSet.of(everyRecord.get()))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("DROPDOWN_REACH_UNSUPPORTED"))
+                .andExpect(jsonPath("$.errors[0].parameter").value("for"));
     }
 
     @Test

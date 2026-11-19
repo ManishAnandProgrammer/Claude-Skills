@@ -18,7 +18,7 @@ public enum Area {
     ACCOUNTS,
     // sign-in:end
     // metadata:begin
-    /** Application-wide settings: configuration metadata, upload policies. */
+    /** Application-wide settings (configuration metadata, upload policies, as the pieces have them). */
     SETTINGS,
     // metadata:else
     // // media:begin

@@ -1,5 +1,6 @@
 package com.example.app.archunit.fixture.security;
 
+import jakarta.annotation.security.RolesAllowed;
 import org.springframework.security.access.annotation.Secured;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,6 +17,14 @@ public class RoleChecks {
 
     @Secured("ROLE_ADMIN")
     public void securedRole() {
+    }
+
+    @RolesAllowed("ADMIN")
+    public void rolesAllowed() {
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public void roleAsAnAuthority() {
     }
 
     public Object roleInCode() {

@@ -9,16 +9,13 @@ import com.example.app.todo.domain.Todo;
 import com.example.app.todo.domain.TodoList;
 import com.example.app.todo.domain.TodoStatus;
 import com.example.app.todo.dto.internal.TodoListName;
+import com.example.app.todo.dto.internal.TodoResponseParts;
 import com.example.app.todo.dto.internal.TodoTagRow;
 import com.example.app.todo.dto.request.TodoCreateRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
-import com.example.app.todo.dto.response.TodoAllowedActionsResponse;
 // media:begin
 import com.example.app.todo.dto.response.TodoAttachmentResponse;
 // media:end
-// tenancy:begin
-// import com.example.app.todo.dto.response.TodoRequesterResponse;
-// tenancy:end
 import com.example.app.todo.dto.response.TodoResponse;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import com.example.app.todo.dto.response.TodoTagResponse;
@@ -63,15 +60,7 @@ public class TodoMapper {
     }
 
     /** The todo's list must be loaded: TodoService reads it with the todo, or under the todo's lock. */
-    public TodoResponse toResponse(Todo todo,
-                                   // media:begin
-                                   List<MediaFileView> attachments,
-                                   // media:end
-                                   // tenancy:begin
-                                   // TodoRequesterResponse requester,
-                                   // tenancy:end
-                                   List<TodoTagResponse> tags,
-                                   boolean editable) {
+    public TodoResponse toResponse(Todo todo, TodoResponseParts parts) {
         return new TodoResponse(
                 todo.getId(),
                 todo.getTodoList().getId(),
@@ -81,7 +70,7 @@ public class TodoMapper {
                 // metadata:end
                 todo.getOwnerId(),
                 // tenancy:begin
-                // requester,
+                // parts.requester(),
                 // tenancy:else
                 todo.getRequesterId(),
                 // tenancy:end
@@ -91,11 +80,11 @@ public class TodoMapper {
                 todo.getPriority(),
                 todo.getDueDate(),
                 todo.getCompletedAt(),
-                tags,
+                parts.tags(),
                 // media:begin
-                attachments.stream().map(TodoMapper::toAttachmentResponse).toList(),
+                parts.attachments().stream().map(TodoMapper::toAttachmentResponse).toList(),
                 // media:end
-                new TodoAllowedActionsResponse(editable),
+                parts.allowedActions(),
                 todo.getCreatedAt(),
                 todo.getUpdatedAt(),
                 todo.getCreatedBy(),

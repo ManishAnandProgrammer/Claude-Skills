@@ -5,9 +5,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -25,6 +31,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TodoRequesterIntegrationTest extends IntegrationTest {
 
     private static final String TODOS = "/api/v1/todos";
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     /** The owner's todo with {@code requester} on it, a tag and a time entry. */
     private record Asked(TestUser owner, TestUser requester, String listId, String todoId, String tagId, String entryId) {
@@ -208,6 +217,41 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
         getAs(next.accessToken(), TODOS + "/" + asked.todoId())
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("TODO_NOT_FOUND"));
+    }
+
+    /**
+     * The lock a write takes is the policy's: only on a todo the caller may change. A refused caller never queues
+     * behind the owner's writers: while the owner's transaction holds the row, the requester's and a stranger's
+     * delete answer at once, instead of waiting out lock_timeout for a 503 (house-review DATA-29).
+     */
+    @Test
+    @DisplayName("While the owner holds the todo's lock, the requester's delete is 403 and a stranger's 404 at once, never queued behind it")
+    void aRefusedWriteNeverWaitsForTheOwnersLock() throws Exception {
+        Asked asked = askedTodo();
+        TestUser stranger = newUser();
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        try (ExecutorService executor = newExecutor()) {
+            Future<?> holder = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.queryForList("select id from todos where id = ?::uuid for update", asked.todoId());
+                locked.countDown();
+                awaitQuietly(release);
+            }));
+            awaitLatch(locked);
+            try {
+                deleteAs(asked.requester().accessToken(), TODOS + "/" + asked.todoId())
+                        .andExpect(status().isForbidden())
+                        .andExpect(jsonPath("$.errorCode").value("TODO_NOT_YOURS"));
+                deleteAs(stranger.accessToken(), TODOS + "/" + asked.todoId())
+                        .andExpect(status().isNotFound())
+                        .andExpect(jsonPath("$.errorCode").value("TODO_NOT_FOUND"));
+            } finally {
+                release.countDown();
+            }
+            within(holder);
+        }
+        assertUnchanged(asked);
     }
 
     @Test

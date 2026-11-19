@@ -24,6 +24,7 @@ import com.example.app.todo.domain.Tag;
 import com.example.app.todo.domain.TimeEntry;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.domain.TodoList;
+import com.example.app.todo.dto.internal.TodoResponseParts;
 import com.example.app.todo.dto.request.TimeEntryCreateRequest;
 import com.example.app.todo.dto.request.TimeEntryFilter;
 import com.example.app.todo.dto.request.TimeEntryUpdateRequest;
@@ -33,6 +34,7 @@ import com.example.app.todo.dto.request.TodoStatusRequest;
 import com.example.app.todo.dto.request.TodoTagsRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
 import com.example.app.todo.dto.response.TimeEntryResponse;
+import com.example.app.todo.dto.response.TodoAllowedActionsResponse;
 // tenancy:begin
 // import com.example.app.todo.dto.response.TodoRequesterResponse;
 // tenancy:end
@@ -288,7 +290,7 @@ public class TodoService implements Todos {
         // media:end
     }
 
-    /** Locked as the todo's own writes lock it (findForUpdateById), so they queue behind the caller. */
+    /** Locked as the todo's own writes lock it (findForUpdate), so they queue behind the caller. */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public TodoView getOwnedTodoViewForUpdate(UUID id, UUID ownerId) {
@@ -351,7 +353,7 @@ public class TodoService implements Todos {
     }
 
     private TodoResponse toResponse(Todo todo) {
-        return mapper.toResponse(todo,
+        return mapper.toResponse(todo, new TodoResponseParts(
                 // media:begin
                 attachmentsOf(todo),
                 // media:end
@@ -359,7 +361,7 @@ public class TodoService implements Todos {
                 // requesterOf(todo),
                 // tenancy:end
                 todoTagRepository.findTagsOfTodo(todo.getId()),
-                policy.edit(todo, currentUser.id()).isAllowed());
+                new TodoAllowedActionsResponse(policy.edit(todo, currentUser.id()).isAllowed())));
     }
     // tenancy:begin
 
@@ -412,13 +414,17 @@ public class TodoService implements Todos {
     }
 
     /**
-     * Locked first, then decided (TodoPolicy.edit): a caller it refuses held the lock only until its own
-     * transaction rolls back, and needs the todo's id to take it.
+     * Locked only when the caller may change it (TodoPolicy.editScope, one statement): nobody else's request
+     * queues behind its owner's writers. Otherwise read without a lock, for the policy to say why (a requester's
+     * 403), or the 404 of a missing todo.
      */
     private Todo lockEditableTodo(UUID id, UUID callerId) {
-        Todo todo = repository.findForUpdateById(id).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
-        policy.edit(todo, callerId).orThrow();
-        return todo;
+        Optional<Todo> locked = repository.findForUpdate(id, policy.editScope(callerId));
+        if (locked.isEmpty()) {
+            Todo todo = repository.findById(id).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+            policy.edit(todo, callerId).orThrow();
+        }
+        return locked.orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
     }
 
     private Todo getEditableTodo(UUID id, UUID callerId) {

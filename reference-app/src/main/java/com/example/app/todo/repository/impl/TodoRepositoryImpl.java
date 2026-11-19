@@ -15,6 +15,7 @@ import com.example.app.todo.dto.request.TodoSort;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import com.example.app.todo.repository.custom.CustomTodoRepository;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.criteria.CompoundSelection;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -30,6 +31,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -72,6 +74,16 @@ class TodoRepositoryImpl implements CustomTodoRepository {
             case DUE_DATE -> CursorBatch.of(rows, size, row -> Cursor.write(sort, dueSortOf(row), row.id()));
             case NEWEST -> CursorBatch.of(rows, size, row -> Cursor.write(sort, row.createdAt(), row.id()));
         };
+    }
+
+    /** Hibernate's PostgreSQL write lock is {@code FOR NO KEY UPDATE}, as {@code @Lock(PESSIMISTIC_WRITE)} takes it. */
+    @Override
+    public Optional<Todo> findForUpdate(UUID id, PredicateSpecification<Todo> scope) {
+        CriteriaBuilder builder = entityManager.getCriteriaBuilder();
+        CriteriaQuery<Todo> query = builder.createQuery(Todo.class);
+        Root<Todo> root = query.from(Todo.class);
+        query.where(builder.equal(root.get(Todo_.id), id), scope.toPredicate(root, builder));
+        return entityManager.createQuery(query).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList().stream().findFirst();
     }
 
     /** The rows after the cursor's, in the sort's keyset (id last). */

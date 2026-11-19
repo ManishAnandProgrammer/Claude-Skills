@@ -266,7 +266,7 @@ class ConventionArchTest {
         };
     }
 
-    /** {@code @PreAuthorize("hasRole('ADMIN')")} and the like, on a class, an annotation type or a method. */
+    /** {@code @PreAuthorize("hasRole('ADMIN')")}, a {@code 'ROLE_'} authority and the like, on a class, an annotation type or a method. */
     private static DescribedPredicate<JavaAnnotation<?>> aRoleCheckWrittenAsAString() {
         return new DescribedPredicate<>("@PreAuthorize or @PostAuthorize naming a role") {
             @Override
@@ -277,7 +277,7 @@ class ConventionArchTest {
                     return false;
                 }
                 String expression = String.valueOf(annotation.get("value").orElse(""));
-                return expression.contains("hasRole(") || expression.contains("hasAnyRole(");
+                return expression.contains("hasRole(") || expression.contains("hasAnyRole(") || expression.contains("'ROLE_");
             }
         };
     }

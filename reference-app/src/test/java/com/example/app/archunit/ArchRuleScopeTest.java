@@ -6,7 +6,9 @@ import com.example.app.archunit.fixture.common.security.RoleCheckAnnotation;
 import com.example.app.archunit.fixture.dto.RangeRequest;
 import com.example.app.archunit.fixture.logging.JulCall;
 import com.example.app.archunit.fixture.security.HandlerDeclarations;
+import com.example.app.archunit.fixture.security.PostAuthorizeCheck;
 import com.example.app.archunit.fixture.security.RoleChecks;
+import com.example.app.archunit.fixture.security.SecuredClass;
 import com.example.app.archunit.fixture.security.StringChecks;
 import com.example.app.archunit.fixture.settings.CheckedSettings;
 import com.example.app.archunit.fixture.settings.UntypedSettings;
@@ -95,11 +97,15 @@ class ArchRuleScopeTest {
     void methodSecurityStringsLiveInCommonSecurity() {
         assertThat(violates(ConventionArchTest.methodSecurityIsDeclaredOnce, StringChecks.class)).isTrue();
         assertThat(violates(ConventionArchTest.classMethodSecurityIsDeclaredOnce, StringChecks.class)).isTrue();
+        assertThat(violates(ConventionArchTest.methodSecurityIsDeclaredOnce, PostAuthorizeCheck.class)).isTrue();
+        assertThat(violates(ConventionArchTest.classMethodSecurityIsDeclaredOnce, PostAuthorizeCheck.class)).isTrue();
         assertThat(violates(ConventionArchTest.classMethodSecurityIsDeclaredOnce, RoleCheckAnnotation.class)).isFalse();
     }
 
     @Test
-    @DisplayName("A role check is refused everywhere, common.security included: in an expression, @Secured, a call of hasRole, a RoleHierarchy (AUTHZ-02)")
+    @DisplayName("""
+            A role check is refused everywhere, common.security included: in an expression (a ROLE_ authority too), \
+            @Secured on a method or a class, @RolesAllowed, a call of hasRole, a RoleHierarchy (AUTHZ-02)""")
     void roleChecksAreRefusedEverywhere() {
         List<String> violations = ConventionArchTest.noRoleChecks
                 .evaluate(new ClassFileImporter().importClasses(RoleChecks.class)).getFailureReport().getDetails();
@@ -108,7 +114,8 @@ class ArchRuleScopeTest {
         assertThat(violations).anyMatch(violation -> violation.contains(RoleHierarchy.class.getSimpleName()));
         assertThat(violates(ConventionArchTest.noRoleChecksOnMethods, RoleChecks.class)).isTrue();
         assertThat(ConventionArchTest.noRoleChecksOnMethods
-                .evaluate(new ClassFileImporter().importClasses(RoleChecks.class)).getFailureReport().getDetails()).hasSize(2);
+                .evaluate(new ClassFileImporter().importClasses(RoleChecks.class)).getFailureReport().getDetails()).hasSize(4);
+        assertThat(violates(ConventionArchTest.noRoleChecks, SecuredClass.class)).isTrue();
         assertThat(violates(ConventionArchTest.noRoleChecks, RoleCheckAnnotation.class)).isTrue();
     }
 

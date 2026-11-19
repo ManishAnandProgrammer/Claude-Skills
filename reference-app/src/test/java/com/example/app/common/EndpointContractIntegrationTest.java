@@ -348,7 +348,7 @@ class EndpointContractIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The OpenAPI document lists the 400, 401 and 403 these checks see, per endpoint")
+    @DisplayName("The OpenAPI document lists the 400, 401 and 403 these checks see, per endpoint, the 403 naming the permission an endpoint @Requires")
     void apiDocsListTheStatusesTheEndpointsAnswer() {
         List<String> missing = new ArrayList<>();
         for (Endpoint endpoint : endpoints()) {
@@ -356,8 +356,11 @@ class EndpointContractIntegrationTest extends IntegrationTest {
             if (!endpoint.isPublic() && !responses.has("401")) {
                 missing.add(endpoint.name() + " 401");
             }
-            if (Objects.nonNull(endpoint.requiredPermission()) && !responses.has("403")) {
-                missing.add(endpoint.name() + " 403");
+            Permission required = endpoint.requiredPermission();
+            boolean namesItsPermission = responses.path("403").path("description").asString().contains("ACCESS_DENIED")
+                    && responses.path("403").path("description").asString().contains(Objects.toString(required));
+            if (Objects.nonNull(required) && !namesItsPermission) {
+                missing.add(endpoint.name() + " 403 ACCESS_DENIED naming " + required);
             }
             boolean refusesInput = endpoint.takesABody() || !endpoint.uuidPathVariables().isEmpty()
                     || endpoint.hasQueryParameter("after") || endpoint.hasQueryParameter("page");

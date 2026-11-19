@@ -5,9 +5,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Set;
 
 /**
- * What a caller may do, one capability per constant: Spring's authority (a granted authority of
- * the constant's name), where a role is Spring's group of them (the sign-in piece's {@code Role}). Handlers name the one they need with {@link Requires}; a record's own rules (whose it is, its
- * state, an amount) are its module's policy, never a permission.
+ * What a caller may do, one capability per constant: Spring's authority (a granted authority of the constant's
+ * name), where a role is Spring's group of them (the sign-in piece's {@code Role}). Handlers name the one they
+ * need with {@link Requires}; a record's own rules (whose it is, its state, an amount) are its module's policy,
+ * never a permission.
  *
  * <p>A name is {@code <RESOURCE>_<ACTION>}, with a reach suffix only where the business tells reaches apart:
  * {@code _OWN}, {@code _ASSIGNED}, none for every record; the suffix is declared again as {@link #reach()},

@@ -3,10 +3,8 @@ package com.example.app.todo.repository;
 import com.example.app.todo.api.TodoView;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.repository.custom.CustomTodoRepository;
-import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
@@ -39,20 +37,7 @@ public interface TodoRepository extends JpaRepository<Todo, UUID>, CustomTodoRep
     List<TodoView> findViewsByIdInAndOwnerId(Collection<UUID> ids, UUID ownerId);
 
     /**
-     * A write's todo, locked {@code FOR NO KEY UPDATE} (Hibernate's PostgreSQL write
-     * lock) until the transaction ends, for every write that changes its member rows (tags, attachments)
-     * and for its delete. A second writer with the same version waits here, before touching anything,
-     * then reads the new version and answers 409, instead of colliding on a member row; and the todo is
-     * always locked before its member rows, so two such writes, or one and the todo's delete, can't
-     * deadlock. Also taken by a plan's create and reschedule
-     * ({@link com.example.app.todo.api.Todos#getOwnedTodoViewForUpdate}), for a rule no constraint can hold
-     * because it reads another table: a plan is only for an open todo, so the todo's completion waits for the plan.
-     */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<Todo> findForUpdateById(UUID id);
-
-    /**
-     * A tag merge's lock on every todo carrying the tag, the write lock {@link #findForUpdateById}
+     * A tag merge's lock on every todo carrying the tag, the write lock {@link CustomTodoRepository#findForUpdate}
      * takes, in id order: two merges whose tags share todos lock them in the same order and queue instead of
      * deadlocking, and each todo's own writes wait for the merge. One statement whatever their number; the
      * rows stay in the database (only their count comes back).

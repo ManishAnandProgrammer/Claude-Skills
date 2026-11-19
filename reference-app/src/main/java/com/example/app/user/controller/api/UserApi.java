@@ -122,7 +122,7 @@ public interface UserApi {
             ) and refuses it every new one: login answers 403 AUTH_ACCOUNT_SUSPENDED. ACTIVE lets it \
             sign in again; the sessions the suspension ended stay ended. Never your own account; your account \
             must be ACTIVE and its role hold ACCOUNT_STATUS_CHANGE now, whatever your token says, so the last \
-            ADMIN is never suspended.""")
+            active account holding it is never suspended.""")
     @ApiResponse(responseCode = "200", description = "The account with its new status and version")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (a malformed id)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

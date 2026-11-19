@@ -219,10 +219,10 @@ public class MembershipService implements Members {
     private UUID lockAsCurrentAdmin(UUID callerId) {
         UUID tenantId = TenantContext.current();
         tenants.lockForMemberChange(tenantId);
-        boolean admin = repository.findByUserIdAndTenantId(callerId, tenantId)
+        boolean mayManageMembers = repository.findByUserIdAndTenantId(callerId, tenantId)
                 .filter(membership -> membership.getRole().grants(Permission.TENANT_MEMBERS_MANAGE))
                 .isPresent();
-        if (!admin) {
+        if (!mayManageMembers) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
         }
         return tenantId;

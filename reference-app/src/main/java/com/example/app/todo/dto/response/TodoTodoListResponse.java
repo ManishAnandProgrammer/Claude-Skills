@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /**
  * A todo's list by name. The detail and the writes that hold no lock read it with the todo in one statement
- * (TodoRepository.findWithTodoListByIdAndOwnerId); the writes that lock the todo read the loaded todo's list
+ * (TodoRepository.findWithTodoListById); the writes that lock the todo read the loaded todo's list
  * afterwards (the lock keeps it there); a list page reads the batch's names in a second statement
  * (TodoListService.findOwnedTodoListNames).
  */

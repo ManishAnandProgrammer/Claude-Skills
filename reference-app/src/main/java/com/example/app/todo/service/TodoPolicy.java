@@ -23,7 +23,15 @@ public class TodoPolicy {
 
     /** The list's scope (Pundit's Scope): the caller's own todos, a condition of the list's Criteria query. */
     public PredicateSpecification<Todo> listScope(UUID callerId) {
-        return (todo, builder) -> builder.equal(todo.get(Todo_.ownerId), callerId);
+        return ownedBy(callerId);
+    }
+
+    /**
+     * The todos {@link #edit} allows, as a condition of the statement that locks one: a write locks only a row
+     * the caller may change, so nobody else's request queues behind its owner's writers (house-review DATA-29).
+     */
+    public PredicateSpecification<Todo> editScope(UUID callerId) {
+        return ownedBy(callerId);
     }
 
     /** Its owner, or its requester (a second party who reads it); anyone else gets the 404 of a missing todo. */
@@ -47,5 +55,9 @@ public class TodoPolicy {
             return Decision.refused(ErrorCode.TODO_NOT_YOURS, todo.getId());
         }
         return Decision.refused(ErrorCode.TODO_NOT_FOUND, todo.getId());
+    }
+
+    private static PredicateSpecification<Todo> ownedBy(UUID callerId) {
+        return (todo, builder) -> builder.equal(todo.get(Todo_.ownerId), callerId);
     }
 }
