@@ -3,7 +3,8 @@
 Who may do what: a **permission** says whether a caller may use an action at all, a **policy** says whether
 they may use it on this record. The default for every house project is Level 1 below: permissions in code,
 roles in code listing them, a policy per owned resource. Level 2 (*With the roles piece*) moves the roles into
-tables an admin edits, and changes no endpoint, policy or client. The profile's `authorization` key says which
+tables an admin edits, and changes no endpoint, policy or `/users/me/access` (the account's `role` field goes: a
+breaking change of the account's response). The profile's `authorization` key says which
 level a project is on (`permissions`, the default; `roles-piece` with that piece).
 
 Golden code, in the reference application (`~/.claude/skills-reference/src/main/java/com/example/app/`):
@@ -271,7 +272,8 @@ converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenS
     client would sign out) nor a 500;
   - no Redis permission cache, no permissions in the token, no revocation keys: a change applies on the person's
     next request, and `/users/me/access` and every check read the same set;
-  - the endpoints, the policies, `/users/me/access` and the dropdowns' `for` are Level 1's, unchanged: the Level 1
+  - the endpoints, the policies, `/users/me/access` and the dropdowns' `for` are Level 1's, unchanged (the account's
+    `role` field goes, a breaking change of its response, announced): the Level 1
     tests pass in a copy with the piece, but the ones that asserted the role column or claim (those are marked
     `roles:else` and have Level 2 counterparts);
   - **with tenancy** (TEN-08, designed, not built yet): roles belong to the tenant and assignments and grants to
@@ -285,13 +287,17 @@ converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenS
 - **Severity:** High.
 
 ### AUTHZ-12: Managing roles and people's access
-- **Check:** each rule is a refusal with its own error code and a test:
-  1. **grant only what you hold** (403 `ACCESS_NOT_HELD`): a role you create or edit holds only permissions you hold;
-     you give a role only if you hold all its permissions; a personal ALLOW or DENY (or its removal) only of a
-     permission you hold;
+- **Check:** each rule is a refusal with its error code, and a test:
+  1. **grant only what you hold** (403 `ACCESS_NOT_HELD`): a role you create holds only permissions you hold, and you
+     edit only a role whose permissions you hold before and after (an edit never takes from everyone who holds the
+     role a permission you lack); you give a role only if you hold all its permissions; a personal ALLOW or DENY (or
+     its removal) only of a permission you hold; and checked on the result too, after the change: what the person
+     would hold afterwards holds nothing you don't (taking a DENY away would otherwise hand back a permission that
+     needed the denied one);
   2. **never your own** roles or grants (403 `ACCESS_OWN_CHANGE`);
-  3. **never someone above you** (403 `ACCESS_TARGET_HOLDS_MORE`): you change the access of (or suspend) only a
-     person who holds nothing you don't, which a DENY could otherwise use to sabotage them;
+  3. **never someone above you** (403 `ACCESS_TARGET_HOLDS_MORE`): you change the access of (or suspend, or
+     reactivate) only a person who holds nothing you don't, a suspended person's grants counted (suspended, a
+     superior is still above), which a DENY could otherwise use to sabotage them;
   4. a role saved without a **prerequisite** of one of its permissions is refused (400
      `ROLE_PREREQUISITE_MISSING`), nothing filled in;
   5. a role is **deleted only while nobody holds it** (409 `ROLE_IN_USE`, its assignment's key), assignments never
@@ -301,11 +307,11 @@ converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenS
      never the last), every current DENY counted. Rules 2 and 3 already keep the caller of a person's change a
      holder, so in practice it is a role's edit that trips it; the runbook names the operator's SQL for the case it
      happened outside the application;
-  7. **concurrency:** `version` on the role (409 `OPTIMISTIC_LOCK_CONFLICT`); a person's change locks the caller's
-     and the person's account rows in id order (DATA-29: the narrowest row every such change shares) and checks
-     rules 1 to 3 on what the database holds under that lock, never on the request's earlier read; a role's edit
-     locks the rows of the caller and of every account holding the kept permissions for good, so it and a person's
-     change always share a row before either can take the last holder away.
+  7. **concurrency:** `version` on the role (409 `OPTIMISTIC_LOCK_CONFLICT`); every change locks, in id order, the
+     account rows (DATA-29: the narrowest row every such change shares) of the caller, the person it changes, and
+     every account holding the kept permissions for good, then checks rules 1 to 3 on what the database holds under
+     that lock, never on the request's earlier read: any two changes that could each take the last holder away
+     queue on a shared row (a caller holding through an expiring grant included).
   - the API: the catalogue (`GET /permissions`: each permission's code, area, reach and prerequisites, and the
     areas; `@SignedIn`, the same list the OpenAPI enum publishes, never who holds what), roles (`/roles`: paged
     list, detail with permissions, create, update with `version`, delete; `ROLES_MANAGE`), a person's access
@@ -314,15 +320,17 @@ converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenS
     optional `validUntil`, `PUT`/`DELETE /users/{id}/permissions/{permission}` with the effect; `ACCESS_GRANT`,
     which needs `ACCOUNT_READ`);
   - built-in roles are seeded from the `Role` enum's contents **at the time of writing**, as literal SQL in the
-    changeset, and **copied**, never linked: an admin's edit changes the copy. A test on a fresh database compares
-    each built-in role's rows with its constant (`BuiltInRolesIntegrationTest`), so a permission added to a constant
-    without its grant changeset fails the build;
+    changeset, and **copied**, never linked: an admin's edit changes the copy. A test on the test database (the
+    tests that edit a built-in role restore it) compares each built-in role's rows with its constant
+    (`BuiltInRolesIntegrationTest`), so a permission added to a constant without its grant changeset fails the build;
   - **a new permission** arrives with a changeset that grants it to the built-in roles that should hold it
     (`INSERT INTO role_permissions ... SELECT ... FROM roles WHERE built_in = 'ADMIN'`), so existing installations get
-    it on upgrade; with tenancy, every tenant's copy (crud-gen asks which built-in roles);
-  - **with tenancy** a new tenant gets its built-in roles in its creation: schema per tenant from the tenant
+    it on upgrade (crud-gen asks which built-in roles);
+  - **with tenancy (designed, not built: bootstrap refuses `roles` with a tenancy piece)** the grant changeset gives
+    every tenant's copy, and a new tenant gets its built-in roles in its creation: schema per tenant from the tenant
     changelog's literal seed (it runs into every new schema), row mode by copying the enum in the activation's
-    transaction (there the migration ran before the tenant existed);
+    transaction (there the migration ran before the tenant existed). That copy reads the enum at run time, which is
+    right for a new tenant's data; the Detect line below is about migrations of existing data;
   - limits stay out of role tables (AUTHZ-04).
 - **Detect:** a grant endpoint without the "holds it" check; a self-grant; a change of someone who holds more; a
   check on the request's earlier read instead of under the lock; a cascade delete of assignments; seeds that read

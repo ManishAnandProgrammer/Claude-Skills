@@ -52,8 +52,8 @@
 #              tables an admin edits (roles, role_permissions), a person's roles and personal grants (user_roles,
 #              user_permissions: ALLOW or DENY, each until a date or for good), the effective permissions read
 #              from PostgreSQL on every request in one statement; the built-in roles seeded from the Role
-#              enum; the account's (with tenancy the membership's) role column and the token's roles claim
-#              gone. From overlays/roles: no endpoint, policy or client changes
+#              enum; the account's role column and the token's roles claim gone (not yet with a tenancy piece).
+#              From overlays/roles: no endpoint or policy changes; the account's role field goes
 #   sign-in (account suspension), metadata, media and the tenancy pieces have admin endpoints: each brings
 #   the ADMIN role and the test base's newAdmin() (the "admin" markers), and its permissions: their constants in
 #   common/security/Permission and Area, and their lines in Role (house-review AUTHZ-01, AUTHZ-02).

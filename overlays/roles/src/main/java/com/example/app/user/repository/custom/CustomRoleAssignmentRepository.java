@@ -17,6 +17,12 @@ public interface CustomRoleAssignmentRepository {
     List<AccessRow> findAccessRows(Collection<UUID> userIds, Instant now);
 
     /**
+     * The same rows whatever the account's status: what a suspended person would hold again once reactivated, which
+     * the safety rules compare with the caller's (a suspended superior is still above).
+     */
+    List<AccessRow> findGrantedRows(Collection<UUID> userIds, Instant now);
+
+    /**
      * The active accounts that may hold one of {@code permissions} for good: a role giving it assigned without an
      * end, or a personal ALLOW of it without an end (safety rule 6's candidates; their DENYs are read with their rows).
      */

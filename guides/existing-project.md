@@ -86,17 +86,21 @@ A project that checks role names (`@RolesAllowed("TEACHER")`, `@PreAuthorize("ha
 For a Level 1 project whose admins must now build roles, give one person several, or grant and revoke one
 permission per person. Nothing a client calls changes but the account's `role` field, which goes (a breaking change
 of `UserResponse`: announce it).
-1. Copy the pieces it needs into the project (`--with change-history,roles`, after `sign-in`): the four tables'
-   entities, the per-request read, the endpoints and their tests. Bootstrap never overwrites: the project's own
-   `RolePermissions`, `User`, `TokenService`, `UserService`, `AccountStatusService` and `SecurityConfig` get the
-   piece's `roles` blocks by hand (`scripts/bootstrap-copy.sh --render` shows a golden file with every block applied
-   but roles: diff the overlay's and the reference's `roles` blocks against them).
+1. Copy the pieces it needs into the project: the project's original `--with` list plus `change-history,roles`
+   (`core,sign-in,metadata,change-history,roles`: the markers render by the pieces named, so leaving one out drops its
+   permissions from the built-in roles' seed): the four tables' entities, the per-request read, the endpoints and
+   their tests. Bootstrap never overwrites: the project's `RolePermissions` is replaced whole by the overlay's
+   (`overlays/roles/.../user/service/RolePermissions.java`: copy it over by hand), and its `User`, `TokenService`,
+   `UserService`, `AccountStatusService` and `SecurityConfig` get the piece's `roles` blocks by hand (read them in the
+   reference's files; `--render` doesn't show Level 2).
 2. **One changeset seeds the tables from the role column, then drops it** (the piece's `0037-roles.sql` is the
    model; number it in the project's range when its own tables come first): create the four tables with their keys,
    indexes and audit triggers; insert one built-in role per `Role` constant **with its permissions written out as
    literal rows**, as the enum lists them that day (never read from the enum by a migration); copy each account's
    role into `user_roles` onto the built-in role of that name (`INSERT ... SELECT u.id, r.id FROM users u JOIN roles r
-   ON r.built_in = u.role`); then `ALTER TABLE users DROP COLUMN role`. One transaction per changeset: an upgrade that
+   ON r.built_in = u.role`, refusing to go on while an account holds a role with no built-in copy); then
+   `ALTER TABLE users DROP COLUMN role`. Stop the previous release's instances before it runs: they read and write
+   the column (no rolling deploy across this changeset). One transaction per changeset: an upgrade that
    fails halfway leaves the column. Test it on a copy of production first (*Before upgrading a live database*, the
    runbook): count the accounts per role before, and the assignments per built-in role after.
 3. Stop writing the role anywhere: the token's `roles` claim, signup's role (signup gives the built-in `USER`

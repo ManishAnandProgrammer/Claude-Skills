@@ -8,8 +8,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.FactorGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 
 import java.util.List;
+import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -22,6 +30,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class RolePermissionsIntegrationTest extends RolesFixtures {
 
+    @Autowired
+    private JwtAuthenticationConverter converter;
+
+    @Autowired
+    private JwtDecoder jwtDecoder;
+
     @ParameterizedTest(name = "{0}")
     @EnumSource(Role.class)
     @DisplayName("A built-in role gives exactly its Role constant's permissions, read from its copy in the table")
@@ -33,6 +47,21 @@ class RolePermissionsIntegrationTest extends RolesFixtures {
     }
 
     @Test
+    @DisplayName("The converter gives exactly the permissions held, by name, beside Spring's FACTOR_BEARER; an unknown subject nothing")
+    void theConverterGivesExactlyWhatIsHeld() throws Exception {
+        TestUser user = newUserWithRole("ADMIN");
+        Jwt token = jwtDecoder.decode(user.accessToken());
+
+        List<String> authorities = converter.convert(token).getAuthorities().stream().map(GrantedAuthority::getAuthority).toList();
+
+        assertThat(authorities).containsExactlyInAnyOrderElementsOf(Stream.concat(
+                Role.ADMIN.permissions().stream().map(Permission::name), Stream.of(FactorGrantedAuthority.BEARER_AUTHORITY)).toList());
+        Jwt stranger = Jwt.withTokenValue("probe").header("alg", "HS256").subject(UUID.randomUUID().toString()).build();
+        assertThat(converter.convert(stranger).getAuthorities()).extracting(GrantedAuthority::getAuthority)
+                .containsExactly(FactorGrantedAuthority.BEARER_AUTHORITY);
+    }
+
+    @Test
     @DisplayName("Several roles add up, a personal ALLOW adds, a DENY always wins, and each change reaches the next request")
     void rolesAndGrantsAddUpAndADenyWins() throws Exception {
         String admin = newAdmin().accessToken();
@@ -40,7 +69,8 @@ class RolePermissionsIntegrationTest extends RolesFixtures {
         String neededRole = createRole(admin, NEEDED);
 
         assign(admin, user.id(), neededRole, null).andExpect(status().isOk());
-        assertThat(myPermissions(user.accessToken())).contains(NEEDED.name()).doesNotContain(NEEDING.name());
+        assertThat(myPermissions(user.accessToken())).contains(NEEDED.name()).doesNotContain(NEEDING.name())
+                .containsAll(Role.USER.permissions().stream().map(Permission::name).toList());
 
         putAs(admin, userPermission(user.id(), NEEDING), """
                 {"effect": "ALLOW"}""").andExpect(status().isOk());
@@ -115,9 +145,15 @@ class RolePermissionsIntegrationTest extends RolesFixtures {
     @DisplayName("GET /users/me/access lists what every check reads: the same set the handlers enforce")
     void accessShowsWhatTheChecksRead() throws Exception {
         TestUser user = newUserWithRole("USER");
-        List<String> shown = myPermissions(user.accessToken());
+        String admin = newAdmin().accessToken();
+        String role = createRole(admin, Permission.ROLES_MANAGE);
+        assign(admin, user.id(), role, LATER).andExpect(status().isOk());
+        assertThat(myPermissions(user.accessToken())).contains(Permission.ROLES_MANAGE.name());
+        getAs(user.accessToken(), ROLES).andExpect(status().isOk());
 
-        assertThat(shown).doesNotContain(Permission.ROLES_MANAGE.name());
-        getAs(user.accessToken(), ROLES).andExpect(status().isForbidden());
+        deleteAs(admin, userRole(user.id(), role)).andExpect(status().isNoContent());
+
+        assertThat(myPermissions(user.accessToken())).doesNotContain(Permission.ROLES_MANAGE.name());
+        getAs(user.accessToken(), ROLES).andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 }

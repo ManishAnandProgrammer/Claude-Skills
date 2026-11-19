@@ -157,8 +157,8 @@ With **AskUserQuestion** (several per call):
     (`ROLES_MANAGE`), a person's access and its changes (`/users/{id}/access`, `/roles/{roleId}`,
     `/permissions/{permission}`; `ACCESS_GRANT`) and the safety rules (grant only what you hold, never your own,
     never someone above you, prerequisites, a held role never deleted, never nobody left to manage access). **Cost:**
-    one more statement per authenticated request, four tables. Endpoints, policies, `/users/me/access` and clients
-    don't change. **Say no** when the roles are the application's own (Level 1, the default): moving later is the
+    one more statement per authenticated request, four tables. Endpoints, policies and `/users/me/access` don't
+    change; the account's `role` field goes (breaking for clients that read it). **Say no** when the roles are the application's own (Level 1, the default): moving later is the
     guide's (guides/existing-project.md, *Moving to Level 2*). With yes, add `roles` (and `change-history`) to `--with`
     and record `authorization: roles-piece` in both profiles: every later permission comes with its grant changeset.
 

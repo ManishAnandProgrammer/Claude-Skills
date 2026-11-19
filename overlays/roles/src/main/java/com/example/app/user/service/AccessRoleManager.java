@@ -21,7 +21,7 @@ import java.util.UUID;
  * A role's create and edit, which read two aggregates (house-review ARCH-15's Manager): the role
  * ({@link AccessRoleService}) and the caller's access ({@link PersonAccessService}). It owns the transaction and
  * holds the safety rules about a role: its permissions are only ones the caller holds (rule 1, 403
- * {@code ACCESS_NOT_HELD}), each with its prerequisites (rule 4, 400 {@code ROLE_PREREQUISITE_MISSING}, nothing filled
+ * {@code ACCESS_NOT_HELD}; an edit also only of a role whose every permission they hold), each with its prerequisites (rule 4, 400 {@code ROLE_PREREQUISITE_MISSING}, nothing filled
  * in), and an edit that would leave no active account holding what manages access for good is refused (rule 6, 409
  * {@code ACCESS_LAST_MANAGER}). An edit locks first ({@link PersonAccessService#lockManagersWith}) and checks against
  * what the caller holds under that lock; a create gives nobody anything, so it locks nothing.
@@ -52,6 +52,9 @@ public class AccessRoleManager {
     @Transactional
     public ObjectWrapper<AccessRoleResponse> update(UUID callerId, UUID id, AccessRoleUpdateRequest request) {
         EffectiveAccess caller = access.lockManagersWith(callerId, Permission.ROLES_MANAGE);
+        // Both what it gives now and what it will: an editor never takes from a role (and from everyone above them who
+        // holds it) a permission they don't hold themselves.
+        PersonAccessService.requireHeld(caller, roles.getRole(id).permissions());
         PersonAccessService.requireHeld(caller, request.permissions());
         requirePrerequisites(request.permissions());
         AccessRoleResponse updated = roles.toResponse(roles.update(id, request));

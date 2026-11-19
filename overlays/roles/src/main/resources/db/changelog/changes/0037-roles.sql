@@ -12,12 +12,15 @@
 --   nobody holds it, and no assignment ever goes with it.
 -- * All four are in the change history (change-history piece, 0035).
 -- * The users.role column goes: each account's one role becomes its assignment of the built-in role of that name,
---   and the tables are the one source from then on.
+--   and the tables are the one source from then on. A role with no built-in copy stops the migration (an account
+--   would lose its access). The previous release reads and writes that column: stop its instances before this
+--   runs (no rolling deploy across it).
 -- tenancy-row:begin
 -- * Row mode: the four are tenant tables (a tenant's roles, its members' assignments and grants), each with its
 --   tenant_id, forced row-level security and keys that keep a row inside its tenant (TEN-33); a person is a member
 --   of the tenant, (user_id, tenant_id) -> members. Every tenant that exists gets its built-in roles here; a new one
---   gets them at its activation (BuiltInRolesSeed). The membership's role column goes.
+--   would get them at its activation. Designed, not built: bootstrap refuses roles with tenancy for now, so these
+--   row-mode lines have never run. The membership's role column goes.
 -- tenancy-row:end
 -- bootstrap-copy.sh copies this file with the roles piece.
 
@@ -273,10 +276,11 @@ SELECT uuidv7(), r.tenant_id, r.id, p.permission, now(), now(), 0
 ALTER TABLE role_permissions FORCE ROW LEVEL SECURITY;
 ALTER TABLE roles FORCE ROW LEVEL SECURITY;
 -- tenancy-row:end
+--rollback DELETE FROM user_roles;
 --rollback DELETE FROM role_permissions;
 --rollback DELETE FROM roles;
 
---changeset dev:0037-role-column-to-assignments
+--changeset dev:0037-role-column-to-assignments splitStatements:false
 -- tenancy-row:begin
 -- Each membership's one role becomes its member's assignment of the tenant's built-in role of that name, then the
 -- membership's role column goes (the tables are the one source).
@@ -293,13 +297,19 @@ ALTER TABLE tenant_memberships DROP COLUMN role;
 --rollback ALTER TABLE tenant_memberships ADD CONSTRAINT ck_tenant_memberships_role CHECK (role IN ('USER', 'ADMIN'));
 -- tenancy-row:else
 -- -- Each account's one role becomes its assignment of the built-in role of that name, then the column goes.
+-- DO $$
+-- BEGIN
+--     IF EXISTS (SELECT 1 FROM users u WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.built_in = u.role)) THEN
+--         RAISE EXCEPTION 'An account holds a role with no built-in copy in this changeset: seed it first';
+--     END IF;
+-- END $$;
 -- INSERT INTO user_roles (id, user_id, role_id, created_at, updated_at, version)
 -- SELECT uuidv7(), u.id, r.id, now(), now(), 0
 --   FROM users u
 --   JOIN roles r ON r.built_in = u.role;
 -- ALTER TABLE users DROP COLUMN role;
 -- --rollback ALTER TABLE users ADD COLUMN role text;
--- --rollback UPDATE users u SET role = coalesce((SELECT max(r.built_in) FROM user_roles a JOIN roles r ON r.id = a.role_id WHERE a.user_id = u.id), 'USER');
+-- --rollback UPDATE users u SET role = CASE WHEN EXISTS (SELECT 1 FROM user_roles a JOIN roles r ON r.id = a.role_id WHERE a.user_id = u.id AND r.built_in = 'ADMIN') THEN 'ADMIN' ELSE 'USER' END;
 -- --rollback ALTER TABLE users ALTER COLUMN role SET NOT NULL;
 -- --rollback ALTER TABLE users ADD CONSTRAINT ck_users_role CHECK (role IN ('USER', 'ADMIN'));
 -- tenancy-row:end

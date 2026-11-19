@@ -44,18 +44,19 @@ import java.util.stream.Collectors;
  * <p>A change of someone's access, in one transaction: the caller's and the person's rows locked together, in id
  * order (two admins changing one person queue; a second change finds the first one's result), then the safety rules
  * on what the database holds now, whatever the caller's request read a moment before:</p>
- * <ol>
- *   <li>never one's own access (403 {@code ACCESS_OWN_CHANGE});</li>
+ * <ul>
  *   <li>the caller holds {@code ACCESS_GRANT} (403 {@code ACCESS_DENIED});</li>
- *   <li>the person holds nothing the caller doesn't (403 {@code ACCESS_TARGET_HOLDS_MORE}): nobody manages someone
- *       above them, which a DENY could otherwise sabotage;</li>
- *   <li>a role or a grant gives only what the caller holds (403 {@code ACCESS_NOT_HELD});</li>
- *   <li>afterwards an active account still holds each of {@link #KEPT_HELD} for good (409
+ *   <li>safety rule 2: never one's own access (403 {@code ACCESS_OWN_CHANGE});</li>
+ *   <li>safety rule 3: the person holds nothing the caller doesn't, a suspended person's grants counted (403
+ *       {@code ACCESS_TARGET_HOLDS_MORE}): nobody manages someone above them, which a DENY could otherwise sabotage;</li>
+ *   <li>safety rule 1: a role or a grant gives only what the caller holds, and what the person would hold afterwards
+ *       too (403 {@code ACCESS_NOT_HELD});</li>
+ *   <li>safety rule 6: afterwards an active account still holds each of {@link #KEPT_HELD} for good (409
  *       {@code ACCESS_LAST_MANAGER}).</li>
- * </ol>
- * <p>The lock is on the account's row (the narrowest one every such change shares, DATA-29), never on the role: a
- * role's edit locks the rows of the accounts that hold {@link #KEPT_HELD} for good ({@link #lockManagersWith}), so it
- * and a person's change always share a row before either can take the last holder away.</p>
+ * </ul>
+ * <p>Safety rule 7, the lock: the account rows (the narrowest every such change shares, DATA-29) of the caller, the
+ * person and every account that holds {@link #KEPT_HELD} for good, in id order, never the role: a role's edit takes
+ * the same set ({@link #lockManagersWith}), so any two changes that could each take the last holder away queue.</p>
  *   <!-- tenancy:begin -->
  * <p>With tenancy the person is a member of the caller's tenant: the rows locked are the memberships, the rules
  * count the tenant's members, and the roles are the tenant's.</p>
@@ -108,6 +109,7 @@ public class PersonAccessService {
             assignments.save(RoleAssignment.of(userId, role, request.validUntil()));
         }
         assignments.flush();
+        requireWithinTheCaller(caller, userId);
         requireManagersRemain();
         log.info("Role given: userId={}, roleId={}, validUntil={}", userId, roleId, request.validUntil());
         return ObjectWrapper.withObject(view(userId));
@@ -139,6 +141,7 @@ public class PersonAccessService {
             grants.save(PersonalGrant.of(userId, permission.name(), request.effect(), request.validUntil()));
         }
         grants.flush();
+        requireWithinTheCaller(caller, userId);
         requireManagersRemain();
         log.info("Personal grant set: userId={}, permission={}, effect={}, validUntil={}", userId, permission, request.effect(),
                 request.validUntil());
@@ -156,6 +159,7 @@ public class PersonAccessService {
         }
         grants.delete(existing.get());
         grants.flush();
+        requireWithinTheCaller(caller, userId);
         requireManagersRemain();
         log.info("Personal grant removed: userId={}, permission={}", userId, permission);
     }
@@ -167,9 +171,8 @@ public class PersonAccessService {
         assignBuiltIn(created.userId(), Role.USER);
     }
 
-    /** A built-in role for good, in the caller's transaction (a new account's, a new member's). */
-    @Transactional(propagation = Propagation.MANDATORY)
-    void assignBuiltIn(UUID userId, Role role) {
+    /** A built-in role for good, in the listener's transaction (a new account's). */
+    private void assignBuiltIn(UUID userId, Role role) {
         assignments.save(RoleAssignment.of(userId, roles.getBuiltIn(role), null));
     }
 
@@ -180,9 +183,7 @@ public class PersonAccessService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     EffectiveAccess lockManagersWith(UUID callerId, Permission permission) {
-        Set<UUID> locked = new TreeSet<>(assignments.findHoldersForGood(names(KEPT_HELD)));
-        locked.add(callerId);
-        lockPeople(locked);
+        lockWithTheHoldersForGood(List.of(callerId));
         EffectiveAccess caller = accessOf(callerId);
         if (!caller.holds(permission)) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
@@ -197,7 +198,7 @@ public class PersonAccessService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     void lockToManage(UUID callerId, UUID userId, Permission permission) {
-        lockPeople(new TreeSet<>(List.of(callerId, userId)));
+        lockWithTheHoldersForGood(List.of(callerId, userId));
         requireMayManage(callerId, userId, permission);
     }
 
@@ -223,26 +224,48 @@ public class PersonAccessService {
         if (userId.equals(callerId)) {
             throw AppException.of(ErrorCode.ACCESS_OWN_CHANGE);
         }
-        lockPeople(new TreeSet<>(List.of(callerId, userId)));
+        lockWithTheHoldersForGood(List.of(callerId, userId));
         return requireMayManage(callerId, userId, Permission.ACCESS_GRANT);
     }
 
     /** Both people's access in one statement; the person must exist (404). */
     private EffectiveAccess requireMayManage(UUID callerId, UUID userId, Permission permission) {
         requirePerson(userId);
-        Map<UUID, List<AccessRow>> rows = assignments.findAccessRows(List.of(callerId, userId), clock.instant()).stream()
-                .collect(Collectors.groupingBy(AccessRow::userId));
-        EffectiveAccess caller = EffectiveAccess.of(rows.getOrDefault(callerId, List.of()));
+        EffectiveAccess caller = accessOf(callerId);
         if (!caller.holds(permission)) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
         }
         Set<Permission> above = EnumSet.noneOf(Permission.class);
-        above.addAll(EffectiveAccess.of(rows.getOrDefault(userId, List.of())).permissions());
+        above.addAll(grantedTo(userId).permissions());
         above.removeAll(caller.permissions());
         if (!above.isEmpty()) {
             throw AppException.of(ErrorCode.ACCESS_TARGET_HOLDS_MORE);
         }
         return caller;
+    }
+
+    /**
+     * Safety rule 1 on the result, after the change is flushed: what the person would hold now (their status aside)
+     * holds nothing the caller doesn't, so taking a DENY away never hands back a permission that needed the denied
+     * one and that the caller lacks. 403 {@code ACCESS_NOT_HELD}, naming the difference.
+     */
+    private void requireWithinTheCaller(EffectiveAccess caller, UUID userId) {
+        requireHeld(caller, grantedTo(userId).permissions());
+    }
+
+    /**
+     * The rows of {@code userIds} and of every account holding {@link #KEPT_HELD} for good, locked in id order: any two
+     * changes that could each take the last holder away share a locked row, so the second counts after the first.
+     */
+    private void lockWithTheHoldersForGood(Collection<UUID> userIds) {
+        Set<UUID> locked = new TreeSet<>(assignments.findHoldersForGood(names(KEPT_HELD)));
+        locked.addAll(userIds);
+        lockPeople(locked);
+    }
+
+    /** What {@code userId} is given, whatever their account's status (a suspended person still counts as above). */
+    private EffectiveAccess grantedTo(UUID userId) {
+        return EffectiveAccess.of(assignments.findGrantedRows(List.of(userId), clock.instant()));
     }
 
     /** Safety rule 1: 403 {@code ACCESS_NOT_HELD}, naming what the caller doesn't hold. */

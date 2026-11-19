@@ -13,7 +13,8 @@ import java.time.Instant;
  * retention.
  *   <!-- tenancy:begin -->
  <!-- * A job's, so it runs outside any tenant: the platform's table resolves. -->
- *   <!-- tenancy:end --> The database's triggers write the rows; nothing in the application reads them (compliance only,
+ *   <!-- tenancy:end -->
+ * The database's triggers write the rows; nothing in the application reads them (compliance only,
  * house-review DATA-08), and no entity maps the table.
  */
 @Component

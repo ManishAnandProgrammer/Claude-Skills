@@ -59,7 +59,7 @@ nothing: it is the code the skills copy.
 | Key | Value |
 |---|---|
 | `idStrategy` | `uuidv7` |
-| `auditedTables` | `users (password_hash excluded), todo_lists, todos` (with tenancy also `tenant_memberships`) |
+| `auditedTables` | `users (password_hash excluded), todo_lists, todos` (with tenancy also `tenant_memberships`, `last_used_at` excluded; with the roles piece also `roles`, `role_permissions`, `user_roles`, `user_permissions`) |
 | `auditMechanism` | `pg-trigger` |
 | `retentionExceptions` | `none` |
 

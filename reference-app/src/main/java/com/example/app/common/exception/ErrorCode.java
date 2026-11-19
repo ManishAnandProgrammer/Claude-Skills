@@ -77,7 +77,7 @@ public enum ErrorCode {
     // ROLE_CODE_TAKEN,
     // /** A role is deleted only while nobody holds it (safety rule 5): assignments never cascade. */
     // ROLE_IN_USE,
-    // /** A built-in role stays: signup and new tenants give it. Edit its copy instead. */
+    // /** A built-in role stays: signup gives it. Edit its copy instead. */
     // ROLE_BUILT_IN,
     // /** A role saved without a prerequisite of one of its permissions (safety rule 4): nothing is filled in. */
     // ROLE_PREREQUISITE_MISSING,

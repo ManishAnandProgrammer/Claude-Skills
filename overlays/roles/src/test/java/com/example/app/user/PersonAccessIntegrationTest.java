@@ -4,10 +4,11 @@ import com.example.app.common.security.Permission;
 import com.example.app.support.RolesFixtures;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -104,6 +105,8 @@ class PersonAccessIntegrationTest extends RolesFixtures {
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_OWN_CHANGE"));
         deleteAs(admin.accessToken(), userPermission(admin.id(), NEEDED))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_OWN_CHANGE"));
+        deleteAs(admin.accessToken(), userRole(admin.id(), role))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_OWN_CHANGE"));
     }
 
     @Test
@@ -118,8 +121,8 @@ class PersonAccessIntegrationTest extends RolesFixtures {
     }
 
     @Test
-    @DisplayName("A change reads the caller's access under the lock, not the token: a granter whose ACCESS_GRANT was denied is 403 at once")
-    void theCallersAccessIsReadAtTheChange() throws Exception {
+    @DisplayName("A granter whose ACCESS_GRANT was denied is 403 on their next request, with the token they already had")
+    void aDeniedGranterIsRefusedAtOnce() throws Exception {
         String admin = newAdmin().accessToken();
         TestUser granter = newUserHolding(Permission.ACCESS_GRANT, NEEDED);
         TestUser person = newUser();
@@ -154,9 +157,60 @@ class PersonAccessIntegrationTest extends RolesFixtures {
             within(holder);
 
             assertThat(List.of(within(firstDeniesSecond), within(secondDeniesFirst))).containsExactlyInAnyOrder(200, 403);
+            assertThat(jdbc.queryForObject("""
+                    select count(*) from user_permissions
+                     where user_id in (?, ?) and permission = 'ACCESS_GRANT' and effect = 'DENY'""", Integer.class,
+                    first.id(), second.id())).as("exactly one of the two DENYs was written").isEqualTo(1);
         } finally {
             release.countDown();
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    @DisplayName("Safety rule 1 on the result: taking a DENY away that would hand back a permission the caller lacks is 403 ACCESS_NOT_HELD")
+    void takingADenyAwayHandsBackNothingTheCallerLacks() throws Exception {
+        String admin = newAdmin().accessToken();
+        TestUser person = newUser();
+        assign(admin, person.id(), createRole(admin, NEEDED, NEEDING), null).andExpect(status().isOk());
+        putAs(admin, userPermission(person.id(), NEEDED), grantJson("DENY")).andExpect(status().isOk());
+        assertThat(myPermissions(person.accessToken())).doesNotContain(NEEDED.name(), NEEDING.name());
+        TestUser granter = newUserHolding(Permission.ACCESS_GRANT, NEEDED);
+
+        deleteAs(granter.accessToken(), userPermission(person.id(), NEEDED))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
+        putAs(granter.accessToken(), userPermission(person.id(), NEEDED), grantJson("ALLOW"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
+        assertThat(myPermissions(person.accessToken())).doesNotContain(NEEDED.name(), NEEDING.name());
+    }
+
+    @Test
+    @DisplayName("Safety rule 3 counts a suspended person's grants: a superior suspended is still above (403 ACCESS_TARGET_HOLDS_MORE)")
+    void aSuspendedSuperiorIsStillAbove() throws Exception {
+        TestUser superior = newAdmin();
+        TestUser granter = newUserHolding(Permission.ACCESS_GRANT, NEEDED);
+        String adminRole = jdbc.queryForObject("select id::text from roles where built_in = 'ADMIN'", String.class);
+        sql("update users set status = 'SUSPENDED' where id = ?", superior.id());
+
+        deleteAs(granter.accessToken(), userRole(superior.id(), adminRole))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_TARGET_HOLDS_MORE"));
+        // tenancy:begin
+        // tenancy:else
+        // TestUser statusChanger = newUserHolding(Permission.ACCOUNT_READ, Permission.ACCOUNT_STATUS_CHANGE);
+        // Long version = jdbc.queryForObject("select version from users where id = ?", Long.class, superior.id());
+        // patchAs(statusChanger.accessToken(), "/api/v1/users/" + superior.id() + "/status", """
+        //         {"status": "ACTIVE", "version": %d}""".formatted(version))
+        //         .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_TARGET_HOLDS_MORE"));
+        // tenancy:end
+    }
+
+    @Test
+    @DisplayName("An assignment's end must lie ahead: a past validUntil is 400 VALIDATION_FAILED")
+    void aPastEndIsRefused() throws Exception {
+        String admin = newAdmin().accessToken();
+        TestUser person = newUser();
+
+        assign(admin, person.id(), createRole(admin, NEEDED), Instant.parse("2000-01-01T00:00:00Z"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
     }
 }

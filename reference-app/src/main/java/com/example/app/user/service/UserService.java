@@ -183,6 +183,8 @@ public class UserService implements Users {
         repository.saveAndFlush(user);
     }
 
+    // roles:begin
+    // roles:else
     /**
      * The accounts with these ids, locked for update in id order until the caller's transaction ends (an
      * account status change: the caller and the target). A missing one is simply not in the list.
@@ -191,6 +193,7 @@ public class UserService implements Users {
     List<User> lockForStatusChange(Collection<UUID> userIds) {
         return repository.findAllForUpdate(userIds);
     }
+    // roles:end
 
     // roles:begin
     // tenancy:begin

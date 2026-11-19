@@ -12,7 +12,7 @@
 --   side by side (copying both whole rows on every update would make this the largest table by far). An UPDATE that
 --   changes nothing writes nothing.
 -- * Never copied: the columns a table's trigger names as its arguments, its secrets and hashes
---   (users.password_hash). A new secret or hash column on an audited table joins its trigger's arguments in
+--   (users.password_hash) and bookkeeping no person changes (a membership's last_used_at). A new secret or hash column on an audited table joins its trigger's arguments in
 --   the same changeset that adds it; a new table that matters gets a trigger of its own.
 -- * Append-only: an UPDATE of audit_log is refused by a trigger. The application's only statement on it is the
 --   purge's delete past the retention (ChangeHistoryPurgeJob, app.jobs.change-history-purge); nothing reads it
@@ -114,9 +114,10 @@ CREATE TRIGGER audit_log_append_only BEFORE UPDATE ON audit_log FOR EACH ROW EXE
 CREATE TRIGGER audit_users AFTER INSERT OR UPDATE OR DELETE ON users
     FOR EACH ROW EXECUTE FUNCTION audit_row_change('password_hash');
 -- tenancy:begin
--- -- Who belongs to which tenant, with which role.
+-- -- Who belongs to which tenant, with which role. last_used_at is bookkeeping no person changes (every token issue
+-- -- stamps it): never copied.
 -- CREATE TRIGGER audit_tenant_memberships AFTER INSERT OR UPDATE OR DELETE ON tenant_memberships
---     FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+--     FOR EACH ROW EXECUTE FUNCTION audit_row_change('last_used_at');
 -- --rollback DROP TRIGGER audit_tenant_memberships ON tenant_memberships;
 -- tenancy:end
 --rollback DROP TRIGGER audit_users ON users;

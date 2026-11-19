@@ -1,5 +1,5 @@
-626b4b4ab3775d9cb79bb9365ad79c4bc32f6ec8609ea0abb866e337a334fbbd  overlays/tenancy/spotbugs-exclude.xml
-e08ce935897f672266be7489677cfb3fe7527f64bd160fe2f86ad4a80303db21  reference-app/spotbugs-exclude.xml
+562019b9cf6e4bb94258f1c692909d391b01601c7053d9f1f57df3b15ffe0a15  overlays/tenancy/spotbugs-exclude.xml
+b75bd2978bc179df9dd6093365b7b85d04eaf1a4e0c39cefc8b9f088db71dc1d  reference-app/spotbugs-exclude.xml
 6d626d234a3309745e56d5c4cd792b70fd9cafa64fd006c524ab031d5f3e95e2  reference-app/src/main/java/com/example/app/common/logging/LogContext.java
 11f2b9179e3f61756c09217b66fb0a350e125ae5cf117be60dcfc177177b38c5  reference-app/src/main/java/com/example/app/common/logging/UserLogContextFilter.java
 a9ad44701d5ce1da5dc00e3d3c1370a2ae5d9cbde560db40d62b8e046d7c06b8  reference-app/src/main/java/com/example/app/common/security/CurrentUser.java

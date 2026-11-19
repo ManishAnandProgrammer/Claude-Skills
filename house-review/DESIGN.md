@@ -1087,8 +1087,9 @@ news-pulse (changeset 0048, its actor listener and purge job), in the reference'
 - **An overlay, like tenancy, not a reference piece like the session version:** the reference stays the Level 1
   golden (the default of every project), so Level 2's own files live in `overlays/roles`, and its changes to shared
   files are commented `roles` blocks in the reference (bootstrap uncomments them with the piece). `verify.sh` 2n
-  copies every piece with it and runs every Level 1 test unchanged beside the piece's own: only the one assertion of
-  the account's `role` field is a `roles:else` block. The reference holds no live roles code (a step 0 check), and
+  copies every piece with it and runs every Level 1 test unchanged beside the piece's own, but the ones that asserted
+  the role column or claim (the account's `role` field, the converter's two token tests, the `newUserWithRole`
+  fixture), which are `roles:else` blocks with Level 2 counterparts. The reference holds no live roles code (a step 0 check), and
   every other copy none of its traces.
 - **One source:** the changeset copies each account's role onto its built-in role and drops `users.role`; the token
   carries no role claim; `UserResponse` loses `role` (with tenancy it never had one). Signup gives the built-in USER
@@ -1123,9 +1124,14 @@ news-pulse (changeset 0048, its actor listener and purge job), in the reference'
   2 and 3). Serialised by the account rows: a person's change locks caller and person, a role's edit the caller and
   every holder for good, so any two changes that could each remove a last holder share a locked row. The runbook
   names the operator's SQL for the case it happened outside the application.
-- **Rule 7:** `version` on the role; a person's change locks the two account rows in id order and re-reads what the
-  caller holds under the lock (a granter whose ACCESS_GRANT was just denied is refused at once). Proven by a test that
-  holds both rows while two admins deny each other: one 200, one 403.
+- **Rule 7:** `version` on the role; every change locks, in id order, the caller's, the person's and every for-good
+  holder's account rows and re-reads under the lock. Proven by a test that holds both admins' rows while they deny
+  each other: one 200, one 403 `ACCESS_DENIED`, one DENY written.
+- **Review round 1** found three ways past rules 1 and 3, now closed and tested: a suspended superior read as holding
+  nothing (the rules now read a person's grants whatever their status), taking a DENY away handing back a dependent
+  the caller lacks (rule 1 is also checked on the result), and a role's edit stripping a permission the editor lacks
+  from everyone above them (an edit needs the old permissions too). Person changes now also lock the for-good
+  holders, so two callers holding through expiring grants can't each remove a different last holder.
 - **Built-in roles** can't be deleted (409 `ROLE_BUILT_IN`): signup gives the USER one. Their seed is literal SQL in
   0037, written from the enum on the day; `BuiltInRolesIntegrationTest` compares them on the test database (tests
   that edit a built-in role restore it).

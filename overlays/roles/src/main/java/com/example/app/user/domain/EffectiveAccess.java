@@ -1,6 +1,7 @@
 package com.example.app.user.domain;
 
 import com.example.app.common.security.Permission;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,6 +31,7 @@ public final class EffectiveAccess {
     }
 
     /** Why a permission something gave is not held. */
+    @Schema(enumAsRef = true, description = "DENIED (a personal DENY) or PREREQUISITE_MISSING (one it needs isn't held)")
     public enum Removal { DENIED, PREREQUISITE_MISSING }
 
     /** A permission something gave but the person doesn't hold, and why ({@code missing}: the prerequisites not held). */

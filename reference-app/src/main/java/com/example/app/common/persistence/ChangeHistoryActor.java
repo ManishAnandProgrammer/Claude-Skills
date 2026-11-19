@@ -51,7 +51,12 @@ public class ChangeHistoryActor implements TransactionExecutionListener {
         if (Objects.nonNull(beginFailure) || !transaction.isNewTransaction() || transaction.isReadOnly()) {
             return;
         }
+        // tenancy:begin
+        // // An impersonating staff member is the one who writes (the token's act claim), not the member they act as.
+        // Optional<UUID> caller = currentUser.actorId().or(currentUser::findId);
+        // tenancy:else
         Optional<UUID> caller = currentUser.findId();
+        // tenancy:end
         if (caller.isEmpty()) {
             return;
         }

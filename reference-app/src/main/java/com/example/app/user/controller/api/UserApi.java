@@ -114,6 +114,31 @@ public interface UserApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ListWrapper<UserResponse> lookUp(UserFilter filter);
 
+    // roles:begin
+    // @Operation(summary = "Suspend or reactivate an account (ACCOUNT_STATUS_CHANGE)", description = """
+    //         SUSPENDED ends every session of the account at once (every refresh token revoked, and\s"""
+    //         + ACCESS_TOKENS_END + """
+    //         ) and refuses it every new one: login answers 403 AUTH_ACCOUNT_SUSPENDED. ACTIVE lets it \
+    //         sign in again; the sessions the suspension ended stay ended. Never your own account; your account \
+    //         must hold ACCOUNT_STATUS_CHANGE now (read under the change's lock), never an account that holds a \
+    //         permission you don't, and never when no active account would then hold ROLES_MANAGE or ACCESS_GRANT \
+    //         for good.""")
+    // @ApiResponse(responseCode = "200", description = "The account with its new status and version")
+    // @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (a malformed id)",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // @ApiResponse(responseCode = "403", description = """
+    //         ACCESS_DENIED (without ACCOUNT_STATUS_CHANGE, or not an ACTIVE account holding it now), USER_OWN_STATUS_CHANGE (your own account: another ADMIN \
+    //         changes it), ACCESS_TARGET_HOLDS_MORE (the account holds a permission you don't)""",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT (a stale version), ACCESS_LAST_MANAGER",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // roles:else
     @Operation(summary = "Suspend or reactivate an account (ACCOUNT_STATUS_CHANGE)", description = """
             SUSPENDED ends every session of the account at once (every refresh token revoked, and\s"""
             + ACCESS_TOKENS_END + """
@@ -136,6 +161,7 @@ public interface UserApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // roles:end
     ObjectWrapper<UserResponse> changeStatus(@Parameter(description = "The account's id") UUID id, UserStatusRequest request);
     // tenancy:end
 }

@@ -128,20 +128,46 @@ class RolesIntegrationTest extends RolesFixtures {
     }
 
     @Test
-    @DisplayName("Safety rule 6: an edit that would leave no active account holding ROLES_MANAGE for good is 409 ACCESS_LAST_MANAGER")
+    @DisplayName("Safety rule 6: an edit that would leave no active account holding ROLES_MANAGE or ACCESS_GRANT for good is 409 ACCESS_LAST_MANAGER")
     void theLastManagerIsKept() throws Exception {
         String admin = newAdmin().accessToken();
+        // A holder of both until a date, so the edit would leave someone holding them, just not for good.
+        newUserHolding(Permission.ROLES_MANAGE, Permission.ACCESS_GRANT, NEEDED);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from user_roles a join role_permissions p on p.role_id = a.role_id join roles r on r.id = a.role_id
+                 where p.permission in ('ROLES_MANAGE', 'ACCESS_GRANT') and a.valid_until is null and r.built_in is distinct from 'ADMIN'""",
+                Integer.class)).as("no holder for good but through the built-in ADMIN, which this test relies on").isZero();
         String adminRole = builtInId(Role.ADMIN);
         long version = versionOf(adminRole);
-        Permission[] withoutRolesManage = Role.ADMIN.permissions().stream()
-                .filter(permission -> permission != Permission.ROLES_MANAGE).toArray(Permission[]::new);
+        Permission[] seeded = Role.ADMIN.permissions().toArray(Permission[]::new);
+        try {
+            for (Permission kept : List.of(Permission.ROLES_MANAGE, Permission.ACCESS_GRANT)) {
+                Permission[] without = Role.ADMIN.permissions().stream().filter(permission -> permission != kept).toArray(Permission[]::new);
 
-        putAs(admin, ROLES + "/" + adminRole, roleUpdate("Admin", version, withoutRolesManage))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_LAST_MANAGER"));
+                putAs(admin, ROLES + "/" + adminRole, roleUpdate("Admin", version, without))
+                        .andExpect(status().isConflict())
+                        .andExpect(jsonPath("$.errorCode").value("ACCESS_LAST_MANAGER"));
+            }
+            assertThat(versionOf(adminRole)).isEqualTo(version);
+            assertThat(myPermissions(admin)).contains(Permission.ROLES_MANAGE.name(), Permission.ACCESS_GRANT.name());
+        } finally {
+            if (versionOf(adminRole) != version) {
+                putAs(admin, ROLES + "/" + adminRole, roleUpdate("Admin", versionOf(adminRole), seeded));
+            }
+        }
+    }
 
-        assertThat(versionOf(adminRole)).isEqualTo(version);
-        assertThat(myPermissions(admin)).contains(Permission.ROLES_MANAGE.name());
+    @Test
+    @DisplayName("Safety rule 1 on an edit: an editor never takes from a role a permission they don't hold (403 ACCESS_NOT_HELD)")
+    void anEditorNeverStripsWhatTheyLack() throws Exception {
+        String admin = newAdmin().accessToken();
+        String role = createRole(admin, NEEDED);
+        TestUser editor = newUserHolding(Permission.ROLES_MANAGE);
+
+        putAs(editor.accessToken(), ROLES + "/" + role, roleUpdate("Stripped", 0))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
+        getAs(admin, ROLES + "/" + role).andExpect(jsonPath("$.response.permissions", contains(NEEDED.name())));
     }
 
     @Test
@@ -172,7 +198,7 @@ class RolesIntegrationTest extends RolesFixtures {
             putAs(admin, ROLES + "/" + userRole, roleUpdate("User", versionOf(userRole), withNeeded)).andExpect(status().isOk());
 
             assertThat(myPermissions(user.accessToken())).contains(NEEDED.name());
-            assertThat(Role.USER.permissions()).isEqualTo(seeded).doesNotContain(NEEDED);
+            assertThat(Role.USER.permissions()).as("the enum stays as it was").doesNotContain(NEEDED);
         } finally {
             putAs(admin, ROLES + "/" + userRole, roleUpdate("User", versionOf(userRole), seededArray)).andExpect(status().isOk());
         }
@@ -195,11 +221,11 @@ class RolesIntegrationTest extends RolesFixtures {
     }
 
     @Test
-    @DisplayName("Only ROLES_MANAGE manages roles: a USER's list, create, edit and delete are 403 ACCESS_DENIED")
+    @DisplayName("Only ROLES_MANAGE manages roles: a USER's list and delete are 403 ACCESS_DENIED")
     void onlyRoleManagersManageRoles() throws Exception {
         String user = newUser().accessToken();
 
         getAs(user, ROLES).andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
-        deleteAs(user, ROLES + "/" + UUID.randomUUID()).andExpect(status().isForbidden());
+        deleteAs(user, ROLES + "/" + UUID.randomUUID()).andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 }

@@ -242,8 +242,7 @@
         <Bug pattern="THROWS_METHOD_THROWS_CLAUSE_BASIC_EXCEPTION"/>
     </Match>
     <!-- roles:begin -->
-    <!-- Rethrows a failure that is not a database outage while the permissions are read, so it propagates as any other. -->
-    <Match>
+    <Match> <!-- Rethrows a failure that is not a database outage while the permissions are read: it propagates as any other. -->
         <Class name="com.example.app.config.SecurityConfig"/>
         <Method name="readPermissions"/>
         <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>

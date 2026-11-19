@@ -453,8 +453,8 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
     INSERT the new row, a DELETE the old one, an UPDATE only the changed columns, both sides; an update that
     changes nothing writes nothing), when, who. A table without its trigger, or a function per table, is a
     finding;
-  - **secrets and hashes are never copied:** the trigger's arguments name the excluded columns
-    (`audit_row_change('password_hash')`), and a new secret or hash column on an audited table joins them in the
+  - **secrets and hashes are never copied**, nor bookkeeping no person changes (a stamp every token issue writes):
+    the trigger's arguments name the excluded columns (`audit_row_change('password_hash')`), and a new secret or hash column on an audited table joins them in the
     changeset that adds it;
   - an UPDATE of `audit_log` is refused by a trigger (not a revoked privilege: the purge's `FOR UPDATE SKIP
     LOCKED` needs UPDATE); no foreign keys (a row outlives what it describes);
