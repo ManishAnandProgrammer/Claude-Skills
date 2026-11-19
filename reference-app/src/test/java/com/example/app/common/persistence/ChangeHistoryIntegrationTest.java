@@ -1,6 +1,7 @@
 package com.example.app.common.persistence;
 
 import com.example.app.support.IntegrationTest;
+import com.example.app.support.QueryPlan;
 // tenancy:begin
 // import com.example.app.support.WithoutTestTenant;
 // tenancy:end
@@ -11,12 +12,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +59,31 @@ class ChangeHistoryIntegrationTest extends IntegrationTest {
 
     @Autowired
     private ChangeHistoryRetention retention;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    /**
+     * The tables the change history audits, each piece's own (the review profile's {@code auditedTables}): a table
+     * that matters gets its trigger in the changeset that creates it, and its name here.
+     */
+    private static Set<String> auditedTables() {
+        Set<String> tables = new HashSet<>();
+        // sign-in:begin
+        tables.add("users");
+        // tenancy:begin
+        // tables.add("tenant_memberships");
+        // tenancy:end
+        // sign-in:end
+        // example:begin
+        tables.add("todo_lists");
+        tables.add("todos");
+        // example:end
+        // roles:begin
+        // tables.addAll(List.of("roles", "role_permissions", "user_roles", "user_permissions"));
+        // roles:end
+        return tables;
+    }
 
     /** The history of one row, oldest first. */
     private List<Map<String, Object>> historyOf(String table, UUID rowId) {
@@ -160,6 +191,34 @@ class ChangeHistoryIntegrationTest extends IntegrationTest {
     // example:end
 
     @Test
+    @DisplayName("""
+            Every audited table has the history trigger, and every secret-like column of one (a hash, a secret, a token, \
+            a password) is among the columns its trigger leaves out""")
+    void everyAuditedTableHasItsTriggerAndLeavesOutItsSecrets() {
+        Map<String, String> leftOut = new HashMap<>();
+        // Every schema's: with schema per tenant each tenant schema has its own triggers on its own tables.
+        for (Map<String, Object> trigger : jdbc.queryForList("""
+                select c.relname as table_name, encode(t.tgargs, 'escape') as arguments
+                  from pg_trigger t
+                  join pg_class c on c.oid = t.tgrelid
+                  join pg_proc p on p.oid = t.tgfoid
+                 where p.proname = 'audit_row_change' and not t.tgisinternal""")) {
+            leftOut.put((String) trigger.get("table_name"), (String) trigger.get("arguments"));
+        }
+        Set<String> audited = auditedTables();
+        assertThat(leftOut.keySet()).as("the tables with the history trigger").isEqualTo(audited);
+
+        List<Map<String, Object>> secretLike = jdbc.queryForList("""
+                select distinct table_name, column_name
+                  from information_schema.columns
+                 where table_name = any (?) and column_name ~ '(hash|secret|token|password)'""",
+                (Object) audited.toArray(new String[0]));
+        assertThat(secretLike).allSatisfy(column -> assertThat(leftOut.get((String) column.get("table_name")))
+                .as("%s.%s left out of the history", column.get("table_name"), column.get("column_name"))
+                .contains((String) column.get("column_name")));
+    }
+
+    @Test
     @DisplayName("audit_log is append-only: an UPDATE is refused by its trigger")
     void theHistoryIsAppendOnly() {
         UUID rowId = UUID.randomUUID();
@@ -208,6 +267,40 @@ class ChangeHistoryIntegrationTest extends IntegrationTest {
         purgeJob.purgeOld();
         assertThat(jdbc.queryForObject("select count(*) from %s where table_name = 'probe-batch'".formatted(AUDIT_LOG), Integer.class))
                 .isZero();
+    }
+
+    @Test
+    @DisplayName("The purge keeps going past one batch")
+    void thePurgeGoesOnPastOneBatch() {
+        Instant pastRetention = Instant.now().minus(settings.keepFor()).minus(Duration.ofDays(1));
+        int rows = settings.batchSize() + settings.batchSize() / 2;
+        assertThat(sql("""
+                insert into %s (table_schema, table_name, row_id, operation, changed_at)
+                select 'probe', 'probe-batches', gen_random_uuid(), 'INSERT', ? from generate_series(1, ?)""".formatted(AUDIT_LOG),
+                Timestamp.from(pastRetention), rows)).isEqualTo(rows);
+
+        purgeJob.purgeOld();
+
+        assertThat(jdbc.queryForObject("select count(*) from %s where table_name = 'probe-batches'".formatted(AUDIT_LOG), Integer.class))
+                .isZero();
+    }
+
+    /**
+     * The batch is {@code = ANY (ARRAY(...))}, an init plan computed once whatever the planner picks: as
+     * {@code IN (...)} it may run again per outer row and delete more than one batch (DATA-29). That is the
+     * statement's own text, so it is checked as text too.
+     */
+    @Test
+    @DisplayName("The purge's batch is an init plan over idx_audit_log_changed_at")
+    void thePurgeBatchIsPlannedOnItsIndex() {
+        MapSqlParameterSource parameters = new MapSqlParameterSource("changedBefore", Timestamp.from(Instant.now()))
+                .addValue("batchSize", settings.batchSize());
+
+        String plan = QueryPlan.explain(jdbc, transactionManager, ChangeHistoryRetention.DELETE_BATCH, parameters);
+
+        assertThat(ChangeHistoryRetention.DELETE_BATCH).contains("WHERE id = ANY (ARRAY(SELECT id").doesNotContain(" IN (SELECT");
+        assertThat(plan).as(plan).contains("InitPlan").doesNotContain("Seq Scan");
+        assertThat(QueryPlan.indexesScanned(plan)).as(plan).contains("idx_audit_log_changed_at");
     }
 
     @Test

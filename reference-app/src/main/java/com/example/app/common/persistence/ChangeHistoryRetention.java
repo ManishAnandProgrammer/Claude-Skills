@@ -1,7 +1,8 @@
 package com.example.app.common.persistence;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,15 +31,16 @@ class ChangeHistoryRetention {
             DELETE FROM audit_log
             WHERE id = ANY (ARRAY(SELECT id
                                     FROM audit_log
-                                   WHERE changed_at < ?
-                                   LIMIT ?
+                                   WHERE changed_at < :changedBefore
+                                   LIMIT :batchSize
                                    FOR UPDATE SKIP LOCKED))""";
 
-    private final JdbcTemplate jdbcTemplate;
+    private final NamedParameterJdbcTemplate jdbc;
 
     /** Deletes up to {@code batchSize} rows changed before {@code changedBefore}; the rows deleted. */
     @Transactional
     public int deleteChangedBefore(Instant changedBefore, int batchSize) {
-        return jdbcTemplate.update(DELETE_BATCH, Timestamp.from(changedBefore), batchSize);
+        return jdbc.update(DELETE_BATCH, new MapSqlParameterSource("changedBefore", Timestamp.from(changedBefore))
+                .addValue("batchSize", batchSize));
     }
 }
