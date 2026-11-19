@@ -107,8 +107,8 @@ another member those first (its built-in `ADMIN` role), or suspend the tenant.
   change that would cause it (409 `ACCESS_LAST_MANAGER`), so it only happens outside it. As the owner role, in one
   transaction told the tenant (section 4), give one trusted member the tenant's built-in `ADMIN` and remove any DENY of those three on them:
   `INSERT INTO user_roles (id, tenant_id, user_id, role_id, created_at, updated_at, version) SELECT uuidv7(),
-  r.tenant_id, '<their user id>', r.id, now(), now(), 0 FROM roles r WHERE r.built_in = 'ADMIN' ON CONFLICT DO
-  NOTHING;` and `DELETE FROM user_permissions WHERE user_id = '<their user id>' AND effect = 'DENY' AND permission
+  r.tenant_id, '<their user id>', r.id, now(), now(), 0 FROM roles r WHERE r.built_in = 'ADMIN' ON CONFLICT
+  (user_id, tenant_id, role_id) DO UPDATE SET valid_until = NULL, updated_at = now(), version = user_roles.version + 1;` and `DELETE FROM user_permissions WHERE user_id = '<their user id>' AND effect = 'DENY' AND permission
   IN ('ROLES_MANAGE', 'ACCESS_GRANT', 'TENANT_MEMBERS_MANAGE');`. Check the built-in `ADMIN` still holds the three
   (`SELECT permission FROM role_permissions p JOIN roles r ON r.id = p.role_id WHERE r.built_in = 'ADMIN';`). It
   applies on their next request; write down who asked and why.

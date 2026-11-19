@@ -257,7 +257,11 @@ public class PersonAccessService {
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     void requireManagersRemainWithout(UUID userId) {
         Set<UUID> others = new TreeSet<>(assignments.findHoldersForGood(names(KEPT_HELD)));
-        others.remove(userId);
+        // Someone who manages nothing here for good takes nothing away (a tenant left without a manager by hand keeps
+        // its members suspendable).
+        if (!others.remove(userId)) {
+            return;
+        }
         // A SUSPENDED tenant's managers count too: they manage it again once it is reactivated.
         requireHeldForGood(assignments.findAccessRowsWhateverTheTenantStatus(others, clock.instant()));
     }

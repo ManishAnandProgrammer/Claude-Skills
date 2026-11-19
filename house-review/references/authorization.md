@@ -311,7 +311,7 @@ test, unchanged but where it asserted a role column or claim.
   1. **grant only what you hold** (403 `ACCESS_NOT_HELD`): a role you create holds only permissions you hold, and you
      edit only a role whose permissions you hold before and after (an edit never takes from everyone who holds the
      role a permission you lack); you give a role only if you hold all its permissions; a personal ALLOW or DENY (or
-     its removal) only of a permission you hold, and one without an end only of what you hold for good (a grant of
+     its removal) only of a permission you hold, and an ALLOW without an end only of what you hold for good (a grant of
      yours that ends never lives on in someone else's); and checked on the result too, after the change: what the person
      would hold afterwards holds nothing you don't (taking a DENY away would otherwise hand back a permission that
      needed the denied one);
@@ -369,7 +369,8 @@ test, unchanged but where it asserted a role column or claim.
     changeset ran before the tenant existed, and seeded every tenant that existed then, a PENDING one included).
     That copy reads the enum at run time, which is right for a new tenant's data; the Detect line below is about
     migrations of existing data. `BuiltInRolesIntegrationTest` compares every tenant's copies, an upgraded tenant's
-    (the changesets') and a new one's alike. The owner gets the tenant's built-in `ADMIN` in the same transaction
+    (the changesets') and a new one's alike; in row mode a fresh database's tenants all come after the changesets, so
+    there the guard bites on the upgrade run (a release's tests on a database seeded at the previous release). The owner gets the tenant's built-in `ADMIN` in the same transaction
     (`TenantMemberManager.provisioned`), a member added later its built-in `USER` (the caller holding all of it, rule
     1), and a removal takes every role and grant of the person in the tenant (added again, they start with `USER`
     alone: a re-add never hands back what a stranger to the caller gave). Staff's impersonation acts, unless they name

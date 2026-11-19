@@ -50,7 +50,10 @@ its whole duration, and a pool runs dry long before CPU or the database does.
   - `REQUIRES_NEW` used "for a clean slate";
   - `REQUIRES_NEW` in a loop or a deep chain (one more connection per level).
 
-  Legitimate use: audit or delivery records that must survive the caller's rollback.
+  Legitimate uses: audit or delivery records that must survive the caller's rollback; with tenancy, a read of
+  another tenant's tables from a platform transaction that holds that tenant's row (a tenant's tables are read only
+  in a transaction begun in its scope, TEN-02), one tenant at a time, read-only, on a staff path: staff's suspension
+  counting each tenant's managers (AUTHZ-12 rule 6, `PersonAccessService.requireManagersRemainWithout`).
 - **Fix:** sequential short transactions, or `noRollbackFor` in one transaction.
 - **Severity:** Medium (High on hot or public paths).
 

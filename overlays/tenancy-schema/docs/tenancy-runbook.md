@@ -98,14 +98,18 @@ another member those first (its built-in `ADMIN` role), or suspend the tenant.
   one trusted member the tenant's built-in `ADMIN` and remove any DENY of those three on them, in the tenant's
   schema (`t_<tenant id without dashes>`):
   `INSERT INTO t_<id>.user_roles (id, user_id, role_id, created_at, updated_at, version) SELECT uuidv7(),
-  '<their user id>', r.id, now(), now(), 0 FROM t_<id>.roles r WHERE r.built_in = 'ADMIN' ON CONFLICT DO NOTHING;`
+  '<their user id>', r.id, now(), now(), 0 FROM t_<id>.roles r WHERE r.built_in = 'ADMIN' ON CONFLICT (user_id, role_id)
+  DO UPDATE SET valid_until = NULL, updated_at = now(), version = user_roles.version + 1;` (for good, even where it ended)
   and `DELETE FROM t_<id>.user_permissions WHERE user_id = '<their user id>' AND effect = 'DENY' AND permission IN
   ('ROLES_MANAGE', 'ACCESS_GRANT', 'TENANT_MEMBERS_MANAGE');`. Check the built-in `ADMIN` still holds the three
   (`SELECT permission FROM t_<id>.role_permissions p JOIN t_<id>.roles r ON r.id = p.role_id WHERE r.built_in =
   'ADMIN';`). It applies on their next request; write down who asked and why.
 - **The memberships' old role column** goes once every tenant schema has copied its roles (changeset 0039 checks
   it at each start): while a schema's migration fails (`tenant_migrations.status = 'FAILED'`), the column stays
-  with that tenant's roles in it; fix the schema (section 5) and the next start after its migration drops it.
+  with that tenant's roles in it; fix the schema (section 5) and the next start after its migration drops it. Rolling
+  the roles release back goes the other way: the platform's 0039 first (the column back, empty), then each tenant
+  schema's 0037 (its memberships' roles restored from its tables), then the platform's 0038; rolled back before the
+  schemas, every membership would come back USER.
 <!-- roles:end -->
 
 ## 4. Restore order
