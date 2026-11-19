@@ -12,7 +12,7 @@ import java.util.Objects;
 
 @Schema(description = "The status to move a plan to")
 public record PlanStatusRequest(
-        @Schema(description = "DONE (with doneOn) or CANCELLED; both are final", example = "DONE")
+        @Schema(description = "DONE (with doneOn) or CANCELLED; both are final", example = "CANCELLED")
         @NotNull
         PlanStatus status,
 

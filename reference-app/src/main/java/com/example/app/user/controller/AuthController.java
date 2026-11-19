@@ -1,6 +1,7 @@
 package com.example.app.user.controller;
 
 import com.example.app.common.apiversion.RequestApiVersion;
+import com.example.app.common.security.Public;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.controller.api.AuthApi;
 import com.example.app.user.dto.request.LoginRequest;
@@ -37,6 +38,7 @@ class AuthController implements AuthApi {
 
     @Override
     @PostMapping(path = "/signup", version = "v1+")
+    @Public
     public ResponseEntity<ObjectWrapper<UserResponse>> signup(@RequestBody @Valid SignupRequest request, HttpServletRequest http) {
         URI ownAccount = UriComponentsBuilder.fromPath(OWN_ACCOUNT)
                 .buildAndExpand(RequestApiVersion.of(http).orElseThrow())
@@ -46,12 +48,14 @@ class AuthController implements AuthApi {
 
     @Override
     @PostMapping(path = "/login", version = "v1+")
+    @Public
     public ObjectWrapper<TokenResponse> login(@RequestBody @Valid LoginRequest request, HttpServletRequest http) {
         return authService.login(request, http.getRemoteAddr());
     }
 
     @Override
     @PostMapping(path = "/refresh-token", version = "v1+")
+    @Public
     public ObjectWrapper<TokenResponse> refresh(@RequestBody @Valid RefreshTokenRequest request, HttpServletRequest http) {
         return authService.refresh(request, http.getRemoteAddr());
     }
@@ -59,6 +63,7 @@ class AuthController implements AuthApi {
     @Override
     @PostMapping(path = "/logout", version = "v1+")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Public
     public void logout(@RequestBody @Valid RefreshTokenRequest request, HttpServletRequest http) {
         authService.logout(request, http.getRemoteAddr());
     }

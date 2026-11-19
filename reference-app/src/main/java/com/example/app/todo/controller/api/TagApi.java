@@ -1,7 +1,9 @@
 package com.example.app.todo.controller.api;
 
 import com.example.app.common.dropdown.DropdownFilter;
+import com.example.app.common.dropdown.DropdownFor;
 import com.example.app.common.dropdown.DropdownItem;
+import com.example.app.common.security.Permission;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
@@ -11,6 +13,7 @@ import com.example.app.todo.dto.request.TagMergeRequest;
 import com.example.app.todo.dto.request.TagUpdateRequest;
 import com.example.app.todo.dto.response.TagResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -117,19 +120,29 @@ public interface TagApi {
     ObjectWrapper<TagResponse> merge(UUID id, TagMergeRequest request);
 
     @Operation(summary = "Options for the Tag dropdown", description = """
-            Your tags as {value, label}, ordered by name (sortDirection DESC reverses it), in batches: \
+            Your tags as {value, label}, for the action for names (one dropdown serves every screen that \
+            picks one), ordered by name (sortDirection DESC reverses it), in batches: \
             pageInfo.nextCursor goes back as after for the next batch; size sets the batch (default \
             and maximum from configuration). status picks ACTIVE tags (the default), INACTIVE ones or \
             ALL. Narrow it with query (a case-insensitive part of the name).""")
     @ApiResponse(responseCode = "200", description = "The options")
     @ApiResponse(responseCode = "400", description = """
+            DROPDOWN_REACH_UNSUPPORTED (for reaches records other than your own: see errors); \
+            REQUEST_PARAMETER_MISSING or REQUEST_PARAMETER_INVALID at for (none, or no permission); \
             VALIDATION_FAILED (size, query or after out of range); REQUEST_PARAMETER_INVALID (an unknown \
             status or sortDirection, a non-numeric size, or an after that is tampered or from the other \
             direction; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (you don't hold the permission for names)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    CursorWrapper<DropdownItem> dropdown(@ParameterObject DropdownFilter filter);
+    CursorWrapper<DropdownItem> dropdown(
+            @Parameter(name = DropdownFor.PARAMETER, required = true, example = "TODO_EDIT_OWN", description = """
+                    The permission of the action the options serve (TODO_EDIT_OWN to pick a todo's tags, \
+                    TODO_READ_OWN to filter your todos by one): 403 ACCESS_DENIED unless you hold it, and \
+                    the options are the ones its reach covers""") Permission action,
+            @ParameterObject DropdownFilter filter);
 }

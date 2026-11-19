@@ -15,12 +15,12 @@ import org.springframework.http.ProblemDetail;
 
 @Tag(name = "Upload policies", description = """
         Each upload purpose's limits: file sizes, files per record and content types. Read them to check \
-        files before uploading; the server checks them again. Admins (role ADMIN) change them, with no \
+        files before uploading; the server checks them again. Who holds UPLOAD_POLICY_MANAGE changes them, with no \
         restart.""")
 public interface UploadPolicyApi {
 
     @Operation(summary = "Every purpose's limits", description = """
-            With canUpload: whether your role may upload for the purpose (a hint; POST /upload-urls decides).""")
+            With canUpload: whether you hold one of the purpose's permissions (a hint; POST /upload-urls decides).""")
     @ApiResponse(responseCode = "200", description = "Every purpose, by name")
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -41,7 +41,7 @@ public interface UploadPolicyApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an admin)",
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (without UPLOAD_POLICY_MANAGE)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "UPLOAD_POLICY_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

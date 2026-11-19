@@ -2,8 +2,12 @@ package com.example.app.archunit;
 
 import com.example.app.archunit.api.FixtureCodes;
 import com.example.app.archunit.api.FixtureHelper;
+import com.example.app.archunit.fixture.common.security.RoleCheckAnnotation;
 import com.example.app.archunit.fixture.dto.RangeRequest;
 import com.example.app.archunit.fixture.logging.JulCall;
+import com.example.app.archunit.fixture.security.HandlerDeclarations;
+import com.example.app.archunit.fixture.security.RoleChecks;
+import com.example.app.archunit.fixture.security.StringChecks;
 import com.example.app.archunit.fixture.settings.CheckedSettings;
 import com.example.app.archunit.fixture.settings.UntypedSettings;
 import com.tngtech.archunit.core.domain.JavaClasses;
@@ -11,6 +15,7 @@ import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 
 import java.util.List;
 
@@ -72,6 +77,39 @@ class ArchRuleScopeTest {
             assertThat(violations).anyMatch(violation -> violation.contains(field + " is"));
         }
         assertThat(violations).noneMatch(violation -> violation.contains("batchSize"));
+    }
+
+    @Test
+    @DisplayName("A handler declaring none of @Requires, @SignedIn and @Public is refused, and one declaring two; exactly one passes (AUTHZ-03)")
+    void handlersDeclareExactlyOne() {
+        List<String> violations = ConventionArchTest.handlersDeclareWhoMayCallThem
+                .evaluate(new ClassFileImporter().importClasses(HandlerDeclarations.class)).getFailureReport().getDetails();
+
+        assertThat(violations).hasSize(2);
+        assertThat(violations).anyMatch(violation -> violation.contains("declaresNothing()") && violation.contains("declares 0"));
+        assertThat(violations).anyMatch(violation -> violation.contains("declaresTwo()") && violation.contains("declares 2"));
+    }
+
+    @Test
+    @DisplayName("A method-security string outside common.security is refused on a method and on a class; inside it, it is how the annotations are declared (AUTHZ-03)")
+    void methodSecurityStringsLiveInCommonSecurity() {
+        assertThat(violates(ConventionArchTest.methodSecurityIsDeclaredOnce, StringChecks.class)).isTrue();
+        assertThat(violates(ConventionArchTest.classMethodSecurityIsDeclaredOnce, StringChecks.class)).isTrue();
+        assertThat(violates(ConventionArchTest.classMethodSecurityIsDeclaredOnce, RoleCheckAnnotation.class)).isFalse();
+    }
+
+    @Test
+    @DisplayName("A role check is refused everywhere, common.security included: in an expression, @Secured, a call of hasRole, a RoleHierarchy (AUTHZ-02)")
+    void roleChecksAreRefusedEverywhere() {
+        List<String> violations = ConventionArchTest.noRoleChecks
+                .evaluate(new ClassFileImporter().importClasses(RoleChecks.class)).getFailureReport().getDetails();
+
+        assertThat(violations).anyMatch(violation -> violation.contains("hasRole"));
+        assertThat(violations).anyMatch(violation -> violation.contains(RoleHierarchy.class.getSimpleName()));
+        assertThat(violates(ConventionArchTest.noRoleChecksOnMethods, RoleChecks.class)).isTrue();
+        assertThat(ConventionArchTest.noRoleChecksOnMethods
+                .evaluate(new ClassFileImporter().importClasses(RoleChecks.class)).getFailureReport().getDetails()).hasSize(2);
+        assertThat(violates(ConventionArchTest.noRoleChecks, RoleCheckAnnotation.class)).isTrue();
     }
 
     private static boolean violates(ArchRule rule, Class<?> fixture) {

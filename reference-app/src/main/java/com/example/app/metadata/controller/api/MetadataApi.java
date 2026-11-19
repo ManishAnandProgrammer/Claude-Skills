@@ -12,7 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ProblemDetail;
 
 @Tag(name = "Configuration metadata", description = """
-        Application-wide configuration, one value per fixed key, for admins (role ADMIN). Only the fixed \
+        Application-wide configuration, one value per fixed key, for who holds METADATA_MANAGE. Only the fixed \
         keys declared in the application exist here. Configuration that belongs to one record (a \
         store's opening hours) is read and replaced through that record's own endpoint \
         (PUT /<resources>/{id}/<configuration>), which checks the record's rules. Values are created by \
@@ -23,7 +23,7 @@ public interface MetadataApi {
     @ApiResponse(responseCode = "200", description = "The configuration")
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an admin)",
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (without METADATA_MANAGE)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = """
             METADATA_KEY_UNKNOWN (no fixed key of that name; a per-record configuration is not reached \
@@ -50,7 +50,7 @@ public interface MetadataApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an admin)",
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (without METADATA_MANAGE)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "METADATA_KEY_UNKNOWN, METADATA_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

@@ -2,6 +2,7 @@ package com.example.app.user.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.security.Permission;
 import com.example.app.common.validation.Emails;
 import com.example.app.common.wrapper.ObjectWrapper;
 // tenancy:begin
@@ -11,6 +12,7 @@ import com.example.app.user.api.Users;
 import com.example.app.user.domain.User;
 import com.example.app.user.domain.UserStatus;
 import com.example.app.user.dto.request.SignupRequest;
+import com.example.app.user.dto.response.AccessResponse;
 import com.example.app.user.dto.response.UserResponse;
 import com.example.app.user.mapper.UserMapper;
 import com.example.app.user.repository.UserRepository;
@@ -37,6 +39,7 @@ import java.util.Map;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -84,6 +87,11 @@ public class UserService implements Users {
 
     public ObjectWrapper<UserResponse> me(UUID userId) {
         return ObjectWrapper.withObject(mapper.toResponse(getUser(userId)));
+    }
+
+    /** The caller's areas and permissions, from their token's (no database read): {@code GET /users/me/access}. */
+    public ObjectWrapper<AccessResponse> access(Set<Permission> held) {
+        return ObjectWrapper.withObject(mapper.toAccessResponse(held));
     }
 
     // tenancy:begin

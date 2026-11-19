@@ -1,5 +1,6 @@
 package com.example.app.metadata.controller;
 
+import com.example.app.common.security.SignedIn;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.metadata.controller.api.PlatformMetadataApi;
 import com.example.app.metadata.dto.request.MetadataUpdateRequest;
@@ -26,12 +27,14 @@ class PlatformMetadataController implements PlatformMetadataApi {
 
     @Override
     @GetMapping(path = "/{key}", version = "v1+")
+    @SignedIn
     public ObjectWrapper<MetadataResponse> get(@PathVariable UUID tenantId, @PathVariable String key) {
         return service.findByName(tenantId, key);
     }
 
     @Override
     @PutMapping(path = "/{key}", version = "v1+")
+    @SignedIn
     public ObjectWrapper<MetadataResponse> update(@PathVariable UUID tenantId, @PathVariable String key,
                                                   @RequestBody @Valid MetadataUpdateRequest request) {
         return service.updateByName(tenantId, key, request);

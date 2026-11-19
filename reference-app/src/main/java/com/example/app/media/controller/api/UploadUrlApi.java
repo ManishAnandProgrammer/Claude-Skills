@@ -29,7 +29,7 @@ public interface UploadUrlApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (your role may not upload for this purpose)",
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (you hold none of the purpose's permissions)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "UPLOAD_POLICY_NOT_FOUND (the purpose has no policy set up)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

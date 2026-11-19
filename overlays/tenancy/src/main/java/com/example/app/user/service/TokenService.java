@@ -60,7 +60,6 @@ class TokenService {
     /** 256 random bits: unguessable, so a fast hash is enough to store it. */
     private static final int REFRESH_TOKEN_BYTES = 32;
     private static final String TOKEN_TYPE = "Bearer";
-    private static final String ROLES_CLAIM = "roles";
 
     private final SecureRandom secureRandom = new SecureRandom();
     private final RefreshTokenRepository repository;
@@ -154,7 +153,7 @@ class TokenService {
                 .issuedAt(now)
                 .expiresAt(now.plus(impersonation.tokenTtl()))
                 .subject(membership.getUser().getId().toString())
-                .claim(ROLES_CLAIM, List.of(membership.getRole().name()))
+                .claim(RolePermissions.ROLES_CLAIM, List.of(membership.getRole().name()))
                 .claim(TenantContext.TENANT_CLAIM, membership.getTenantId().toString())
                 .claim(CurrentUser.ACTOR_CLAIM, Map.of(CurrentUser.ACTOR_SUBJECT, staffId.toString()))
                 // session-version:begin
@@ -175,7 +174,7 @@ class TokenService {
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .subject(staff.getId().toString())
-                .claim(ROLES_CLAIM, List.of(staff.getRole().name()))
+                .claim(RolePermissions.ROLES_CLAIM, List.of(staff.getRole().name()))
                 .build();
         return new TokenResponse(encode(claims), TOKEN_TYPE, properties.accessTokenTtl().toSeconds(), null);
     }
@@ -301,7 +300,7 @@ class TokenService {
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .subject(user.getId().toString())
-                .claim(ROLES_CLAIM, List.of(membership.getRole().name()))
+                .claim(RolePermissions.ROLES_CLAIM, List.of(membership.getRole().name()))
                 .claim(TenantContext.TENANT_CLAIM, membership.getTenantId().toString())
                 // session-version:begin
                 // From the same row as the role: a token never pairs a newer number with an older role.

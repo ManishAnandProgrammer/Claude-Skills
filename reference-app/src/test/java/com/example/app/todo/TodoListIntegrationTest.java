@@ -2,6 +2,8 @@ package com.example.app.todo;
 
 import com.example.app.common.dropdown.DropdownStatus;
 import com.example.app.common.pagination.Cursor;
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Reach;
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,8 +18,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -31,6 +37,7 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -41,7 +48,7 @@ class TodoListIntegrationTest extends IntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
-    private static final String DROPDOWN = LISTS + "/dropdown";
+    private static final String DROPDOWN = LISTS + "/dropdown?for=TODO_CREATE_OWN";
 
     private static String namePayload(String name) {
         return """
@@ -675,7 +682,7 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A dropdown batch costs exactly one statement, for one option and for a full batch")
+    @DisplayName("A dropdown batch costs exactly one statement, for one option and for a full batch: its for is checked in memory")
     void dropdownRunsOneStatement() throws Exception {
         TestUser one = newUser();
         createList(one, "Single");
@@ -683,12 +690,71 @@ class TodoListIntegrationTest extends IntegrationTest {
         for (int index = 0; index < 21; index++) {
             createList(many, "Option " + index);
         }
-        getAs(many.accessToken(), DROPDOWN + "?size=20")
+        getAs(many.accessToken(), DROPDOWN + "&size=20")
                 .andExpect(jsonPath("$.response.length()").value(20))
                 .andExpect(jsonPath("$.pageInfo.hasMore").value(true));
 
-        assertThat(statementsFor(one, DROPDOWN + "?size=20")).isEqualTo(1);
-        assertThat(statementsFor(many, DROPDOWN + "?size=20")).isEqualTo(1);
+        assertThat(statementsFor(one, DROPDOWN + "&size=20")).isEqualTo(1);
+        assertThat(statementsFor(many, DROPDOWN + "&size=20")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("The dropdown needs for: without it 400 REQUEST_PARAMETER_MISSING, with an unknown permission 400 REQUEST_PARAMETER_INVALID at for")
+    void theDropdownNeedsFor() throws Exception {
+        String token = newUser().accessToken();
+
+        getAs(token, LISTS + "/dropdown")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_MISSING"));
+        getAs(token, LISTS + "/dropdown?for=NOT_A_PERMISSION")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
+                .andExpect(jsonPath("$.errors[0].parameter").value("for"));
+    }
+
+    @Test
+    @DisplayName("A for the caller doesn't hold is 403 ACCESS_DENIED, whatever else they hold, before any statement")
+    void aForTheCallerDoesntHoldIs403() throws Exception {
+        TestUser user = newUser();
+        Set<Permission> allButIt = EnumSet.allOf(Permission.class);
+        allButIt.remove(Permission.TODO_CREATE_OWN);
+        // Whatever a caller's first request reads once (and later requests don't) is read here, before the count.
+        getAs(user.accessToken(), LISTS).andExpect(status().isOk());
+
+        statistics().clear();
+        mvc.perform(get(DROPDOWN).with(holding(user.accessToken(), allButIt)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+        assertThat(statistics().getPrepareStatementCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("A held for whose reach is every record is 400 DROPDOWN_REACH_UNSUPPORTED at for: this dropdown lists your own lists only")
+    void aForOfAnotherReachIs400() throws Exception {
+        Optional<Permission> everyRecord = Arrays.stream(Permission.values())
+                .filter(permission -> permission.reach() == Reach.ALL)
+                .findFirst();
+        assumeTrue(everyRecord.isPresent(), "no permission reaches every record among these pieces");
+
+        String holdingIt = newUser().accessToken();
+
+        mvc.perform(get(LISTS + "/dropdown?for=" + everyRecord.get()).with(holding(holdingIt, EnumSet.of(everyRecord.get()))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("DROPDOWN_REACH_UNSUPPORTED"))
+                .andExpect(jsonPath("$.errors[0].parameter").value("for"));
+    }
+
+    @Test
+    @DisplayName("Every held for of the caller's own reach lists the same options: one dropdown serves each screen that picks a list")
+    void everyOwnReachForListsTheSameOptions() throws Exception {
+        TestUser user = newUser();
+        createList(user, "Shared");
+
+        for (String action : List.of("TODO_CREATE_OWN", "TODO_EDIT_OWN", "TODO_READ_OWN", "TODO_LIST_READ_OWN")) {
+            getAs(user.accessToken(), LISTS + "/dropdown?for=" + action)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.response[*].label", contains("Shared")));
+        }
     }
 
     @Test
@@ -716,9 +782,9 @@ class TodoListIntegrationTest extends IntegrationTest {
         createList(user, "Charlie");
         createList(user, "Bravo");
 
-        getAs(user.accessToken(), DROPDOWN + "?sortDirection=ASC")
+        getAs(user.accessToken(), DROPDOWN + "&sortDirection=ASC")
                 .andExpect(jsonPath("$.response[*].label", contains("Alpha", "Bravo", "Charlie")));
-        getAs(user.accessToken(), DROPDOWN + "?sortDirection=DESC")
+        getAs(user.accessToken(), DROPDOWN + "&sortDirection=DESC")
                 .andExpect(jsonPath("$.response[*].label", contains("Charlie", "Bravo", "Alpha")));
     }
 
@@ -728,7 +794,7 @@ class TodoListIntegrationTest extends IntegrationTest {
         TestUser user = newUser();
         createList(user, "Active one");
 
-        getAs(user.accessToken(), DROPDOWN + "?status=ACTIVE")
+        getAs(user.accessToken(), DROPDOWN + "&status=ACTIVE")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response[*].label", contains("Active one")));
     }
@@ -737,7 +803,7 @@ class TodoListIntegrationTest extends IntegrationTest {
     @EnumSource(value = DropdownStatus.class, names = "ACTIVE", mode = EnumSource.Mode.EXCLUDE)
     @DisplayName("A dropdown status other than ACTIVE is 400 REQUEST_PARAMETER_INVALID: lists have no active flag")
     void dropdownStatusIsRefusedWithoutAnActiveFlag(DropdownStatus refused) throws Exception {
-        getAs(newUser().accessToken(), DROPDOWN + "?status=" + refused)
+        getAs(newUser().accessToken(), DROPDOWN + "&status=" + refused)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
                 .andExpect(jsonPath("$.errors[0].parameter").value("status"));
@@ -750,7 +816,7 @@ class TodoListIntegrationTest extends IntegrationTest {
         createList(user, "Garden work");
         createList(user, "Reading");
 
-        getAs(user.accessToken(), DROPDOWN + "?query=GARD")
+        getAs(user.accessToken(), DROPDOWN + "&query=GARD")
                 .andExpect(jsonPath("$.response[*].label", contains("Garden work")));
     }
 
@@ -778,7 +844,7 @@ class TodoListIntegrationTest extends IntegrationTest {
             createList(user, name);
         }
 
-        assertThat(walk(user, DROPDOWN + "?size=2"))
+        assertThat(walk(user, DROPDOWN + "&size=2"))
                 .containsExactly(List.of("Alpha", "Bravo"), List.of("Charlie", "Delta"), List.of("Echo"));
     }
 
@@ -790,7 +856,7 @@ class TodoListIntegrationTest extends IntegrationTest {
             createList(user, name);
         }
 
-        assertThat(walk(user, DROPDOWN + "?size=2&sortDirection=DESC"))
+        assertThat(walk(user, DROPDOWN + "&size=2&sortDirection=DESC"))
                 .containsExactly(List.of("Echo", "Delta"), List.of("Charlie", "Bravo"), List.of("Alpha"));
     }
 
@@ -817,7 +883,7 @@ class TodoListIntegrationTest extends IntegrationTest {
         createList(user, "B");
 
         assertThat(longest.codePointCount(0, longest.length())).isEqualTo(100);
-        assertThat(walk(user, DROPDOWN + "?size=1")).containsExactly(List.of(longest), List.of("B"));
+        assertThat(walk(user, DROPDOWN + "&size=1")).containsExactly(List.of(longest), List.of("B"));
     }
 
     @Test
@@ -826,7 +892,7 @@ class TodoListIntegrationTest extends IntegrationTest {
         TestUser user = newUser();
         createList(user, "Groceries");
 
-        getAs(user.accessToken(), DROPDOWN + "?query=nothing-matches-" + UUID.randomUUID())
+        getAs(user.accessToken(), DROPDOWN + "&query=nothing-matches-" + UUID.randomUUID())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.length()").value(0))
                 .andExpect(jsonPath("$.pageInfo.hasMore").value(false))
@@ -836,7 +902,7 @@ class TodoListIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("An unknown dropdown status is 400 REQUEST_PARAMETER_INVALID naming status")
     void dropdownUnknownStatusIs400() throws Exception {
-        getAs(newUser().accessToken(), DROPDOWN + "?status=ARCHIVED")
+        getAs(newUser().accessToken(), DROPDOWN + "&status=ARCHIVED")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
                 .andExpect(jsonPath("$.errors[*].parameter", contains("status")))
@@ -849,9 +915,9 @@ class TodoListIntegrationTest extends IntegrationTest {
         TestUser user = newUser();
         createList(user, "Alpha");
         createList(user, "Bravo");
-        String ascendingCursor = read(getAs(user.accessToken(), DROPDOWN + "?size=1"), "$.pageInfo.nextCursor");
+        String ascendingCursor = read(getAs(user.accessToken(), DROPDOWN + "&size=1"), "$.pageInfo.nextCursor");
 
-        getAs(user.accessToken(), DROPDOWN + "?size=1&sortDirection=DESC&after=" + ascendingCursor)
+        getAs(user.accessToken(), DROPDOWN + "&size=1&sortDirection=DESC&after=" + ascendingCursor)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
                 .andExpect(jsonPath("$.errors[0].parameter").value("after"));
@@ -860,7 +926,7 @@ class TodoListIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("A tampered dropdown cursor is 400 REQUEST_PARAMETER_INVALID naming after")
     void dropdownTamperedCursorIsRefused() throws Exception {
-        getAs(newUser().accessToken(), DROPDOWN + "?after=not-a-cursor")
+        getAs(newUser().accessToken(), DROPDOWN + "&after=not-a-cursor")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
                 .andExpect(jsonPath("$.errors[0].parameter").value("after"));
@@ -870,8 +936,8 @@ class TodoListIntegrationTest extends IntegrationTest {
     @DisplayName("A dropdown batch of the configured maximum is accepted, one more is 400 naming size")
     void dropdownSizeFollowsTheConfiguredMaximum() throws Exception {
         String token = newUser().accessToken();
-        getAs(token, DROPDOWN + "?size=100").andExpect(status().isOk());
-        getAs(token, DROPDOWN + "?size=101")
+        getAs(token, DROPDOWN + "&size=100").andExpect(status().isOk());
+        getAs(token, DROPDOWN + "&size=101")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[0].parameter").value("size"))

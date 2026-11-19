@@ -1,6 +1,8 @@
 package com.example.app.media.controller;
 
-import com.example.app.common.security.AdminOnly;
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Requires;
+import com.example.app.common.security.SignedIn;
 import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.media.api.UploadPurpose;
@@ -26,13 +28,14 @@ class UploadPolicyController implements UploadPolicyApi {
 
     @Override
     @GetMapping(version = "v1+")
+    @SignedIn
     public ListWrapper<UploadPolicyResponse> all() {
         return service.findAll();
     }
 
     @Override
     @PutMapping(path = "/{purpose}", version = "v1+")
-    @AdminOnly
+    @Requires(Permission.UPLOAD_POLICY_MANAGE)
     public ObjectWrapper<UploadPolicyResponse> update(@PathVariable UploadPurpose purpose,
                                                       @RequestBody @Valid UploadPolicyUpdateRequest request) {
         return service.update(purpose, request);

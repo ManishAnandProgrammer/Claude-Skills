@@ -12,6 +12,7 @@ import com.example.app.todo.dto.internal.TodoListName;
 import com.example.app.todo.dto.internal.TodoTagRow;
 import com.example.app.todo.dto.request.TodoCreateRequest;
 import com.example.app.todo.dto.request.TodoUpdateRequest;
+import com.example.app.todo.dto.response.TodoAllowedActionsResponse;
 // media:begin
 import com.example.app.todo.dto.response.TodoAttachmentResponse;
 // media:end
@@ -69,7 +70,8 @@ public class TodoMapper {
                                    // tenancy:begin
                                    // TodoRequesterResponse requester,
                                    // tenancy:end
-                                   List<TodoTagResponse> tags) {
+                                   List<TodoTagResponse> tags,
+                                   boolean editable) {
         return new TodoResponse(
                 todo.getId(),
                 todo.getTodoList().getId(),
@@ -93,6 +95,7 @@ public class TodoMapper {
                 // media:begin
                 attachments.stream().map(TodoMapper::toAttachmentResponse).toList(),
                 // media:end
+                new TodoAllowedActionsResponse(editable),
                 todo.getCreatedAt(),
                 todo.getUpdatedAt(),
                 todo.getCreatedBy(),

@@ -1,7 +1,8 @@
 package com.example.app.user.controller;
 
-import com.example.app.common.security.AdminOnly;
 import com.example.app.common.security.CurrentUser;
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Requires;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.user.controller.api.TenantMemberApi;
@@ -28,7 +29,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/{version}/tenant-members")
 @RequiredArgsConstructor
-@AdminOnly
 class TenantMemberController implements TenantMemberApi {
 
     private final MembershipService service;
@@ -36,12 +36,14 @@ class TenantMemberController implements TenantMemberApi {
 
     @Override
     @GetMapping(version = "v1+")
+    @Requires(Permission.TENANT_MEMBERS_MANAGE)
     public PaginationWrapper<TenantMemberResponse> all(@Valid TenantMemberFilter filter) {
         return service.findMembers(filter);
     }
 
     @Override
     @GetMapping(path = "/{userId}", version = "v1+")
+    @Requires(Permission.TENANT_MEMBERS_MANAGE)
     public ObjectWrapper<TenantMemberResponse> get(@PathVariable UUID userId) {
         return service.findMember(userId);
     }
@@ -49,12 +51,14 @@ class TenantMemberController implements TenantMemberApi {
     @Override
     @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
+    @Requires(Permission.TENANT_MEMBERS_MANAGE)
     public ObjectWrapper<TenantMemberResponse> add(@RequestBody @Valid TenantMemberAddRequest request) {
         return service.addMember(currentUser.id(), request);
     }
 
     @Override
     @PutMapping(path = "/{userId}", version = "v1+")
+    @Requires(Permission.TENANT_MEMBERS_MANAGE)
     public ObjectWrapper<TenantMemberResponse> update(@PathVariable UUID userId,
                                                       @RequestBody @Valid TenantMemberUpdateRequest request) {
         return service.changeRole(currentUser.id(), userId, request);
@@ -63,6 +67,7 @@ class TenantMemberController implements TenantMemberApi {
     @Override
     @DeleteMapping(path = "/{userId}", version = "v1+")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Requires(Permission.TENANT_MEMBERS_MANAGE)
     public void remove(@PathVariable UUID userId) {
         service.removeMember(currentUser.id(), userId);
     }

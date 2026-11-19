@@ -1,6 +1,7 @@
 package com.example.app.todo.service;
 
 import com.example.app.common.dropdown.DropdownFilter;
+import com.example.app.common.dropdown.DropdownFor;
 import com.example.app.common.dropdown.DropdownItem;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
@@ -10,6 +11,8 @@ import com.example.app.common.security.CurrentUser;
 // tenancy-row:begin
 // import com.example.app.common.tenancy.TenantContext;
 // tenancy-row:end
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Reach;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
@@ -21,6 +24,7 @@ import com.example.app.todo.dto.request.TagUpdateRequest;
 import com.example.app.todo.dto.response.TagResponse;
 import com.example.app.todo.mapper.TagMapper;
 import com.example.app.todo.repository.TagRepository;
+import java.util.EnumSet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -77,8 +81,12 @@ public class TagService {
         repository.flush();
     }
 
-    /** Tags have an active flag, so every {@code status} applies: ACTIVE, INACTIVE or ALL. */
-    public CursorWrapper<DropdownItem> dropdown(DropdownFilter filter) {
+    /**
+     * The tags the action {@code action} may use ({@link DropdownFor}): the caller's own, the one reach this
+     * dropdown lists. Tags have an active flag, so every {@code status} applies: ACTIVE, INACTIVE or ALL.
+     */
+    public CursorWrapper<DropdownItem> dropdown(Permission action, DropdownFilter filter) {
+        DropdownFor.check(action, currentUser.permissions(), EnumSet.of(Reach.OWN));
         CursorBatch<DropdownItem> batch = repository.findDropdownItems(filter, currentUser.id(), paging.cursorSize(filter));
         return CursorWrapper.of(batch.items(), batch.nextCursor());
     }

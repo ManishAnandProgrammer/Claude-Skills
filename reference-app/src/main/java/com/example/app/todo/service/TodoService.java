@@ -70,7 +70,7 @@ import java.util.stream.Collectors;
 /**
  * Every read and write is scoped to the caller: another user's todo, or list, answers 404 like a
  * missing one. A todo's requester is the one exception, a second party with fewer rights: they read the
- * todo (findById), and every other call on it is 403 {@code TODO_NOT_YOURS} (notOwned). The todo's aggregate includes its time entries and its tag rows (which tags it
+ * todo (findById), and every other call on it is 403 {@code TODO_NOT_YOURS}: the rules are {@link TodoPolicy}'s. The todo's aggregate includes its time entries and its tag rows (which tags it
  * carries): they are read and written only here, always through their todo. The tags themselves are
  * another aggregate's, reached through {@link TagService}. Other modules reach a todo only through
  * {@link Todos}, which this service implements.
@@ -97,6 +97,7 @@ public class TodoService implements Todos {
     private final TimeEntryRepository timeEntryRepository;
     private final TimeEntryMapper timeEntryMapper;
     private final TodoTagRepository todoTagRepository;
+    private final TodoPolicy policy;
     private final TodoListService todoListService;
     private final TagService tagService;
     private final CurrentUser currentUser;
@@ -141,16 +142,18 @@ public class TodoService implements Todos {
         return ObjectWrapper.withObject(toResponse(saved));
     }
 
-    /** Its owner's, or its requester's to read: the only call a requester may make on a todo. */
+    /** Its owner's, or its requester's to read (TodoPolicy.read): the only call a requester may make on a todo. */
     public ObjectWrapper<TodoResponse> findById(UUID id) {
-        Todo todo = repository.findVisibleWithTodoList(id, currentUser.id())
-                .orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+        Todo todo = repository.findWithTodoListById(id).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+        policy.read(todo, currentUser.id()).orThrow();
         return ObjectWrapper.withObject(toResponse(todo));
     }
 
+    /** The policy's list scope: the caller's own todos. */
     public CursorWrapper<TodoSummaryResponse> findByFilter(TodoFilter filter) {
         UUID ownerId = currentUser.id();
-        CursorBatch<TodoSummaryResponse> batch = repository.findByFilter(filter, ownerId, paging.cursorSize(filter));
+        CursorBatch<TodoSummaryResponse> batch =
+                repository.findByFilter(filter, policy.listScope(ownerId), paging.cursorSize(filter));
         return CursorWrapper.of(withTags(withTodoLists(batch.items(), ownerId)), batch.nextCursor());
     }
 
@@ -165,7 +168,7 @@ public class TodoService implements Todos {
     @Transactional
     public ObjectWrapper<TodoResponse> update(UUID id, TodoUpdateRequest request) {
         UUID ownerId = currentUser.id();
-        Todo todo = getOwnedTodoForUpdate(id, ownerId);
+        Todo todo = lockEditableTodo(id, ownerId);
         todo.checkVersion(request.version());
         TodoList todoList = todoListService.getOwnedTodoList(request.todoListId(), ownerId);
         // Only someone new: a PUT re-sends the person it read, who may have left since.
@@ -224,7 +227,7 @@ public class TodoService implements Todos {
     @Transactional
     public ObjectWrapper<TodoResponse> replaceTags(UUID id, TodoTagsRequest request) {
         UUID ownerId = currentUser.id();
-        Todo todo = getOwnedTodoForUpdate(id, ownerId);
+        Todo todo = lockEditableTodo(id, ownerId);
         todo.checkVersion(request.version());
         todo.replaceTags(tagService.getOwnedTags(request.tagIds(), ownerId));
         repository.flush();
@@ -256,7 +259,7 @@ public class TodoService implements Todos {
 
     @Transactional
     public ObjectWrapper<TodoResponse> changeStatus(UUID id, TodoStatusRequest request) {
-        Todo todo = getEditableTodo(id, currentUser.id(), request.version());
+        Todo todo = getEditableTodoAtVersion(id, currentUser.id(), request.version());
         todo.changeStatus(request.status(), clock.instant());
         repository.flush();
         return ObjectWrapper.withObject(toResponse(todo));
@@ -272,7 +275,7 @@ public class TodoService implements Todos {
      */
     @Transactional
     public void delete(UUID id) {
-        Todo todo = getOwnedTodoForUpdate(id, currentUser.id());
+        Todo todo = lockEditableTodo(id, currentUser.id());
         todoTagRepository.deleteAllOfTodo(id);
         // media:begin
         List<UUID> attachments = attachmentRepository.findMediaFileIdsOfTodo(id);
@@ -285,18 +288,20 @@ public class TodoService implements Todos {
         // media:end
     }
 
-    /** Locked as the todo's own writes lock it (findForUpdateByIdAndOwnerId), so they queue behind the caller. */
+    /** Locked as the todo's own writes lock it (findForUpdateById), so they queue behind the caller. */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public TodoView getOwnedTodoViewForUpdate(UUID id, UUID ownerId) {
-        return mapper.toView(getOwnedTodoForUpdate(id, ownerId));
+        return mapper.toView(lockEditableTodo(id, ownerId));
     }
 
+    /** A todo the person may change (TodoPolicy.edit: their own); empty otherwise, as for a missing one. */
     @Override
     public Optional<TodoView> findOwnedTodoView(UUID id, UUID ownerId) {
-        return repository.findByIdAndOwnerId(id, ownerId).map(mapper::toView);
+        return repository.findById(id).filter(todo -> policy.edit(todo, ownerId).isAllowed()).map(mapper::toView);
     }
 
+    /** A page's lookup, by the owner condition of TodoPolicy.listScope written as the query's own (one statement). */
     @Override
     public List<TodoView> getOwnedTodoViews(Collection<UUID> ids, UUID ownerId) {
         if (ids.isEmpty()) {
@@ -308,7 +313,7 @@ public class TodoService implements Todos {
     /** Not locked: an entry written while its todo is deleted is refused by its foreign key, 404 {@code TODO_GONE}. */
     @Transactional
     public ObjectWrapper<TimeEntryResponse> createTimeEntry(UUID todoId, TimeEntryCreateRequest request) {
-        Todo todo = getOwnedTodo(todoId, currentUser.id());
+        Todo todo = getEditableTodo(todoId, currentUser.id());
         TimeEntry saved = timeEntryRepository.saveAndFlush(timeEntryMapper.toEntity(request, todo));
         return ObjectWrapper.withObject(timeEntryMapper.toResponse(saved));
     }
@@ -326,7 +331,7 @@ public class TodoService implements Todos {
         UUID ownerId = currentUser.id();
         CursorBatch<TimeEntryResponse> batch =
                 timeEntryRepository.findByFilter(filter, todoId, ownerId, paging.cursorSize(filter));
-        getOwnedTodo(todoId, ownerId);
+        getEditableTodo(todoId, ownerId);
         return CursorWrapper.of(batch.items(), batch.nextCursor());
     }
 
@@ -353,7 +358,8 @@ public class TodoService implements Todos {
                 // tenancy:begin
                 // requesterOf(todo),
                 // tenancy:end
-                todoTagRepository.findTagsOfTodo(todo.getId()));
+                todoTagRepository.findTagsOfTodo(todo.getId()),
+                policy.edit(todo, currentUser.id()).isAllowed());
     }
     // tenancy:begin
 
@@ -398,36 +404,27 @@ public class TodoService implements Todos {
     }
 
     /** With its list: a status it already has changes nothing, so no row lock keeps its list there. */
-    private Todo getEditableTodo(UUID id, UUID ownerId, Long expectedVersion) {
-        Todo todo = getOwnedTodoWithItsList(id, ownerId);
+    private Todo getEditableTodoAtVersion(UUID id, UUID callerId, Long expectedVersion) {
+        Todo todo = repository.findWithTodoListById(id).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+        policy.edit(todo, callerId).orThrow();
         todo.checkVersion(expectedVersion);
         return todo;
     }
 
-    private Todo getOwnedTodoForUpdate(UUID id, UUID ownerId) {
-        return repository.findForUpdateByIdAndOwnerId(id, ownerId).orElseThrow(() -> notOwned(id, ownerId));
-    }
-
-    private Todo getOwnedTodo(UUID id, UUID ownerId) {
-        return repository.findByIdAndOwnerId(id, ownerId).orElseThrow(() -> notOwned(id, ownerId));
-    }
-
-    private Todo getOwnedTodoWithItsList(UUID id, UUID ownerId) {
-        return repository.findWithTodoListByIdAndOwnerId(id, ownerId).orElseThrow(() -> notOwned(id, ownerId));
-    }
-
     /**
-     * Why a call only the owner may make found no todo of the caller's: 403 {@code TODO_NOT_YOURS} for its
-     * requester, who may read it and so knows it exists, 404 {@code TODO_NOT_FOUND} for anyone else, as for a
-     * missing one. One more statement, on the refused path only; the requester's row is never locked. Who the
-     * requester is changes only through the owner's update, and this path writes nothing, so no lock is needed
-     * to read it.
+     * Locked first, then decided (TodoPolicy.edit): a caller it refuses held the lock only until its own
+     * transaction rolls back, and needs the todo's id to take it.
      */
-    private AppException notOwned(UUID id, UUID callerId) {
-        if (repository.existsByIdAndRequesterId(id, callerId)) {
-            return AppException.of(ErrorCode.TODO_NOT_YOURS, id);
-        }
-        return AppException.of(ErrorCode.TODO_NOT_FOUND, id);
+    private Todo lockEditableTodo(UUID id, UUID callerId) {
+        Todo todo = repository.findForUpdateById(id).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+        policy.edit(todo, callerId).orThrow();
+        return todo;
+    }
+
+    private Todo getEditableTodo(UUID id, UUID callerId) {
+        Todo todo = repository.findById(id).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
+        policy.edit(todo, callerId).orThrow();
+        return todo;
     }
 
     /**
@@ -447,7 +444,7 @@ public class TodoService implements Todos {
 
     /** The todo first, so an unknown or foreign todo answers TODO_NOT_FOUND, and an entry of another todo is not found. */
     private TimeEntry getOwnedTimeEntry(UUID todoId, UUID id, UUID ownerId) {
-        getOwnedTodo(todoId, ownerId);
+        getEditableTodo(todoId, ownerId);
         return timeEntryRepository.findByIdAndTodoIdAndOwnerId(id, todoId, ownerId)
                 .orElseThrow(AppException.supply(ErrorCode.TIME_ENTRY_NOT_FOUND, id));
     }

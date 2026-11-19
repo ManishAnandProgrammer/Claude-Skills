@@ -48,7 +48,6 @@ class TokenService {
     /** 256 random bits: unguessable, so a fast hash is enough to store it. */
     private static final int REFRESH_TOKEN_BYTES = 32;
     private static final String TOKEN_TYPE = "Bearer";
-    private static final String ROLES_CLAIM = "roles";
 
     private final SecureRandom secureRandom = new SecureRandom();
     private final RefreshTokenRepository repository;
@@ -179,7 +178,7 @@ class TokenService {
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .subject(user.getId().toString())
-                .claim(ROLES_CLAIM, List.of(user.getRole().name()))
+                .claim(RolePermissions.ROLES_CLAIM, List.of(user.getRole().name()))
                 // session-version:begin
                 // From the same row as the role: a token never pairs a newer number with an older role.
                 .claim(SessionVersions.CLAIM, user.getSessionVersion())

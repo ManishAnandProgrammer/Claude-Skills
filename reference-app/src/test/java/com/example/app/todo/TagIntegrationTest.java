@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TagIntegrationTest extends IntegrationTest {
 
     private static final String TAGS = "/api/v1/tags";
-    private static final String DROPDOWN = TAGS + "/dropdown";
+    private static final String DROPDOWN = TAGS + "/dropdown?for=TODO_EDIT_OWN";
 
     private static String createPayload(String name, String color) {
         String colorJson = Objects.isNull(color) ? "null" : "\"" + color + "\"";
@@ -678,12 +678,12 @@ class TagIntegrationTest extends IntegrationTest {
         for (int index = 0; index < 21; index++) {
             createTag(many, "Option " + index);
         }
-        getAs(many.accessToken(), DROPDOWN + "?size=20")
+        getAs(many.accessToken(), DROPDOWN + "&size=20")
                 .andExpect(jsonPath("$.response.length()").value(20))
                 .andExpect(jsonPath("$.pageInfo.hasMore").value(true));
 
-        assertThat(statementsFor(one, DROPDOWN + "?size=20")).isEqualTo(1);
-        assertThat(statementsFor(many, DROPDOWN + "?size=20")).isEqualTo(1);
+        assertThat(statementsFor(one, DROPDOWN + "&size=20")).isEqualTo(1);
+        assertThat(statementsFor(many, DROPDOWN + "&size=20")).isEqualTo(1);
     }
 
     @Test
@@ -717,7 +717,7 @@ class TagIntegrationTest extends IntegrationTest {
             case ALL -> List.of("Live", "Retired");
         };
 
-        List<String> labels = read(getAs(user.accessToken(), DROPDOWN + "?status=" + wanted).andExpect(status().isOk()),
+        List<String> labels = read(getAs(user.accessToken(), DROPDOWN + "&status=" + wanted).andExpect(status().isOk()),
                 "$.response[*].label");
         assertThat(labels).containsExactlyElementsOf(expected);
     }
@@ -730,9 +730,9 @@ class TagIntegrationTest extends IntegrationTest {
         createTag(user, "Charlie");
         createTag(user, "Bravo");
 
-        getAs(user.accessToken(), DROPDOWN + "?sortDirection=ASC")
+        getAs(user.accessToken(), DROPDOWN + "&sortDirection=ASC")
                 .andExpect(jsonPath("$.response[*].label", contains("Alpha", "Bravo", "Charlie")));
-        getAs(user.accessToken(), DROPDOWN + "?sortDirection=DESC")
+        getAs(user.accessToken(), DROPDOWN + "&sortDirection=DESC")
                 .andExpect(jsonPath("$.response[*].label", contains("Charlie", "Bravo", "Alpha")));
     }
 
@@ -743,7 +743,7 @@ class TagIntegrationTest extends IntegrationTest {
         createTag(user, "Garden work");
         createTag(user, "Reading");
 
-        getAs(user.accessToken(), DROPDOWN + "?query=GARD")
+        getAs(user.accessToken(), DROPDOWN + "&query=GARD")
                 .andExpect(jsonPath("$.response[*].label", contains("Garden work")));
     }
 
@@ -773,7 +773,7 @@ class TagIntegrationTest extends IntegrationTest {
             createTag(user, name);
         }
 
-        assertThat(walk(user, DROPDOWN + "?size=2"))
+        assertThat(walk(user, DROPDOWN + "&size=2"))
                 .containsExactly(List.of("Alpha", "Bravo"), List.of("Charlie", "Delta"), List.of("Echo"));
     }
 
@@ -785,7 +785,7 @@ class TagIntegrationTest extends IntegrationTest {
             createTag(user, name);
         }
 
-        assertThat(walk(user, DROPDOWN + "?size=2&sortDirection=DESC"))
+        assertThat(walk(user, DROPDOWN + "&size=2&sortDirection=DESC"))
                 .containsExactly(List.of("Echo", "Delta"), List.of("Charlie", "Bravo"), List.of("Alpha"));
     }
 
@@ -795,9 +795,9 @@ class TagIntegrationTest extends IntegrationTest {
         TestUser user = newUser();
         createTag(user, "Alpha");
         createTag(user, "Bravo");
-        String ascendingCursor = read(getAs(user.accessToken(), DROPDOWN + "?size=1"), "$.pageInfo.nextCursor");
+        String ascendingCursor = read(getAs(user.accessToken(), DROPDOWN + "&size=1"), "$.pageInfo.nextCursor");
 
-        getAs(user.accessToken(), DROPDOWN + "?size=1&sortDirection=DESC&after=" + ascendingCursor)
+        getAs(user.accessToken(), DROPDOWN + "&size=1&sortDirection=DESC&after=" + ascendingCursor)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
                 .andExpect(jsonPath("$.errors[0].parameter").value("after"));
@@ -806,7 +806,7 @@ class TagIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("A tampered dropdown cursor is 400 REQUEST_PARAMETER_INVALID naming after")
     void dropdownTamperedCursorIsRefused() throws Exception {
-        getAs(newUser().accessToken(), DROPDOWN + "?after=not-a-cursor")
+        getAs(newUser().accessToken(), DROPDOWN + "&after=not-a-cursor")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
                 .andExpect(jsonPath("$.errors[0].parameter").value("after"));
@@ -816,8 +816,8 @@ class TagIntegrationTest extends IntegrationTest {
     @DisplayName("A dropdown batch of the configured maximum is accepted, one more is 400 naming size")
     void dropdownSizeFollowsTheConfiguredMaximum() throws Exception {
         String token = newUser().accessToken();
-        getAs(token, DROPDOWN + "?size=100").andExpect(status().isOk());
-        getAs(token, DROPDOWN + "?size=101")
+        getAs(token, DROPDOWN + "&size=100").andExpect(status().isOk());
+        getAs(token, DROPDOWN + "&size=101")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[0].parameter").value("size"))
@@ -827,7 +827,7 @@ class TagIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("An unknown dropdown status is 400 REQUEST_PARAMETER_INVALID naming status")
     void dropdownUnknownStatusIs400() throws Exception {
-        getAs(newUser().accessToken(), DROPDOWN + "?status=ARCHIVED")
+        getAs(newUser().accessToken(), DROPDOWN + "&status=ARCHIVED")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
                 .andExpect(jsonPath("$.errors[*].parameter", contains("status")))

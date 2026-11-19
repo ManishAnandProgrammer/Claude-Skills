@@ -1,7 +1,11 @@
 package com.example.app.todo.controller;
 
 import com.example.app.common.dropdown.DropdownFilter;
+import com.example.app.common.dropdown.DropdownFor;
 import com.example.app.common.dropdown.DropdownItem;
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Requires;
+import com.example.app.common.security.SignedIn;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
@@ -16,7 +20,6 @@ import com.example.app.todo.service.TagService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,6 +27,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -39,12 +43,14 @@ class TagController implements TagApi {
 
     @Override
     @GetMapping(version = "v1+")
+    @Requires(Permission.TAG_READ_OWN)
     public PaginationWrapper<TagResponse> all(@Valid TagFilter filter) {
         return service.findByFilter(filter);
     }
 
     @Override
     @GetMapping(path = "/{id}", version = "v1+")
+    @Requires(Permission.TAG_READ_OWN)
     public ObjectWrapper<TagResponse> get(@PathVariable UUID id) {
         return service.findById(id);
     }
@@ -52,12 +58,14 @@ class TagController implements TagApi {
     @Override
     @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
+    @Requires(Permission.TAG_CREATE_OWN)
     public ObjectWrapper<TagResponse> create(@RequestBody @Valid TagCreateRequest request) {
         return service.create(request);
     }
 
     @Override
     @PutMapping(path = "/{id}", version = "v1+")
+    @Requires(Permission.TAG_EDIT_OWN)
     public ObjectWrapper<TagResponse> update(@PathVariable UUID id, @RequestBody @Valid TagUpdateRequest request) {
         return service.update(id, request);
     }
@@ -65,20 +73,23 @@ class TagController implements TagApi {
     @Override
     @DeleteMapping(path = "/{id}", version = "v1+")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Requires(Permission.TAG_DELETE_OWN)
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @Override
     @PostMapping(path = "/{id}/merge", version = "v1+")
+    @Requires(Permission.TAG_EDIT_OWN)
     public ObjectWrapper<TagResponse> merge(@PathVariable UUID id, @RequestBody @Valid TagMergeRequest request) {
         return mergeManager.merge(id, request);
     }
 
     @Override
     @GetMapping(path = "/dropdown", version = "v1+")
-    @PreAuthorize("isAuthenticated()")
-    public CursorWrapper<DropdownItem> dropdown(@Valid DropdownFilter filter) {
-        return service.dropdown(filter);
+    @SignedIn
+    public CursorWrapper<DropdownItem> dropdown(@RequestParam(DropdownFor.PARAMETER) Permission action,
+                                                @Valid DropdownFilter filter) {
+        return service.dropdown(action, filter);
     }
 }

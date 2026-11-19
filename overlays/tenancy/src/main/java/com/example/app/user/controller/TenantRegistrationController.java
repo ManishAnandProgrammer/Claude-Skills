@@ -1,5 +1,6 @@
 package com.example.app.user.controller;
 
+import com.example.app.common.security.Public;
 import com.example.app.user.controller.api.TenantRegistrationApi;
 import com.example.app.user.dto.request.TenantRegistrationRequest;
 import com.example.app.user.service.TenantRegistrationService;
@@ -24,6 +25,7 @@ class TenantRegistrationController implements TenantRegistrationApi {
     @Override
     @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.ACCEPTED)
+    @Public
     public void register(@RequestBody @Valid TenantRegistrationRequest request, HttpServletRequest http) {
         service.register(request, http.getRemoteAddr());
     }

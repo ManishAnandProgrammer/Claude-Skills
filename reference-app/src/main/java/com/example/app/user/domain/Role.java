@@ -1,5 +1,9 @@
 package com.example.app.user.domain;
 
+import com.example.app.common.security.Permission;
+
+import java.util.Set;
+
 /**
  * A user's role, sent in the access token's {@code roles} claim.
  *   <!-- tenancy:begin -->
@@ -17,9 +21,26 @@ package com.example.app.user.domain;
  *   <!-- tenancy:end -->
  * Each role's javadoc names what it writes (on every role, when every role writes a resource); check it
  * is still true before adding to it.
+ *
+ * <p>A role is Spring's group: it lists its {@link Permission}s here, in code, and the security chain turns
+ * the token's role into exactly these authorities ({@code RolePermissions}); a handler checks a permission,
+ * never a role. Roles don't include each other: a permission two roles share is listed on both, and each role
+ * holds the prerequisites of everything it holds ({@code RoleTest}). The role (and so its permissions) is
+ * the token's: a change reaches the person within one access-token lifetime, as said above.</p>
  */
 public enum Role {
-    USER,
+    // example:begin
+    /** Works their own todo lists, todos, tags and plans. */
+    // example:end
+    USER(new Permission[] {
+            // example:begin
+            Permission.TODO_LIST_READ_OWN, Permission.TODO_LIST_CREATE_OWN, Permission.TODO_LIST_EDIT_OWN,
+            Permission.TODO_LIST_DELETE_OWN,
+            Permission.TODO_READ_OWN, Permission.TODO_CREATE_OWN, Permission.TODO_EDIT_OWN, Permission.TODO_DELETE_OWN,
+            Permission.TAG_READ_OWN, Permission.TAG_CREATE_OWN, Permission.TAG_EDIT_OWN, Permission.TAG_DELETE_OWN,
+            Permission.PLAN_READ_OWN, Permission.PLAN_CREATE_OWN, Permission.PLAN_EDIT_OWN, Permission.PLAN_DELETE_OWN,
+            // example:end
+    }),
     // admin:begin (with the first piece that has admin endpoints: sign-in's account suspension, metadata, media)
     // tenancy:begin
     // /** Everything a USER works, plus the tenant's members (who belongs, with which role) and its own settings. */
@@ -37,6 +58,41 @@ public enum Role {
      *   <!-- session-version:end -->
      */
     // tenancy:end
-    ADMIN
+    ADMIN(new Permission[] {
+            // example:begin
+            Permission.TODO_LIST_READ_OWN, Permission.TODO_LIST_CREATE_OWN, Permission.TODO_LIST_EDIT_OWN,
+            Permission.TODO_LIST_DELETE_OWN,
+            Permission.TODO_READ_OWN, Permission.TODO_CREATE_OWN, Permission.TODO_EDIT_OWN, Permission.TODO_DELETE_OWN,
+            Permission.TAG_READ_OWN, Permission.TAG_CREATE_OWN, Permission.TAG_EDIT_OWN, Permission.TAG_DELETE_OWN,
+            Permission.PLAN_READ_OWN, Permission.PLAN_CREATE_OWN, Permission.PLAN_EDIT_OWN, Permission.PLAN_DELETE_OWN,
+            // example:end
+            // tenancy:begin
+            // Permission.TENANT_MEMBERS_MANAGE,
+            // tenancy:else
+            Permission.ACCOUNT_STATUS_CHANGE,
+            // tenancy:end
+            // metadata:begin
+            Permission.METADATA_MANAGE,
+            // metadata:end
+            // media:begin
+            Permission.UPLOAD_POLICY_MANAGE,
+            // media:end
+    }),
     // admin:end
+    ;
+
+    private final Set<Permission> permissions;
+
+    Role(Permission... permissions) {
+        this.permissions = Set.of(permissions);
+    }
+
+    /** Exactly what this role may do; every one of them becomes an authority of its tokens. */
+    public Set<Permission> permissions() {
+        return permissions;
+    }
+
+    public boolean grants(Permission permission) {
+        return permissions.contains(permission);
+    }
 }

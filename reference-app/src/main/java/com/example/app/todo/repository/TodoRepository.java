@@ -18,31 +18,14 @@ import java.util.UUID;
 
 public interface TodoRepository extends JpaRepository<Todo, UUID>, CustomTodoRepository {
 
-    Optional<Todo> findByIdAndOwnerId(UUID id, UUID ownerId);
-
     /**
-     * The owner's todo with its list, in one statement (a join): what a response that shows the list's
-     * name reads when the todo isn't locked. A lazy list read afterwards would be a second statement, and a
-     * todo deleted with its list between the two would surface as an {@code EntityNotFoundException}, a
-     * 500, instead of the todo's 404 (house-review DATA-21; TodoReferencesIntegrationTest).
+     * The todo with its list, in one statement (a join): what a response that shows the list's name reads when
+     * the todo isn't locked. A lazy list read afterwards would be a second statement, and a todo deleted with
+     * its list between the two would surface as an {@code EntityNotFoundException}, a 500, instead of the
+     * todo's 404 (house-review DATA-21; TodoReferencesIntegrationTest). Who may see it is TodoPolicy's.
      */
     @EntityGraph(attributePaths = "todoList")
-    Optional<Todo> findWithTodoListByIdAndOwnerId(UUID id, UUID ownerId);
-
-    /**
-     * The todo with its list, for a caller who may see it: its owner or its requester (the one visibility
-     * rule; everyone else gets the 404 of a missing todo). Only the detail reads through it: every other call
-     * is the owner's.
-     */
-    @EntityGraph(attributePaths = "todoList")
-    @Query("""
-            select todo from Todo todo
-             where todo.id = :id
-               and (todo.ownerId = :callerId or todo.requesterId = :callerId)""")
-    Optional<Todo> findVisibleWithTodoList(UUID id, UUID callerId);
-
-    /** True when {@code callerId} asked for the todo: a call only its owner may make is 403 for them, not 404. */
-    boolean existsByIdAndRequesterId(UUID id, UUID requesterId);
+    Optional<Todo> findWithTodoListById(UUID id);
 
     /**
      * The views of a page's todos (another module's names for its rows), the view's columns only: a page's
@@ -56,7 +39,7 @@ public interface TodoRepository extends JpaRepository<Todo, UUID>, CustomTodoRep
     List<TodoView> findViewsByIdInAndOwnerId(Collection<UUID> ids, UUID ownerId);
 
     /**
-     * Owner of a write: the owner's todo, locked {@code FOR NO KEY UPDATE} (Hibernate's PostgreSQL write
+     * A write's todo, locked {@code FOR NO KEY UPDATE} (Hibernate's PostgreSQL write
      * lock) until the transaction ends, for every write that changes its member rows (tags, attachments)
      * and for its delete. A second writer with the same version waits here, before touching anything,
      * then reads the new version and answers 409, instead of colliding on a member row; and the todo is
@@ -66,10 +49,10 @@ public interface TodoRepository extends JpaRepository<Todo, UUID>, CustomTodoRep
      * because it reads another table: a plan is only for an open todo, so the todo's completion waits for the plan.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<Todo> findForUpdateByIdAndOwnerId(UUID id, UUID ownerId);
+    Optional<Todo> findForUpdateById(UUID id);
 
     /**
-     * A tag merge's lock on every todo carrying the tag, the write lock {@link #findForUpdateByIdAndOwnerId}
+     * A tag merge's lock on every todo carrying the tag, the write lock {@link #findForUpdateById}
      * takes, in id order: two merges whose tags share todos lock them in the same order and queue instead of
      * deadlocking, and each todo's own writes wait for the merge. One statement whatever their number; the
      * rows stay in the database (only their count comes back).

@@ -1,5 +1,6 @@
 package com.example.app.tenant.controller;
 
+import com.example.app.common.security.SignedIn;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
@@ -39,12 +40,14 @@ class PlatformTenantController implements PlatformTenantApi {
 
     @Override
     @GetMapping(version = "v1+")
+    @SignedIn
     public PaginationWrapper<TenantResponse> all(@Valid TenantFilter filter) {
         return service.findByFilter(filter);
     }
 
     @Override
     @GetMapping(path = "/{id}", version = "v1+")
+    @SignedIn
     public ObjectWrapper<TenantResponse> get(@PathVariable UUID id) {
         return service.findById(id);
     }
@@ -52,6 +55,7 @@ class PlatformTenantController implements PlatformTenantApi {
     @Override
     @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
+    @SignedIn
     public ObjectWrapper<TenantResponse> create(@RequestBody @Valid TenantCreateRequest request) {
         return staffTenants.create(request);
     }
@@ -59,18 +63,21 @@ class PlatformTenantController implements PlatformTenantApi {
     @Override
     @PostMapping(path = "/{id}/approve", version = "v1+")
     @ResponseStatus(HttpStatus.ACCEPTED)
+    @SignedIn
     public ObjectWrapper<TenantResponse> approve(@PathVariable UUID id) {
         return staffTenants.approve(id);
     }
 
     @Override
     @PatchMapping(path = "/{id}/status", version = "v1+")
+    @SignedIn
     public ObjectWrapper<TenantResponse> changeStatus(@PathVariable UUID id, @RequestBody @Valid TenantStatusRequest request) {
         return service.changeStatus(id, request);
     }
 
     @Override
     @GetMapping(path = "/{id}/audit", version = "v1+")
+    @SignedIn
     public CursorWrapper<PlatformAuditResponse> audit(@PathVariable UUID id, @Valid PlatformAuditFilter filter) {
         return audit.findByTenant(id, filter);
     }

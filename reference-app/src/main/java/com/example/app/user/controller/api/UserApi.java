@@ -11,6 +11,7 @@ import com.example.app.user.dto.request.PasswordChangeRequest;
 import com.example.app.user.dto.request.UserFilter;
 import com.example.app.user.dto.request.UserStatusRequest;
 // tenancy:end
+import com.example.app.user.dto.response.AccessResponse;
 import com.example.app.user.dto.response.TokenResponse;
 import com.example.app.user.dto.response.UserResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -47,6 +48,18 @@ public interface UserApi {
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<UserResponse> me();
+
+    @Operation(summary = "What you may do: your menu areas and your permissions", description = """
+            Read from your access token, so a change of your role shows with your next token. A client shows a menu \
+            item by its area, a tab or a button by its permission (or by a record's allowedActions), and never \
+            decides which permissions make an area. Every request is checked by the server whatever the client \
+            shows; which role holds which permission is never published.""")
+    @ApiResponse(responseCode = "200", description = "Your areas and permissions")
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "SERVER_BUSY; retry after Retry-After",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ObjectWrapper<AccessResponse> access();
 
     @Operation(summary = "Change your password", description = """
             Needs the current password. The new one follows signup's rules (at least 8 characters and at most \
@@ -89,7 +102,7 @@ public interface UserApi {
     // tenancy:begin
     // tenancy:else
 
-    @Operation(summary = "Find an account by its email address (ADMIN)", description = """
+    @Operation(summary = "Find an account by its email address (ACCOUNT_STATUS_CHANGE)", description = """
             The account with this exact address (ignoring case and surrounding spaces), or an empty list: its \
             id, status and version, which a status change takes.""")
     @ApiResponse(responseCode = "200", description = "The account, or an empty list")
@@ -97,25 +110,26 @@ public interface UserApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (not an ADMIN)",
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (without ACCOUNT_STATUS_CHANGE)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ListWrapper<UserResponse> lookUp(UserFilter filter);
 
-    @Operation(summary = "Suspend or reactivate an account (ADMIN)", description = """
+    @Operation(summary = "Suspend or reactivate an account (ACCOUNT_STATUS_CHANGE)", description = """
             SUSPENDED ends every session of the account at once (every refresh token revoked, and\s"""
             + ACCESS_TOKENS_END + """
             ) and refuses it every new one: login answers 403 AUTH_ACCOUNT_SUSPENDED. ACTIVE lets it \
-            sign in again; the sessions the suspension ended stay ended. Never your own account; you must be \
-            an ACTIVE ADMIN now, whatever your token says, so the last ADMIN is never suspended.""")
+            sign in again; the sessions the suspension ended stay ended. Never your own account; your account \
+            must be ACTIVE and its role hold ACCOUNT_STATUS_CHANGE now, whatever your token says, so the last \
+            ADMIN is never suspended.""")
     @ApiResponse(responseCode = "200", description = "The account with its new status and version")
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (a malformed id)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = """
-            ACCESS_DENIED (not an ACTIVE ADMIN now), USER_OWN_STATUS_CHANGE (your own account: another ADMIN \
+            ACCESS_DENIED (without ACCOUNT_STATUS_CHANGE, or not an ACTIVE account holding it now), USER_OWN_STATUS_CHANGE (your own account: another ADMIN \
             changes it)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND",

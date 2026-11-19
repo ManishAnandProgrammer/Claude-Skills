@@ -23,6 +23,7 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.domain.PredicateSpecification;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -50,7 +51,7 @@ class TodoRepositoryImpl implements CustomTodoRepository {
      * ids in heap order the planner walks it backward through every newer row of every owner (DATA-10).
      */
     @Override
-    public CursorBatch<TodoSummaryResponse> findByFilter(TodoFilter filter, UUID ownerId, int size) {
+    public CursorBatch<TodoSummaryResponse> findByFilter(TodoFilter filter, PredicateSpecification<Todo> scope, int size) {
         String sort = filter.getSort().name();
         Cursor cursor = Cursor.read(filter.getAfter(), sort, CURSOR_KEYS);
 
@@ -59,7 +60,7 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         Root<Todo> root = query.from(Todo.class);
         query.select(summaryOf(builder, root));
         List<Predicate> predicates = filterPredicates(builder, query, root, filter);
-        predicates.add(builder.equal(root.get(Todo_.ownerId), ownerId));
+        predicates.add(scope.toPredicate(root, builder));
         if (cursor.isPresent()) {
             predicates.add(seekAfter(builder, root, filter.getSort(), cursor));
         }

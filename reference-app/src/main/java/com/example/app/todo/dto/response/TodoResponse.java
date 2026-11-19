@@ -35,6 +35,7 @@ public record TodoResponse(
         // media:begin
         @Schema(description = "Its files, in the order they were uploaded; empty for none") List<TodoAttachmentResponse> attachments,
         // media:end
+        @Schema(description = "What you may do with it") TodoAllowedActionsResponse allowedActions,
         @Schema(description = "When it was created") Instant createdAt,
         @Schema(description = "When it last changed") Instant updatedAt,
         @Schema(description = "Who created it") UUID createdBy,

@@ -3,6 +3,7 @@ package com.example.app.user.service;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.pagination.Paging;
+import com.example.app.common.security.Permission;
 import com.example.app.common.tenancy.TenantContext;
 import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
@@ -209,7 +210,8 @@ public class MembershipService implements Members {
     }
 
     /**
-     * Locks the caller's tenant, then 403 {@code ACCESS_DENIED} unless the caller is an ADMIN there now.
+     * Locks the caller's tenant, then 403 {@code ACCESS_DENIED} unless the caller's role there grants
+     * {@code TENANT_MEMBERS_MANAGE} now.
      * The token's role is up to one lifetime old: a removed or demoted ADMIN could otherwise add
      * themselves back, or promote an account of theirs, and undo the change for good. Read under
      * the lock, so of two ADMINs demoting each other at once the second finds itself demoted.
@@ -218,7 +220,7 @@ public class MembershipService implements Members {
         UUID tenantId = TenantContext.current();
         tenants.lockForMemberChange(tenantId);
         boolean admin = repository.findByUserIdAndTenantId(callerId, tenantId)
-                .filter(membership -> membership.getRole() == Role.ADMIN)
+                .filter(membership -> membership.getRole().grants(Permission.TENANT_MEMBERS_MANAGE))
                 .isPresent();
         if (!admin) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);

@@ -55,15 +55,15 @@ public class MediaFileService implements Uploads {
     private final MediaProperties properties;
 
     /**
-     * Checks who may upload for the purpose (its role comes in the body, so no annotation can check
-     * it) and the policy, signs each file, then records them PENDING in one short transaction
+     * Checks who may upload for the purpose (it comes in the body, so no annotation can check its
+     * permissions) and the policy, signs each file, then records them PENDING in one short transaction
      * ({@code saveAll}'s own). Signing first gives each row its URL's exact expiry; if the write fails,
      * the URLs never reach the client.
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ListWrapper<UploadUrlResponse> issue(UploadUrlRequest request) {
         UploadPurpose purpose = request.purpose();
-        if (!purpose.mayUpload(currentUser::hasRole)) {
+        if (!purpose.mayUpload(currentUser::holds)) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
         }
         UploadPolicy policy = policyService.getPolicy(purpose);

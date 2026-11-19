@@ -1,10 +1,12 @@
 package com.example.app.user.controller;
 
+import com.example.app.common.security.CurrentUser;
 // tenancy:begin
 // tenancy:else
-import com.example.app.common.security.AdminOnly;
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Requires;
 // tenancy:end
-import com.example.app.common.security.CurrentUser;
+import com.example.app.common.security.SignedIn;
 // tenancy:begin
 // tenancy:else
 import com.example.app.common.wrapper.ListWrapper;
@@ -17,6 +19,7 @@ import com.example.app.user.dto.request.PasswordChangeRequest;
 import com.example.app.user.dto.request.UserFilter;
 import com.example.app.user.dto.request.UserStatusRequest;
 // tenancy:end
+import com.example.app.user.dto.response.AccessResponse;
 import com.example.app.user.dto.response.TokenResponse;
 import com.example.app.user.dto.response.UserResponse;
 // tenancy:begin
@@ -60,7 +63,8 @@ import java.util.UUID;
  *   <!-- tenancy:begin -->
  * Accounts are suspended by platform staff (PlatformUserController), never through this tenant-plane API.
  *   <!-- tenancy:else -->
- * The one exception, an ADMIN's: finding another account by its address, and suspending or reactivating it.
+ * The one exception, ACCOUNT_STATUS_CHANGE's: finding another account by its address, and suspending or
+ * reactivating it.
  *   <!-- tenancy:end -->
  */
 @RestController
@@ -78,12 +82,21 @@ class UserController implements UserApi {
 
     @Override
     @GetMapping(path = "/me", version = "v1+")
+    @SignedIn
     public ObjectWrapper<UserResponse> me() {
         return service.me(currentUser.id());
     }
 
     @Override
+    @GetMapping(path = "/me/access", version = "v1+")
+    @SignedIn
+    public ObjectWrapper<AccessResponse> access() {
+        return service.access(currentUser.permissions());
+    }
+
+    @Override
     @PostMapping(path = "/me/password", version = "v1+")
+    @SignedIn
     public ObjectWrapper<TokenResponse> changePassword(@RequestBody @Valid PasswordChangeRequest request, HttpServletRequest http) {
         return authService.changePassword(currentUser.id(), request, http.getRemoteAddr());
     }
@@ -92,6 +105,7 @@ class UserController implements UserApi {
     @Override
     @DeleteMapping(path = "/me/sessions", version = "v1+")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @SignedIn
     public void endAllSessions() {
         authService.logoutEverywhere(currentUser.id());
     }
@@ -100,15 +114,15 @@ class UserController implements UserApi {
     // tenancy:else
 
     @Override
-    @AdminOnly
     @GetMapping(version = "v1+")
+    @Requires(Permission.ACCOUNT_STATUS_CHANGE)
     public ListWrapper<UserResponse> lookUp(@Valid @ParameterObject UserFilter filter) {
         return accountStatus.lookUp(filter);
     }
 
     @Override
-    @AdminOnly
     @PatchMapping(path = "/{id}/status", version = "v1+")
+    @Requires(Permission.ACCOUNT_STATUS_CHANGE)
     public ObjectWrapper<UserResponse> changeStatus(@PathVariable UUID id, @RequestBody @Valid UserStatusRequest request) {
         return accountStatus.changeStatus(currentUser.id(), id, request);
     }

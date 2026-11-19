@@ -2,7 +2,7 @@
 376d91d6e67cd0136fc5b488a076fe08561326e6a42907b4c3721662e2c8e5ee  reference-app/spotbugs-exclude.xml
 6d626d234a3309745e56d5c4cd792b70fd9cafa64fd006c524ab031d5f3e95e2  reference-app/src/main/java/com/example/app/common/logging/LogContext.java
 11f2b9179e3f61756c09217b66fb0a350e125ae5cf117be60dcfc177177b38c5  reference-app/src/main/java/com/example/app/common/logging/UserLogContextFilter.java
-ac927c2fcb5bf8f96e1846fb6d281a36f8e2dcf1a7e4317a438ab178a4b4f5ed  reference-app/src/main/java/com/example/app/common/security/CurrentUser.java
+a9ad44701d5ce1da5dc00e3d3c1370a2ae5d9cbde560db40d62b8e046d7c06b8  reference-app/src/main/java/com/example/app/common/security/CurrentUser.java
 e937d5fbe586315dc653c967072c5aeade16c8fd4124759f09b12ab18277b995  reference-app/src/main/java/com/example/app/config/LiquibaseConnectionConfig.java
 8c4238a60b307af3abc04535288691c965c81c2551dbe639b5c7984f9c960ace  reference-app/src/main/java/com/example/app/config/SchedulingConfig.java
 a60a3b85f4bedaf6f216a50f0056cea6db23a51b4907cc7963742df9ad81597b  reference-app/src/main/java/com/example/app/media/mapper/MediaFileMapper.java
@@ -11,11 +11,11 @@ a53f4fb282ba58cbb7d7743652fad59031c386fa07d88c01cb6433498e717dfc  reference-app/
 566d6cb505f8310f532d78a05865273c4d0ce5a2acd8289673c5e91dcecea295  reference-app/src/main/java/com/example/app/media/service/MediaVerificationJob.java
 a7c17b6cf7080c55bfe970621cc5841aa82f6246ba212fd983436555fac3390a  reference-app/src/main/java/com/example/app/metadata/repository/CounterRepository.java
 76466a0bd180b6baf17f42c9b2a66c9df75fc272db755abffea63e2f8f6141f3  reference-app/src/main/java/com/example/app/user/controller/api/AuthApi.java
-b9f2fdf2584c4032e84fa0cc845d4fade2a81a6f03a7a74821b166271735ac1d  reference-app/src/main/java/com/example/app/user/controller/AuthController.java
+731c8c59db2282ddaae8b2942788eada1383b0fa2ef3c1dbcfa8573179674d62  reference-app/src/main/java/com/example/app/user/controller/AuthController.java
 5b29eea3687be9e419905ae9ce03b6bf5ec40e6ebd3f5907a19dce002f6335e4  reference-app/src/main/java/com/example/app/user/domain/RefreshToken.java
 0908df5e7489ba338bc8c2974f585f98b473b7eaff0953b10860d2fd1a45c463  reference-app/src/main/java/com/example/app/user/service/AuthService.java
-2918887fb34b82babfae49f802a6a33a686f5ba96dc9aeb1b012c4922f5c1c99  reference-app/src/main/java/com/example/app/user/service/TokenService.java
-3174e9f682a45de0f93449b50ca830a72d7a0ad856f9e4ac71eb34589424d41f  reference-app/src/test/java/com/example/app/support/IntegrationTest.java
+0392495a12af21535b284f72ceb60de1dd0de05e153389837e1a327023381bf8  reference-app/src/main/java/com/example/app/user/service/TokenService.java
+c0b82732c232382ee7f3fcface50d33b748b338e903270f97403e4591958abe1  reference-app/src/test/java/com/example/app/support/IntegrationTest.java
 d63483c18ae6affa68c408fb3f5089c3bbb1ec62852c50fec13804867b8f6b8c  reference-app/src/test/java/com/example/app/support/PreviousReleaseDatabase.java
 3e28cb2231095c2b14e17bca8bc48964b71e97857261db0dc93f429277091555  reference-app/src/test/java/com/example/app/TestcontainersConfiguration.java
 dc753cd4479df79131184a6fa3d777e90faf993a5ea45484288b73f2206a116e  reference-app/src/test/java/com/example/app/todo/UpgradeFromPreviousReleaseIntegrationTest.java

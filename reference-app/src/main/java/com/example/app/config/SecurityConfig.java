@@ -3,10 +3,12 @@ package com.example.app.config;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.logging.UserLogContextFilter;
 import com.example.app.common.security.CurrentUser;
+import com.example.app.common.security.Permission;
 // session-version:begin
 import com.example.app.common.security.SessionVersionFilter;
 import com.example.app.common.security.SessionVersions;
 // session-version:end
+import com.example.app.common.security.TokenPermissions;
 import com.example.app.common.web.ProblemResponses;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.nimbusds.jose.proc.SecurityContext;
@@ -19,6 +21,8 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -28,7 +32,6 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
@@ -42,6 +45,7 @@ import org.springframework.web.filter.CorsFilter;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -51,10 +55,11 @@ import java.util.List;
  *   <li>Access tokens are HS256 JWTs signed and verified with {@code app.jwt.secret} by Spring
  *       Security's resource server: checked by signature, expiry and issuer, with no database
  *       lookup per request. The {@code sub} claim is the user id, {@code roles} the roles.</li>
+ *   <li>A token's authorities are the permissions its bearer holds ({@link TokenPermissions}: the role's), one
+ *       authority per {@link Permission} name and nothing else; a handler names the one it needs
+ *       ({@code @Requires}, method security), or is {@code @SignedIn} or {@code @Public}.</li>
  *   <li>Public: the sign-in endpoints, health, the prometheus scrape (management port only), and
- *       the API docs (disabled in prod). Everything else needs a token. Role checks, when a role
- *       beyond {@code USER} exists, live on the controllers as meta-annotations of
- *       {@code common.security} ({@code @AdminOnly}; method security is on).</li>
+ *       the API docs (disabled in prod). Everything else needs a token.</li>
  *   <li>{@code DispatcherType.ERROR} is permitted, so an exception that escapes to the container's
  *       error page isn't re-answered as a 401.</li>
  *   <li>Security errors are Problem Details with an {@code errorCode}, like every other error, the
@@ -88,8 +93,6 @@ class SecurityConfig {
             "/swagger-ui/**",
             "/swagger-ui.html"
     };
-    private static final String ROLES_CLAIM = "roles";
-    private static final String ROLE_PREFIX = "ROLE_";
     private static final String HMAC_SHA_256 = "HmacSHA256";
 
     @Bean
@@ -143,14 +146,20 @@ class SecurityConfig {
         return (request, response, rejected) -> problemResponses.write(request, response, ErrorCode.REQUEST_INVALID);
     }
 
+    /** The token's permissions as its authorities, one per permission's name: no role, no scope, nothing else. */
     @Bean
-    JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
-        authorities.setAuthoritiesClaimName(ROLES_CLAIM);
-        authorities.setAuthorityPrefix(ROLE_PREFIX);
+    JwtAuthenticationConverter jwtAuthenticationConverter(TokenPermissions tokenPermissions) {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(authorities);
+        converter.setJwtGrantedAuthoritiesConverter(token -> authoritiesOf(tokenPermissions.of(token)));
         return converter;
+    }
+
+    private static List<GrantedAuthority> authoritiesOf(Iterable<Permission> permissions) {
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        for (Permission permission : permissions) {
+            authorities.add(new SimpleGrantedAuthority(permission.name()));
+        }
+        return authorities;
     }
 
     @Bean

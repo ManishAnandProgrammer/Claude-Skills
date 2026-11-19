@@ -1,6 +1,7 @@
 package com.example.app.todo.service;
 
 import com.example.app.common.dropdown.DropdownFilter;
+import com.example.app.common.dropdown.DropdownFor;
 import com.example.app.common.dropdown.DropdownItem;
 import com.example.app.common.dropdown.DropdownStatus;
 import com.example.app.common.exception.AppException;
@@ -9,6 +10,8 @@ import com.example.app.common.exception.RequestError;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Paging;
 import com.example.app.common.security.CurrentUser;
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Reach;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
@@ -20,6 +23,7 @@ import com.example.app.todo.dto.request.TodoListUpdateRequest;
 import com.example.app.todo.dto.response.TodoListResponse;
 import com.example.app.todo.mapper.TodoListMapper;
 import com.example.app.todo.repository.TodoListRepository;
+import java.util.EnumSet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,8 +75,13 @@ public class TodoListService {
         repository.flush();
     }
 
-    /** Lists have no active flag, so a {@code status} other than the default is refused, not ignored. */
-    public CursorWrapper<DropdownItem> dropdown(DropdownFilter filter) {
+    /**
+     * The lists the action {@code action} may use ({@link DropdownFor}): the caller's own, the one reach this
+     * dropdown lists, so the owner condition is the reach's and the batch stays one statement. Lists have no
+     * active flag, so a {@code status} other than the default is refused, not ignored.
+     */
+    public CursorWrapper<DropdownItem> dropdown(Permission action, DropdownFilter filter) {
+        DropdownFor.check(action, currentUser.permissions(), EnumSet.of(Reach.OWN));
         if (filter.getStatus() != DropdownStatus.ACTIVE) {
             throw AppException.withErrors(ErrorCode.REQUEST_PARAMETER_INVALID,
                     List.of(RequestError.atParameter("status", RequestError.INVALID_VALUE)));

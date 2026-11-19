@@ -1,6 +1,7 @@
 package com.example.app.support;
 
 import com.example.app.TestcontainersConfiguration;
+import com.example.app.common.security.Permission;
 import com.example.app.common.tenancy.TenantScope;
 import com.example.app.tenant.api.TenantStatus;
 import com.example.app.tenant.dto.request.TenantCreateRequest;
@@ -26,11 +27,17 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -48,6 +55,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 // media:begin
 import java.util.Arrays;
 // media:end
@@ -142,6 +150,9 @@ public abstract class IntegrationTest {
 
     @Autowired
     protected MockMvc mvc;
+
+    @Autowired
+    private JwtDecoder jwtDecoder;
 
     @Value("${spring.application.name}")
     private String applicationName;
@@ -323,22 +334,22 @@ public abstract class IntegrationTest {
      */
     protected static final String TESTED_PURPOSE = UploadPurpose.values().length == 0 ? "" : UploadPurpose.values()[0].name();
 
-    /** A role that may upload for {@link #TESTED_PURPOSE}: its first. */
-    protected static final String TESTED_PURPOSE_ROLE = UploadPurpose.values().length == 0 ? "" : UploadPurpose.values()[0].roles().getFirst();
-
-    /** A new user with the role that may upload for {@link #TESTED_PURPOSE}. */
+    /** A new user whose role holds one of {@link #TESTED_PURPOSE}'s permissions: the first such role. */
     protected TestUser newUploader() throws Exception {
-        return newUserWithRole(TESTED_PURPOSE_ROLE);
+        Optional<Role> uploader = Arrays.stream(Role.values()).filter(IntegrationTest::mayUploadForTheTestedPurpose).findFirst();
+        assertThat(uploader).as("a role that may upload for " + TESTED_PURPOSE).isPresent();
+        return newUserWithRole(uploader.get().name());
     }
 
-    /** A new user with a role that may not upload for {@link #TESTED_PURPOSE}; skips the test when every role may. */
+    /** A new user whose role holds none of {@link #TESTED_PURPOSE}'s permissions; skips the test when every role does. */
     protected TestUser newNonUploader() throws Exception {
-        List<String> uploaders = UploadPurpose.values()[0].roles();
-        Optional<String> otherRole = Arrays.stream(Role.values()).map(Role::name)
-                .filter(role -> !uploaders.contains(role))
-                .findFirst();
-        assumeTrue(otherRole.isPresent(), "every role may upload for " + TESTED_PURPOSE);
-        return newUserWithRole(otherRole.get());
+        Optional<Role> other = Arrays.stream(Role.values()).filter(role -> !mayUploadForTheTestedPurpose(role)).findFirst();
+        assumeTrue(other.isPresent(), "every role may upload for " + TESTED_PURPOSE);
+        return newUserWithRole(other.get().name());
+    }
+
+    private static boolean mayUploadForTheTestedPurpose(Role role) {
+        return UploadPurpose.values()[0].mayUpload(role::grants);
     }
 
     /** Skips the calling test until the project declares its first upload purpose (crud-gen Step 5). */
@@ -521,8 +532,8 @@ public abstract class IntegrationTest {
 
     /**
      * A new account with {@code role} in {@code tenant} only, signed in there: the stranger of an
-     * isolation test holds the role that writes the record (an ADMIN for an {@code @AdminOnly} root), so
-     * its 404 comes from the tenant scope, not from the role check.
+     * isolation test holds a role with the permission that writes the record (an ADMIN for a root only it
+     * writes), so its 404 comes from the tenant scope, not from the permission check.
      */
     protected TestUser newUserIn(TestTenant tenant, String role) throws Exception {
         String email = uniqueEmail("user");
@@ -869,6 +880,20 @@ public abstract class IntegrationTest {
 
     protected static <T> T read(ResultActions result, String jsonPath) throws Exception {
         return JsonPath.read(result.andReturn().getResponse().getContentAsString(), jsonPath);
+    }
+
+    /**
+     * The caller of {@code accessToken} holding exactly {@code permissions}, whatever their role grants: the
+     * token's claims (its subject, and with tenancy its tenant) stay the request's, only its authorities change.
+     * For a check across every permission ({@code EndpointContractIntegrationTest}): no role holds "all but one".
+     */
+    protected RequestPostProcessor holding(String accessToken, Collection<Permission> permissions) {
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        for (Permission permission : permissions) {
+            authorities.add(new SimpleGrantedAuthority(permission.name()));
+        }
+        return SecurityMockMvcRequestPostProcessors.authentication(
+                new JwtAuthenticationToken(jwtDecoder.decode(accessToken), authorities));
     }
 
     private static MockHttpServletRequestBuilder authorized(MockHttpServletRequestBuilder request, String token) {

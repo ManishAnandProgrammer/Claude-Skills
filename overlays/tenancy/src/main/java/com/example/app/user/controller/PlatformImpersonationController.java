@@ -1,5 +1,6 @@
 package com.example.app.user.controller;
 
+import com.example.app.common.security.SignedIn;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.controller.api.PlatformImpersonationApi;
 import com.example.app.user.dto.request.ImpersonationRequest;
@@ -28,6 +29,7 @@ class PlatformImpersonationController implements PlatformImpersonationApi {
     @Override
     @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
+    @SignedIn
     public ObjectWrapper<TokenResponse> impersonate(@PathVariable UUID tenantId, @RequestBody @Valid ImpersonationRequest request) {
         return service.impersonate(tenantId, request);
     }

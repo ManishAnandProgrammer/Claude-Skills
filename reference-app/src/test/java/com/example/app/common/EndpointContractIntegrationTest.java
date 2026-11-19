@@ -3,22 +3,21 @@ package com.example.app.common;
 import com.example.app.common.limits.Limits;
 import com.example.app.support.CapturedLog;
 import com.example.app.support.IntegrationTest;
-// sign-in:begin
-import com.example.app.user.domain.Role;
-// sign-in:end
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Public;
+import com.example.app.common.security.Requires;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
@@ -35,9 +34,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -57,18 +58,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  */
 class EndpointContractIntegrationTest extends IntegrationTest {
 
-    /**
-     * The endpoints anyone may call, by path prefix: sign-in's (SecurityConfig's public paths). A public
-     * endpoint a project adds is listed here, with its reason.
-     */
-    // tenancy:begin
-    // private static final List<String> PUBLIC_PREFIXES = List.of(
-    //         "/api/{version}/auth/",
-    //         // The platform's own sign-in (PlatformSecurityConfig).
-    //         "/api/{version}/platform/auth/login");
-    // tenancy:else
-    private static final List<String> PUBLIC_PREFIXES = List.of("/api/{version}/auth/");
-    // tenancy:end
     // tenancy:begin
     // /** Served by the platform's chain: its staff tokens, never a tenant member's. */
     // private static final String PLATFORM_PREFIX = "/api/{version}/platform/";
@@ -76,7 +65,6 @@ class EndpointContractIntegrationTest extends IntegrationTest {
     private static final String VERSION = "v1";
     private static final String MALFORMED_ID = "not-a-uuid";
     private static final Pattern PATH_VARIABLE = Pattern.compile("\\{([^}]+)}");
-    private static final Pattern ROLE_NAME = Pattern.compile("'([A-Z][A-Z_]*)'");
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Autowired
@@ -98,8 +86,15 @@ class EndpointContractIntegrationTest extends IntegrationTest {
             return method + " " + pattern;
         }
 
+        /** {@code @Public}: the security chain's public paths must let it in without a token, and only it. */
         boolean isPublic() {
-            return PUBLIC_PREFIXES.stream().anyMatch(pattern::startsWith);
+            return handler.hasMethodAnnotation(Public.class);
+        }
+
+        /** The permission its {@code @Requires} names; null for a {@code @SignedIn} or {@code @Public} one. */
+        Permission requiredPermission() {
+            Requires requires = handler.getMethodAnnotation(Requires.class);
+            return Objects.isNull(requires) ? null : requires.value();
         }
 
         boolean takesABody() {
@@ -134,22 +129,6 @@ class EndpointContractIntegrationTest extends IntegrationTest {
             return names;
         }
 
-        /** The roles its {@code @PreAuthorize} names (on the method or its controller); empty when it names none. */
-        List<String> roles() {
-            PreAuthorize check = handler.getMethodAnnotation(PreAuthorize.class);
-            if (Objects.isNull(check)) {
-                check = AnnotatedElementUtils.findMergedAnnotation(handler.getBeanType(), PreAuthorize.class);
-            }
-            List<String> roles = new ArrayList<>();
-            if (Objects.nonNull(check)) {
-                Matcher role = ROLE_NAME.matcher(check.value());
-                while (role.find()) {
-                    roles.add(role.group(1));
-                }
-            }
-            return roles;
-        }
-
         /**
          * The path with every variable filled (an id with a fresh UUID, any other with its documented value), and
          * each required query parameter with its example.
@@ -165,11 +144,16 @@ class EndpointContractIntegrationTest extends IntegrationTest {
             for (JsonNode parameter : operation.path("parameters").values()) {
                 if (parameter.path("in").asString().equals("query") && parameter.path("required").asBoolean()) {
                     path.append(separator).append(parameter.path("name").asString()).append('=')
-                            .append(URLEncoder.encode(parameter.path("schema").path("example").asString("x"), StandardCharsets.UTF_8));
+                            .append(URLEncoder.encode(exampleOf(parameter), StandardCharsets.UTF_8));
                     separator = "&";
                 }
             }
             return path.toString();
+        }
+
+        /** The parameter's example, else its schema's (springdoc puts {@code @Parameter(example)} on the parameter). */
+        private static String exampleOf(JsonNode parameter) {
+            return parameter.path("example").asString(parameter.path("schema").path("example").asString("x"));
         }
 
         /** {@link #path} with one more query parameter. */
@@ -223,7 +207,28 @@ class EndpointContractIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Without a token every endpoint but the declared public ones is 401 AUTHENTICATION_REQUIRED, as Problem Details, and so is a plain OPTIONS on its path")
+    @DisplayName("Without a token every @Public endpoint gets past the security chain: its public paths and the annotations agree")
+    void everyPublicEndpointAnswersWithoutAToken() throws Exception {
+        List<String> closed = new ArrayList<>();
+        int checked = 0;
+        for (Endpoint endpoint : endpoints()) {
+            if (endpoint.isPublic()) {
+                checked++;
+                MockHttpServletResponse answer = send(endpoint, endpoint.path(null), null, validBody(endpoint));
+                // The chain's own refusal; a 401 of the endpoint's (a refresh token it doesn't know) has another code.
+                if (isProblem(answer, 401, "AUTHENTICATION_REQUIRED")) {
+                    closed.add(endpoint.name() + " answered " + answer.getContentAsString());
+                }
+            }
+        }
+        // sign-in:begin
+        assertThat(checked).as("@Public endpoints (sign-in's)").isPositive();
+        // sign-in:end
+        assertThat(closed).as("@Public endpoints the security chain asks for a token").isEmpty();
+    }
+
+    @Test
+    @DisplayName("Without a token every endpoint but the @Public ones is 401 AUTHENTICATION_REQUIRED, as Problem Details, and so is a plain OPTIONS on its path")
     void everyEndpointNeedsAToken() throws Exception {
         List<String> open = new ArrayList<>();
         for (Endpoint endpoint : endpoints()) {
@@ -243,34 +248,38 @@ class EndpointContractIntegrationTest extends IntegrationTest {
     }
 
     // sign-in:begin
+    /**
+     * Every {@code @Requires} endpoint, called by a caller holding every permission but its own: a new endpoint is
+     * covered the day it exists. The caller's token is a real one (its subject, its tenant); only its authorities
+     * are chosen ({@link #holding}), since no role holds all permissions but one.
+     */
     @Test
-    @DisplayName("A role an endpoint's @PreAuthorize doesn't name is 403 ACCESS_DENIED, with a valid body")
-    void aRoleTheEndpointDoesntNameIs403() throws Exception {
+    @DisplayName("A caller holding every permission but the one an endpoint @Requires is 403 ACCESS_DENIED, with a valid body")
+    void everyRequiredPermissionIsChecked() throws Exception {
         List<String> allowed = new ArrayList<>();
         int checked = 0;
+        String token = newUser().accessToken();
         for (Endpoint endpoint : endpoints()) {
-            List<String> roles = endpoint.roles();
-            if (roles.isEmpty()) {
+            Permission required = endpoint.requiredPermission();
+            if (Objects.isNull(required)) {
                 continue;
             }
-            for (Role role : Role.values()) {
-                if (!roles.contains(role.name())) {
-                    checked++;
-                    String token = newUserWithRole(role.name()).accessToken();
-                    MockHttpServletResponse answer = send(endpoint, endpoint.path(null), token, validBody(endpoint));
-                    // An enum path variable without constants yet (a piece's purposes before the project declares one):
-                    // no request reaches the endpoint, so there is no role check to see.
-                    if (isProblem(answer, 400, "REQUEST_PARAMETER_INVALID") && endpoint.pathVariables().contains(parameterOf(answer))) {
-                        continue;
-                    }
-                    if (!isProblem(answer, 403, "ACCESS_DENIED")) {
-                        allowed.add("%s as %s answered %d %s".formatted(endpoint.name(), role, answer.getStatus(), answer.getContentAsString()));
-                    }
-                }
+            Set<Permission> allButIt = EnumSet.allOf(Permission.class);
+            allButIt.remove(required);
+            MockHttpServletResponse answer = sendAs(endpoint, endpoint.path(null), holding(token, allButIt), validBody(endpoint));
+            // An enum path variable without constants yet (a piece's purposes before the project declares one):
+            // no request reaches the endpoint, so there is no permission check to see.
+            if (isProblem(answer, 400, "REQUEST_PARAMETER_INVALID") && endpoint.pathVariables().contains(parameterOf(answer))) {
+                continue;
+            }
+            checked++;
+            if (!isProblem(answer, 403, "ACCESS_DENIED")) {
+                allowed.add("%s without %s answered %d %s".formatted(endpoint.name(), required, answer.getStatus(),
+                        answer.getContentAsString()));
             }
         }
-        assertThat(checked).as("role-checked endpoints").isPositive();
-        assertThat(allowed).as("endpoints a role they don't name gets past").isEmpty();
+        assertThat(checked).as("endpoints that require a permission").isPositive();
+        assertThat(allowed).as("endpoints a caller without their permission gets past").isEmpty();
     }
     // sign-in:end
 
@@ -347,7 +356,7 @@ class EndpointContractIntegrationTest extends IntegrationTest {
             if (!endpoint.isPublic() && !responses.has("401")) {
                 missing.add(endpoint.name() + " 401");
             }
-            if (!endpoint.roles().isEmpty() && !responses.has("403")) {
+            if (Objects.nonNull(endpoint.requiredPermission()) && !responses.has("403")) {
                 missing.add(endpoint.name() + " 403");
             }
             boolean refusesInput = endpoint.takesABody() || !endpoint.uuidPathVariables().isEmpty()
@@ -468,6 +477,15 @@ class EndpointContractIntegrationTest extends IntegrationTest {
         if (Objects.nonNull(token)) {
             request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
         }
+        return send(request, body);
+    }
+
+    /** As the caller {@code caller} makes them ({@link #holding}), with no Authorization header. */
+    private MockHttpServletResponse sendAs(Endpoint endpoint, String path, RequestPostProcessor caller, String body) throws Exception {
+        return send(request(HttpMethod.valueOf(endpoint.method()), path).with(caller), body);
+    }
+
+    private MockHttpServletResponse send(MockHttpServletRequestBuilder request, String body) throws Exception {
         if (Objects.nonNull(body)) {
             request.contentType(MediaType.APPLICATION_JSON).content(body);
         }

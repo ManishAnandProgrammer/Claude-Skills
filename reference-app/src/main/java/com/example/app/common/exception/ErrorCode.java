@@ -31,6 +31,8 @@ public enum ErrorCode {
     // ── Security ─────────────────────────────────────────────────────────
     AUTHENTICATION_REQUIRED,
     ACCESS_DENIED,
+    /** A dropdown's {@code for} names a permission whose reach that dropdown doesn't list (every record, on one of own records). */
+    DROPDOWN_REACH_UNSUPPORTED,
     RATE_LIMITED,
     /** A cross-origin request whose origin, or a preflight whose method or headers, the CORS settings don't allow. */
     CORS_REQUEST_REFUSED,

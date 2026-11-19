@@ -113,7 +113,9 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The requester reads the todo (200, as its owner sees it); their own list of todos doesn't show it")
+    @DisplayName("""
+            The requester reads the todo (200, as its owner sees it, but allowedActions.edit false: the rule its \
+            writes check); their own list of todos doesn't show it; the owner's detail says edit true""")
     void theRequesterReadsTheTodo() throws Exception {
         Asked asked = askedTodo();
 
@@ -123,7 +125,10 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.title").value("Asked for"))
                 .andExpect(jsonPath("$.response.ownerId").value(asked.owner().id().toString()))
                 .andExpect(jsonPath(REQUESTER_ID).value(asked.requester().id().toString()))
-                .andExpect(jsonPath("$.response.todoList.id").value(asked.listId()));
+                .andExpect(jsonPath("$.response.todoList.id").value(asked.listId()))
+                .andExpect(jsonPath("$.response.allowedActions.edit").value(false));
+        getAs(asked.owner().accessToken(), TODOS + "/" + asked.todoId())
+                .andExpect(jsonPath("$.response.allowedActions.edit").value(true));
         getAs(asked.requester().accessToken(), TODOS)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response[*].id", not(hasItem(asked.todoId()))));

@@ -2,6 +2,9 @@ package com.example.app.archunit;
 
 import com.example.app.common.limits.ConfiguredMax;
 import com.example.app.common.scheduling.MultiInstanceSafe;
+import com.example.app.common.security.Public;
+import com.example.app.common.security.Requires;
+import com.example.app.common.security.SignedIn;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaAnnotation;
 import com.tngtech.archunit.core.domain.JavaClass;
@@ -28,11 +31,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.data.repository.Repository;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.access.annotation.Secured;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
+import org.springframework.security.access.prepost.PostAuthorize;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.lang.annotation.Annotation;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -43,6 +50,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.regex.Pattern;
 
+import static com.tngtech.archunit.core.domain.JavaCall.Predicates.target;
+import static com.tngtech.archunit.core.domain.properties.HasName.Predicates.name;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noCodeUnits;
@@ -60,6 +69,7 @@ class ConventionArchTest {
     private static final String APP = "com.example.app";
     private static final String API = "/api";
     private static final String SECURITY = "..common.security..";
+    private static final String ROLES_ALLOWED = "jakarta.annotation.security.RolesAllowed";
     private static final String VERSIONED_API = API + "/{version}/";
     private static final List<String> NUMBERS = List.of("int", "long", "double", Integer.class.getName(), Long.class.getName(),
             Double.class.getName());
@@ -171,15 +181,48 @@ class ConventionArchTest {
             .should(haveOnlyPathsRelativeToTheirController())
             .because("the controller's class-level mapping holds the resource path; a method repeating /api would map outside it (REST-07)");
 
+    /** Any class with request mappings, a {@code @RestController} or not: a mapping without a declaration is the gap. */
     @ArchTest
-    static final ArchRule roleChecksAreAnnotations = noMethods().that().areDeclaredInClassesThat().resideOutsideOfPackage(SECURITY)
-            .should().beAnnotatedWith(aRoleCheckWrittenAsAString())
-            .because("a role is checked by a meta-annotation of common.security (@AdminOnly): a misspelt role in a string fails only at run time (REST-25)");
+    static final ArchRule handlersDeclareWhoMayCallThem = methods().that(areHandlerMethods())
+            .should(declareExactlyOneOf(Requires.class, SignedIn.class, Public.class))
+            .because("""
+                    who may call a handler is read on the handler: the permission it @Requires, every signed-in caller \
+                    (@SignedIn) or anyone (@Public); none is a forgotten check, two a contradiction (AUTHZ-03)""");
 
     @ArchTest
-    static final ArchRule classRoleChecksAreAnnotations = noClasses().that().resideOutsideOfPackage(SECURITY)
+    static final ArchRule methodSecurityIsDeclaredOnce = noMethods().that().areDeclaredInClassesThat().resideOutsideOfPackage(SECURITY)
+            .should().beAnnotatedWith(PreAuthorize.class)
+            .orShould().beAnnotatedWith(PostAuthorize.class)
+            .because("""
+                    a check is @Requires(Permission.X), @SignedIn or @Public, declared once in common.security: an \
+                    expression string names a permission or a role the compiler never checks (AUTHZ-03)""");
+
+    @ArchTest
+    static final ArchRule classMethodSecurityIsDeclaredOnce = noClasses().that().resideOutsideOfPackage(SECURITY)
+            .should().beAnnotatedWith(PreAuthorize.class)
+            .orShould().beAnnotatedWith(PostAuthorize.class)
+            .because("""
+                    a check is @Requires(Permission.X), @SignedIn or @Public on each handler, declared once in \
+                    common.security: a class-level expression names what the compiler never checks (AUTHZ-03)""");
+
+    /** Everywhere, common.security included: the house's authorities are permissions, never roles. */
+    @ArchTest
+    static final ArchRule noRoleChecks = noClasses()
             .should().beAnnotatedWith(aRoleCheckWrittenAsAString())
-            .because("a role is checked by a meta-annotation of common.security (@AdminOnly): a misspelt role in a string fails only at run time (REST-25)");
+            .orShould().beAnnotatedWith(Secured.class)
+            .orShould().beAnnotatedWith(ROLES_ALLOWED)
+            .orShould().callMethodWhere(target(name("hasRole")).or(target(name("hasAnyRole"))))
+            .orShould().dependOnClassesThat().areAssignableTo(RoleHierarchy.class)
+            .because("""
+                    a handler checks a permission, never a role: a role is a group of permissions (Role), so a role \
+                    check misses the next role that holds the capability; no ROLE_ authority exists (AUTHZ-01, AUTHZ-02)""");
+
+    @ArchTest
+    static final ArchRule noRoleChecksOnMethods = noMethods()
+            .should().beAnnotatedWith(aRoleCheckWrittenAsAString())
+            .orShould().beAnnotatedWith(Secured.class)
+            .orShould().beAnnotatedWith(ROLES_ALLOWED)
+            .because("a handler checks a permission, never a role (AUTHZ-01, AUTHZ-02)");
 
     @ArchTest
     static final ArchRule repositoriesAreNamedAndPlacedAsRepositories = classes().that().areAssignableTo(Repository.class)
@@ -223,12 +266,14 @@ class ConventionArchTest {
         };
     }
 
-    /** {@code @PreAuthorize("hasRole('ADMIN')")} and the like, written directly on a class or method. */
+    /** {@code @PreAuthorize("hasRole('ADMIN')")} and the like, on a class, an annotation type or a method. */
     private static DescribedPredicate<JavaAnnotation<?>> aRoleCheckWrittenAsAString() {
-        return new DescribedPredicate<>("@PreAuthorize naming a role") {
+        return new DescribedPredicate<>("@PreAuthorize or @PostAuthorize naming a role") {
             @Override
             public boolean test(JavaAnnotation<?> annotation) {
-                if (!annotation.getRawType().isEquivalentTo(PreAuthorize.class)) {
+                boolean methodSecurity = annotation.getRawType().isEquivalentTo(PreAuthorize.class)
+                        || annotation.getRawType().isEquivalentTo(PostAuthorize.class);
+                if (!methodSecurity) {
                     return false;
                 }
                 String expression = String.valueOf(annotation.get("value").orElse(""));
@@ -242,6 +287,18 @@ class ConventionArchTest {
             @Override
             public boolean test(JavaMethod method) {
                 return Objects.nonNull(handlerMapping(method));
+            }
+        };
+    }
+
+    @SafeVarargs
+    private static ArchCondition<JavaMethod> declareExactlyOneOf(Class<? extends Annotation>... declarations) {
+        return new ArchCondition<>("declare exactly one of @Requires, @SignedIn, @Public") {
+            @Override
+            public void check(JavaMethod method, ConditionEvents events) {
+                long declared = Arrays.stream(declarations).filter(method::isAnnotatedWith).count();
+                events.add(new SimpleConditionEvent(method, declared == 1,
+                        "%s declares %d of @Requires, @SignedIn, @Public".formatted(method.getFullName(), declared)));
             }
         };
     }

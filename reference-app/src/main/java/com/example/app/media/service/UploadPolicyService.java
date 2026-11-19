@@ -88,6 +88,6 @@ public class UploadPolicyService {
     }
 
     private UploadPolicyResponse toResponse(UploadPolicy policy) {
-        return mapper.toResponse(policy, policy.getPurpose().mayUpload(currentUser::hasRole));
+        return mapper.toResponse(policy, policy.getPurpose().mayUpload(currentUser::holds));
     }
 }

@@ -1,5 +1,7 @@
 package com.example.app.todo.controller;
 
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Requires;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.todo.controller.api.TodoApi;
@@ -40,12 +42,14 @@ class TodoController implements TodoApi {
 
     @Override
     @GetMapping(version = "v1+")
+    @Requires(Permission.TODO_READ_OWN)
     public CursorWrapper<TodoSummaryResponse> all(@Valid TodoFilter filter) {
         return service.findByFilter(filter);
     }
 
     @Override
     @GetMapping(path = "/{id}", version = "v1+")
+    @Requires(Permission.TODO_READ_OWN)
     public ObjectWrapper<TodoResponse> get(@PathVariable UUID id) {
         return service.findById(id);
     }
@@ -53,24 +57,28 @@ class TodoController implements TodoApi {
     @Override
     @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
+    @Requires(Permission.TODO_CREATE_OWN)
     public ObjectWrapper<TodoResponse> create(@RequestBody @Valid TodoCreateRequest request) {
         return service.create(request);
     }
 
     @Override
     @PutMapping(path = "/{id}", version = "v1+")
+    @Requires(Permission.TODO_EDIT_OWN)
     public ObjectWrapper<TodoResponse> update(@PathVariable UUID id, @RequestBody @Valid TodoUpdateRequest request) {
         return service.update(id, request);
     }
 
     @Override
     @PatchMapping(path = "/{id}/status", version = "v1+")
+    @Requires(Permission.TODO_EDIT_OWN)
     public ObjectWrapper<TodoResponse> changeStatus(@PathVariable UUID id, @RequestBody @Valid TodoStatusRequest request) {
         return service.changeStatus(id, request);
     }
 
     @Override
     @PutMapping(path = "/{id}/tags", version = "v1+")
+    @Requires(Permission.TODO_EDIT_OWN)
     public ObjectWrapper<TodoResponse> replaceTags(@PathVariable UUID id, @RequestBody @Valid TodoTagsRequest request) {
         return service.replaceTags(id, request);
     }
@@ -78,18 +86,21 @@ class TodoController implements TodoApi {
     @Override
     @DeleteMapping(path = "/{id}", version = "v1+")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Requires(Permission.TODO_DELETE_OWN)
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @Override
     @GetMapping(path = "/{todoId}/time-entries", version = "v1+")
+    @Requires(Permission.TODO_READ_OWN)
     public CursorWrapper<TimeEntryResponse> timeEntries(@PathVariable UUID todoId, @Valid TimeEntryFilter filter) {
         return service.findTimeEntries(todoId, filter);
     }
 
     @Override
     @GetMapping(path = "/{todoId}/time-entries/{id}", version = "v1+")
+    @Requires(Permission.TODO_READ_OWN)
     public ObjectWrapper<TimeEntryResponse> getTimeEntry(@PathVariable UUID todoId, @PathVariable UUID id) {
         return service.findTimeEntry(todoId, id);
     }
@@ -97,6 +108,7 @@ class TodoController implements TodoApi {
     @Override
     @PostMapping(path = "/{todoId}/time-entries", version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
+    @Requires(Permission.TODO_EDIT_OWN)
     public ObjectWrapper<TimeEntryResponse> createTimeEntry(@PathVariable UUID todoId,
                                                             @RequestBody @Valid TimeEntryCreateRequest request) {
         return service.createTimeEntry(todoId, request);
@@ -104,6 +116,7 @@ class TodoController implements TodoApi {
 
     @Override
     @PutMapping(path = "/{todoId}/time-entries/{id}", version = "v1+")
+    @Requires(Permission.TODO_EDIT_OWN)
     public ObjectWrapper<TimeEntryResponse> updateTimeEntry(@PathVariable UUID todoId, @PathVariable UUID id,
                                                             @RequestBody @Valid TimeEntryUpdateRequest request) {
         return service.updateTimeEntry(todoId, id, request);
@@ -112,6 +125,7 @@ class TodoController implements TodoApi {
     @Override
     @DeleteMapping(path = "/{todoId}/time-entries/{id}", version = "v1+")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Requires(Permission.TODO_EDIT_OWN)
     public void deleteTimeEntry(@PathVariable UUID todoId, @PathVariable UUID id) {
         service.deleteTimeEntry(todoId, id);
     }

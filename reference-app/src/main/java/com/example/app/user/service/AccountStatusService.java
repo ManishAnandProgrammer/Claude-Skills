@@ -2,12 +2,12 @@ package com.example.app.user.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
-import com.example.app.common.wrapper.ListWrapper;
-import com.example.app.common.wrapper.ObjectWrapper;
 // tenancy:begin
 // tenancy:else
-import com.example.app.user.domain.Role;
+import com.example.app.common.security.Permission;
 // tenancy:end
+import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.domain.User;
 import com.example.app.user.domain.UserStatus;
 import com.example.app.user.dto.request.UserFilter;
@@ -80,7 +80,7 @@ public class AccountStatusService {
     /**
      * An ADMIN's change of another account: 403 {@code USER_OWN_STATUS_CHANGE} for the caller's own; the
      * caller and the target locked together (id order), then 403 {@code ACCESS_DENIED} unless the caller is
-     * an ACTIVE ADMIN now (of two ADMINs suspending each other at once, the second finds itself suspended),
+     * an ACTIVE account whose role grants {@code ACCOUNT_STATUS_CHANGE} now (of two ADMINs suspending each other at once, the second finds itself suspended),
      * 404 {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}.
      */
     @Transactional
@@ -90,7 +90,8 @@ public class AccountStatusService {
         }
         List<User> locked = users.lockForStatusChange(List.of(callerId, userId));
         boolean callerIsActiveAdmin = locked.stream()
-                .anyMatch(user -> user.getId().equals(callerId) && user.isActive() && user.getRole() == Role.ADMIN);
+                .anyMatch(user -> user.getId().equals(callerId) && user.isActive()
+                        && user.getRole().grants(Permission.ACCOUNT_STATUS_CHANGE));
         if (!callerIsActiveAdmin) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
         }

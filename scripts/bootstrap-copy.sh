@@ -43,7 +43,8 @@
 #              in its own transaction, so older tokens are refused at once (401 SESSION_VERSION_STALE), and
 #              DELETE /users/me/sessions signs out everywhere. Per account, or per membership with tenancy
 #   sign-in (account suspension), metadata, media and the tenancy pieces have admin endpoints: each brings
-#   the ADMIN role and the test base's newAdmin() (the "admin" markers).
+#   the ADMIN role and the test base's newAdmin() (the "admin" markers), and its permissions: their constants in
+#   common/security/Permission and Area, and their lines in Role (house-review AUTHZ-01, AUTHZ-02).
 #
 # Where files come from: reference-app/ is a plain application, without tenancy. A tenancy mode adds
 # layers over it, each mirroring the reference's tree: overlays/tenancy (what every mode shares) and
@@ -503,9 +504,10 @@ copy_file() {
 IFS=',' read -r -a chosen <<< "$pieces"
 if [[ ",$pieces," == *",core,"* && ",$pieces," != *",sign-in,"* ]]; then
     echo "warning: core's integration tests sign users in through the sign-in piece; without it, adapt them" >&2
+    echo "warning: core's security chain needs a TokenPermissions bean (common/security): map your identity provider's roles to permissions (sign-in's RolePermissions does it for its own tokens)" >&2
 fi
 if admin_chosen && ! chosen_piece sign-in; then
-    echo "warning: the metadata and upload-policy admin APIs need role ADMIN in the token's roles claim: map it from your identity provider" >&2
+    echo "warning: the metadata and upload-policy admin APIs need METADATA_MANAGE and UPLOAD_POLICY_MANAGE: grant them to your identity provider's admin role in your TokenPermissions" >&2
 fi
 if chosen_piece media; then
     echo "note: the media piece needs MEDIA_BUCKET and MEDIA_REGION, and S3 credentials from the AWS SDK's default chain (an IAM role in production)" >&2

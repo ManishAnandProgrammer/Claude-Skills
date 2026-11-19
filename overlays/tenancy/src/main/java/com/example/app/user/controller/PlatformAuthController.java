@@ -1,5 +1,6 @@
 package com.example.app.user.controller;
 
+import com.example.app.common.security.Public;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.controller.api.PlatformAuthApi;
 import com.example.app.user.dto.request.LoginRequest;
@@ -22,6 +23,7 @@ class PlatformAuthController implements PlatformAuthApi {
 
     @Override
     @PostMapping(path = "/login", version = "v1+")
+    @Public
     public ObjectWrapper<TokenResponse> login(@RequestBody @Valid LoginRequest request, HttpServletRequest http) {
         return service.login(request, http.getRemoteAddr());
     }

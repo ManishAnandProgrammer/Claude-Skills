@@ -1,16 +1,16 @@
 package com.example.app.common.security;
 
 import org.springframework.security.core.Authentication;
-// media:begin
 import org.springframework.security.core.GrantedAuthority;
-// media:end
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -23,10 +23,6 @@ public class CurrentUser {
     /** RFC 8693's actor claim: on an impersonation token, the platform staff member acting as the user. */
     public static final String ACTOR_CLAIM = "act";
     public static final String ACTOR_SUBJECT = "sub";
-    // media:begin
-
-    private static final String ROLE_PREFIX = "ROLE_";
-    // media:end
 
     /** The caller's id; throws when there is none, which on an authenticated endpoint is a bug. */
     public UUID id() {
@@ -54,20 +50,33 @@ public class CurrentUser {
         }
         return Optional.empty();
     }
-    // media:begin
 
     /**
-     * Whether the caller's token carries {@code role} (the {@code roles} claim). For a check that
-     * depends on the request's data (the purpose of an upload), which an annotation can't express;
-     * a role checked per endpoint is a meta-annotation such as {@link AdminOnly}.
+     * The permissions the caller holds: the request's authorities that name a {@link Permission} (the security
+     * chain made them from the token, {@link TokenPermissions}); any other authority is ignored. Empty outside a
+     * signed-in request.
      */
-    public boolean hasRole(String role) {
+    public Set<Permission> permissions() {
+        Set<Permission> held = EnumSet.noneOf(Permission.class);
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (Objects.isNull(authentication)) {
-            return false;
+            return held;
         }
-        String authority = ROLE_PREFIX + role;
-        return authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority).anyMatch(authority::equals);
+        for (GrantedAuthority authority : authentication.getAuthorities()) {
+            for (Permission permission : Permission.values()) {
+                if (permission.name().equals(authority.getAuthority())) {
+                    held.add(permission);
+                }
+            }
+        }
+        return held;
     }
-    // media:end
+
+    /**
+     * Whether the caller holds {@code permission}: for a check the request's data names (a dropdown's {@code for},
+     * an upload's purpose), which no annotation can; a handler's own is {@link Requires}.
+     */
+    public boolean holds(Permission permission) {
+        return permissions().contains(permission);
+    }
 }

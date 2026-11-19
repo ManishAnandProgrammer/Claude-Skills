@@ -1,7 +1,9 @@
 package com.example.app.todo.controller.api;
 
 import com.example.app.common.dropdown.DropdownFilter;
+import com.example.app.common.dropdown.DropdownFor;
 import com.example.app.common.dropdown.DropdownItem;
+import com.example.app.common.security.Permission;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
@@ -10,6 +12,7 @@ import com.example.app.todo.dto.request.TodoListFilter;
 import com.example.app.todo.dto.request.TodoListUpdateRequest;
 import com.example.app.todo.dto.response.TodoListResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -93,19 +96,29 @@ public interface TodoListApi {
     void delete(UUID id);
 
     @Operation(summary = "Options for the Todo list dropdown", description = """
-            Your lists as {value, label}, ordered by name (sortDirection DESC reverses it), in batches: \
+            Your lists as {value, label}, for the action for names (one dropdown serves every screen that \
+            picks one), ordered by name (sortDirection DESC reverses it), in batches: \
             pageInfo.nextCursor goes back as after for the next batch; size sets the batch (default \
             and maximum from configuration). Narrow it with query. Lists have no active flag, so a \
             status other than ACTIVE is refused with REQUEST_PARAMETER_INVALID.""")
     @ApiResponse(responseCode = "200", description = "The options")
     @ApiResponse(responseCode = "400", description = """
+            DROPDOWN_REACH_UNSUPPORTED (for reaches records other than your own: see errors); \
+            REQUEST_PARAMETER_MISSING or REQUEST_PARAMETER_INVALID at for (none, or no permission); \
             VALIDATION_FAILED (size, query or after out of range); REQUEST_PARAMETER_INVALID (a status \
             other than ACTIVE, an unknown sortDirection, a non-numeric size, or an after that is \
             tampered or from the other direction; see errors)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (you don't hold the permission for names)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    CursorWrapper<DropdownItem> dropdown(@ParameterObject DropdownFilter filter);
+    CursorWrapper<DropdownItem> dropdown(
+            @Parameter(name = DropdownFor.PARAMETER, required = true, example = "TODO_CREATE_OWN", description = """
+                    The permission of the action the options serve (TODO_CREATE_OWN to pick a new todo's list, \
+                    TODO_READ_OWN to filter your todos by one): 403 ACCESS_DENIED unless you hold it, and \
+                    the options are the ones its reach covers""") Permission action,
+            @ParameterObject DropdownFilter filter);
 }

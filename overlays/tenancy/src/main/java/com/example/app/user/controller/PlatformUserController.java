@@ -1,5 +1,6 @@
 package com.example.app.user.controller;
 
+import com.example.app.common.security.SignedIn;
 import com.example.app.common.wrapper.ListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.controller.api.PlatformUserApi;
@@ -29,12 +30,14 @@ class PlatformUserController implements PlatformUserApi {
 
     @Override
     @GetMapping(version = "v1+")
+    @SignedIn
     public ListWrapper<UserResponse> lookUp(@Valid @ParameterObject UserFilter filter) {
         return accountStatus.lookUp(filter);
     }
 
     @Override
     @PatchMapping(path = "/{id}/status", version = "v1+")
+    @SignedIn
     public ObjectWrapper<UserResponse> changeStatus(@PathVariable UUID id, @RequestBody @Valid UserStatusRequest request) {
         return accountStatus.changeStatus(id, request);
     }

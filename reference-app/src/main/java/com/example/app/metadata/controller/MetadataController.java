@@ -1,6 +1,7 @@
 package com.example.app.metadata.controller;
 
-import com.example.app.common.security.AdminOnly;
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Requires;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.metadata.controller.api.MetadataApi;
 import com.example.app.metadata.dto.request.MetadataUpdateRequest;
@@ -24,14 +25,14 @@ class MetadataController implements MetadataApi {
 
     @Override
     @GetMapping(path = "/{key}", version = "v1+")
-    @AdminOnly
+    @Requires(Permission.METADATA_MANAGE)
     public ObjectWrapper<MetadataResponse> get(@PathVariable String key) {
         return service.findByName(key);
     }
 
     @Override
     @PutMapping(path = "/{key}", version = "v1+")
-    @AdminOnly
+    @Requires(Permission.METADATA_MANAGE)
     public ObjectWrapper<MetadataResponse> update(@PathVariable String key, @RequestBody @Valid MetadataUpdateRequest request) {
         return service.updateByName(key, request);
     }

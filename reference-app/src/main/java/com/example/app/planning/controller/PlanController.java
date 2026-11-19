@@ -1,5 +1,7 @@
 package com.example.app.planning.controller;
 
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Requires;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.planning.controller.api.PlanApi;
@@ -34,12 +36,14 @@ class PlanController implements PlanApi {
 
     @Override
     @GetMapping(version = "v1+")
+    @Requires(Permission.PLAN_READ_OWN)
     public CursorWrapper<PlanResponse> all(@Valid PlanFilter filter) {
         return service.findByFilter(filter);
     }
 
     @Override
     @GetMapping(path = "/{id}", version = "v1+")
+    @Requires(Permission.PLAN_READ_OWN)
     public ObjectWrapper<PlanResponse> get(@PathVariable UUID id) {
         return service.findById(id);
     }
@@ -47,18 +51,21 @@ class PlanController implements PlanApi {
     @Override
     @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
+    @Requires(Permission.PLAN_CREATE_OWN)
     public ObjectWrapper<PlanResponse> create(@RequestBody @Valid PlanCreateRequest request) {
         return service.create(request);
     }
 
     @Override
     @PutMapping(path = "/{id}", version = "v1+")
+    @Requires(Permission.PLAN_EDIT_OWN)
     public ObjectWrapper<PlanResponse> update(@PathVariable UUID id, @RequestBody @Valid PlanUpdateRequest request) {
         return service.update(id, request);
     }
 
     @Override
     @PatchMapping(path = "/{id}/status", version = "v1+")
+    @Requires(Permission.PLAN_EDIT_OWN)
     public ObjectWrapper<PlanResponse> changeStatus(@PathVariable UUID id, @RequestBody @Valid PlanStatusRequest request) {
         return service.changeStatus(id, request);
     }
@@ -66,6 +73,7 @@ class PlanController implements PlanApi {
     @Override
     @DeleteMapping(path = "/{id}", version = "v1+")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Requires(Permission.PLAN_DELETE_OWN)
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
