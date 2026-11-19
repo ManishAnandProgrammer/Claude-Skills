@@ -36,10 +36,10 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
 | `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
 | `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@CrossField(reportedOn = "<x>To") boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
-| `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getOwnedTodoWithItsList`, `toResponse`), `TodoRepository.findWithTodoListByIdAndOwnerId`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`; the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` whenever a write names someone new (an update only when the id changes); shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) and on list rows (`TodoListName`, `TodoService.withTodoLists`: a second statement per batch) |
+| `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getEditableTodoAtVersion`, `toResponse`), `TodoRepository.findWithTodoListById`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`; the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` whenever a write names someone new (an update only when the id changes); shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) and on list rows (`TodoListName`, `TodoService.withTodoLists`: a second statement per batch) |
 | `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`) of a **configured maximum length** (`getLengthInDays`, `plan.max-days`), an **overlap filter with a lower index bound** (`plannedFrom`/`plannedTo`: `ends_on >= from`, `starts_on <= to` and the derived `starts_on >= from - (max - 1)`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 | `<ref>/todo/service/TagMergeManager.java` + `TagService.lockForMerge` / `finishMerge`, `TodoService.moveTagLinks`, `TagRepository.findForKeyUpdateByIdAndOwnerId`, `TodoRepository.lockAllCarryingTag`, `TodoTagRepository.addTargetWhereSourceIs`, `POST /tags/{id}/merge`; test `TagMergeIntegrationTest` | **A Manager** writing two aggregates in one transaction (`MANDATORY` halves, one lock order, a key lock, bulk statements, both rolled back on a failure) |
-| `<ref>/todo/service/TodoService.java` (`findById`, `notOwned`) + `TodoRepository.findVisibleWithTodoList`, `existsByIdAndRequesterId`, `TodoApi.NOT_YOURS`; test `TodoRequesterIntegrationTest` | **A record two parties see with different rights**: the owner does everything, the requester reads (403 `TODO_NOT_YOURS` on the rest), anyone else 404 |
+| `<ref>/todo/service/TodoService.java` (`findById`, `lockEditableTodo`) + `TodoPolicy` (`read`, `edit`, `editScope`, `listScope`), `TodoAllowedActionsResponse`, `TodoApi.NOT_YOURS`; tests `TodoPolicyTest`, `TodoRequesterIntegrationTest` | **A record two parties see with different rights**: the owner does everything, the requester reads (403 `TODO_NOT_YOURS` on the rest), anyone else 404 |
 | `<ref>/user/service/RefreshTokenPurgeJob.java` + `TokenService.deleteExpiredBefore`, `RefreshTokenRepository.DELETE_EXPIRED`, `~/.claude/skills-reference/src/main/resources/config/jobs.yml` (`refresh-token-purge`); tests `RefreshTokenPurgeJobIntegrationTest`, `RefreshTokenIndexIntegrationTest` | **A purge job** for rows that accumulate (4.12): by the data's end of life, in batches of short transactions, its index, its settings |
 
 The rules behind the shape are the house-review references: `rest-api.md`, `error-contract.md`,
@@ -401,10 +401,10 @@ takes the key lock, a native `FOR UPDATE`, since JPA's write lock is `FOR NO KEY
 the other aggregate locked in id order and changed by bulk statements whose count doesn't grow with them.
 Tests: each refusal changing nothing, a failure after the first half rolling both back, the use case racing
 itself in every direction (no 503), a write racing it, the statement count. **A record two parties see
-with different rights** (REST-16) copies golden `TodoService.findById` over
-`TodoRepository.findVisibleWithTodoList` (one visibility rule: the owner or the requester) and
-`TodoService.notOwned` (403 `TODO_NOT_YOURS` for the requester, 404 for anyone else), tested by
-`TodoRequesterIntegrationTest` (each party by each call, a stranger, the relationship changing); ask for
+with different rights** (REST-16) copies golden `TodoPolicy` (`read`: the owner or the requester, 404 for
+anyone else; `edit`: the owner, 403 `TODO_NOT_YOURS` for the requester; `editScope`, the condition of the
+statement that locks, so a refused caller never takes the owner's lock), used by `TodoService.findById` and
+`lockEditableTodo`, tested by `TodoPolicyTest` and `TodoRequesterIntegrationTest` (each party by each call, a stranger, the relationship changing); ask for
 the parties and their actions. **Money, exactly one current, month values** are use cases: no golden code,
 the house-review rules are the bar; ask. A **status workflow**
 (several states, only some moves allowed) copies golden `PlanStatus` and `Plan.changeStatus`
@@ -617,7 +617,7 @@ single read of the child, then its parent, answers the child's own 404 when the 
 parent (an id column and a facade). Three more shapes, golden on `Todo` (tests.md rows 27b-27d, 28f,
 28g):
 - **a same-module parent on the detail** (a `@ManyToOne(fetch = LAZY)`): `todoList {id, name}` read with
-  the child in one statement (`TodoRepository.findWithTodoListByIdAndOwnerId`, an `@EntityGraph`), also
+  the child in one statement (`TodoRepository.findWithTodoListById`, an `@EntityGraph`, the policy deciding after it), also
   for a write that may hold no row lock (a status change to the status it has); the writes that lock the
   child read the parent afterwards (`TodoService`'s javadoc says why that is safe). **List rows** carry it
   too, through the batch lookup above in the same module: a `dto/internal/<Parent>Name(id, name)` record
@@ -692,11 +692,12 @@ resolvedParents…)` (only mutable fields; moves through the entity method), `to
 
 ### 4.6 Repository
 `<Entity>Repository extends {{BaseRepository}}<Entity, ID>, Custom<Entity>Repository`, plus
-`findByIdAndOwnerId` when owned, and a lock only for a rule no constraint, foreign key or
+`findByIdAndOwnerId` when owned by its owner alone (an owned entity with a policy loads by id and asks it:
+golden `TodoService`), and a lock only for a rule no constraint, foreign key or
 `@Version` holds (DATA-29), with a one-line javadoc naming that rule: a
 `@Lock(PESSIMISTIC_WRITE) findForUpdateBy…` when a write changes its member rows (files, links) or
 deletes it (golden `TodoRepository`), also taken on a parent before a cap, a multi-row rule or a check
-of the parent's state (row 23b; golden: the todo's `findForUpdateByIdAndOwnerId`, taken by a plan's
+of the parent's state (row 23b; golden: the todo's `findForUpdate(id, TodoPolicy.editScope(...))`, taken by a plan's
 create through `Todos.getOwnedTodoViewForUpdate`); a conditional `@Modifying` update with a
 rows-affected check for a claim (golden `RefreshTokenRepository.revokeIfLive`). No lock on a parent
 that children are written into for anything else: the foreign key holds it. Always by id and owner, so nobody queues behind a row they can't see.
@@ -817,7 +818,9 @@ Golden `TodoController`: package-private, `implements <Entity>Api`, class-level
 `handlersDeclareWhoMayCallThem` fails the build otherwise, and `EndpointContractIntegrationTest` calls every
 `@Requires` handler without its permission (403) with no test to write (house-review AUTHZ-03, AUTHZ-09). Never a
 role annotation or a `@PreAuthorize` string (REST-25). The write paths call the policy (4.8: `policy.x(...).orThrow()`
-after the load). Its `SPRING_ENDPOINT` entry goes into the exclude file with it (Step 7).
+after the load; a locking load goes through the policy's `editScope`, golden `TodoService.lockEditableTodo`). The
+OpenAPI 403 `ACCESS_DENIED (without <PERMISSION>)` is written from `@Requires` (`PermissionOpenApiCustomizer`): the
+API interface names only the entity's own 403 codes (`<ENTITY>_NOT_YOURS`). Its `SPRING_ENDPOINT` entry goes into the exclude file with it (Step 7).
 
 ### 4.11 Dropdown (when the entity carries `{{dropdownAnnotation}}`)
 Read `references/dropdown.md`. Golden: `TodoListRepositoryImpl.findDropdownItems`,

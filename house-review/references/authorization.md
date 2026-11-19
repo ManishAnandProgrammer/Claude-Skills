@@ -88,6 +88,8 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
     `@PreAuthorize`/`@PostAuthorize` string outside `common/security` (ArchUnit `methodSecurityIsDeclaredOnce`);
   - `@Public` handlers and the chain's public paths agree both ways: every `@Public` handler answers without
     a token, every other one is 401 `AUTHENTICATION_REQUIRED` (`EndpointContractIntegrationTest`);
+  - the OpenAPI 403 of every `@Requires` handler names `ACCESS_DENIED` and its permission, written from the
+    annotation (`config/PermissionOpenApiCustomizer`), so the document can't drift from the handler (REST-20);
   - a role check on the class is no substitute: the declaration is read on the handler.
 - **Know:** method security on a controller runs after the arguments are bound and validated, so an invalid
   body is 400 before a caller without the permission gets 403. It reveals only the request's own shape; a
@@ -106,11 +108,13 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
   - it holds every record rule: reach (ownership, assignment), state (a closed record stays closed), amounts,
     dates, relationships (the requester reads, the owner edits). A limit (a concession up to 2,000) is the
     module's setting or data, **never a column of a role or a permission**;
-  - the write path calls `policy.x(record, caller).orThrow()` after loading the record (locked when the write
-    locks it); the policy never picks an HTTP status: the error contract's mapper does, and where the house
+  - the write path calls `policy.x(record, caller).orThrow()` after loading the record; a write that locks loads
+    through the policy's condition (`TodoPolicy.editScope`, a condition of the locking statement), so a refused
+    caller never takes the owner's lock (DATA-29), and on an empty result reads the record unlocked for the policy
+    to say why (`TodoService.lockEditableTodo`); the policy never picks an HTTP status: the error contract's mapper does, and where the house
     answers another owner's record with 404 (REST-16) the policy refuses with the `<ENTITY>_NOT_FOUND` code;
   - no rule engine, expression strings, reflection or rules as data.
-- **Detect:** ownership compared in the controller or the mapper; an `if (role == ...)` in a service; a limit
+- **Detect:** a record locked by id before its policy decides; ownership compared in the controller or the mapper; an `if (role == ...)` in a service; a limit
   read from the role; the same "is it theirs" written in two services; a policy that throws an HTTP status or
   a Spring exception; a record rule inside a `@PreAuthorize` expression.
 - **Not a finding when:** a resource whose only rule is the owner's reach keeps the owner id in its queries

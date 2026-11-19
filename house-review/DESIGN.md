@@ -1027,8 +1027,13 @@ scope trees; role-level DENY (a role only allows, so "what may this role do" sta
   `role.grants(TENANT_MEMBERS_MANAGE)` / `ACCOUNT_STATUS_CHANGE`; the last-ADMIN rules stay about the role.
 - **`TodoPolicy`**: the todo has no state rule, so the golden shows reach only: the owner edits, the requester reads
   (`TODO_NOT_YOURS` on a change), anyone else 404; the list's condition is a `PredicateSpecification` the repository
-  adds to its Criteria query (the policy lives in `service`, and a repository can't call up); writes now lock by id and
-  then decide (a refused caller holds the lock only until its rollback). `allowedActions.edit` is the same method.
+  adds to its Criteria query (the policy lives in `service`, and a repository can't call up). A write locks through
+  the policy's `editScope` (the round-1 review: a lock by id before the policy let any caller queue behind the owner,
+  DATA-29), then, on an empty result, reads unlocked for the policy's reason. `allowedActions.edit` is the same
+  method.
+- **The 403 documentation is generated** from `@Requires` (`PermissionOpenApiCustomizer`, an `OperationCustomizer`
+  beside the CORS one), never hand-written per operation: the round-1 review found every todo, list, tag and plan
+  operation's 403 silent about its permission, and a generated line can't drift.
   The todo list keeps its owner condition in its queries (its only rule): AUTHZ-04's *Not a finding*.
 - **Shared dropdowns:** `for` is a `@RequestParam` beside the filter (`for` is a Java keyword, so no filter
   property), checked in memory by `DropdownFor.check`; the todo-list and tag dropdowns list `OWN` only, so an

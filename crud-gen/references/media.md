@@ -70,7 +70,7 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
      `@Schema` says that replacing is a remove and an add in one request.
 4. **Service** (the owner's create, update and delete, one transaction each, no S3 call: MEDIA-06):
    1. the owner's own checks first. **Update and delete load the owner `FOR NO KEY UPDATE` first**
-      (golden `getOwnedTodoForUpdate`), then check the version: before its parents, the claim, the
+      (golden `TodoService.lockEditableTodo`), then check the version: before its parents, the claim, the
       release or any other row. Two concurrent file changes then queue at that lock and the second
       answers 409; without it, an owner whose update changes a uniquely indexed column deadlocks
       (503) under concurrent add+remove (MEDIA-07 says why in full);

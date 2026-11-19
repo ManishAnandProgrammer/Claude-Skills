@@ -327,7 +327,8 @@ its whole duration, and a pool runs dry long before CPU or the database does.
     since Hibernate's versioned delete per loaded row misses the removed ones and answers 409; a
     write that replaces them documents that 409 (reference: `TodoService.delete`, `replaceTags`);
   - a lock by id is taken only once the caller may see the row: the ownership check in the same
-    `WHERE` (`findForUpdateByIdAndOwnerId`), or read, check visibility, then lock (DATA-32's steps).
+    `WHERE` (`TodoRepositoryImpl.findForUpdate` with the policy's `editScope`, AUTHZ-04), or read, check
+    visibility, then lock (DATA-32's steps).
     A lock by id alone lets any signed-in caller queue behind another user's writers before its 404;
   - pollers claim with `FOR UPDATE SKIP LOCKED` plus a lease in a short claim transaction, do the
     remote work between transactions, and use fencing when several instances run;
