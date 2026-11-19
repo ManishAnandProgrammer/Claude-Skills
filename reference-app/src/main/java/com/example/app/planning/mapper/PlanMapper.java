@@ -3,6 +3,7 @@ package com.example.app.planning.mapper;
 import com.example.app.planning.domain.Plan;
 import com.example.app.planning.dto.internal.PlanRow;
 import com.example.app.planning.dto.request.PlanCreateRequest;
+import com.example.app.planning.dto.response.PlanAllowedActionsResponse;
 import com.example.app.planning.dto.response.PlanResponse;
 import com.example.app.planning.dto.response.PlanTodoResponse;
 import com.example.app.todo.api.TodoView;
@@ -23,7 +24,7 @@ public class PlanMapper {
                 .build();
     }
 
-    public PlanResponse toResponse(Plan plan, TodoView todo) {
+    public PlanResponse toResponse(Plan plan, TodoView todo, PlanAllowedActionsResponse allowedActions) {
         return new PlanResponse(
                 plan.getId(),
                 toTodoResponse(todo),
@@ -32,6 +33,7 @@ public class PlanMapper {
                 plan.getEndsOn(),
                 plan.getStatus(),
                 plan.getDoneOn(),
+                allowedActions,
                 plan.getCreatedAt(),
                 plan.getUpdatedAt(),
                 plan.getCreatedBy(),
@@ -40,9 +42,9 @@ public class PlanMapper {
     }
 
     /** A list row, with its todo from the batch's one lookup. */
-    public PlanResponse toResponse(PlanRow row, TodoView todo) {
+    public PlanResponse toResponse(PlanRow row, TodoView todo, PlanAllowedActionsResponse allowedActions) {
         return new PlanResponse(row.id(), toTodoResponse(todo), row.ownerId(), row.startsOn(), row.endsOn(), row.status(),
-                row.doneOn(), row.createdAt(), row.updatedAt(), row.createdBy(), row.updatedBy(), row.version());
+                row.doneOn(), allowedActions, row.createdAt(), row.updatedAt(), row.createdBy(), row.updatedBy(), row.version());
     }
 
     /** The todo module's view, in this API's own shape (ARCH-06: no other module's type on the wire). */

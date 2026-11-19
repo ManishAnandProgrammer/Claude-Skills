@@ -1,5 +1,6 @@
 package com.example.app.todo.dto.response;
 
+import com.example.app.common.security.AllowedAction;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
@@ -10,6 +11,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record TodoAllowedActionsResponse(
         @Schema(description = """
                 Whether you may change it: its fields, status, tags, files and time entries, and its delete (with \
-                the permission each needs). False for a todo you only requested""", example = "true")
-        boolean edit) {
+                the permission each needs). Not allowed for a todo you only requested (TODO_NOT_YOURS)""")
+        AllowedAction edit) {
 }

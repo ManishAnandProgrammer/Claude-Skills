@@ -52,14 +52,20 @@ class TodoPolicyTest {
 
     @ParameterizedTest(name = "{0} by {2}: {3}")
     @MethodSource("decisions")
-    @DisplayName("Each rule allows its callers and refuses the others with their code (null: allowed)")
+    @DisplayName("Each rule allows its callers and refuses the others with their code alone and its arguments (null: allowed)")
     void decides(Rule rule, Todo todo, UUID caller, ErrorCode refusal) {
         Decision decision = rule.decide.apply(todo, caller);
 
         assertThat(decision.isAllowed()).isEqualTo(Objects.isNull(refusal));
         if (Objects.isNull(refusal)) {
+            assertThat(decision.refusals()).isEmpty();
             decision.orThrow();
         } else {
+            // A reach refusal stands alone, and names only the todo's own id: nothing of another person's.
+            assertThat(decision.refusals()).singleElement().satisfies(only -> {
+                assertThat(only.code()).isEqualTo(refusal);
+                assertThat(only.arguments()).containsExactly(todo.getId());
+            });
             assertThatThrownBy(decision::orThrow).isInstanceOfSatisfying(AppException.class, refused -> {
                 assertThat(refused.getErrorCode()).isEqualTo(refusal);
                 assertThat(refused.getArgs()).containsExactly(todo.getId());

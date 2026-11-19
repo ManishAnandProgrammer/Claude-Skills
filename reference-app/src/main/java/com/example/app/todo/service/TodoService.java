@@ -8,6 +8,7 @@ import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.exception.RequestError;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Paging;
+import com.example.app.common.security.AllowedActionMapper;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.security.Permission;
 import com.example.app.common.security.Reach;
@@ -108,6 +109,7 @@ public class TodoService implements Todos {
     private final TimeEntryMapper timeEntryMapper;
     private final TodoTagRepository todoTagRepository;
     private final TodoPolicy policy;
+    private final AllowedActionMapper allowedActionMapper;
     private final TodoListService todoListService;
     private final TagService tagService;
     private final CurrentUser currentUser;
@@ -388,7 +390,7 @@ public class TodoService implements Todos {
                 // requesterOf(todo),
                 // tenancy:end
                 todoTagRepository.findTagsOfTodo(todo.getId()),
-                new TodoAllowedActionsResponse(policy.edit(todo, currentUser.id()).isAllowed())));
+                new TodoAllowedActionsResponse(allowedActionMapper.toAllowedAction("edit", policy.edit(todo, currentUser.id())))));
     }
     // tenancy:begin
 

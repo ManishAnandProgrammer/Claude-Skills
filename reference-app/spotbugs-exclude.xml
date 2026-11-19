@@ -89,6 +89,14 @@
         <Class name="com.example.app.common.logging.RequestCompletionLogFilter"/>
         <Bug pattern="CRLF_INJECTION_LOGS"/>
     </Match>
+    <Match>
+        <Class name="com.example.app.common.security.AllowedActionMapper"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.common.security.Decision"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
     <!-- change-history:begin -->
     <Match>
         <Class name="com.example.app.common.persistence.ChangeHistoryActor"/>
@@ -128,6 +136,10 @@
     </Match>
     <Match>
         <Class name="com.example.app.user.service.FailureCountingInterceptor"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.RolePermissions"/>
         <Bug pattern="CRLF_INJECTION_LOGS"/>
     </Match>
     <Match>

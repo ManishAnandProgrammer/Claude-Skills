@@ -39,7 +39,7 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getEditableTodoAtVersion`, `toResponse`), `TodoRepository.findWithTodoListById`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`; the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` whenever a write names someone new (an update only when the id changes); shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) and on list rows (`TodoListName`, `TodoService.withTodoLists`: a second statement per batch) |
 | `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`) of a **configured maximum length** (`getLengthInDays`, `plan.max-days`), an **overlap filter with a lower index bound** (`plannedFrom`/`plannedTo`: `ends_on >= from`, `starts_on <= to` and the derived `starts_on >= from - (max - 1)`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 | `<ref>/todo/service/TagMergeManager.java` + `TagService.lockForMerge` / `finishMerge`, `TodoService.moveTagLinks`, `TagRepository.findForKeyUpdateByIdAndOwnerId`, `TodoRepository.lockAllCarryingTag`, `TodoTagRepository.addTargetWhereSourceIs`, `POST /tags/{id}/merge`; test `TagMergeIntegrationTest` | **A Manager** writing two aggregates in one transaction (`MANDATORY` halves, one lock order, a key lock, bulk statements, both rolled back on a failure) |
-| `<ref>/todo/service/TodoService.java` (`findById`, `lockEditableTodo`) + `TodoPolicy` (`read`, `edit`, `editScope`, `listScope`), `TodoAllowedActionsResponse`, `TodoApi.NOT_YOURS`; tests `TodoPolicyTest`, `TodoRequesterIntegrationTest` | **A record two parties see with different rights**: the owner does everything, the requester reads (403 `TODO_NOT_YOURS` on the rest), anyone else 404 |
+| `<ref>/todo/service/TodoService.java` (`findById`, `lockEditableTodo`) + `TodoPolicy` (`read`, `edit`, `editScope`, `listScope`), `TodoAllowedActionsResponse` (an `AllowedAction` per action, `common/security`), `TodoApi.NOT_YOURS`; tests `TodoPolicyTest`, `TodoRequesterIntegrationTest` | **A record two parties see with different rights**: the owner does everything, the requester reads (403 `TODO_NOT_YOURS` on the rest), anyone else 404 |
 | `<ref>/user/service/RefreshTokenPurgeJob.java` + `TokenService.deleteExpiredBefore`, `RefreshTokenRepository.DELETE_EXPIRED`, `~/.claude/skills-reference/src/main/resources/config/jobs.yml` (`refresh-token-purge`); tests `RefreshTokenPurgeJobIntegrationTest`, `RefreshTokenIndexIntegrationTest` | **A purge job** for rows that accumulate (4.12): by the data's end of life, in batches of short transactions, its index, its settings |
 
 The rules behind the shape are the house-review references: `rest-api.md`, `error-contract.md`,
@@ -178,8 +178,15 @@ admin built stay as they are: the admin gives the new permission to them. **An o
 per rule (`read`, `edit`, an action's own), the list's condition (`listScope`, a `PredicateSpecification` its
 Criteria list adds), and the rules Step 1 and Step 3 found (a second party's rights, a terminal status that freezes the
 record, an amount and the module setting that bounds it; never a role's column). A response carries
-`allowedActions` only for an action whose answer differs between records the caller sees, from the same policy
-method (AUTHZ-07; golden `TodoAllowedActionsResponse`).
+`allowedActions` for every action whose answer can differ between records the caller sees, state rules included
+(AUTHZ-07; golden `TodoAllowedActionsResponse`, `PlanAllowedActionsResponse`): each an `AllowedAction` (allowed and
+every reason, a reason the code and its existing message) made by `AllowedActionMapper.toAllowedAction(name,
+policy.x(...))` from the same policy method the write calls, on the detail and on the list's rows from the row's
+own fields (a parent's state from the page's one facade lookup, golden `PlanService.withTodos`); a rule with several
+preconditions lists them all with plain `if`s into a `List<Decision.Refusal>` (golden `PlanPolicy.reschedule`), a
+reach refusal alone. Actions the permission alone decides, creates, and a delete only a foreign key refuses get no
+flag. Tests: the policy's table with each refusal's arguments (`PlanPolicyTest`), and the shape on the detail and a
+list row, a reason's message equal to the write's `detail` (`PlanAllowedActionsIntegrationTest`).
 
 **Module** (if `{{modules}}` is set): every generated class goes under `{{appPackage}}` with
 `{module}` substituted; cross-module access follows `{{moduleContracts}}` (architecture.md
@@ -429,10 +436,12 @@ those, not an `IllegalStateException`. A target that no state may move to (a sta
 only the create sets, `ACTIVE` for an enrollment, `PENDING` for a tenant) is refused the same way, 409
 with that code: the move is valid in itself, the lifecycle refuses it (ERR-05). **Ask about the
 terminal statuses** (WITHDRAWN, CANCELLED, CLOSED): may a record in one still be edited (PUT, the
-member and file writes) or deleted? When it is frozen, the entity's edit method guards it (or, when a rule the service checks comes before the edit, a public `require<Live>()` the service calls right after the version check) **first
-after the version check**, before any other rule (a configured maximum, a parent's state): 409
+member and file writes) or deleted? When it is frozen, the entity's edit method guards it, and the entity's
+policy names the same code **first after the version check**, before any other rule (a configured maximum, a
+parent's state), since the frozen state decides a per-record flag (AUTHZ-07): 409
 `<ENTITY>_<STATUS>` (`ENROLLMENT_WITHDRAWN`, ERR-04's names; golden `Plan.requirePlanned`, first in
-`Plan.reschedule` and called by `PlanService.update` before its todo's state: 409 `PLAN_DONE`, `PLAN_CANCELLED`), documented on each refused write, with
+`Plan.reschedule`, and `PlanPolicy.reschedule`, which `PlanService.update` asks before the entity's change and which
+lists the plan's state before its todo's: 409 `PLAN_DONE`, `PLAN_CANCELLED`), documented on each refused write, with
 tests.md row 26b (golden `PlanStatusIntegrationTest.aFinalPlanIsFrozen`, `aFinalPlanIsRefusedBeforeItsTodosState`) (whose write would also break another rule, so the order is tested); when only the delete stays open, say so in the API text.
 
 ---

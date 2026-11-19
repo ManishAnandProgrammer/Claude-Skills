@@ -4,15 +4,18 @@ import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Paging;
+import com.example.app.common.security.AllowedActionMapper;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.planning.domain.Plan;
+import com.example.app.planning.domain.PlanStatus;
 import com.example.app.planning.dto.internal.PlanRow;
 import com.example.app.planning.dto.request.PlanCreateRequest;
 import com.example.app.planning.dto.request.PlanFilter;
 import com.example.app.planning.dto.request.PlanStatusRequest;
 import com.example.app.planning.dto.request.PlanUpdateRequest;
+import com.example.app.planning.dto.response.PlanAllowedActionsResponse;
 import com.example.app.planning.dto.response.PlanResponse;
 import com.example.app.planning.mapper.PlanMapper;
 import com.example.app.planning.repository.PlanRepository;
@@ -39,6 +42,8 @@ public class PlanService {
 
     private final PlanRepository repository;
     private final PlanMapper mapper;
+    private final PlanPolicy policy;
+    private final AllowedActionMapper allowedActionMapper;
     private final Todos todos;
     private final CurrentUser currentUser;
     private final Paging paging;
@@ -62,7 +67,7 @@ public class PlanService {
             throw AppException.of(ErrorCode.PLAN_TODO_DONE, todo.id());
         }
         Plan saved = repository.saveAndFlush(mapper.toEntity(request, ownerId));
-        return ObjectWrapper.withObject(mapper.toResponse(saved, todo));
+        return ObjectWrapper.withObject(toResponse(saved, todo));
     }
 
     /**
@@ -86,14 +91,15 @@ public class PlanService {
         Plan plan = getOwnedPlan(id, ownerId);
         TodoView todo = todos.findOwnedTodoView(plan.getTodoId(), ownerId)
                 .orElseThrow(AppException.supply(ErrorCode.PLAN_NOT_FOUND, id));
-        return ObjectWrapper.withObject(mapper.toResponse(plan, todo));
+        return ObjectWrapper.withObject(toResponse(plan, todo));
     }
 
     /**
-     * New days for a plan, the version checked first, then its own status (a final plan is frozen, whatever
-     * its todo's state). A plan's days move only while its todo is open, the create's rule, read the create's
-     * way: the todo locked through its facade, so the todo's completion waits for this reschedule, and one
-     * that commits first makes it 409 {@code PLAN_TODO_DONE}. Locks in the create's order, the todo before the
+     * New days for a plan, the version checked first, then the policy's {@code reschedule}, the rule the plan's
+     * allowed actions show: its own status first (a final plan is frozen, whatever its todo's state), then its
+     * todo's. A plan's days move only while its todo is open, the create's rule, read the create's way: the todo
+     * locked through its facade before the policy decides, so the todo's completion waits for this reschedule,
+     * and one that commits first makes it 409 {@code PLAN_TODO_DONE}. Locks in the create's order, the todo before the
      * plan's row (the update's). The plan's row lock queues reschedules of one plan; reschedules of two of the
      * owner's plans onto the same days meet in {@code ex_plans_owner_id_dates}: one wins, the other is 409
      * {@code PLAN_OVERLAPS}, or 503 {@code DATABASE_CONTENTION} when the constraint's check deadlocks (the
@@ -105,14 +111,11 @@ public class PlanService {
         UUID ownerId = currentUser.id();
         Plan plan = getOwnedPlan(id, ownerId);
         plan.checkVersion(request.version());
-        plan.requirePlanned();
         TodoView todo = todos.getOwnedTodoViewForUpdate(plan.getTodoId(), ownerId);
-        if (!todo.open()) {
-            throw AppException.of(ErrorCode.PLAN_TODO_DONE, todo.id());
-        }
+        policy.reschedule(plan.getId(), plan.getStatus(), todo).orThrow();
         plan.reschedule(request.startsOn(), request.endsOn());
         repository.flush();
-        return ObjectWrapper.withObject(mapper.toResponse(plan, todo));
+        return ObjectWrapper.withObject(toResponse(plan, todo));
     }
 
     /** A status change (PlanStatus's moves), the version checked first; the todo read as on the update. */
@@ -121,11 +124,12 @@ public class PlanService {
         UUID ownerId = currentUser.id();
         Plan plan = getOwnedPlan(id, ownerId);
         plan.checkVersion(request.version());
+        policy.changeStatus(plan.getStatus(), request.status()).orThrow();
         plan.changeStatus(request.status(), request.doneOn());
         repository.flush();
         TodoView todo = todos.findOwnedTodoView(plan.getTodoId(), ownerId)
                 .orElseThrow(AppException.supply(ErrorCode.PLAN_NOT_FOUND, id));
-        return ObjectWrapper.withObject(mapper.toResponse(plan, todo));
+        return ObjectWrapper.withObject(toResponse(plan, todo));
     }
 
     @Transactional
@@ -148,10 +152,22 @@ public class PlanService {
         for (PlanRow row : rows) {
             TodoView todo = todosById.get(row.todoId());
             if (Objects.nonNull(todo)) {
-                responses.add(mapper.toResponse(row, todo));
+                responses.add(mapper.toResponse(row, todo, allowedActions(row.id(), row.status(), todo)));
             }
         }
         return responses;
+    }
+
+    private PlanResponse toResponse(Plan plan, TodoView todo) {
+        return mapper.toResponse(plan, todo, allowedActions(plan.getId(), plan.getStatus(), todo));
+    }
+
+    /** From the fields the row already has and its todo's view: no statement of its own (DATA-26). */
+    private PlanAllowedActionsResponse allowedActions(UUID planId, PlanStatus status, TodoView todo) {
+        return new PlanAllowedActionsResponse(
+                allowedActionMapper.toAllowedAction("reschedule", policy.reschedule(planId, status, todo)),
+                allowedActionMapper.toAllowedAction("markDone", policy.changeStatus(status, PlanStatus.DONE)),
+                allowedActionMapper.toAllowedAction("cancel", policy.changeStatus(status, PlanStatus.CANCELLED)));
     }
 
     private Plan getOwnedPlan(UUID id, UUID ownerId) {

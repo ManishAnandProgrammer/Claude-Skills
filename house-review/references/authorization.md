@@ -9,16 +9,18 @@ level a project is on (`permissions`, the default; `roles-piece` with that piece
 
 Golden code, in the reference application (`~/.claude/skills-reference/src/main/java/com/example/app/`):
 `common/security/` (`Permission`, `Area`, `Reach`, `Requires`, `SignedIn`, `Public`, `Decision`,
-`TokenPermissions`, `CurrentUser.permissions()`/`holds()`), `config/SecurityConfig.jwtAuthenticationConverter`,
+`AllowedAction`, `AllowedActionReason`, `AllowedActionMapper`, `TokenPermissions`, `CurrentUser.permissions()`/`holds()`), `config/SecurityConfig.jwtAuthenticationConverter`,
 `user/domain/Role`, `user/service/RolePermissions`, `GET /users/me/access` (`UserController.access`,
 `UserMapper.toAccessResponse`, `AccessResponse`), `todo/service/TodoPolicy` (and its use in `TodoService`,
-`TodoRepositoryImpl.findByFilter`, `TodoAllowedActionsResponse`), `common/dropdown/DropdownFor` with the
+`TodoRepositoryImpl.findByFilter`, `TodoAllowedActionsResponse`), `planning/service/PlanPolicy` (state rules with
+every reason at once, `PlanAllowedActionsResponse` on the detail and the list's rows), `common/dropdown/DropdownFor` with the
 todo-list and tag dropdowns and the todo dropdown under its list (the dependent one, `TodoService.dropdown`),
 `media/api/UploadPurpose`. Tests: `archunit/ConventionArchTest`
 (`handlersDeclareWhoMayCallThem`, `methodSecurityIsDeclaredOnce`, `noRoleChecks`) proven on its fixtures in
 `ArchRuleScopeTest`, `common/EndpointContractIntegrationTest` (`everyRequiredPermissionIsChecked`,
 `everyPublicEndpointAnswersWithoutAToken`, `everyEndpointNeedsAToken`), `common/security/PermissionTest`,
-`user/domain/RoleTest`, `user/AccessIntegrationTest`, `todo/service/TodoPolicyTest`,
+`user/domain/RoleTest`, `user/AccessIntegrationTest`, `todo/service/TodoPolicyTest`, `planning/service/PlanPolicyTest`,
+`common/security/DecisionTest`, `planning/PlanAllowedActionsIntegrationTest`, `todo/TodoRequesterIntegrationTest`,
 `common/dropdown/DropdownForTest`, `todo/TodoListIntegrationTest` (the dropdown's `for`),
 `todo/TodoDropdownIntegrationTest` (the dependent dropdown: its out-of-reach parent, one statement). With tenancy:
 `overlays/tenancy/.../user/service/MembershipService.lockAsCurrentAdmin` (TEN-08).
@@ -108,16 +110,25 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
 
 ### AUTHZ-04: Record rules are the owning module's policy
 - **Check:**
-  - an owned resource has a `<Resource>Policy` in its module (golden `TodoPolicy`): plain Java `if`s on the
-    record and the caller, each rule a method returning a `Decision` (allowed, or refused with an `ErrorCode`
-    and its arguments; named apart from Spring's `AuthorizationDecision`, which carries no reason);
+  - an owned resource has a `<Resource>Policy` in its module (golden `TodoPolicy`, `PlanPolicy`): plain Java `if`s
+    on the record and the caller, each rule a method returning a `Decision` (allowed, or refused with every unmet
+    precondition, each an `ErrorCode` and its arguments; named apart from Spring's `AuthorizationDecision`, which
+    carries no reason). A rule with several preconditions collects them in a `List<Decision.Refusal>` with plain
+    `if`s, most fundamental first (the record's own state before its parent's: `PlanPolicy.reschedule`), and
+    returns `Decision.of(refusals)`: no builder, no rules as lambdas. A reach refusal (not yours, not found)
+    returns at once, alone (`Decision.refused`): listing what else is missing to someone who may never act is
+    noise and can leak. A rule takes the fields it reads when the list's row and the detail's entity both need it
+    (`PlanPolicy.reschedule(id, status, todo)`);
   - it holds every record rule that decides an action: reach (ownership, assignment), state (a closed record
     stays closed), amounts, dates, relationships (the requester reads, the owner edits). A state invariant that
-    holds for every caller stays the entity's guarded method too (golden `Plan.requirePlanned`), and the policy
-    calls it when an `allowedActions` flag or a caller's decision needs it; a rule about the caller (reach, a
+    holds for every caller stays the entity's guarded method too (golden `Plan.requirePlanned`, inside
+    `Plan.reschedule`), and the policy names the same code for it (a guard throws, so the policy mirrors it with
+    an `if` on the same field; the policy's table test pins the code); a rule about the caller (reach, a
     relationship, an amount bounded per permission) is the policy's alone. A limit (a concession up to 2,000) is
     the module's setting or data, **never a column of a role or a permission**;
-  - the write path calls `policy.x(record, caller).orThrow()` after loading the record; a write that locks loads
+  - the write path calls `policy.x(record, caller).orThrow()` after loading the record (and whatever else the
+    rule reads, a parent's locked view included), and before the entity's change; `orThrow` throws the first
+    refusal, so the error body keeps one `errorCode` (no list in error responses); a write that locks loads
     through the policy's condition (`TodoPolicy.editScope`, a condition of the locking statement), so a refused
     caller never takes the owner's lock (DATA-29), and on an empty result reads the record unlocked for the policy
     to say why (`TodoService.lockEditableTodo`); the policy never picks an HTTP status: the error contract's mapper does, and where the house
@@ -126,10 +137,11 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
 - **Detect:** a record locked by id before its policy decides; ownership compared in the controller or the mapper; an `if (role == ...)` in a service; a limit
   read from the role; the same "is it theirs" written in two services; a policy that throws an HTTP status or
   a Spring exception; a record rule inside a `@PreAuthorize` expression.
-- **Not a finding when:** a resource whose only rule about the caller is the owner's reach keeps the owner id in its
-  queries (`TodoListService`, `TagService`, `PlanService`, whose state rules are the entity's guarded methods for
-  every caller): the policy shape is for a resource with a second party, a caller-dependent state or amount rule,
-  or an `allowedActions` flag.
+- **Not a finding when:** a resource whose only rule about the caller is the owner's reach, and no action whose
+  answer differs between its records (AUTHZ-07), keeps the owner id in its queries (`TodoListService`,
+  `TagService`; `PlanService` keeps its owner condition in its queries too, and its state rules are
+  `PlanPolicy`'s because they are `allowedActions` flags): the policy shape is for a resource with a second party,
+  a state, amount or date rule that decides an action, or an `allowedActions` flag.
 - **Severity:** High when a write skips its policy; Medium otherwise.
 
 ### AUTHZ-05: The policy owns its list filter
@@ -161,17 +173,50 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
   response for showing buttons; permissions as free strings in the schema.
 - **Severity:** Medium.
 
-### AUTHZ-07: `allowedActions` only where a button depends on the record
-- **Check:** a response carries `allowedActions` only for an action whose answer differs between records the
-  caller may see (the requester's view of a todo shows `edit: false`), and computes each from the same policy
-  method the write calls (`TodoPolicy.edit(...).isAllowed()`). An action every visible record allows, or one
-  the permission alone decides, is not repeated per record.
-- **Detect:** an `allowedActions` flag computed by its own condition (a copy of the policy); flags for every
-  action on every response; a frontend rule that re-derives a record's editability from its fields.
-- **Not a finding when:** the answer follows from a documented status alone, the same for every caller who sees
-  the record (a DONE plan is final for everyone: its `status` and the API text say so); a flag is added once a
-  caller-dependent rule appears.
-- **Severity:** Medium.
+### AUTHZ-07: `allowedActions` for every action the record decides, with every reason
+- **Check:**
+  - a response carries `allowedActions` for each action whose answer can differ between records the caller sees,
+    state rules included (a DONE plan can't be rescheduled, a returned loan can't be edited): the client shows a
+    button by its flag and **never re-derives one from a record's fields** (`status === 'ACTIVE'`). Actions the
+    permission alone decides, and create buttons, stay on `GET /users/me/access` (AUTHZ-06), not repeated per
+    record;
+  - each action is an `AllowedAction` (`common/security`): `{"allowed": false, "reasons": [{"errorCode":
+    "PLAN_CANCELLED", "message": "..."}, ...]}`, made from the `Decision` of the policy method the write calls,
+    in one place (`AllowedActionMapper.toAllowedAction(name, decision)`), never assembled by hand. `reasons` lists
+    **every** unmet precondition at once (shown one at a time, a person fixes one on another screen, comes back
+    and meets the next), in the policy's order, empty when allowed; a reach refusal stands alone. `errorCode` is
+    the code the write would answer, `message` that code's message from the existing message files in the
+    request's language with the same arguments (the write's Problem Details `detail`): no new message texts. The
+    write still answers one Problem Details, the first refusal's;
+  - the flags of a list's rows come from fields the row already has; a rule needing another table's data comes from
+    the list's own query (an aggregate in the projection, DATA-26) or the page's one facade lookup (ARCH-04's
+    `get<Parent>Views`, golden `PlanService.withTodos`), never a query per row;
+  - **what a reason may say** (this holds for the write's error message too: both are the same message line):
+    only what the caller is entitled to know and can act on. Its message arguments are values the caller can
+    already see (the record's own id, its own status; never another person's data: "reserved by <name>"); a
+    sensitive rule (a threshold one could game, a fraud or risk flag, a tip-off) refuses with a generic code,
+    its detail staying in the logs; a reach refusal looks like not-found and stands alone; no internal ids or
+    table names. Each policy test asserts the refusal's arguments, not only its code;
+  - **the authorization log** (Spring Security's spirit: off by default, one switch): one named logger,
+    `{{rootPackage}}.authorization`, so `logging.level.{{rootPackage}}.authorization: DEBUG` (or `TRACE`) turns it
+    all on, and nothing else does (the dev profile keeps it at INFO under the app's DEBUG). DEBUG: each role's
+    permissions once at startup, a line per role (`RolePermissions.logRolePermissions`), and a write its policy
+    refused, by its codes (`Decision.orThrow`); TRACE: every decision, allowed ones too (`Decision`'s factories),
+    and each flag computed for a response, by its action's name (`AllowedActionMapper`). Codes only: no message
+    text, no message arguments, no email or name (the log line's context already carries the request id, trace
+    id, user id and endpoint); parameterized SLF4J, free when off; written in those places only, never a log line
+    per policy method. It is not an audit (the change history is, DATA-08) and not a metric. A test proves a
+    refused write writes its DEBUG line (`PlanAllowedActionsIntegrationTest.aRefusedWriteIsLoggedAtDebug`).
+- **Detect:** an `allowedActions` flag computed by its own condition (a copy of the policy), or a boolean flag
+  with no reasons; a reasons list cut to the first; a reason's message written for the flag instead of the code's
+  message; a client that shows a record's button by its status or fields; flags for actions the permission alone
+  decides; a flag that reads another table per row; message arguments taken from another person's record, or a
+  threshold in a message; an authorization log line with a message, a name or an email, or one written in a policy
+  method; the authorization logger on by default.
+- **Not a finding when:** a refusal only the database decides at the write (`*_IN_USE` from a foreign key, a unique
+  key's `*_TAKEN`) has no flag: it is answered when it happens. A record's delete that nothing but such a key
+  refuses stays on the permission alone (golden: a todo's delete, `TODO_IN_USE`).
+- **Severity:** Medium; High for a reason that shows another person's data or a sensitive rule's detail.
 
 ### AUTHZ-08: Shared dropdowns are named by the action they serve
 - **Check:**
@@ -201,7 +246,11 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
     test (`EndpointContractIntegrationTest.everyRequiredPermissionIsChecked`);
   - `@Public` against the chain's public paths, both ways (AUTHZ-03);
   - **a table-driven unit test per policy**: one row per rule × caller (owner, second party, stranger) × state,
-    with the refusal code (`TodoPolicyTest`);
+    with every refusal in order, each code with its arguments (`TodoPolicyTest`, `PlanPolicyTest`); `Decision`'s
+    own test keeps two refusals' order and `orThrow` throws the first (`DecisionTest`);
+  - **the allowed actions' shape**: an integration test per resource with flags, on the detail and a list row,
+    asserting `allowed`, every reason's `errorCode` and that a reason's `message` equals the write's `detail`
+    under the same `Accept-Language` (`PlanAllowedActionsIntegrationTest`, `TodoRequesterIntegrationTest`);
   - **the converter**: each role's token becomes exactly its permissions and nothing else, an unknown role or
     none grants nothing (`AccessIntegrationTest`);
   - every role holds its permissions' prerequisites (`RoleTest`); reach and name agree, every area is used

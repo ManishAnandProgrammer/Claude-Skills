@@ -16,6 +16,7 @@ public record PlanResponse(
         @Schema(description = "The last day, inclusive", example = "2026-11-22") LocalDate endsOn,
         @Schema(description = "PLANNED, DONE or CANCELLED", example = "PLANNED") PlanStatus status,
         @Schema(description = "The day it was done; null unless DONE", example = "2026-11-21") LocalDate doneOn,
+        @Schema(description = "What you may do with it") PlanAllowedActionsResponse allowedActions,
         @Schema(description = "When it was created") Instant createdAt,
         @Schema(description = "When it last changed") Instant updatedAt,
         @Schema(description = "Who created it") UUID createdBy,

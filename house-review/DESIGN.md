@@ -985,7 +985,8 @@ capabilities, the two copies drifted (an endpoint shipped without its permission
   permissions. Every handler declares exactly one of `@Requires(Permission.X)`, `@SignedIn`, `@Public` (ArchUnit).
   Record rules (reach, state, amounts, dates, relationships, the module's limits) are a `<Resource>Policy` of plain
   `if`s returning a `Decision`, which also owns the list's condition. `GET /users/me/access` answers the areas and
-  permissions; `allowedActions` only where a button depends on the record. Dropdowns are shared per resource and
+  permissions; `allowedActions` for every action whose answer differs between the caller's records, each with
+  every reason. Dropdowns are shared per resource and
   named by the action they serve (`for=<Permission>`).
 - **Level 2 (the `roles` piece, later):** `roles`, `role_permissions`, `user_roles (valid_until)`,
   `user_permissions (ALLOW|DENY)`, effective = roles + ALLOWs − DENYs, read per request from PostgreSQL. Written down
@@ -1031,6 +1032,24 @@ scope trees; role-level DENY (a role only allows, so "what may this role do" sta
   the policy's `editScope` (the round-1 review: a lock by id before the policy let any caller queue behind the owner,
   DATA-29), then, on an empty result, reads unlocked for the policy's reason. `allowedActions.edit` is the same
   method.
+- **Capability DTOs: every reason at once** (the user, 2026-11-19, after a design note on capability DTOs): each
+  `allowedActions` entry is an object, `{"allowed": false, "reasons": [{"errorCode", "message"}]}`, not a boolean.
+  `reasons` lists every unmet precondition at once: shown one at a time, a person goes to another screen to fix
+  one, comes back and meets the next. `errorCode` is the code the write answers, `message` its existing message in
+  the request's language with the same arguments (no new texts). A reach refusal stands alone (telling someone who
+  may never act what else is missing is noise and can leak). The write keeps one Problem Details with one
+  `errorCode` (`Decision.orThrow` throws the first, the policy's order: most fundamental first): a list in error
+  bodies was rejected. `Decision` holds a `List<Refusal>` a policy fills with plain `if`s (KISS: no builder, no
+  rules as lambdas), and `AllowedActionMapper` is the one place a decision becomes a response.
+  **AUTHZ-07 tightened** the same day: the exemption "the answer follows from a status alone, the same for every
+  caller" was dropped, so state rules get flags too and the UI never re-derives one from a record's fields; the
+  reference's plans got `PlanPolicy` and `PlanAllowedActionsResponse` (`reschedule`, `markDone`, `cancel`), and
+  `PlanService.update` now asks the policy before the entity's guard (the frozen plan's PUT takes its todo's lock
+  and rolls back: one row of the owner's, negligible). Kept without a flag: a refusal only the database decides at
+  the write (`*_IN_USE`), answered when it happens. Also decided: what a reason may say (values the caller already
+  sees, a generic code for a sensitive rule), and the authorization log, one logger (`<rootPackage>.authorization`),
+  off by default, codes only; Level 2's per-request TRACE line of the effective set is backlog
+  (`field-authz-capabilities`).
 - **The 403 documentation is generated** from `@Requires` (`PermissionOpenApiCustomizer`, an `OperationCustomizer`
   beside the CORS one), never hand-written per operation: the round-1 review found every todo, list, tag and plan
   operation's 403 silent about its permission, and a generated line can't drift.

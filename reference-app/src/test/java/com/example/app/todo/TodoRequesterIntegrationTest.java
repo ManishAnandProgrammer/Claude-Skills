@@ -16,7 +16,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -123,10 +125,12 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            The requester reads the todo (200, as its owner sees it, but allowedActions.edit false: the rule its \
-            writes check); their own list of todos doesn't show it; the owner's detail says edit true""")
+            The requester reads the todo (200, as its owner sees it, but allowedActions.edit not allowed, for the one \
+            reason its writes answer: TODO_NOT_YOURS, the same message); their own list of todos doesn't show it; the \
+            owner's detail allows edit with no reason""")
     void theRequesterReadsTheTodo() throws Exception {
         Asked asked = askedTodo();
+        String refusal = read(send(OwnersCall.CHANGE_STATUS, asked.requester(), asked).andExpect(status().isForbidden()), "$.detail");
 
         getAs(asked.requester().accessToken(), TODOS + "/" + asked.todoId())
                 .andExpect(status().isOk())
@@ -135,9 +139,12 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.ownerId").value(asked.owner().id().toString()))
                 .andExpect(jsonPath(REQUESTER_ID).value(asked.requester().id().toString()))
                 .andExpect(jsonPath("$.response.todoList.id").value(asked.listId()))
-                .andExpect(jsonPath("$.response.allowedActions.edit").value(false));
+                .andExpect(jsonPath("$.response.allowedActions.edit.allowed").value(false))
+                .andExpect(jsonPath("$.response.allowedActions.edit.reasons[*].errorCode", contains("TODO_NOT_YOURS")))
+                .andExpect(jsonPath("$.response.allowedActions.edit.reasons[0].message").value(refusal));
         getAs(asked.owner().accessToken(), TODOS + "/" + asked.todoId())
-                .andExpect(jsonPath("$.response.allowedActions.edit").value(true));
+                .andExpect(jsonPath("$.response.allowedActions.edit.allowed").value(true))
+                .andExpect(jsonPath("$.response.allowedActions.edit.reasons", empty()));
         getAs(asked.requester().accessToken(), TODOS)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response[*].id", not(hasItem(asked.todoId()))));

@@ -1,6 +1,9 @@
 logging:
   level:
     com.example.app: DEBUG
+    # Authorization's one logger stays off even here: DEBUG shows the roles and refused writes, TRACE every
+    # decision and allowed-action flag (house-review AUTHZ-07).
+    com.example.app.authorization: INFO
 management:
   tracing:
     sampling:
