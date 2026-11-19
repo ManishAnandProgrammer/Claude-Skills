@@ -169,7 +169,11 @@ to the built-in roles the developer named (ask which: never guess; `INSERT INTO 
 permission, created_at, updated_at, version) SELECT uuidv7(), r.id, p.permission, now(), now(), 0 FROM roles r CROSS
 JOIN unnest(ARRAY['<ENTITY>_READ', ...]) AS p (permission) WHERE r.built_in = 'ADMIN';`, with its `--rollback`
 deleting those rows), so an existing installation's copies get it on upgrade; `BuiltInRolesIntegrationTest` fails a
-`Role` line without its changeset. Roles an admin built stay as they are: the admin gives the new permission to them. **An owned entity** (a reach other than none, or a second party such as a requester) gets a
+`Role` line without its changeset. With a tenancy piece every tenant has its copies: row mode's changeset names each
+row's tenant (`SELECT uuidv7(), r.tenant_id, r.id, ...`) and lifts `FORCE` on `role_permissions` and `roles` for its own
+transaction, its rollback too (TEN-34); schema per tenant's is a tenant changeset (it runs in every schema); a new
+tenant gets the permission from the enum (row mode) or the changeset (schema per tenant) at its provisioning. Roles an
+admin built stay as they are: the admin gives the new permission to them. **An owned entity** (a reach other than none, or a second party such as a requester) gets a
 `<Entity>Policy` in its service package (golden `TodoPolicy`, tested by a table like `TodoPolicyTest`): a `Decision`
 per rule (`read`, `edit`, an action's own), the list's condition (`listScope`, a `PredicateSpecification` its
 Criteria list adds), and the rules Step 1 and Step 3 found (a second party's rights, a terminal status that freezes the

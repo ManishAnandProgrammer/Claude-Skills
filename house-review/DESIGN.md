@@ -1135,10 +1135,60 @@ news-pulse (changeset 0048, its actor listener and purge job), in the reference'
 - **Built-in roles** can't be deleted (409 `ROLE_BUILT_IN`): signup gives the USER one. Their seed is literal SQL in
   0037, written from the enum on the day; `BuiltInRolesIntegrationTest` compares them on the test database (tests
   that edit a built-in role restore it).
-- **Tenancy: designed, not built.** Roles per tenant, assignments and grants on the tenant's member row (TEN-16),
-  row mode with `tenant_id` and policies, schema per tenant in the tenant schema; a new tenant's built-in roles from
-  the tenant changelog's seed (schema per tenant) or copied from the enum at its activation (row mode). Building it
-  touches every membership path (adding a member with a role, changing it, the last-ADMIN rules, impersonation's
-  member, the staff suspension's per-tenant count, which a platform transaction can't read under the tenant hooks):
-  bootstrap refuses `roles` with a tenancy piece until then (backlog).
+- **Tenancy:** built in the next batch, below.
+
+**Level 2 with tenancy (2026-11-19): the `roles` piece with either tenancy piece, built.** Bootstrap no longer refuses
+the combination; `verify.sh` 2o (row mode) and 2p (schema per tenant) copy every piece with it, each on the upgrade
+path. Decided while building it:
+- **Where the access lives:** roles are the tenant's, a person's roles and grants are on their `members` row (TEN-16),
+  so a tenant's data stays a closed graph. Row mode: the four tables carry `tenant_id` under forced policies, keys
+  per TEN-33 (the tenant leading where no owner or parent column does), member-tenant dependency statistics, and
+  the per-request read names its tenant beside the policy (TEN-36, TEN-37). Schema per tenant: a tenant changeset,
+  and the per-request read names the platform's account, membership and tenant tables (its one exception to TEN-21,
+  allowed by name in `TenancyArchTest`): one statement still, joined with all three statuses.
+- **One source per tenant, expand then contract:** the membership's role column goes, and the account's (with tenancy it
+  never decided anything). Row mode copies and drops in one changeset (one transaction; the copy lifts `FORCE` on
+  every tenant table it reads, members and roles too: with only `user_roles` lifted, the forced policies hid every
+  member and role from the owner and the copy inserted nothing, which the upgrade test caught). Schema per tenant
+  can't: the tenant schemas migrate one after another, after the platform. So the platform's `0038` makes the column
+  nullable, each schema's `0037` copies its own tenant's memberships and empties them there in the same
+  transaction, and `0039` drops the column behind a precondition (no membership of a tenant with a schema still holds
+  a role), skipped and tried again at every start: a deploy after the migrations ran drops it, a FAILED schema holds
+  it. A new schema's `0037` copy is marked ran once the column is gone. The previous release reads the column, so
+  neither mode deploys across it rolling (as Batch B's no-tenancy changeset).
+- **The members' endpoints:** the role PUT goes (one source: the assignment endpoints); a member's add gives the
+  tenant's built-in `USER` (safety rule 1 checked: the caller holds all of it); a removal is an access change
+  (rules 2, 3 and 6) and takes every role and grant of the person in the tenant, so a re-add never hands back what
+  someone else gave. The members' responses lose `role` and `version` (nothing sends it back now): a breaking
+  change, announced in the API texts. `TENANT_MEMBER_LAST_ADMIN` goes with the piece: the rule is rule 6.
+- **Rule 6 per tenant keeps `TENANT_MEMBERS_MANAGE` too:** without it nobody could add a member again (rule 1), which
+  is what Level 1's "every tenant keeps an ADMIN" protected.
+- **The lock is the tenant's row** (gap 11 of Batch B): one fixed row every access change in the tenant locks first,
+  so the holders a change counts can't move before it commits; the members' own rows need no lock. Without tenancy
+  there is no such row, so the account rows stay the lock and the holders for good are read again once locked,
+  locking any newcomer, until the set is stable (a newcomer locked after a lower id is held could meet another
+  change the other way: PostgreSQL's deadlock detection answers one of them 503 `DATABASE_CONTENTION`, rare and
+  retryable, against two changes that would have locked disjoint sets).
+- **The cycle between the two services** (`MembershipService` would need the access for a member's add and
+  removal, `PersonAccessService` the membership for a person's check): a Manager, `TenantMemberManager`, holds the
+  add, the removal and the provisioning listener; the two services never call each other the other way.
+- **Built-in roles of a new tenant:** schema per tenant from the tenant changelog's literal seed; row mode copied from
+  the enum at its activation, only what is missing (the changeset seeded every tenant that existed, PENDING
+  included, TEN-34), and the owner's `ADMIN` given there too (the owner is the tenant's oldest membership: nobody
+  else can join before its first activation). `BuiltInRolesIntegrationTest` compares every tenant's copies.
+- **Staff's suspension per tenant:** a platform transaction can't read a tenant's tables (the tenant is fixed when a
+  transaction begins), so the suspension locks the account's row, then each open tenant's of the person in id
+  order, and counts each tenant's other active managers for good in a short read-only transaction under that
+  tenant's scope (`requireManagersRemainWithout`): the tenant rows it holds are the ones every access change there
+  locks first, so nothing counted can change before the suspension commits. A second connection for a moment, on a
+  staff-only path.
+- **Impersonation's default member:** the oldest member who manages the members for good (Level 1's oldest ADMIN),
+  read under the tenant's scope; a platform token holds no tenant permission and reads nothing.
+- **The roles dropdown** (Batch B's gap 2): `GET /roles/dropdown?for=`, reach `ALL`, rule 1 as a `NOT EXISTS` in the
+  one statement, so a picker offers what the assignment accepts.
+- **A guard narrowed:** row mode's `BackfillRollbacksIntegrationTest` flagged any rollback write without a lifted
+  `FORCE`, a platform table's too (the memberships' role restored); it now checks the tables under a forced policy.
+- **The change history's guards** (Batch B's gap 4): every audited table carries the trigger and every secret-like
+  column is among its arguments (each piece names its tables), the purge goes past one batch, and its batch is an
+  init plan on `idx_audit_log_changed_at` (the statement takes named parameters so the test explains it).
 

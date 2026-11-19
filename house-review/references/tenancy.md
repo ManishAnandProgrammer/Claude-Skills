@@ -155,6 +155,15 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   holds the role, so one person is ADMIN here and USER there. An access token is for one membership;
   login picks the most recently used, switch-tenant issues tokens for another. A refresh token
   remembers its tenant.
+- **With the roles piece** (house-review AUTHZ-11, AUTHZ-12) the role leaves the membership: a person's
+  roles and grants are the tenant's own data, on their `members` row (TEN-16), read on every request
+  joined with the account, the membership and the tenant (no role in any token or response), and a
+  change of them reaches the next request. Adding a member gives the tenant's built-in `USER`, the
+  role change is the assignment endpoints, a removal takes every role and grant in the tenant with
+  it, and the last-ADMIN rules are safety rule 6 per tenant (`ACCESS_LAST_MANAGER`). The checks below
+  hold with the piece, the caller's access (not a membership's role) read under the tenant's lock
+  (`PersonAccessService.lockToAddMember`, `lockToManage`, from `TenantMemberManager`), tested by
+  `TenantAccessIntegrationTest`, which replaces `TenantMemberIntegrationTest`.
 - **Check:** a change to memberships or roles (add, promote, demote, remove) authorises on the caller's
   membership **read under the lock that serialises those changes** (the tenant's row), never on the
   token's role alone. The token's role is up to one lifetime old, and a stale ADMIN token that adds its
@@ -191,6 +200,9 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   (`TenantMemberIntegrationTest.anotherTenantsMemberIs404`, `changesStayInTheCallersTenant`), and the
   list and a member's GET show the caller's tenant only (`TenantMemberListIntegrationTest
   .listShowsOnlyThisTenantsMembers`, `getOfANonMemberIs404`; `MembersIntegrationTest` for the facade).
+- **Detect (with the roles piece):** a membership's role column or a role in a members response; a
+  member removal that leaves their assignments (a re-add would hand them back); a member change that
+  reads the caller's token instead of their access under the tenant's lock.
 - **Detect:** grep every caller of the token service's issue methods and of the refresh-token lookup
   (`usableToken`): each one reads the membership and the tenant status itself, and each path that takes a
   refresh token checks it was issued after the token's own membership; a path that takes the role or the
@@ -348,7 +360,8 @@ an extraction is an operation, not a migration project (the tooling itself is no
   reference it), and clears the mark on the same row when the person is added again. The owner's row
   comes from the `TenantProvisioned` listener (`addOwnerToTenantData`): the owner's membership is created
   with the tenant, before schema mode has a schema and while row mode has no tenant to write under.
-  `tenant_memberships` stays the authority on who belongs and with which role. Test fixtures that add a
+  `tenant_memberships` stays the authority on who belongs and with which role (with the roles piece, on who
+  belongs: the person's roles and grants reference this row, TEN-08). Test fixtures that add a
   membership add the row too (`IntegrationTest.addMember`). Tests:
   `TenantMemberIntegrationTest.theTenantsMembersFollowTheMemberships`, `provisioningAddsTheOwnersRow`.
   A record naming a member (golden `Todo.requesterId`) checks them through `Members.isMember` whenever a write

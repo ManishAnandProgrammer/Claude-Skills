@@ -240,9 +240,15 @@ skills repository's `overlays/roles/` (`scripts/bootstrap-copy.sh --with ...,rol
 `user/service/RolePermissions` (`TokenPermissions` from the tables), `PersonAccessService`, `AccessRoleService`,
 `AccessRoleManager`; the controllers `AccessRoleController`, `PersonAccessController`,
 `PermissionCatalogueController`; changeset `0037-roles.sql`; the reference's `roles` blocks (`SecurityConfig`'s
-converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenService`, `User`). Tests:
+converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenService`, `User`). With tenancy also
+`user/service/TenantMemberManager` (a member's add and removal, the owner's ADMIN at provisioning), the tenancy
+overlay's `roles` blocks (`MembershipService`, `TenantMembership`, `TokenService`, `ImpersonationService`,
+`TenantMemberController`, the members' responses), schema per tenant's platform changesets
+`0038-memberships-role-expand.sql` and `0039-memberships-role-contract.sql`. Tests:
 `RolePermissionsIntegrationTest`, `RolesIntegrationTest`, `PersonAccessIntegrationTest`,
-`BuiltInRolesIntegrationTest`, `EffectiveAccessTest`, and every Level 1 test, unchanged.
+`BuiltInRolesIntegrationTest`, `EffectiveAccessTest`, `service/PersonAccessLockTest`, `service/RolePermissionsTest`, with
+tenancy `TenantAccessIntegrationTest` (in place of Level 1's `TenantMemberIntegrationTest`), and every other Level 1
+test, unchanged but where it asserted a role column or claim.
 
 ### AUTHZ-11: The tables, the one source, and the effective set
 - **Check:**
@@ -276,14 +282,25 @@ converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenS
     `role` field goes, a breaking change of its response, announced): the Level 1
     tests pass in a copy with the piece, but the ones that asserted the role column or claim (those are marked
     `roles:else` and have Level 2 counterparts);
-  - **with tenancy** (TEN-08, designed, not built yet): roles belong to the tenant and assignments and grants to
-    the membership's member row (`members`, TEN-16): row mode with `tenant_id`, forced policies and keys that keep a
-    row in its tenant (TEN-33), schema per tenant in the tenant's schema; the per-request read runs in the token's
-    tenant and joins the platform's account, membership and tenant register. Until it is built, bootstrap refuses
-    `roles` with a tenancy piece.
+  - **with tenancy** (TEN-08): roles belong to the tenant and assignments and grants to the person's member row
+    (`members`, TEN-16): row mode with `tenant_id`, forced policies, keys that keep a row in its tenant and the
+    member-tenant dependency statistics (TEN-33), schema per tenant in each tenant schema (the tenant changelog). The
+    per-request read runs in the token's tenant (`RolePermissions` scopes it with `TenantScope`, since the security
+    context isn't set yet) and joins the platform's account, membership and tenant register in the same statement, so
+    a suspended account, a removed member and a tenant that isn't ACTIVE hold nothing on their next request (schema
+    per tenant names the platform's tables there, the one exception to TEN-21, `TenancyArchTest`); a token without a
+    tenant (platform staff) holds no tenant permission and reads nothing (`RolePermissionsTest`). One source per
+    tenant too: the membership's `role` column, the members' `role` and `version` fields and the role change
+    (`PUT /tenant-members/{id}`) go, and with tenancy the account's `role` column (it never decided anything there).
+    Row mode copies each membership's role in its changeset and drops the columns; schema per tenant copies them
+    **per schema**, emptying the platform's copy as it goes, makes the column nullable first (`0038`, expand) and
+    drops it once no schema with a role left to copy remains (`0039`, contract: a precondition that skips it until
+    then, tried again at every start);
 - **Detect:** a role-level DENY; permissions cached past the request or put into the token; an effective set
   computed in two places; a second read per request; the role column kept beside the tables; a table without its
-  audit trigger; an unknown code that grants or throws.
+  audit trigger; an unknown code that grants or throws; with tenancy, a read of a tenant's access outside its scope,
+  a membership's role column or role field beside the tables, a schema-per-tenant column dropped in the release that
+  starts copying it.
 - **Severity:** High.
 
 ### AUTHZ-12: Managing roles and people's access
@@ -298,7 +315,7 @@ converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenS
   2. **never your own** roles or grants (403 `ACCESS_OWN_CHANGE`), nor adding to a role you hold (a grant of yours
      that ends would outlive its end through the role);
   3. **never someone above you** (403 `ACCESS_TARGET_HOLDS_MORE`): you change the access of (or suspend, or
-     reactivate) only a person who holds nothing you don't, a suspended person's grants counted (suspended, a
+     reactivate, or with tenancy remove from the tenant) only a person who holds nothing you don't, a suspended person's grants counted (suspended, a
      superior is still above), which a DENY could otherwise use to sabotage them;
   4. a role saved without a **prerequisite** of one of its permissions is refused (400
      `ROLE_PREREQUISITE_MISSING`), nothing filled in;
@@ -308,16 +325,28 @@ converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenS
      `ACCESS_LAST_MANAGER`): counted after the change, through grants without an end only (an expiring one is
      never the last), every current DENY counted. Rules 2 and 3 already keep the caller of a person's change a
      holder, so in practice it is a role's edit that trips it; the runbook names the operator's SQL for the case it
-     happened outside the application;
+     happened outside the application. **With tenancy** it is per tenant, among its active members, and keeps
+     `TENANT_MEMBERS_MANAGE` too (Level 1's "every tenant keeps an ADMIN", whose `TENANT_MEMBER_LAST_ADMIN` goes with
+     the piece): a member's removal and staff's suspension of an account are counted like any change, the
+     suspension in every open tenant of the person's (each tenant's count is its own data, read in its scope in a
+     short read-only transaction of its own while the suspension holds that tenant's row);
   7. **concurrency:** `version` on the role (409 `OPTIMISTIC_LOCK_CONFLICT`); every change of someone's access (a
-     person's change, a role's edit, a suspension; a new role gives nobody anything) locks, in id order, the
-     account rows (DATA-29: the narrowest row every such change shares) of the caller, the person it changes, and
-     every account holding the kept permissions for good, then checks rules 1 to 3 on what the database holds under
-     that lock, never on the request's earlier read: any two changes that could each take the last holder away
-     queue on a shared row (a caller holding through an expiring grant included).
+     person's change, a role's edit, a suspension, with tenancy a member's add and removal; a new role gives nobody
+     anything) first takes a lock every such change shares (DATA-29), then checks rules 1 to 3 and 6 on what the
+     database holds under that lock, never on the request's earlier read: any two changes that could each take the
+     last holder away queue. **The lock set is stable:** what a change counts can't move once it holds the lock.
+     Without tenancy that is, in id order, the account rows of the caller, the person it changes and every account
+     holding the kept permissions for good, those holders **read again once locked, and any new one locked too,
+     until the set stays the same** (read before their lock, every holder could be replaced in between and two
+     changes lock disjoint sets; `PersonAccessLockTest`). With tenancy it is one fixed row, the tenant's
+     (`Tenants.lockForMemberChange`), which every access change in the tenant locks first; staff's suspension locks
+     the account's row, then each open tenant's of the person, in id order.
   - the API: the catalogue (`GET /permissions`: each permission's code, area, reach and prerequisites, and the
     areas; `@SignedIn`, the same list the OpenAPI enum publishes, never who holds what), roles (`/roles`: paged
-    list, detail with permissions, create, update with `version`, delete; `ROLES_MANAGE`), a person's access
+    list, detail with permissions, create, update with `version`, delete; `ROLES_MANAGE`), the roles dropdown
+    (`GET /roles/dropdown?for=<Permission>`, AUTHZ-08: reach `ALL`, in the same statement only the roles whose every
+    permission the caller holds, rule 1 as a condition; so someone who gives roles with `ACCESS_GRANT` but doesn't
+    manage them picks one; tested with its one statement), a person's access
     (`GET /users/{id}/access`: roles, grants, what they hold with the roles or the ALLOW that give it and what a
     DENY or a missing prerequisite removed) and its changes (`PUT`/`DELETE /users/{id}/roles/{roleId}` with an
     optional `validUntil`, `PUT`/`DELETE /users/{id}/permissions/{permission}` with the effect; `ACCESS_GRANT`,
@@ -329,11 +358,19 @@ converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenS
   - **a new permission** arrives with a changeset that grants it to the built-in roles that should hold it
     (`INSERT INTO role_permissions ... SELECT ... FROM roles WHERE built_in = 'ADMIN'`), so existing installations get
     it on upgrade (crud-gen asks which built-in roles);
-  - **with tenancy (designed, not built: bootstrap refuses `roles` with a tenancy piece)** the grant changeset gives
-    every tenant's copy, and a new tenant gets its built-in roles in its creation: schema per tenant from the tenant
-    changelog's literal seed (it runs into every new schema), row mode by copying the enum in the activation's
-    transaction (there the migration ran before the tenant existed). That copy reads the enum at run time, which is
-    right for a new tenant's data; the Detect line below is about migrations of existing data;
+  - **with tenancy** the grant changeset gives every tenant's copy (row mode lifts `FORCE` for its own transaction,
+    TEN-34; schema per tenant is a tenant changeset), and a new tenant gets its built-in roles at its provisioning:
+    schema per tenant from the tenant changelog's literal seed (it runs into every new schema), row mode by copying
+    the enum in the activation's transaction, only what is missing (`AccessRoleService.copyBuiltInsFromTheEnum`: the
+    changeset ran before the tenant existed, and seeded every tenant that existed then, a PENDING one included).
+    That copy reads the enum at run time, which is right for a new tenant's data; the Detect line below is about
+    migrations of existing data. `BuiltInRolesIntegrationTest` compares every tenant's copies, an upgraded tenant's
+    (the changesets') and a new one's alike. The owner gets the tenant's built-in `ADMIN` in the same transaction
+    (`TenantMemberManager.provisioned`), a member added later its built-in `USER` (the caller holding all of it, rule
+    1), and a removal takes every role and grant of the person in the tenant (added again, they start with `USER`
+    alone: a re-add never hands back what a stranger to the caller gave). Staff's impersonation acts, unless they name
+    a member, as the oldest member who manages the tenant's members for good (Level 1's oldest ADMIN, read in the
+    tenant's scope);
   - limits stay out of role tables (AUTHZ-04).
 - **Detect:** a grant endpoint without the "holds it" check; a self-grant; a change of someone who holds more; a
   check on the request's earlier read instead of under the lock; a cascade delete of assignments; seeds that read

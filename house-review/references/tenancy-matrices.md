@@ -36,7 +36,10 @@ without it an access token already out lives out its lifetime (15 minutes, REST-
 grants or keeps access re-checks the caller in the database (rung 3). Every cell is a row of one parameterized
 test, `TokenPathIntegrationTest` (the tenancy overlay's; the reference's holds the suspended-account row), in
 both session-version modes; the names in the cells are the tests beside it (races, a re-added member, refused
-switches).
+switches). With the roles piece no token carries a role and every request reads the member's access in the
+tenant (AUTHZ-11): a demoted member's next request is refused at once (403 `ACCESS_DENIED`) with or without SV,
+and a cell that says "the new role" is the access read then (`TenantAccessIntegrationTest`,
+`SessionVersionTenancyIntegrationTest.aRoleChangeReachesTheSameToken`).
 
 | State | Login | Refresh | Switch tenant | Impersonation | Each request |
 |---|---|---|---|---|---|
@@ -75,6 +78,7 @@ Row mode (tests in the overlays; *Upgrade* is `UpgradeFromPreviousReleaseIntegra
 | Display-number counter `TODO_NUMBER`: `0026`'s counters backfill (after the tenant's highest number) + `TodoNumberSeed` + the create's `createIfAbsent` | the backfill gives it (0), the approval keeps it, the first todo is #1 (*Backfill*, *Upgrade*) | after its highest (*Upgrade* `everyTenantIsNumberedOnItsOwn`, *Backfill* `existingTenantsGetTheirCounter`) | after its highest; reactivated, the next todo goes on (*Upgrade* `theSuspendedTenantGoesOnAfterItsHighestNumber`) | after its highest (*Upgrade* `everyTenantIsNumberedOnItsOwn`) | created on first use (*Backfill* `aTenantWithoutItsCounterNumbersFromOne`) |
 | The rows already there: `0026` numbers each tenant's todos 1 to n in id order | none to number | numbered (*Upgrade* `everyTenantIsNumberedOnItsOwn`) | numbered (same) | numbered (same) | a changeset: no instance runs it |
 | `members`: written with the membership in one transaction (`MembershipService`), `0017`'s backfill from the memberships | the owner's at registration (`TenantCreated`) | every add; a removal marks the row left, its records stay (`TenantMemberIntegrationTest`, *Upgrade* `aMemberWhoLeftIsNotNamed`) | kept | kept | one transaction with the membership: no gap |
+| Roles piece: the built-in roles and the owner's `ADMIN`: `0037`'s backfill (every tenant's built-ins, each membership's role as its member's assignment) + `TenantMemberManager.provisioned` (the built-ins copied from the enum when missing, the owner's `ADMIN` when missing) | the backfill gives the built-ins, and the owner's `ADMIN` where its member row was there; the approval adds only what is missing (*Upgrade* `thePendingTenantIsActivatedAfterTheUpgrade`) | the backfill (*Upgrade* `eachSeededMembershipsRoleBecameAnAssignment`); a new tenant the listener (`BuiltInRolesIntegrationTest.everyTenantsCopyHoldsItsConstantsPermissions`, `TenantAccessIntegrationTest.provisioningGivesTheOwnerTheAdminRole`) | the backfill | the backfill; never read | an old instance has no roles: no rolling deploy across 0037 (its changeset says so) |
 | Jobs' tenant loops: media verification (`activeIds`), media cleanup (`idsHoldingData`) | neither (no data) | both | cleanup only: verification waits, nothing reads the files until ACTIVE | CLOSED: cleanup; REJECTED: neither | a job, no seed (`MediaJobsPerTenantTest`) |
 
 Schema per tenant (tests in the schema overlay; *Upgrade* as above, *Migrations*
@@ -84,6 +88,7 @@ Schema per tenant (tests in the schema overlay; *Upgrade* as above, *Migrations*
 |---|---|---|---|---|---|
 | Tenant changesets (`0010`'s policy, `0014`'s defaults, `0017`'s members, `0026`'s numbers and counter) | no schema; provisioning on approval runs the whole changelog (*Migrations* `provisioningCreatesMigratesAndActivates`, *Upgrade* `thePendingTenantIsProvisionedAfterTheUpgrade`) | the deploy-time run applies the new changesets over its rows (*Upgrade* `theDeployMigratedEverySeededSchema`, `everySchemaIsNumberedOnItsOwn`) | migrated too: every provisioned schema is (same) | CLOSED migrated; REJECTED never gets a schema (*Migrations*, *Upgrade*) | a schema an old instance provisions after the last new instance started keeps the old release until a run reaches it (runbook section 5) |
 | The owner's `members` row | written on `TenantProvisioned` (`MembershipService.addOwnerToTenantData`) | `0017` copied the memberships | as ACTIVE | as ACTIVE | — |
+| Roles piece: `0037` (a tenant changeset: the built-ins' literal seed, the schema's tenant's memberships' roles copied and emptied on the platform), the platform's `0038` (expand) and `0039` (contract: dropped once no schema has a role left to copy), the owner's `ADMIN` on `TenantProvisioned` (`TenantMemberManager`) | no schema; provisioning runs 0037 (the seed, no copy, its tenant's roles emptied) and the listener gives the owner `ADMIN` (*Upgrade* `thePendingTenantIsProvisionedAfterTheUpgrade`) | the deploy-time run copies them (*Upgrade* `eachSchemaCopiedItsMembershipsRoles`) | migrated too | CLOSED migrated; REJECTED never gets a schema, and its memberships' roles don't hold 0039 back | the column stays until every schema has copied (0039's precondition, tried at every start; a FAILED schema holds it, runbook section 3) |
 
 Without tenancy a seed is a changeset (`0010`, `0014`, `0026` with the rows' numbers), and the reference's
 *Upgrade* checks it over the seeded rows (`everySeededTodoIsNumberedInOrder`: red when the counter starts
