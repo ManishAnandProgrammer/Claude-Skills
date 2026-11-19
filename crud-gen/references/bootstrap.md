@@ -34,7 +34,7 @@ With **AskUserQuestion** (several per call):
    pieces ship no role hierarchy, on purpose (house-review REST-25). **Nothing checks a role** (house-review
    AUTHZ-01 to AUTHZ-03): each role lists its permissions in `Role`, every handler names the permission it needs
    (`@Requires`), or is `@SignedIn` or `@Public`, and `GET /users/me/access` tells a client which areas and
-   permissions the caller holds. The pieces bring their permissions (`ACCOUNT_STATUS_CHANGE`, `METADATA_MANAGE`,
+   permissions the caller holds. The pieces bring their permissions (`ACCOUNT_READ`, `ACCOUNT_STATUS_CHANGE`, `METADATA_MANAGE`,
    `UPLOAD_POLICY_MANAGE`, with tenancy `TENANT_MEMBERS_MANAGE`; the example's `TODO_*_OWN`), granted to the roles
    that held the endpoints before. So ask which roles may do what, per capability, not whether roles nest; a
    permission two roles hold is on both lists. With public signup, any internet account is a USER: a table nobody

@@ -46,7 +46,8 @@ public enum Role {
     // /** Everything a USER works, plus the tenant's members (who belongs, with which role) and its own settings. */
     // tenancy:else
     /**
-     * Suspends and reactivates other accounts ({@code PATCH /users/{id}/status}), and changes
+     * Finds other accounts ({@code GET /users?email=}), suspends and reactivates them
+     * ({@code PATCH /users/{id}/status}), and changes
      * application-wide settings: configuration metadata, upload policies. No endpoint grants
      * it: an operator sets it in the database ({@code UPDATE users SET role = 'ADMIN'}; docs/runbook.md,
      * Operator tasks), and it reaches the user's next sign-in or refresh at the latest.
@@ -69,7 +70,7 @@ public enum Role {
             // tenancy:begin
             // Permission.TENANT_MEMBERS_MANAGE,
             // tenancy:else
-            Permission.ACCOUNT_STATUS_CHANGE,
+            Permission.ACCOUNT_READ, Permission.ACCOUNT_STATUS_CHANGE,
             // tenancy:end
             // metadata:begin
             Permission.METADATA_MANAGE,

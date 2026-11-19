@@ -1,5 +1,9 @@
 package com.example.app.user;
 
+// tenancy:begin
+// tenancy:else
+import com.example.app.common.security.Permission;
+// tenancy:end
 import com.example.app.support.IntegrationTest;
 import com.example.app.support.StubBreachedPasswords;
 import org.junit.jupiter.api.DisplayName;
@@ -7,10 +11,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+// tenancy:begin
+// tenancy:else
+import org.springframework.http.MediaType;
+// tenancy:end
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+// tenancy:begin
+// tenancy:else
+import java.util.EnumSet;
+// tenancy:end
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -22,6 +34,10 @@ import java.util.concurrent.Future;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+// tenancy:begin
+// tenancy:else
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+// tenancy:end
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -388,6 +404,25 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
         lookUp(newAdmin().accessToken(), user.email()).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("ACCOUNT_READ alone finds an account but can't change it: the lookup is its own permission")
+    void readingAnAccountIsNotChangingIt() throws Exception {
+        TestUser user = newUser();
+        String reader = newUser().accessToken();
+
+        mvc.perform(get(ACCOUNTS).param("email", user.email()).with(holding(reader, EnumSet.of(Permission.ACCOUNT_READ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[0].id").value(user.id().toString()));
+        mvc.perform(patch(ACCOUNTS + "/" + user.id() + "/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"status": "SUSPENDED", "version": 0}
+                                """)
+                        .with(holding(reader, EnumSet.of(Permission.ACCOUNT_READ))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 
     @Test

@@ -46,8 +46,10 @@ public enum Permission {
     // /** The tenant's members: who belongs, with which role. */
     // TENANT_MEMBERS_MANAGE(Area.ACCOUNTS, Reach.ALL),
     // tenancy:else
-    /** Finds another account by its address, and suspends or reactivates it. */
-    ACCOUNT_STATUS_CHANGE(Area.ACCOUNTS, Reach.ALL),
+    /** Finds another account by its address: the lookup every change of another account starts from. */
+    ACCOUNT_READ(Area.ACCOUNTS, Reach.ALL),
+    /** Suspends or reactivates another account, found first by {@link #ACCOUNT_READ}. */
+    ACCOUNT_STATUS_CHANGE(Area.ACCOUNTS, Reach.ALL, ACCOUNT_READ),
     // tenancy:end
     // sign-in:end
     // metadata:begin

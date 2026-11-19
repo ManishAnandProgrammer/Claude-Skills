@@ -63,8 +63,8 @@ import java.util.UUID;
  *   <!-- tenancy:begin -->
  * Accounts are suspended by platform staff (PlatformUserController), never through this tenant-plane API.
  *   <!-- tenancy:else -->
- * The one exception, ACCOUNT_STATUS_CHANGE's: finding another account by its address, and suspending or
- * reactivating it.
+ * The exceptions are another account's: finding it by its address (ACCOUNT_READ), and suspending or reactivating it
+ * (ACCOUNT_STATUS_CHANGE).
  *   <!-- tenancy:end -->
  */
 @RestController
@@ -115,7 +115,7 @@ class UserController implements UserApi {
 
     @Override
     @GetMapping(version = "v1+")
-    @Requires(Permission.ACCOUNT_STATUS_CHANGE)
+    @Requires(Permission.ACCOUNT_READ)
     public ListWrapper<UserResponse> lookUp(@Valid @ParameterObject UserFilter filter) {
         return accountStatus.lookUp(filter);
     }

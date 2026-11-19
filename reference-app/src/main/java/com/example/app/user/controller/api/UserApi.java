@@ -102,7 +102,7 @@ public interface UserApi {
     // tenancy:begin
     // tenancy:else
 
-    @Operation(summary = "Find an account by its email address (ACCOUNT_STATUS_CHANGE)", description = """
+    @Operation(summary = "Find an account by its email address (ACCOUNT_READ)", description = """
             The account with this exact address (ignoring case and surrounding spaces), or an empty list: its \
             id, status and version, which a status change takes.""")
     @ApiResponse(responseCode = "200", description = "The account, or an empty list")

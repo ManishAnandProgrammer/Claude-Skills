@@ -32,15 +32,18 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
   - `Permission` is an enum in `common/security`; each constant becomes a Spring authority of exactly its name,
     and nothing else does (no `ROLE_` authority, no scope). Spring Security 7 adds its own `FACTOR_BEARER` (how
     the caller signed in), which grants nothing;
-  - a name is `<RESOURCE>_<ACTION>`, by capability (`ACCOUNT_STATUS_CHANGE`, `METADATA_MANAGE`,
+  - a name is `<RESOURCE>_<ACTION>`, by capability (`ACCOUNT_READ`, `ACCOUNT_STATUS_CHANGE`, `METADATA_MANAGE`,
     `UPLOAD_POLICY_MANAGE`, `TODO_EDIT_OWN`), never by role or screen (`ADMIN_PAGE`, `MANAGER_STUFF`), with a
     reach suffix only where the business tells reaches apart: `_OWN` (the caller's own records), `_ASSIGNED`
     (records the owning module says are theirs to work), none (every record);
   - the reach is declared again on the constant (`Reach`), and code reads `reach()`, never the name
     (`PermissionTest` keeps the two in step);
   - each constant names its menu `Area` (AUTHZ-06) and its **prerequisites**: the permissions it needs to be
-    usable (`TODO_EDIT_OWN` needs `TODO_READ_OWN`), declared on the enum, never in a table. A prerequisite is
-    checked (AUTHZ-02), never granted for it: no implied grants;
+    usable (`TODO_EDIT_OWN` needs `TODO_READ_OWN`, `ACCOUNT_STATUS_CHANGE` needs `ACCOUNT_READ`), declared on the
+    enum, never in a table. A prerequisite is checked (AUTHZ-02), never granted for it: no implied grants;
+  - a read that only serves a change (finding the account to suspend) is still its own permission, the change's
+    prerequisite, never folded into the change: an assignment screen needs to find people without the right to
+    suspend them (`ACCOUNT_READ` guards `GET /users?email=`);
   - an authority that names no constant grants nothing (`CurrentUser.permissions()` ignores it): unknown codes
     fail closed.
 - **Detect:** permission names as string literals (`hasAuthority('TODO_READ')`) outside `common/security`; a

@@ -1052,4 +1052,9 @@ scope trees; role-level DENY (a role only allows, so "what may this role do" sta
   the same one statement (no 404 to tell them apart). Todos have no active flag, so done todos are offered too and
   the plan's create refuses one (409 `PLAN_TODO_DONE`): a status rule for one screen stays that write's. Titles go
   up to 200 characters, so the cursor limit grew to 1800 with the example (`(6 x 200 + 100) x 4/3`).
+- **`ACCOUNT_READ`:** the account lookup (`GET /users?email=`, a personal-data read) had been guarded by
+  `ACCOUNT_STATUS_CHANGE` because it only served the suspension. Level 2's assignment screens find people without
+  the right to suspend them, so the lookup is its own permission and the suspension's prerequisite; ADMIN holds both.
+  With tenancy there is no tenant-plane lookup (accounts are global; the member list is `TENANT_MEMBERS_MANAGE`'s),
+  so the constant exists without tenancy only.
 
