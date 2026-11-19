@@ -1,7 +1,10 @@
 package com.example.app.todo.controller;
 
+import com.example.app.common.dropdown.DropdownFor;
+import com.example.app.common.dropdown.DropdownItem;
 import com.example.app.common.security.Permission;
 import com.example.app.common.security.Requires;
+import com.example.app.common.security.SignedIn;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.todo.controller.api.TodoApi;
@@ -9,6 +12,7 @@ import com.example.app.todo.dto.request.TimeEntryCreateRequest;
 import com.example.app.todo.dto.request.TimeEntryFilter;
 import com.example.app.todo.dto.request.TimeEntryUpdateRequest;
 import com.example.app.todo.dto.request.TodoCreateRequest;
+import com.example.app.todo.dto.request.TodoDropdownFilter;
 import com.example.app.todo.dto.request.TodoFilter;
 import com.example.app.todo.dto.request.TodoStatusRequest;
 import com.example.app.todo.dto.request.TodoTagsRequest;
@@ -28,6 +32,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -128,5 +133,13 @@ class TodoController implements TodoApi {
     @Requires(Permission.TODO_EDIT_OWN)
     public void deleteTimeEntry(@PathVariable UUID todoId, @PathVariable UUID id) {
         service.deleteTimeEntry(todoId, id);
+    }
+
+    @Override
+    @GetMapping(path = "/dropdown", version = "v1+")
+    @SignedIn
+    public CursorWrapper<DropdownItem> dropdown(@RequestParam(DropdownFor.PARAMETER) Permission action,
+                                                @Valid TodoDropdownFilter filter) {
+        return service.dropdown(action, filter);
     }
 }

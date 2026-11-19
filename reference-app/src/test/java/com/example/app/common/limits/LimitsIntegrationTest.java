@@ -47,7 +47,8 @@ class LimitsIntegrationTest extends IntegrationTest {
     private static final List<String> CURSOR_TEXT_KEYS = List.of(
             // example:begin
             "todo-list.name",
-            "tag.name"
+            "tag.name",
+            "todo.title"
             // example:end
     );
 

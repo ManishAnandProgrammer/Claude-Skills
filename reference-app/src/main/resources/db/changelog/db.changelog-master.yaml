@@ -60,3 +60,6 @@ databaseChangeLog:
   - include:
       file: changes/0033-plans-status.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/0034-todos-dropdown.sql
+      relativeToChangelogFile: true

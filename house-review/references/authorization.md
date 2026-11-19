@@ -12,12 +12,14 @@ Golden code, in the reference application (`~/.claude/skills-reference/src/main/
 `user/domain/Role`, `user/service/RolePermissions`, `GET /users/me/access` (`UserController.access`,
 `UserMapper.toAccessResponse`, `AccessResponse`), `todo/service/TodoPolicy` (and its use in `TodoService`,
 `TodoRepositoryImpl.findByFilter`, `TodoAllowedActionsResponse`), `common/dropdown/DropdownFor` with the
-todo-list and tag dropdowns, `media/api/UploadPurpose`. Tests: `archunit/ConventionArchTest`
+todo-list and tag dropdowns and the todo dropdown under its list (the dependent one, `TodoService.dropdown`),
+`media/api/UploadPurpose`. Tests: `archunit/ConventionArchTest`
 (`handlersDeclareWhoMayCallThem`, `methodSecurityIsDeclaredOnce`, `noRoleChecks`) proven on its fixtures in
 `ArchRuleScopeTest`, `common/EndpointContractIntegrationTest` (`everyRequiredPermissionIsChecked`,
 `everyPublicEndpointAnswersWithoutAToken`, `everyEndpointNeedsAToken`), `common/security/PermissionTest`,
 `user/domain/RoleTest`, `user/AccessIntegrationTest`, `todo/service/TodoPolicyTest`,
-`common/dropdown/DropdownForTest`, `todo/TodoListIntegrationTest` (the dropdown's `for`). With tenancy:
+`common/dropdown/DropdownForTest`, `todo/TodoListIntegrationTest` (the dropdown's `for`),
+`todo/TodoDropdownIntegrationTest` (the dependent dropdown: its out-of-reach parent, one statement). With tenancy:
 `overlays/tenancy/.../user/service/MembershipService.lockAsCurrentAdmin` (TEN-08).
 
 Names: Spring Security calls a permission an *authority* and a role a *group*; the house says Permission, Role

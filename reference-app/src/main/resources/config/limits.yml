@@ -24,9 +24,11 @@ app:
       # sort's name, the id), times 4/3: (6 x longest + 100) x 4/3. A new text key a cursor carries
       # raises it (LimitsIntegrationTest.CURSOR_TEXT_KEYS checks it).
       # example:begin
-      # The example's longest such key is a todo list's name (100): 933.
+      # The example's longest such key is a todo's title (200, the todo dropdown's label): 1733.
+      cursor: 1800
+      # example:else
+      # cursor: 1000
       # example:end
-      cursor: 1000
       user.email: 254
       user.full-name: 100
       user.refresh-token: 100

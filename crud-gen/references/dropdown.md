@@ -11,7 +11,11 @@ annotation's full contract) and, for one entity, `todo/repository/impl/TodoListR
 (`findDropdownItems`), `todo/service/TodoListService` (`dropdown`),
 `todo/controller/TodoListController` (`dropdown`), `common/dropdown/DropdownFor`. An entity with mandatory or
 optional filters subclasses `{{DropdownFilter}}` as `<Entity>DropdownFilter`, one field per dot-path entry,
-`@NotNull` for mandatory ones.
+`@NotNull` for mandatory ones. **The golden dependent dropdown** is the todo dropdown under its list
+(`GET /todos/dropdown?for=PLAN_CREATE_OWN&todoListId=`): `todo/dto/request/TodoDropdownFilter` (the parent
+`@NotNull`), `TodoRepositoryImpl.findDropdownItems` (the parent a plain condition beside the policy's scope),
+`TodoService.dropdown`, changeset `0034-todos-dropdown.sql` (its index: the parent and the owner first), and its
+tests `todo/TodoDropdownIntegrationTest`.
 
 **One dropdown per resource, named by the action it serves** (house-review AUTHZ-08): every screen that picks the
 resource (an attendance sheet, a fees report, a todo's create) calls the same endpoint with a required
@@ -65,9 +69,9 @@ but no `@DropdownCandidate`, ask whether to add one.
 - `sortDirection=DESC` reverses it.
 - `query` matches part of the label ignoring case (searchable), or is 400 (not searchable).
 - Batches: walk `size=2` with `after` to the end (`hasMore` false, no `nextCursor`).
-- When `displayField` isn't unique (customer names repeat; golden todo-list names are unique per
-  owner, so the golden can't show it): a group of equal labels split across batches, walked in both
-  directions, comes back in id order within the label (the tie-breaker), every item once.
+- When `displayField` isn't unique (customer names repeat; golden todo titles repeat,
+  `TodoDropdownIntegrationTest.equalTitlesWalkInIdOrderInBothDirections`): a group of equal labels split across
+  batches, walked in both directions, comes back in id order within the label (the tie-breaker), every item once.
 - A cursor from the other direction, and a tampered cursor: 400 `REQUEST_PARAMETER_INVALID`.
 - `size` at the configured maximum accepted, one more 400 naming `size` with the configured number
   (golden `dropdownSizeFollowsTheConfiguredMaximum`; tests.md row 9).
@@ -86,5 +90,6 @@ but no `@DropdownCandidate`, ask whether to add one.
   each permission its screens name lists the same options (golden `theDropdownNeedsFor`,
   `aForTheCallerDoesntHoldIs403`, `aForOfAnotherReachIs400`, `everyOwnReachForListsTheSameOptions`).
 - One statement per call, `for` included (golden `dropdownRunsOneStatement`); a dependent dropdown also with an
-  out-of-reach parent: an empty page, one statement.
+  out-of-reach parent (another owner's, an unknown id): an empty page, one statement, never a 404 (golden
+  `TodoDropdownIntegrationTest.anOutOfReachParentIsAnEmptyBatch`); the parent missing is 400 naming it.
 - Cacheable: a write evicts it.

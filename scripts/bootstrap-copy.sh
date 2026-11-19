@@ -218,6 +218,7 @@ src/main/resources/db/changelog/changes/0025-todos-requester.sql
 src/main/resources/db/changelog/changes/0029-newest-by-created-at.sql
 src/main/resources/db/changelog/changes/0031-filter-indexes.sql
 src/main/resources/db/changelog/changes/0033-plans-status.sql
+src/main/resources/db/changelog/changes/0034-todos-dropdown.sql
 src/test/java/$reference_path/todo
 src/test/java/$reference_path/planning
 src/test/resources/db/upgrade/previous-release-seed.sql

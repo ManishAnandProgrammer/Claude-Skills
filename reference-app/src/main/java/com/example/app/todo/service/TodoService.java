@@ -1,10 +1,16 @@
 package com.example.app.todo.service;
 
+import com.example.app.common.dropdown.DropdownFor;
+import com.example.app.common.dropdown.DropdownItem;
+import com.example.app.common.dropdown.DropdownStatus;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.exception.RequestError;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Paging;
 import com.example.app.common.security.CurrentUser;
+import com.example.app.common.security.Permission;
+import com.example.app.common.security.Reach;
 // tenancy-row:begin
 // import com.example.app.common.tenancy.TenantContext;
 // tenancy-row:end
@@ -29,6 +35,7 @@ import com.example.app.todo.dto.request.TimeEntryCreateRequest;
 import com.example.app.todo.dto.request.TimeEntryFilter;
 import com.example.app.todo.dto.request.TimeEntryUpdateRequest;
 import com.example.app.todo.dto.request.TodoCreateRequest;
+import com.example.app.todo.dto.request.TodoDropdownFilter;
 import com.example.app.todo.dto.request.TodoFilter;
 import com.example.app.todo.dto.request.TodoStatusRequest;
 import com.example.app.todo.dto.request.TodoTagsRequest;
@@ -62,6 +69,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -157,6 +165,25 @@ public class TodoService implements Todos {
         CursorBatch<TodoSummaryResponse> batch =
                 repository.findByFilter(filter, policy.listScope(ownerId), paging.cursorSize(filter));
         return CursorWrapper.of(withTags(withTodoLists(batch.items(), ownerId)), batch.nextCursor());
+    }
+
+    /**
+     * The todos of one list that the action {@code action} may use ({@link DropdownFor}): a dependent dropdown (a
+     * new plan's screen picks a list, then one of its todos). The reach is the policy's list scope, the one this
+     * dropdown lists, and the list one more condition of the same statement, never looked up first: a list that is
+     * missing or someone else's offers nothing, as an empty one of the caller's does. Todos have no active flag
+     * (DONE ones are offered too, and a write that needs an open one refuses it), so a {@code status} other than
+     * the default is refused, not ignored.
+     */
+    public CursorWrapper<DropdownItem> dropdown(Permission action, TodoDropdownFilter filter) {
+        DropdownFor.check(action, currentUser.permissions(), EnumSet.of(Reach.OWN));
+        if (filter.getStatus() != DropdownStatus.ACTIVE) {
+            throw AppException.withErrors(ErrorCode.REQUEST_PARAMETER_INVALID,
+                    List.of(RequestError.atParameter("status", RequestError.INVALID_VALUE)));
+        }
+        CursorBatch<DropdownItem> batch =
+                repository.findDropdownItems(filter, policy.listScope(currentUser.id()), paging.cursorSize(filter));
+        return CursorWrapper.of(batch.items(), batch.nextCursor());
     }
 
     /**

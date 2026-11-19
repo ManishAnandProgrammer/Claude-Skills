@@ -1038,9 +1038,18 @@ scope trees; role-level DENY (a role only allows, so "what may this role do" sta
 - **Shared dropdowns:** `for` is a `@RequestParam` beside the filter (`for` is a Java keyword, so no filter
   property), checked in memory by `DropdownFor.check`; the todo-list and tag dropdowns list `OWN` only, so an
   all-records permission is 400 `DROPDOWN_REACH_UNSUPPORTED`. A dependent dropdown is a rule and crud-gen's
-  generation (its parent a plain filter of the one query); the reference's two dropdowns have no parent, so it has no
-  golden yet.
+  generation (its parent a plain filter of the one query); its golden came with Level 2's batch (below).
 - **Permission names** for the reference: `TODO_LIST_*`, `TODO_*`, `TAG_*`, `PLAN_*` with `READ`, `CREATE`, `EDIT`,
   `DELETE` and `_OWN` (each module is per owner, the create included: you create your own), EDIT/DELETE/CREATE
   needing READ; `ACCOUNT_STATUS_CHANGE`, `TENANT_MEMBERS_MANAGE`, `METADATA_MANAGE`, `UPLOAD_POLICY_MANAGE` by
   capability (the brief's examples). Areas `TODOS`, `ACCOUNTS`, `SETTINGS`.
+
+**Level 2 batch, Phase 0 (2026-11-19): two Level 1 gaps closed first.**
+- **The golden dependent dropdown:** `GET /todos/dropdown?for=PLAN_CREATE_OWN&todoListId=`. The screen that
+  honestly picks a todo is a new plan's (a plan is for one of your todos), and the plans' list filters by one
+  (`PLAN_READ_OWN`): both reach your own, so the dropdown lists `OWN`. The list is a `@NotNull` filter and a plain
+  condition beside the policy's `listScope`; another owner's list and an unknown id both answer an empty batch in
+  the same one statement (no 404 to tell them apart). Todos have no active flag, so done todos are offered too and
+  the plan's create refuses one (409 `PLAN_TODO_DONE`): a status rule for one screen stays that write's. Titles go
+  up to 200 characters, so the cursor limit grew to 1800 with the example (`(6 x 200 + 100) x 4/3`).
+

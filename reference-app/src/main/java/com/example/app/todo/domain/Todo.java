@@ -1,5 +1,6 @@
 package com.example.app.todo.domain;
 
+import com.example.app.common.dropdown.DropdownCandidate;
 // tenancy-row:begin
 // import com.example.app.common.persistence.TenantOwnedEntity;
 // tenancy-row:else
@@ -43,6 +44,7 @@ import java.util.stream.Collectors;
  */
 @Entity
 @Table(name = "todos")
+@DropdownCandidate(label = "Todo", displayField = "title", mandatoryFilters = "todoList.id", searchable = true)
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

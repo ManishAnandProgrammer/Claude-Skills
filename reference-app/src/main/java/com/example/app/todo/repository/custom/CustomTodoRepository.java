@@ -1,7 +1,9 @@
 package com.example.app.todo.repository.custom;
 
+import com.example.app.common.dropdown.DropdownItem;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.todo.domain.Todo;
+import com.example.app.todo.dto.request.TodoDropdownFilter;
 import com.example.app.todo.dto.request.TodoFilter;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import org.springframework.data.jpa.domain.PredicateSpecification;
@@ -26,4 +28,10 @@ public interface CustomTodoRepository {
      * because it reads another table: a plan is only for an open todo, so the todo's completion waits for the plan.
      */
     Optional<Todo> findForUpdate(UUID id, PredicateSpecification<Todo> scope);
+
+    /**
+     * One batch of the todo dropdown, in one statement: {@code scope} is the reach of the action the options serve
+     * (TodoPolicy.listScope for {@code OWN}), and the parent list one more condition of the same query.
+     */
+    CursorBatch<DropdownItem> findDropdownItems(TodoDropdownFilter filter, PredicateSpecification<Todo> scope, int size);
 }

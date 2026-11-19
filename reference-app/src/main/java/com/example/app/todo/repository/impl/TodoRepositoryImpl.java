@@ -1,5 +1,7 @@
 package com.example.app.todo.repository.impl;
 
+import com.example.app.common.dropdown.DropdownCandidate;
+import com.example.app.common.dropdown.DropdownItem;
 import com.example.app.common.pagination.Cursor;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Seek;
@@ -10,6 +12,7 @@ import com.example.app.todo.domain.TodoList_;
 import com.example.app.todo.domain.TodoTag;
 import com.example.app.todo.domain.TodoTag_;
 import com.example.app.todo.domain.Todo_;
+import com.example.app.todo.dto.request.TodoDropdownFilter;
 import com.example.app.todo.dto.request.TodoFilter;
 import com.example.app.todo.dto.request.TodoSort;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
@@ -43,6 +46,10 @@ class TodoRepositoryImpl implements CustomTodoRepository {
 
     /** Every order's keyset: its sort key, then the id. */
     private static final int CURSOR_KEYS = 2;
+
+    /** The dropdown's cursor names the direction it was taken in, so it is refused in the other. */
+    private static final String TITLE_ASC = "TITLE_ASC";
+    private static final String TITLE_DESC = "TITLE_DESC";
 
     private final EntityManager entityManager;
 
@@ -84,6 +91,39 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         Root<Todo> root = query.from(Todo.class);
         query.where(builder.equal(root.get(Todo_.id), id), scope.toPredicate(root, builder));
         return entityManager.createQuery(query).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList().stream().findFirst();
+    }
+
+    /**
+     * Scrolls by title, then id (titles repeat: the id breaks the tie). The list is a plain condition next to the
+     * reach, so a list outside it yields an empty batch from this same statement; index
+     * {@code idx_todos_todo_list_id_owner_id_title_id} (changeset 0034) serves the list, the owner and the order.
+     */
+    @Override
+    public CursorBatch<DropdownItem> findDropdownItems(TodoDropdownFilter filter, PredicateSpecification<Todo> scope, int size) {
+        boolean descending = filter.getSortDirection() == DropdownCandidate.SortDirection.DESC;
+        String sort = descending ? TITLE_DESC : TITLE_ASC;
+        Cursor cursor = Cursor.read(filter.getAfter(), sort, CURSOR_KEYS);
+
+        CriteriaBuilder builder = entityManager.getCriteriaBuilder();
+        CriteriaQuery<DropdownItem> query = builder.createQuery(DropdownItem.class);
+        Root<Todo> root = query.from(Todo.class);
+        query.select(builder.construct(DropdownItem.class, root.get(Todo_.id), root.get(Todo_.title)));
+        List<Predicate> predicates = new ArrayList<>();
+        predicates.add(builder.equal(root.get(Todo_.todoList).get(TodoList_.id), filter.getTodoListId()));
+        predicates.add(scope.toPredicate(root, builder));
+        if (filter.requireQueryPredicate()) {
+            predicates.add(TextSearch.contains(builder, root.get(Todo_.title), filter.getQuery()));
+        }
+        if (cursor.isPresent()) {
+            predicates.add(Seek.after(builder, descending,
+                    root.get(Todo_.title), cursor.text(0),
+                    root.get(Todo_.id), cursor.uuid(1)));
+        }
+        query.where(predicates.toArray(new Predicate[0]));
+        query.orderBy(Seek.order(builder, descending, root.get(Todo_.title), root.get(Todo_.id)));
+
+        List<DropdownItem> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();
+        return CursorBatch.of(rows, size, item -> Cursor.write(sort, item.label(), item.value()));
     }
 
     /** The rows after the cursor's, in the sort's keyset (id last). */

@@ -34,6 +34,7 @@ class TodoIndexIntegrationTest extends IntegrationTest {
             select id, name, owner_id, created_at, updated_at, created_by, updated_by, version
               from todo_lists""";
     private static final String DROPDOWN_ITEM = "select id, name from todo_lists";
+    private static final String TODO_DROPDOWN_ITEM = "select id, title from todos";
     // tenancy-row:begin
     // // The repository's query names the tenant (Hibernate's @TenantId adds it), so the statement written as
     // // the repository issues it does too.
@@ -59,6 +60,7 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                 Arguments.of("todos by ids (and the plans' todo lookup)", "pk_todos"),
                 Arguments.of("the tags of a todo (the list's second step, the detail, the todo's delete)", "uq_todo_tags_todo_id_tag_id"),
                 Arguments.of("a tag's delete (its pairs, the cascade)", "idx_todo_tags_tag_id_owner_id_todo_id"),
+                Arguments.of("the todo dropdown: one list's todos by title (both directions)", "idx_todos_todo_list_id_owner_id_title_id"),
                 Arguments.of("todo lists, NAME (and the dropdown, both directions)", "idx_todo_lists_owner_id_name_id"),
                 Arguments.of("todo lists, NEWEST", "idx_todo_lists_owner_id_created_at_id"),
                 Arguments.of("todo lists by ids", "pk_todo_lists"),
@@ -80,14 +82,18 @@ class TodoIndexIntegrationTest extends IntegrationTest {
                 Arguments.of("todo lists", "idx_todo_lists_owner_id_name_id",
                         TODO_LIST_ROW + " where owner_id = :owner" + AND_TENANT + " order by name, id limit 20"),
                 Arguments.of("todo list dropdown", "idx_todo_lists_owner_id_name_id",
-                        DROPDOWN_ITEM + " where owner_id = :owner" + AND_TENANT + " order by name, id limit 21"));
+                        DROPDOWN_ITEM + " where owner_id = :owner" + AND_TENANT + " order by name, id limit 21"),
+                Arguments.of("todo dropdown", "idx_todos_todo_list_id_owner_id_title_id",
+                        TODO_DROPDOWN_ITEM + " where todo_list_id = :list and owner_id = :owner" + AND_TENANT
+                                + " order by title, id limit 21"));
     }
 
     @ParameterizedTest(name = "{0}: {1}")
     @MethodSource("firstPages")
     @DisplayName("Each list's first page is planned on its order's index, never a sequential scan")
     void theFirstPageIsPlannedOnItsIndex(String list, String index, String statement) {
-        MapSqlParameterSource parameters = new MapSqlParameterSource("owner", UUID.randomUUID());
+        MapSqlParameterSource parameters = new MapSqlParameterSource("owner", UUID.randomUUID())
+                .addValue("list", UUID.randomUUID());
         // tenancy-row:begin
         // parameters.addValue("tenantId", testTenant().id());
         // tenancy-row:end

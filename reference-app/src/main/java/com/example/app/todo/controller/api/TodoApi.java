@@ -1,11 +1,15 @@
 package com.example.app.todo.controller.api;
 
+import com.example.app.common.dropdown.DropdownFor;
+import com.example.app.common.dropdown.DropdownItem;
+import com.example.app.common.security.Permission;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.todo.dto.request.TimeEntryCreateRequest;
 import com.example.app.todo.dto.request.TimeEntryFilter;
 import com.example.app.todo.dto.request.TimeEntryUpdateRequest;
 import com.example.app.todo.dto.request.TodoCreateRequest;
+import com.example.app.todo.dto.request.TodoDropdownFilter;
 import com.example.app.todo.dto.request.TodoFilter;
 import com.example.app.todo.dto.request.TodoStatusRequest;
 import com.example.app.todo.dto.request.TodoTagsRequest;
@@ -14,6 +18,7 @@ import com.example.app.todo.dto.response.TimeEntryResponse;
 import com.example.app.todo.dto.response.TodoResponse;
 import com.example.app.todo.dto.response.TodoSummaryResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -347,4 +352,32 @@ public interface TodoApi {
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     void deleteTimeEntry(UUID todoId, UUID id);
+
+    @Operation(summary = "Options for the Todo dropdown", description = """
+            The todos of one of your lists (todoListId) as {value, label}, for the action for names (one dropdown \
+            serves every screen that picks a todo), ordered by title then id (sortDirection DESC reverses it), \
+            in batches: pageInfo.nextCursor goes back as after for the next batch; size sets the batch (default \
+            and maximum from configuration). Narrow it with query. A list that isn't yours, or doesn't exist, \
+            offers no todos: an empty batch, never a 404. Todos have no active flag: open and done ones are \
+            offered alike, and a status other than ACTIVE is refused with REQUEST_PARAMETER_INVALID.""")
+    @ApiResponse(responseCode = "200", description = "The options")
+    @ApiResponse(responseCode = "400", description = """
+            DROPDOWN_REACH_UNSUPPORTED (for reaches records other than your own: see errors); \
+            REQUEST_PARAMETER_MISSING or REQUEST_PARAMETER_INVALID at for (none, or no permission); \
+            VALIDATION_FAILED (todoListId missing; size, query or after out of range); REQUEST_PARAMETER_INVALID \
+            (todoListId not a UUID, a status other than ACTIVE, an unknown sortDirection, a non-numeric size, or \
+            an after that is tampered or from the other direction; see errors)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (you don't hold the permission for names)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    CursorWrapper<DropdownItem> dropdown(
+            @Parameter(name = DropdownFor.PARAMETER, required = true, example = "PLAN_CREATE_OWN", description = """
+                    The permission of the action the options serve (PLAN_CREATE_OWN to pick a new plan's todo, \
+                    PLAN_READ_OWN to filter your plans by one): 403 ACCESS_DENIED unless you hold it, and the \
+                    options are the ones its reach covers""") Permission action,
+            @ParameterObject TodoDropdownFilter filter);
 }
