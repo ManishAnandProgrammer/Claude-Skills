@@ -637,7 +637,7 @@ resilience or failure-injection test is Medium).
   - a query value with special characters goes through `.param(...)`: `get(String)` treats the
     string as a URI template and encodes `%25` a second time, so the test sends something else;
   - a 403 test sends a **valid** body: argument binding and validation run before method
-    security, so an invalid body answers 400 and the role check is never reached.
+    security, so an invalid body answers 400 and the permission check is never reached (AUTHZ-03).
 - **Order in unit tests:** a test whose stubs or assertions follow an order the code computes (a sort
   by id, a set's iteration) builds its ids in that order (fixed values), never one `UUID.randomUUID()`
   each: a sort added later makes it pass or fail by chance (a strict stub met in another order).

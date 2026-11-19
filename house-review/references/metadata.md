@@ -68,7 +68,7 @@ only when the project has that piece.
 - **Severity:** Medium.
 
 ### META-07: Security
-- **Check:** every metadata endpoint carries the admin role check; no shared secret in a request
+- **Check:** every metadata endpoint `@Requires(Permission.METADATA_MANAGE)` (AUTHZ-03); no shared secret in a request
   body; secrets (keys, passwords, tokens) are never stored in metadata (they belong in a secret
   store or configuration).
 - **Severity:** High.

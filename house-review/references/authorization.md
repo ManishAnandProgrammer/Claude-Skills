@@ -105,9 +105,12 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
   - an owned resource has a `<Resource>Policy` in its module (golden `TodoPolicy`): plain Java `if`s on the
     record and the caller, each rule a method returning a `Decision` (allowed, or refused with an `ErrorCode`
     and its arguments; named apart from Spring's `AuthorizationDecision`, which carries no reason);
-  - it holds every record rule: reach (ownership, assignment), state (a closed record stays closed), amounts,
-    dates, relationships (the requester reads, the owner edits). A limit (a concession up to 2,000) is the
-    module's setting or data, **never a column of a role or a permission**;
+  - it holds every record rule that decides an action: reach (ownership, assignment), state (a closed record
+    stays closed), amounts, dates, relationships (the requester reads, the owner edits). A state invariant that
+    holds for every caller stays the entity's guarded method too (golden `Plan.requirePlanned`), and the policy
+    calls it when an `allowedActions` flag or a caller's decision needs it; a rule about the caller (reach, a
+    relationship, an amount bounded per permission) is the policy's alone. A limit (a concession up to 2,000) is
+    the module's setting or data, **never a column of a role or a permission**;
   - the write path calls `policy.x(record, caller).orThrow()` after loading the record; a write that locks loads
     through the policy's condition (`TodoPolicy.editScope`, a condition of the locking statement), so a refused
     caller never takes the owner's lock (DATA-29), and on an empty result reads the record unlocked for the policy
@@ -117,8 +120,10 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
 - **Detect:** a record locked by id before its policy decides; ownership compared in the controller or the mapper; an `if (role == ...)` in a service; a limit
   read from the role; the same "is it theirs" written in two services; a policy that throws an HTTP status or
   a Spring exception; a record rule inside a `@PreAuthorize` expression.
-- **Not a finding when:** a resource whose only rule is the owner's reach keeps the owner id in its queries
-  (`TodoListService`): the policy shape is for a resource with a second party, a state or an amount rule.
+- **Not a finding when:** a resource whose only rule about the caller is the owner's reach keeps the owner id in its
+  queries (`TodoListService`, `TagService`, `PlanService`, whose state rules are the entity's guarded methods for
+  every caller): the policy shape is for a resource with a second party, a caller-dependent state or amount rule,
+  or an `allowedActions` flag.
 - **Severity:** High when a write skips its policy; Medium otherwise.
 
 ### AUTHZ-05: The policy owns its list filter
@@ -156,6 +161,9 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
   the permission alone decides, is not repeated per record.
 - **Detect:** an `allowedActions` flag computed by its own condition (a copy of the policy); flags for every
   action on every response; a frontend rule that re-derives a record's editability from its fields.
+- **Not a finding when:** the answer follows from a documented status alone, the same for every caller who sees
+  the record (a DONE plan is final for everyone: its `status` and the API text say so); a flag is added once a
+  caller-dependent rule appears.
 - **Severity:** Medium.
 
 ### AUTHZ-08: Shared dropdowns are named by the action they serve
