@@ -51,6 +51,9 @@ class ChangeHistoryIntegrationTest extends IntegrationTest {
     @Autowired
     private ChangeHistoryPurgeJob.Settings settings;
 
+    @Autowired
+    private ChangeHistoryRetention retention;
+
     /** The history of one row, oldest first. */
     private List<Map<String, Object>> historyOf(String table, UUID rowId) {
         return jdbc.queryForList("""
@@ -188,6 +191,23 @@ class ChangeHistoryIntegrationTest extends IntegrationTest {
             assertThat(historyOf("probe", rowId)).isEmpty();
         }
         assertThat(historyOf("probe", recent)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("One batch deletes at most its size, so the job's loop goes on while a batch comes back full")
+    void aBatchDeletesAtMostItsSize() {
+        Instant pastRetention = Instant.now().minus(settings.keepFor()).minus(Duration.ofDays(1));
+        for (int index = 0; index < 3; index++) {
+            sql("""
+                    insert into %s (table_schema, table_name, row_id, operation, changed_at)
+                    values ('probe', 'probe-batch', ?, 'INSERT', ?)""".formatted(AUDIT_LOG), UUID.randomUUID(), Timestamp.from(pastRetention));
+        }
+        Instant cutoff = Instant.now().minus(settings.keepFor());
+
+        assertThat(retention.deleteChangedBefore(cutoff, 2)).isEqualTo(2);
+        purgeJob.purgeOld();
+        assertThat(jdbc.queryForObject("select count(*) from %s where table_name = 'probe-batch'".formatted(AUDIT_LOG), Integer.class))
+                .isZero();
     }
 
     @Test

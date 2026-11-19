@@ -171,6 +171,23 @@ class RolesIntegrationTest extends RolesFixtures {
     }
 
     @Test
+    @DisplayName("Safety rule 2 on an edit: adding to a role the editor holds is 403 ACCESS_OWN_CHANGE (their grant until a date would outlive it)")
+    void anEditorNeverAddsToTheirOwnRole() throws Exception {
+        String admin = newAdmin().accessToken();
+        TestUser editor = newUser();
+        String editorsRole = createRole(admin, Permission.ROLES_MANAGE);
+        assign(admin, editor.id(), editorsRole, LATER).andExpect(status().isOk());
+        putAs(admin, userPermission(editor.id(), NEEDED), """
+                {"effect": "ALLOW", "validUntil": "%s"}""".formatted(LATER)).andExpect(status().isOk());
+
+        putAs(editor.accessToken(), ROLES + "/" + editorsRole, roleUpdate("Mine", 0, Permission.ROLES_MANAGE, NEEDED))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_OWN_CHANGE"));
+        putAs(editor.accessToken(), ROLES + "/" + editorsRole, roleUpdate("Renamed", 0, Permission.ROLES_MANAGE))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     @DisplayName("Safety rule 7: an edit with the version you read; a stale one is 409 OPTIMISTIC_LOCK_CONFLICT")
     void aStaleEditIsRefused() throws Exception {
         String admin = newAdmin().accessToken();

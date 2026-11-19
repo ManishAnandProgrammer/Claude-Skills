@@ -54,8 +54,14 @@ public class AccessRoleManager {
         EffectiveAccess caller = access.lockManagersWith(callerId, Permission.ROLES_MANAGE);
         // Both what it gives now and what it will: an editor never takes from a role (and from everyone above them who
         // holds it) a permission they don't hold themselves.
-        PersonAccessService.requireHeld(caller, roles.getRole(id).permissions());
+        Set<Permission> before = roles.getRole(id).permissions();
+        PersonAccessService.requireHeld(caller, before);
         PersonAccessService.requireHeld(caller, request.permissions());
+        // Safety rule 2: adding to a role the editor holds would change their own access (a grant of theirs that ends
+        // would outlive its end through the role).
+        if (!before.containsAll(request.permissions()) && access.holdsRole(callerId, id)) {
+            throw AppException.of(ErrorCode.ACCESS_OWN_CHANGE);
+        }
         requirePrerequisites(request.permissions());
         AccessRoleResponse updated = roles.toResponse(roles.update(id, request));
         access.requireManagersRemain();

@@ -5,7 +5,8 @@ import org.springframework.data.domain.Sort;
 public enum AccessRoleSort {
 
     NAME(Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id"))),
-    CODE(Sort.by(Sort.Order.asc("code"), Sort.Order.asc("id")));
+    /** The code alone: it is unique (uq_roles_code), so it needs no tie-breaker. */
+    CODE(Sort.by(Sort.Order.asc("code")));
 
     private final Sort sort;
 

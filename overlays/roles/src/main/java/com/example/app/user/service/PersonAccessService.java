@@ -6,6 +6,7 @@ import com.example.app.common.security.Permission;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.domain.AccessRole;
 import com.example.app.user.domain.EffectiveAccess;
+import com.example.app.user.domain.GrantEffect;
 import com.example.app.user.domain.PersonalGrant;
 import com.example.app.user.domain.Role;
 import com.example.app.user.domain.RoleAssignment;
@@ -26,11 +27,13 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -102,6 +105,7 @@ public class PersonAccessService {
         EffectiveAccess caller = lockForChange(callerId, userId);
         AccessRole role = roles.getRole(roleId);
         requireHeld(caller, role.permissions());
+        requireHeldForGoodWhenForGood(callerId, role.permissions(), request.validUntil());
         Optional<RoleAssignment> existing = assignments.findByUserIdAndRoleId(userId, roleId);
         if (existing.isPresent()) {
             existing.get().changeValidUntil(request.validUntil());
@@ -134,6 +138,9 @@ public class PersonAccessService {
     public ObjectWrapper<PersonAccessResponse> grant(UUID callerId, UUID userId, Permission permission, PersonalGrantRequest request) {
         EffectiveAccess caller = lockForChange(callerId, userId);
         requireHeld(caller, EnumSet.of(permission));
+        if (request.effect() == GrantEffect.ALLOW) {
+            requireHeldForGoodWhenForGood(callerId, EnumSet.of(permission), request.validUntil());
+        }
         Optional<PersonalGrant> existing = grants.findByUserIdAndPermission(userId, permission.name());
         if (existing.isPresent()) {
             existing.get().change(request.effect(), request.validUntil());
@@ -266,6 +273,21 @@ public class PersonAccessService {
     /** What {@code userId} is given, whatever their account's status (a suspended person still counts as above). */
     private EffectiveAccess grantedTo(UUID userId) {
         return EffectiveAccess.of(assignments.findGrantedRows(List.of(userId), clock.instant()));
+    }
+
+    /**
+     * Safety rule 1 for a grant without an end: only of what the caller holds for good, so a grant of theirs that ends
+     * never lives on, for good, in someone else's. 403 {@code ACCESS_NOT_HELD}.
+     */
+    private void requireHeldForGoodWhenForGood(UUID callerId, Set<Permission> given, Instant validUntil) {
+        if (Objects.isNull(validUntil)) {
+            requireHeld(EffectiveAccess.forGoodOf(assignments.findAccessRows(List.of(callerId), clock.instant())), given);
+        }
+    }
+
+    /** Whether {@code userId} holds the role (ended or not), for a role's edit: safety rule 2. */
+    boolean holdsRole(UUID userId, UUID roleId) {
+        return assignments.findByUserIdAndRoleId(userId, roleId).isPresent();
     }
 
     /** Safety rule 1: 403 {@code ACCESS_NOT_HELD}, naming what the caller doesn't hold. */

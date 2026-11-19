@@ -14,6 +14,7 @@ a7c17b6cf7080c55bfe970621cc5841aa82f6246ba212fd983436555fac3390a  reference-app/
 731c8c59db2282ddaae8b2942788eada1383b0fa2ef3c1dbcfa8573179674d62  reference-app/src/main/java/com/example/app/user/controller/AuthController.java
 5b29eea3687be9e419905ae9ce03b6bf5ec40e6ebd3f5907a19dce002f6335e4  reference-app/src/main/java/com/example/app/user/domain/RefreshToken.java
 0908df5e7489ba338bc8c2974f585f98b473b7eaff0953b10860d2fd1a45c463  reference-app/src/main/java/com/example/app/user/service/AuthService.java
+64b7f50d8a9fe91e7f29ae701ccbd27ddbf30898f1c72701dcc62233edcc4e24  reference-app/src/main/java/com/example/app/user/service/RolePermissions.java
 43005f10e026944010737a221cd4ec282e03d8480e0543be693de772fce459f7  reference-app/src/main/java/com/example/app/user/service/TokenService.java
 ff071c6d3ed459542c7525580c0f4a5e5363a81bd9126ab8ddf9fee922ad2546  reference-app/src/test/java/com/example/app/support/IntegrationTest.java
 d63483c18ae6affa68c408fb3f5089c3bbb1ec62852c50fec13804867b8f6b8c  reference-app/src/test/java/com/example/app/support/PreviousReleaseDatabase.java

@@ -291,10 +291,12 @@ converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenS
   1. **grant only what you hold** (403 `ACCESS_NOT_HELD`): a role you create holds only permissions you hold, and you
      edit only a role whose permissions you hold before and after (an edit never takes from everyone who holds the
      role a permission you lack); you give a role only if you hold all its permissions; a personal ALLOW or DENY (or
-     its removal) only of a permission you hold; and checked on the result too, after the change: what the person
+     its removal) only of a permission you hold, and one without an end only of what you hold for good (a grant of
+     yours that ends never lives on in someone else's); and checked on the result too, after the change: what the person
      would hold afterwards holds nothing you don't (taking a DENY away would otherwise hand back a permission that
      needed the denied one);
-  2. **never your own** roles or grants (403 `ACCESS_OWN_CHANGE`);
+  2. **never your own** roles or grants (403 `ACCESS_OWN_CHANGE`), nor adding to a role you hold (a grant of yours
+     that ends would outlive its end through the role);
   3. **never someone above you** (403 `ACCESS_TARGET_HOLDS_MORE`): you change the access of (or suspend, or
      reactivate) only a person who holds nothing you don't, a suspended person's grants counted (suspended, a
      superior is still above), which a DENY could otherwise use to sabotage them;
@@ -307,7 +309,8 @@ converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenS
      never the last), every current DENY counted. Rules 2 and 3 already keep the caller of a person's change a
      holder, so in practice it is a role's edit that trips it; the runbook names the operator's SQL for the case it
      happened outside the application;
-  7. **concurrency:** `version` on the role (409 `OPTIMISTIC_LOCK_CONFLICT`); every change locks, in id order, the
+  7. **concurrency:** `version` on the role (409 `OPTIMISTIC_LOCK_CONFLICT`); every change of someone's access (a
+     person's change, a role's edit, a suspension; a new role gives nobody anything) locks, in id order, the
      account rows (DATA-29: the narrowest row every such change shares) of the caller, the person it changes, and
      every account holding the kept permissions for good, then checks rules 1 to 3 on what the database holds under
      that lock, never on the request's earlier read: any two changes that could each take the last holder away

@@ -92,10 +92,17 @@ public class AccountStatusService {
     // }
     // tenancy:else
     /**
+     *   <!-- roles:begin -->
+     <!-- * A change of another account: 403 {@code USER_OWN_STATUS_CHANGE} for the caller's own; the rows locked -->
+     <!-- * (PersonAccessService.lockToManage), then 403 {@code ACCESS_DENIED} unless the caller holds -->
+     <!-- * {@code ACCOUNT_STATUS_CHANGE} now, 403 {@code ACCESS_TARGET_HOLDS_MORE} for an account holding more, 404 -->
+     <!-- * {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}, 409 {@code ACCESS_LAST_MANAGER}. -->
+     *   <!-- roles:else -->
      * A change of another account: 403 {@code USER_OWN_STATUS_CHANGE} for the caller's own; the caller and the
      * target locked together (id order), then 403 {@code ACCESS_DENIED} unless the caller is an ACTIVE account
      * whose role grants {@code ACCOUNT_STATUS_CHANGE} now (of two ADMINs suspending each other at once, the
      * second finds itself suspended), 404 {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}.
+     *   <!-- roles:end -->
      */
     @Transactional
     public ObjectWrapper<UserResponse> changeStatus(UUID callerId, UUID userId, UserStatusRequest request) {

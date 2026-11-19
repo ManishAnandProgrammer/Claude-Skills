@@ -90,7 +90,11 @@ class PersonAccessIntegrationTest extends RolesFixtures {
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
         putAs(granter.accessToken(), userPermission(person.id(), NEEDING), grantJson("ALLOW"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
-        putAs(granter.accessToken(), userPermission(person.id(), NEEDED), grantJson("ALLOW")).andExpect(status().isOk());
+        // The granter holds NEEDED until a date: they give it until a date, never for good.
+        putAs(granter.accessToken(), userPermission(person.id(), NEEDED), grantJson("ALLOW"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
+        putAs(granter.accessToken(), userPermission(person.id(), NEEDED), """
+                {"effect": "ALLOW", "validUntil": "%s"}""".formatted(LATER)).andExpect(status().isOk());
     }
 
     @Test

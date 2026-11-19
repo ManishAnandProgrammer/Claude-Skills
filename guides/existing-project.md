@@ -93,8 +93,9 @@ of `UserResponse`: announce it).
    (`overlays/roles/.../user/service/RolePermissions.java`: copy it over by hand), and its `User`, `TokenService`,
    `UserService`, `AccountStatusService` and `SecurityConfig` get the piece's `roles` blocks by hand (read them in the
    reference's files; `--render` doesn't show Level 2).
-2. **One changeset seeds the tables from the role column, then drops it** (the piece's `0037-roles.sql` is the
-   model; number it in the project's range when its own tables come first): create the four tables with their keys,
+2. **One changeset seeds the tables from the role column, then drops it**: delete the copied `0037-roles.sql`
+   (nothing includes it: bootstrap never rewrites an existing master) and write `NNNN-roles.sql` from it in the
+   project's range, with the project's own `Role` permissions as its literal rows: create the four tables with their keys,
    indexes and audit triggers; insert one built-in role per `Role` constant **with its permissions written out as
    literal rows**, as the enum lists them that day (never read from the enum by a migration); copy each account's
    role into `user_roles` onto the built-in role of that name (`INSERT ... SELECT u.id, r.id FROM users u JOIN roles r

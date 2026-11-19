@@ -18,7 +18,8 @@ MODE_LAYERS="overlays/tenancy-schema overlays/tenancy-row"
 # Every replaced file, the nearest earlier layer's, one per line, relative to the repository.
 replaced_files() {
     local layer earlier relative candidate found
-    for layer in ${SHARED_LAYERS#reference-app } $MODE_LAYERS; do
+    # The roles layer replaces reference files only (sign-in's RolePermissions), never a tenancy layer's.
+    for layer in ${SHARED_LAYERS#reference-app } $MODE_LAYERS overlays/roles; do
         while IFS= read -r file; do
             relative="${file#$REPO/$layer/}"
             found=""
