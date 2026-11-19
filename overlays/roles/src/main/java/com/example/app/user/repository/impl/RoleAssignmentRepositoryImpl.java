@@ -44,14 +44,14 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
               JOIN roles r ON r.id = a.role_id
               JOIN platform.users u ON u.id = a.user_id AND (u.status = 'ACTIVE' OR NOT :activeOnly)
               JOIN platform.tenant_memberships m ON m.user_id = a.user_id AND m.tenant_id = :tenantId
-              JOIN platform.tenants t ON t.id = m.tenant_id AND t.status = 'ACTIVE'
+              JOIN platform.tenants t ON t.id = m.tenant_id AND (t.status = 'ACTIVE' OR :anyTenantStatus)
              WHERE a.user_id IN (:userIds) AND (a.valid_until IS NULL OR a.valid_until > :now)
             UNION ALL
             SELECT g.user_id, NULL, NULL, g.permission, g.effect, g.valid_until
               FROM user_permissions g
               JOIN platform.users u ON u.id = g.user_id AND (u.status = 'ACTIVE' OR NOT :activeOnly)
               JOIN platform.tenant_memberships m ON m.user_id = g.user_id AND m.tenant_id = :tenantId
-              JOIN platform.tenants t ON t.id = m.tenant_id AND t.status = 'ACTIVE'
+              JOIN platform.tenants t ON t.id = m.tenant_id AND (t.status = 'ACTIVE' OR :anyTenantStatus)
              WHERE g.user_id IN (:userIds) AND (g.valid_until IS NULL OR g.valid_until > :now)""";
     // tenancy-schema:end
     // tenancy-row:begin
@@ -60,11 +60,11 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
     static final String ACCESS_ROWS = """
             SELECT a.user_id, r.id AS role_id, r.code AS role_code, p.permission, NULL AS effect, a.valid_until
               FROM user_roles a
-              JOIN role_permissions p ON p.role_id = a.role_id AND p.tenant_id = a.tenant_id
-              JOIN roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id
+              JOIN role_permissions p ON p.role_id = a.role_id AND p.tenant_id = :tenantId
+              JOIN roles r ON r.id = a.role_id AND r.tenant_id = :tenantId
               JOIN users u ON u.id = a.user_id AND (u.status = 'ACTIVE' OR NOT :activeOnly)
               JOIN tenant_memberships m ON m.user_id = a.user_id AND m.tenant_id = a.tenant_id
-              JOIN tenants t ON t.id = m.tenant_id AND t.status = 'ACTIVE'
+              JOIN tenants t ON t.id = m.tenant_id AND (t.status = 'ACTIVE' OR :anyTenantStatus)
              WHERE a.user_id IN (:userIds) AND a.tenant_id = :tenantId
                AND (a.valid_until IS NULL OR a.valid_until > :now)
             UNION ALL
@@ -72,7 +72,7 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
               FROM user_permissions g
               JOIN users u ON u.id = g.user_id AND (u.status = 'ACTIVE' OR NOT :activeOnly)
               JOIN tenant_memberships m ON m.user_id = g.user_id AND m.tenant_id = g.tenant_id
-              JOIN tenants t ON t.id = m.tenant_id AND t.status = 'ACTIVE'
+              JOIN tenants t ON t.id = m.tenant_id AND (t.status = 'ACTIVE' OR :anyTenantStatus)
              WHERE g.user_id IN (:userIds) AND g.tenant_id = :tenantId
                AND (g.valid_until IS NULL OR g.valid_until > :now)""";
     // tenancy-row:end
@@ -111,10 +111,10 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
     static final String HOLDERS_FOR_GOOD = """
             SELECT a.user_id
               FROM user_roles a
-              JOIN role_permissions p ON p.role_id = a.role_id AND p.tenant_id = a.tenant_id
+              JOIN role_permissions p ON p.role_id = a.role_id AND p.tenant_id = :tenantId
               JOIN users u ON u.id = a.user_id AND u.status = 'ACTIVE'
-              JOIN tenant_memberships m ON m.user_id = a.user_id AND m.tenant_id = a.tenant_id
-             WHERE p.permission IN (:permissions) AND p.tenant_id = :tenantId AND a.valid_until IS NULL
+              JOIN tenant_memberships m ON m.user_id = a.user_id AND m.tenant_id = :tenantId
+             WHERE p.permission IN (:permissions) AND a.tenant_id = :tenantId AND a.valid_until IS NULL
             UNION
             SELECT g.user_id
               FROM user_permissions g
@@ -142,22 +142,41 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
 
     @Override
     public List<AccessRow> findAccessRows(Collection<UUID> userIds, Instant now) {
-        return accessRows(userIds, now, true);
+        // tenancy:begin
+        return accessRows(userIds, now, true, false);
+        // tenancy:else
+        // return accessRows(userIds, now, true);
+        // tenancy:end
     }
 
     @Override
     public List<AccessRow> findGrantedRows(Collection<UUID> userIds, Instant now) {
-        return accessRows(userIds, now, false);
+        // tenancy:begin
+        return accessRows(userIds, now, false, false);
+        // tenancy:else
+        // return accessRows(userIds, now, false);
+        // tenancy:end
     }
+    // tenancy:begin
 
-    private List<AccessRow> accessRows(Collection<UUID> userIds, Instant now, boolean activeOnly) {
+    @Override
+    public List<AccessRow> findAccessRowsWhateverTheTenantStatus(Collection<UUID> userIds, Instant now) {
+        return accessRows(userIds, now, true, true);
+    }
+    // tenancy:end
+
+    // tenancy:begin
+    private List<AccessRow> accessRows(Collection<UUID> userIds, Instant now, boolean activeOnly, boolean anyTenantStatus) {
+    // tenancy:else
+    // private List<AccessRow> accessRows(Collection<UUID> userIds, Instant now, boolean activeOnly) {
+    // tenancy:end
         if (userIds.isEmpty()) {
             return List.of();
         }
         MapSqlParameterSource parameters = new MapSqlParameterSource("userIds", userIds).addValue("now", Timestamp.from(now))
                 .addValue("activeOnly", activeOnly);
         // tenancy:begin
-        parameters.addValue("tenantId", TenantContext.id());
+        parameters.addValue("tenantId", TenantContext.id()).addValue("anyTenantStatus", anyTenantStatus);
         // tenancy:end
         return jdbc.query(ACCESS_ROWS, parameters, RoleAssignmentRepositoryImpl::accessRow);
     }

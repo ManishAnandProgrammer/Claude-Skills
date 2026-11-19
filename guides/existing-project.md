@@ -112,9 +112,8 @@ of `UserResponse`: announce it).
 5. Record `authorization: roles-piece` in both profiles; a review then reads AUTHZ-11 and AUTHZ-12.
 
 **With a tenancy piece** the role is the membership's, and the tables are each tenant's (TEN-08 with the roles piece):
-- the copy also brings `TenantMemberManager` and the tenancy files' `roles` blocks (`MembershipService`,
-  `TenantMembership`, `TokenService`, `ImpersonationService`, the members' controller and responses): port them by hand
-  as in step 1;
+- the copy also brings `TenantMemberManager`; every tenancy file with a `roles` block (`grep -rl roles:begin` in the
+  tenancy overlays, and the reference's `AccountStatusService` and `UserService`) gets it by hand, as in step 1;
 - **row mode:** the changeset is one, as in step 2, with each table's `tenant_id`, policies and keys (the copied
   `0037` shows them): it seeds every tenant's built-in roles (every status: TEN-34), copies each membership's role
   onto its tenant's copy for members that have their `members` row, and drops the memberships' and the accounts' role
@@ -126,8 +125,9 @@ of `UserResponse`: announce it).
   transaction, and a later platform changeset drops the column behind a precondition that no schema has a role left
   to copy, tried again at every start (the copied `0038`, `0037`, `0039`). Watch `tenant_migrations` after the
   deploy: a FAILED schema keeps the column until it is fixed;
-- the members' responses lose `role` and `version`, and the role change (`PUT /tenant-members/{id}`) goes: announce
-  both.
+- the members' responses lose `role` and `version`, the add request its `role`, the members list its `role` filter,
+  `GET /users/me/tenants` its `role`, the role change (`PUT /tenant-members/{id}`) goes, and staff's suspension of a
+  tenant's last manager answers 409 `ACCESS_LAST_MANAGER` (Level 1: `TENANT_MEMBER_LAST_ADMIN`): announce them all.
 
 ### Existing tables and ids
 - Keep existing ids (`Long`, UUIDv4) on existing tables. Set `idStrategy` in the profile to

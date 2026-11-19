@@ -188,6 +188,14 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         // media:end
         assertThat(inTenant(PI, "select count(*) from configuration_metadata where key = 'TODO_LIST_DEFAULTS'")).isOne();
         assertThat(inTenant(PI, "select count(*) from counters where key = 'TODO_NUMBER'")).isOne();
+        // roles:begin
+        // The backfill's built-in roles kept, none copied twice, and the owner's ADMIN once, for good.
+        assertThat(inTenant(PI, "select count(*) from roles where built_in = 'USER'")).isOne();
+        assertThat(inTenant(PI, "select count(*) from roles where built_in = 'ADMIN'")).isOne();
+        assertThat(inTenant(PI, """
+                select count(*) from user_roles a join roles r on r.id = a.role_id and r.tenant_id = a.tenant_id
+                 where a.user_id = '01890000-0000-7000-8000-000000000007' and r.built_in = 'ADMIN' and a.valid_until is null""")).isOne();
+        // roles:end
         String owner = tokenOf("upgrade-pi@example.com");
         String listId = read(postAs(owner, "/api/v1/todo-lists", """
                 {"name": "First"}

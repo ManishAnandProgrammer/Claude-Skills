@@ -37,7 +37,8 @@ class TenantMembershipRepositoryImpl implements CustomTenantMembershipRepository
      *   <!-- roles:else -->
      <!-- * One tenant's members: the membership holds the role and the version, the account its email and -->
      <!-- * name. -->
-     *   <!-- roles:end --> A platform table without a policy, so the tenant is a predicate of every statement.
+     *   <!-- roles:end -->
+     * A platform table without a policy, so the tenant is a predicate of every statement.
      */
     @Override
     public Page<TenantMemberResponse> findByFilter(TenantMemberFilter filter, UUID tenantId, Pageable pageable) {

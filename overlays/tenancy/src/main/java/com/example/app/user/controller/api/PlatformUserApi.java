@@ -17,7 +17,7 @@ import java.util.UUID;
 
 @Tag(name = "Platform: accounts", description = """
         Platform staff finding, suspending and reactivating accounts. Accounts are global (one person, any \
-        number of tenants), so no tenant ADMIN does this: they add, change and remove memberships.""")
+        number of tenants), so no tenant ADMIN does this: they manage memberships.""")
 public interface PlatformUserApi {
 
     // roles:begin

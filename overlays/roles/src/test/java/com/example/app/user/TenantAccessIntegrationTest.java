@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -19,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -62,6 +63,9 @@ class TenantAccessIntegrationTest extends RolesFixtures {
 
     @Autowired
     private PersonAccessService access;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private static String addPayload(String email) {
         return """
@@ -129,6 +133,7 @@ class TenantAccessIntegrationTest extends RolesFixtures {
                 .andExpect(jsonPath("$.response.createdBy").value(admin.id().toString()));
 
         assertThat(rolesOf(tenant, colleague)).containsExactly("USER");
+        assertThat(memberRowOf(tenant, colleague)).doesNotContainKeys("email", "full_name", "role").containsEntry("left_at", null);
         getAs(admin.accessToken(), userAccess(colleague))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.roles[*].code", hasItem("USER")));
@@ -171,6 +176,34 @@ class TenantAccessIntegrationTest extends RolesFixtures {
             sqlIn(tenant, """
                     delete from role_permissions
                      where permission = 'ROLES_MANAGE' and role_id = (select id from roles where built_in = 'USER')""");
+        }
+    }
+
+    @Test
+    @DisplayName("""
+            Safety rule 1 for good on an add: the new member's USER role has no end, so a caller holding one of its \
+            permissions only until a date adds nobody (403 ACCESS_NOT_HELD)""")
+    void anAddGivesForGoodOnlyWhatTheCallerHoldsForGood() throws Exception {
+        TestTenant tenant = newTenant();
+        TestUser admin = newUserIn(tenant, "ADMIN");
+        TestUser manager = holderIn(tenant, admin, Permission.TENANT_MEMBERS_MANAGE);
+        sqlIn(tenant, "update user_roles set valid_until = ? where user_id = ?", Timestamp.from(LATER), manager.id());
+        // The tenant's copy of USER, edited to hold what the manager holds only until LATER.
+        sqlIn(tenant, """
+                insert into role_permissions (id, %s role_id, permission, created_at, updated_at, version)
+                select uuidv7(), %s id, 'TENANT_MEMBERS_MANAGE', now(), now(), 0 from roles where built_in = 'USER'"""
+                .formatted(TENANT_COLUMN, TENANT_COLUMN));
+        String email = uniqueEmail("colleague");
+        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+
+        try {
+            postAs(manager.accessToken(), MEMBERS, addPayload(email))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
+        } finally {
+            sqlIn(tenant, """
+                    delete from role_permissions
+                     where permission = 'TENANT_MEMBERS_MANAGE' and role_id = (select id from roles where built_in = 'USER')""");
         }
     }
 
@@ -247,6 +280,21 @@ class TenantAccessIntegrationTest extends RolesFixtures {
     }
 
     @Test
+    @DisplayName("Safety rule 3 counts a suspended member's grants: a suspended superior is still above, never removed by a lesser manager")
+    void aSuspendedSuperiorIsStillAbove() throws Exception {
+        TestTenant tenant = newTenant();
+        TestUser admin = newUserIn(tenant, "ADMIN");
+        TestUser superior = newUserIn(tenant, "ADMIN");
+        TestUser manager = holderIn(tenant, admin, Permission.TENANT_MEMBERS_MANAGE);
+        sql("update users set status = 'SUSPENDED' where id = ?", superior.id());
+
+        deleteAs(manager.accessToken(), MEMBERS + "/" + superior.id())
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_TARGET_HOLDS_MORE"));
+        assertThat(membershipsOf(tenant, superior.id())).isOne();
+    }
+
+    @Test
     @DisplayName("""
             Safety rule 6 per tenant: removing the last active member who holds, for good, what manages the tenant is \
             409 ACCESS_LAST_MANAGER, even by a caller holding all of it until a date""")
@@ -287,35 +335,37 @@ class TenantAccessIntegrationTest extends RolesFixtures {
     }
 
     @Test
-    @DisplayName("Two managers removing each other at once leave one: one 204, the other refused, one membership gone")
-    void concurrentRemovalsKeepAManager() throws Exception {
+    @DisplayName("""
+            Two managers removing each other at once queue on the tenant's row: one 204, the other refused ACCESS_DENIED \
+            by its read under the lock, one membership gone""")
+    void concurrentRemovalsQueueOnTheTenant() throws Exception {
         TestTenant tenant = newTenant();
         TestUser first = newUserIn(tenant, "ADMIN");
         TestUser second = newUserIn(tenant, "ADMIN");
-        List<Callable<ResultActions>> removals = List.of(
-                () -> deleteAs(first.accessToken(), MEMBERS + "/" + second.id()),
-                () -> deleteAs(second.accessToken(), MEMBERS + "/" + first.id()));
-
-        CountDownLatch start = new CountDownLatch(1);
-        List<Future<Answer>> pending = new ArrayList<>();
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
         // Plain threads: each request takes its tenant from its own token.
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (Callable<ResultActions> removal : removals) {
-                Callable<Answer> once = () -> {
-                    awaitLatch(start);
-                    return answerOf(removal.call());
-                };
-                pending.add(executor.submit(once));
-            }
-            start.countDown();
-            List<Answer> answers = new ArrayList<>();
-            for (Future<Answer> answer : pending) {
-                answers.add(within(answer));
-            }
-            // The second to take the tenant's lock is no member any more; or its token is already stale.
-            assertThat(answers).extracting(Answer::status).containsOnlyOnce(204).hasSize(2);
-            assertThat(answers).filteredOn(answer -> answer.status() != 204).extracting(Answer::errorCode)
-                    .first().isIn("ACCESS_DENIED", "SESSION_VERSION_STALE");
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        try {
+            // Holds the tenant's row, so both removals pass their token's check and wait at the lock, reading nothing.
+            Future<?> holder = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                jdbc.queryForList("select id from tenants where id = ? for update", tenant.id());
+                locked.countDown();
+                awaitQuietly(release);
+            }));
+            awaitLatch(locked);
+            Future<Answer> firstRemovesSecond = executor.submit(() -> answerOf(deleteAs(first.accessToken(), MEMBERS + "/" + second.id())));
+            Future<Answer> secondRemovesFirst = executor.submit(() -> answerOf(deleteAs(second.accessToken(), MEMBERS + "/" + first.id())));
+            awaitLockWaiters(2, null);
+            release.countDown();
+            within(holder);
+
+            List<Answer> answers = List.of(within(firstRemovesSecond), within(secondRemovesFirst));
+            assertThat(answers).extracting(Answer::status).containsExactlyInAnyOrder(204, 403);
+            assertThat(answers).filteredOn(answer -> answer.status() == 403).extracting(Answer::errorCode).containsExactly("ACCESS_DENIED");
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
         }
         assertThat(membershipsOf(tenant, first.id()) + membershipsOf(tenant, second.id())).isOne();
     }
@@ -404,13 +454,21 @@ class TenantAccessIntegrationTest extends RolesFixtures {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("ROLE_NOT_FOUND"));
         List<String> listed = read(getAs(admin.accessToken(), ROLES + "?size=100").andExpect(status().isOk()), "$.response[*].id");
-        assertThat(listed).doesNotContain(theirRole);
+        assertThat(listed).contains(builtInRoleOf(mine, "ADMIN")).doesNotContain(theirRole);
+        List<String> offered = read(getAs(admin.accessToken(), ROLES + "/dropdown?for=ACCESS_GRANT&size=100").andExpect(status().isOk()),
+                "$.response[*].value");
+        assertThat(offered).contains(builtInRoleOf(mine, "ADMIN")).doesNotContain(theirRole);
         assign(admin.accessToken(), both.id(), builtInRoleOf(mine, "ADMIN"), null).andExpect(status().isOk());
 
         assertThat(rolesOf(mine, both.id())).containsExactly("ADMIN", "USER");
         assertThat(rolesOf(theirs, both.id())).containsExactly("USER");
         // Signed in to their tenant, the person holds its USER role alone, whatever they hold in mine.
         assertThat(myPermissions(both.accessToken())).doesNotContain(Permission.TENANT_MEMBERS_MANAGE.name());
+        TestUser bothInMine = signIn(both);
+        String mineToken = read(postAs(null, "/api/v1/auth/switch-tenant", """
+                {"refreshToken": "%s", "tenantId": "%s"}
+                """.formatted(bothInMine.refreshToken(), mine.id())).andExpect(status().isOk()), "$.response.accessToken");
+        assertThat(myPermissions(mineToken)).contains(Permission.TENANT_MEMBERS_MANAGE.name());
     }
 
     @Test
@@ -472,5 +530,34 @@ class TenantAccessIntegrationTest extends RolesFixtures {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));
         login(member.email(), PASSWORD).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("A removed member's old refresh token switches into no tenant: to another, or back to the re-added one, 401")
+    void aRemovedMembersOldSessionDoesNotSwitch() throws Exception {
+        TestTenant tenant = newTenant();
+        TestUser admin = newUserIn(tenant, "ADMIN");
+        TestUser member = newUserIn(tenant, "USER");
+        TestTenant other = newTenant();
+        addMember(other, member.id(), "USER");
+
+        deleteAs(admin.accessToken(), MEMBERS + "/" + member.id()).andExpect(status().isNoContent());
+        switchTenant(member.refreshToken(), other)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));
+        postAs(admin.accessToken(), MEMBERS, addPayload(member.email())).andExpect(status().isCreated());
+        switchTenant(member.refreshToken(), tenant)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));
+        switchTenant(member.refreshToken(), other)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_INVALID_REFRESH_TOKEN"));
+        login(member.email(), PASSWORD).andExpect(status().isOk());
+    }
+
+    private ResultActions switchTenant(String refreshToken, TestTenant tenant) throws Exception {
+        return postAs(null, "/api/v1/auth/switch-tenant", """
+                {"refreshToken": "%s", "tenantId": "%s"}
+                """.formatted(refreshToken, tenant.id()));
     }
 }

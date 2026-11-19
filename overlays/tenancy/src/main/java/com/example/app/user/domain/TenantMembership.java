@@ -54,7 +54,7 @@ public class TenantMembership extends AuditableEntity {
     // roles:end
     /**
      * When tokens were last issued for it: login picks the most recent. A machine-written stamp, written
-     * only by {@code TenantMembershipRepository.markUsed}, outside the version an ADMIN sends back.
+     * only by {@code TenantMembershipRepository.markUsed}, outside the membership's version.
      */
     @Column(name = "last_used_at")
     private Instant lastUsedAt;

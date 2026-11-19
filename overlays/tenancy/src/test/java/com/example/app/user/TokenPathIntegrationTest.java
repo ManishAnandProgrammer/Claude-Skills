@@ -100,7 +100,7 @@ class TokenPathIntegrationTest extends IntegrationTest {
             """)
     // session-version:else
     // // An access token issued before the change lives out its lifetime (at most app.jwt.access-token-ttl)
-    // // wherever no request reads the row the change wrote (with the roles piece every request reads the access).
+    // // wherever no request reads the row the change wrote.
     // @ParameterizedTest(name = "{0} × {1}: {2} {3}")
     // @CsvSource(delimiter = '|', textBlock = """
     //         REMOVED_MEMBER    | LOGIN         | 200 | B:USER

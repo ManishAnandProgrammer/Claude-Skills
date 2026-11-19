@@ -14,9 +14,11 @@ import java.util.stream.Collectors;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * The roles piece's fixtures, through its own endpoints as an admin: a role, an assignment, a grant. A fixture that
- * gives {@code ROLES_MANAGE} or {@code ACCESS_GRANT} gives it until {@link #LATER}, so it never counts as a holder for
- * good (safety rule 6): the built-in ADMIN stays the only one, which the rule's own test relies on.
+ * The roles piece's fixtures, through its own endpoints as an admin: a role, an assignment, a grant. {@link
+ * #newUserHolding} gives its role until {@link #LATER}, so it never counts as a holder for good (safety rule 6); tests
+ * that assign {@link #NEEDED} and {@link #NEEDING} for good make holders for good of them (with tenancy both are kept by
+ * rule 6), so rule 6's own tests run where only the built-in ADMIN gives what it keeps: without tenancy the run's
+ * accounts, with tenancy a tenant of their own (TenantAccessIntegrationTest).
  */
 public abstract class RolesFixtures extends IntegrationTest {
 

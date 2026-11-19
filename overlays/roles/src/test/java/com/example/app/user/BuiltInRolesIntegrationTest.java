@@ -29,6 +29,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <!-- tenancy:begin -->
  * With tenancy every tenant has its copies: those its changesets seeded (an upgraded tenant's; schema per tenant also
  * a new tenant's, from the tenant changelog) and, in row mode, a new tenant's, copied from the enum at its activation.
+ * So in row mode the changesets are only compared on a database that held tenants before them: the upgrade run
+ * ({@code app.test.upgrade.previous-release}, verify.sh's stages with the example), where the seeded tenants are.
  *   <!-- tenancy:end -->
  */
 class BuiltInRolesIntegrationTest extends IntegrationTest {

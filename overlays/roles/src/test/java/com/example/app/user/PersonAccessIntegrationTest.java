@@ -166,15 +166,18 @@ class PersonAccessIntegrationTest extends RolesFixtures {
                 awaitQuietly(release);
             }));
             awaitLatch(locked);
-            Future<Integer> firstDeniesSecond = executor.submit(() -> putAs(first.accessToken(),
-                    userPermission(second.id(), Permission.ACCESS_GRANT), grantJson("DENY")).andReturn().getResponse().getStatus());
-            Future<Integer> secondDeniesFirst = executor.submit(() -> putAs(second.accessToken(),
-                    userPermission(first.id(), Permission.ACCESS_GRANT), grantJson("DENY")).andReturn().getResponse().getStatus());
+            Future<Answer> firstDeniesSecond = executor.submit(() -> answerOf(putAs(first.accessToken(),
+                    userPermission(second.id(), Permission.ACCESS_GRANT), grantJson("DENY"))));
+            Future<Answer> secondDeniesFirst = executor.submit(() -> answerOf(putAs(second.accessToken(),
+                    userPermission(first.id(), Permission.ACCESS_GRANT), grantJson("DENY"))));
             awaitLockWaiters(2, null);
             release.countDown();
             within(holder);
 
-            assertThat(List.of(within(firstDeniesSecond), within(secondDeniesFirst))).containsExactlyInAnyOrder(200, 403);
+            List<Answer> answers = List.of(within(firstDeniesSecond), within(secondDeniesFirst));
+            assertThat(answers).extracting(Answer::status).containsExactlyInAnyOrder(200, 403);
+            // The second, under the lock, reads that its own ACCESS_GRANT was just denied.
+            assertThat(answers).filteredOn(answer -> answer.status() == 403).extracting(Answer::errorCode).containsExactly("ACCESS_DENIED");
             assertThat(jdbc.queryForObject("""
                     select count(*) from user_permissions
                      where user_id in (?, ?) and permission = 'ACCESS_GRANT' and effect = 'DENY'""", Integer.class,

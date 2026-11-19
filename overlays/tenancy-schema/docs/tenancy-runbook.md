@@ -126,6 +126,14 @@ One tenant alone: `pg_dump -n t_<tenant id without dashes>` and restore that sch
 - A failed schema: `SELECT tenant_id, schema_name, error FROM platform.tenant_migrations WHERE status = 'FAILED';`.
   Fix the schema (or the changeset, with a new one), then restart one instance: the run applies only
   what is missing. The other tenants were migrated meanwhile; only that tenant's new features wait.
+<!-- roles:begin -->
+- **The release that brings the roles piece** (0037 in the tenant changelog) can't be taken by a tenant before its
+  schema has the roles tables: every request of that tenant reads its access there, and fails until its schema is
+  migrated (a 500, not a retryable 503). So deploy it in a maintenance window: stop the old instances, start one new
+  instance with no traffic, wait for `Tenant migrations: ran=true, migrated=N, failed=[]`, then let traffic in and
+  start the others. A schema whose migration FAILED leaves its tenant unable to work until it is fixed and migrated:
+  fix it before opening, or suspend that tenant meanwhile. Later releases go back to the rolling rule above.
+<!-- roles:end -->
 - A schema stuck in Liquibase's lock (an instance was killed mid-run):
   `UPDATE t_<id>.databasechangeloglock SET locked = false, lockgranted = NULL, lockedby = NULL WHERE id = 1;`.
 - A tenant stuck `PENDING` after approval: the counter `tenant.provisioning.failed` rises with every failed

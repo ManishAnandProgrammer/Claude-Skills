@@ -55,7 +55,7 @@
 #          dependencies: main and test code compile and the unit tests pass. Its integration and
 #          ArchUnit tests are left out: the integration tests sign users in through sign-in, and the
 #          ArchUnit rules fail on a project with no module yet;
-#   the stages with the example (1, 2b, 2h, 2j) run on an upgraded database: Liquibase applies the previous
+#   the stages with the example (1, 2b, 2h, 2j, 2n, 2o, 2p) run on an upgraded database: Liquibase applies the previous
 #   release's changesets alone, a seed fills them as a used database holds them (tenants in every status,
 #   skewed data, a member who left), then the application's own run applies the newer changesets over it
 #   (support/PreviousReleaseDatabase); UpgradeFromPreviousReleaseIntegrationTest checks what they did, and
@@ -619,14 +619,14 @@ fi
 
 if wants 2o; then
     echo "[2o/3] bootstrap-copy with every piece and the roles piece, row mode (package com.acme.rowroles)"
-    # Coverage measured 2026-11-19 at lines 0.00 %, branches 0.00 %; only ever raised.
-    every_piece_with_roles 2o rowroles "tenancy-row,tenant-registration" 0.50 0.50
+    # Coverage measured 2026-11-19 at lines 96.23 %, branches 85.95 %; only ever raised.
+    every_piece_with_roles 2o rowroles "tenancy-row,tenant-registration" 0.95 0.84
 fi
 
 if wants 2p; then
     echo "[2p/3] bootstrap-copy with every piece and the roles piece, schema per tenant (package com.acme.schemaroles)"
-    # Coverage measured 2026-11-19 at lines 0.00 %, branches 0.00 %; only ever raised.
-    every_piece_with_roles 2p schemaroles "tenancy-schema,tenant-registration" 0.50 0.50
+    # Coverage measured 2026-11-19 at lines 96.24 %, branches 85.64 %; only ever raised.
+    every_piece_with_roles 2p schemaroles "tenancy-schema,tenant-registration" 0.95 0.84
 fi
 
 # Every piece but the example, per tenancy mode: what a project starts from before its first entity.

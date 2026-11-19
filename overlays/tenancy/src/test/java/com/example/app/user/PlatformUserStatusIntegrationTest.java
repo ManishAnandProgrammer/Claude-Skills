@@ -137,6 +137,24 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
+            A SUSPENDED tenant's managers count: a plain member there is suspended, its last manager isn't; a PENDING \
+            tenant has no access yet to keep, so its owner is""")
+    void aSuspendedTenantsManagersCountAndAPendingOneHasNone() throws Exception {
+        TestTenant suspended = newTenant();
+        TestUser member = newUserIn(suspended, "USER");
+        sql("update tenants set status = 'SUSPENDED' where id = ?", suspended.id());
+        TestTenant pending = newTenant();
+        sql("update tenants set status = 'PENDING' where id = ?", pending.id());
+
+        changeStatus(platformToken(), member.email(), "SUSPENDED").andExpect(status().isOk());
+        changeStatus(platformToken(), ownerOf(suspended), "SUSPENDED")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_LAST_MANAGER"));
+        changeStatus(platformToken(), ownerOf(pending), "SUSPENDED").andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("""
             A suspension counts each of the person's tenants in its own data: the last manager of one tenant isn't \
             suspended for being a plain member of another""")
     void aSuspensionCountsEveryTenantOfThePerson() throws Exception {

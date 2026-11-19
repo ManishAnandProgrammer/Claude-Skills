@@ -137,6 +137,10 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
                 select count(*) from information_schema.columns
                  where table_schema = 'platform' and table_name = 'users' and column_name = 'role'""", Integer.class)).isZero();
 
+        assertThat(owner.queryForObject("""
+                select count(*) from information_schema.columns
+                 where table_schema = 'platform' and table_name = 'tenant_memberships' and column_name = 'role'""", Integer.class))
+                .as("the column 0039 held back at the start, the schemas not migrated yet").isOne();
         platformLiquibase.afterPropertiesSet();
 
         assertThat(owner.queryForObject("""
@@ -214,6 +218,17 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
 
         provisioning.provisionPending();
 
+        // roles:begin
+        // The schema's own built-in roles from its changelog, and the owner's ADMIN once, for good.
+        JdbcTemplate asOwner = new JdbcTemplate(ownerDataSource);
+        String pi = TenantSchemas.of(PI);
+        assertThat(asOwner.queryForObject("select count(*) from %s.roles where built_in in ('USER', 'ADMIN')".formatted(pi), Integer.class))
+                .isEqualTo(2);
+        assertThat(asOwner.queryForObject("""
+                select count(*) from %1$s.user_roles a join %1$s.roles r on r.id = a.role_id
+                 where a.user_id = '01890000-0000-7000-8000-000000000007' and r.built_in = 'ADMIN' and a.valid_until is null"""
+                .formatted(pi), Integer.class)).isOne();
+        // roles:end
         String owner = tokenOf("upgrade-pi@example.com");
         String listId = read(postAs(owner, "/api/v1/todo-lists", """
                 {"name": "First"}

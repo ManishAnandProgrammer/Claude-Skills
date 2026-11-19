@@ -241,9 +241,10 @@ skills repository's `overlays/roles/` (`scripts/bootstrap-copy.sh --with ...,rol
 `AccessRoleManager`; the controllers `AccessRoleController`, `PersonAccessController`,
 `PermissionCatalogueController`; changeset `0037-roles.sql`; the reference's `roles` blocks (`SecurityConfig`'s
 converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenService`, `User`). With tenancy also
-`user/service/TenantMemberManager` (a member's add and removal, the owner's ADMIN at provisioning), the tenancy
-overlay's `roles` blocks (`MembershipService`, `TenantMembership`, `TokenService`, `ImpersonationService`,
-`TenantMemberController`, the members' responses), schema per tenant's platform changesets
+`user/service/TenantMemberManager` (a member's add and removal, the owner's ADMIN at provisioning), every `roles` block
+of the tenancy overlays and of the reference's tenancy blocks (`grep -rl roles:begin overlays/tenancy*`:
+`MembershipService`, `TenantMembership`, `TokenService`, `ImpersonationService`, the members' controller, API, requests,
+filter, responses, mapper and repository, the platform APIs, `AccountStatusService`, the runbooks), schema per tenant's platform changesets
 `0038-memberships-role-expand.sql` and `0039-memberships-role-contract.sql`. Tests:
 `RolePermissionsIntegrationTest`, `RolesIntegrationTest`, `PersonAccessIntegrationTest`,
 `BuiltInRolesIntegrationTest`, `EffectiveAccessTest`, `service/PersonAccessLockTest`, `service/RolePermissionsTest`, with
@@ -290,8 +291,10 @@ test, unchanged but where it asserted a role column or claim.
     a suspended account, a removed member and a tenant that isn't ACTIVE hold nothing on their next request (schema
     per tenant names the platform's tables there, the one exception to TEN-21, `TenancyArchTest`); a token without a
     tenant (platform staff) holds no tenant permission and reads nothing (`RolePermissionsTest`). One source per
-    tenant too: the membership's `role` column, the members' `role` and `version` fields and the role change
-    (`PUT /tenant-members/{id}`) go, and with tenancy the account's `role` column (it never decided anything there).
+    tenant too: the membership's `role` column, the members' `role` and `version` fields, the add request's `role`, the
+    members list's `role` filter, `GET /users/me/tenants`' `role` and the role change (`PUT /tenant-members/{id}`) go,
+    staff's suspension answers `ACCESS_LAST_MANAGER` where Level 1 said `TENANT_MEMBER_LAST_ADMIN` (breaking changes,
+    announced), and with tenancy the account's `role` column goes (it never decided anything there).
     Row mode copies each membership's role in its changeset and drops the columns; schema per tenant copies them
     **per schema**, emptying the platform's copy as it goes, makes the column nullable first (`0038`, expand) and
     drops it once no schema with a role left to copy remains (`0039`, contract: a precondition that skips it until
@@ -299,8 +302,8 @@ test, unchanged but where it asserted a role column or claim.
 - **Detect:** a role-level DENY; permissions cached past the request or put into the token; an effective set
   computed in two places; a second read per request; the role column kept beside the tables; a table without its
   audit trigger; an unknown code that grants or throws; with tenancy, a read of a tenant's access outside its scope,
-  a membership's role column or role field beside the tables, a schema-per-tenant column dropped in the release that
-  starts copying it.
+  a membership's role column or role field beside the tables, a schema-per-tenant column dropped without a precondition
+  that no tenant schema still has a role to copy.
 - **Severity:** High.
 
 ### AUTHZ-12: Managing roles and people's access
@@ -315,7 +318,8 @@ test, unchanged but where it asserted a role column or claim.
   2. **never your own** roles or grants (403 `ACCESS_OWN_CHANGE`), nor adding to a role you hold (a grant of yours
      that ends would outlive its end through the role);
   3. **never someone above you** (403 `ACCESS_TARGET_HOLDS_MORE`): you change the access of (or suspend, or
-     reactivate, or with tenancy remove from the tenant) only a person who holds nothing you don't, a suspended person's grants counted (suspended, a
+     reactivate, without tenancy; with it, remove from the tenant: staff's suspension holds no tenant permission and
+     keeps rule 6 per tenant) only a person who holds nothing you don't, a suspended person's grants counted (suspended, a
      superior is still above), which a DENY could otherwise use to sabotage them;
   4. a role saved without a **prerequisite** of one of its permissions is refused (400
      `ROLE_PREREQUISITE_MISSING`), nothing filled in;

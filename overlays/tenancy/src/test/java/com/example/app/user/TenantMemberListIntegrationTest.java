@@ -129,6 +129,7 @@ class TenantMemberListIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.email").value(email))
                 .andExpect(jsonPath("$.response.fullName").value("Test User"))
                 // roles:begin
+                .andExpect(jsonPath("$.response.role").doesNotExist())
                 // roles:else
                 // .andExpect(jsonPath("$.response.role").value("USER"))
                 // .andExpect(jsonPath("$.response.version").value(0))

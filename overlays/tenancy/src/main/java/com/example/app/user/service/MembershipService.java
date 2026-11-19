@@ -228,8 +228,9 @@ public class MembershipService implements Members {
     }
 
     /**
-     * Before an account's suspension (platform staff): the tenants where the person is a member and that are still
-     * open (neither CLOSED nor REJECTED), each locked in id order as every access change there locks it first, so
+     * Before an account's suspension (platform staff): the tenants where the person is a member and that are open,
+     * ACTIVE or SUSPENDED (a PENDING one has no access yet to keep: its owner gets ADMIN at provisioning; CLOSED and
+     * REJECTED need no manager), each locked in id order as every access change there locks it first, so
      * that what the caller then counts in each of them can't change before the suspension commits. In the
      * suspension's transaction (hence MANDATORY).
      */
@@ -237,7 +238,7 @@ public class MembershipService implements Members {
     List<UUID> lockOpenTenantsOf(UUID userId) {
         List<UUID> tenantIds = repository.findTenantIdsByUserId(userId);
         Set<UUID> openTenantIds = tenants.findAllById(tenantIds).stream()
-                .filter(tenant -> tenant.status() != TenantStatus.CLOSED && tenant.status() != TenantStatus.REJECTED)
+                .filter(tenant -> tenant.status() == TenantStatus.ACTIVE || tenant.status() == TenantStatus.SUSPENDED)
                 .map(TenantView::id)
                 .collect(Collectors.toSet());
         List<UUID> locked = new ArrayList<>();
@@ -383,11 +384,11 @@ public class MembershipService implements Members {
     /**
      *   <!-- roles:begin -->
      * The new tenant's owner becomes its member, in the creating transaction (its built-in ADMIN role comes with
-     * the tenant's own tables, at provisioning: {@code TenantMemberManager.provisioned}): an email without an
+     * the tenant's own tables, at provisioning: {@code TenantMemberManager.provisioned}).
      *   <!-- roles:else -->
-     <!-- * The new tenant's owner becomes its ADMIN, in the creating transaction: an email without an account -->
+     <!-- * The new tenant's owner becomes its ADMIN, in the creating transaction. -->
      *   <!-- roles:end -->
-     * account is 404 {@code TENANT_OWNER_NOT_FOUND} and no tenant is created (invitations come later).
+     * An email without an account is 404 {@code TENANT_OWNER_NOT_FOUND} and no tenant is created (invitations come later).
      */
     @EventListener
     @Transactional

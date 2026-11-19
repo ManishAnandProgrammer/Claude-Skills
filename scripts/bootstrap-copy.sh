@@ -56,8 +56,8 @@
 #              the tenant's and a person's access is on their member row (house-review TEN-16): row mode's tables
 #              carry tenant_id under forced policies, schema per tenant's live in every tenant schema (the
 #              membership's role copied per schema, then dropped by the platform's 0039 once every schema has),
-#              and the members' role field and role change go. From overlays/roles: no endpoint or policy
-#              changes; the account's role field goes
+#              and the members' role field and role change go. From overlays/roles: without tenancy no endpoint
+#              or policy changes (the account's role field goes); with it the members' role change goes too
 #   sign-in (account suspension), metadata, media and the tenancy pieces have admin endpoints: each brings
 #   the ADMIN role and the test base's newAdmin() (the "admin" markers), and its permissions: their constants in
 #   common/security/Permission and Area, and their lines in Role (house-review AUTHZ-01, AUTHZ-02).

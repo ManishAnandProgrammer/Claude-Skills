@@ -36,9 +36,15 @@ public interface Tenants {
     UUID register(String name, String ownerEmail);
 
     /**
-     * Locks the tenant in the caller's transaction, which must exist: a change to its memberships takes
-     * it before reading the caller's role and counting the ADMINs, so a demotion that commits first is
-     * seen, and two changes can't each leave the other as the last one. 404 {@code TENANT_NOT_FOUND}.
+     *   <!-- roles:begin -->
+     * Locks the tenant in the caller's transaction, which must exist: every change of its memberships or of anyone's
+     * access there takes it before reading the caller's access and counting who manages the tenant, so a change that
+     * commits first is seen, and two changes can't each leave the other as the last one. 404 {@code TENANT_NOT_FOUND}.
+     *   <!-- roles:else -->
+     <!-- * Locks the tenant in the caller's transaction, which must exist: a change to its memberships takes -->
+     <!-- * it before reading the caller's role and counting the ADMINs, so a demotion that commits first is -->
+     <!-- * seen, and two changes can't each leave the other as the last one. 404 {@code TENANT_NOT_FOUND}. -->
+     *   <!-- roles:end -->
      */
     void lockForMemberChange(UUID tenantId);
 

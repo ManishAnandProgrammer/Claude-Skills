@@ -272,8 +272,19 @@ class RolesIntegrationTest extends RolesFixtures {
         getAs(granter, options).andExpect(status().isOk());
         assertThat(statistics().getPrepareStatementCount()).as("the dropdown's statements").isEqualTo(1);
 
+        String after = read(getAs(granter, options + "&size=1").andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].value", contains(alsoGivable)))
+                .andExpect(jsonPath("$.pageInfo.hasMore").value(true)), "$.pageInfo.nextCursor");
+        getAs(granter, options + "&size=1&after=" + after).andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].value", contains(givable)))
+                .andExpect(jsonPath("$.pageInfo.hasMore").value(false));
+
         getAs(newUser().accessToken(), options)
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+        getAs(granter, ROLES + "/dropdown")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_MISSING"));
+        getAs(granter, ROLES + "/dropdown?for=NOT_A_PERMISSION")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"));
         getAs(granter, options + "&status=INACTIVE")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
                 .andExpect(jsonPath("$.errors[0].parameter").value("status"));

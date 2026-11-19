@@ -213,6 +213,9 @@ class ChangeHistoryIntegrationTest extends IntegrationTest {
                   from information_schema.columns
                  where table_name = any (?) and column_name ~ '(hash|secret|token|password)'""",
                 (Object) audited.toArray(new String[0]));
+        // sign-in:begin
+        assertThat(secretLike).as("the accounts' password hash, among the columns checked").isNotEmpty();
+        // sign-in:end
         assertThat(secretLike).allSatisfy(column -> assertThat(leftOut.get((String) column.get("table_name")))
                 .as("%s.%s left out of the history", column.get("table_name"), column.get("column_name"))
                 .contains((String) column.get("column_name")));

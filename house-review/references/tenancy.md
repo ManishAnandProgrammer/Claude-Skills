@@ -163,7 +163,12 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   it, and the last-ADMIN rules are safety rule 6 per tenant (`ACCESS_LAST_MANAGER`). The checks below
   hold with the piece, the caller's access (not a membership's role) read under the tenant's lock
   (`PersonAccessService.lockToAddMember`, `lockToManage`, from `TenantMemberManager`), tested by
-  `TenantAccessIntegrationTest`, which replaces `TenantMemberIntegrationTest`.
+  `TenantAccessIntegrationTest`, which replaces `TenantMemberIntegrationTest` (its counterparts:
+  `aRemovedManagerManagesNoMore` for `aRemovedAdminCantComeBack` and `aDemotedAdminsTokenManagesNoMore`,
+  `aRemovalTakesTheAccessAway` for `theTenantsMembersFollowTheMemberships`, `provisioningGivesTheOwnerTheAdminRole`
+  for `provisioningAddsTheOwnersRow`, `addsAreLimitedPerCaller`, `aReAddedMembersOldSessionStaysEnded` and
+  `aRemovedMembersOldSessionDoesNotSwitch` under their own names; `SessionVersionTenancyIntegrationTest
+  .aRoleChangeReachesTheSameToken` and `anImpersonationEndsWithTheMembersRemoval` for the role change's).
 - **Check:** a change to memberships or roles (add, promote, demote, remove) authorises on the caller's
   membership **read under the lock that serialises those changes** (the tenant's row), never on the
   token's role alone. The token's role is up to one lifetime old, and a stale ADMIN token that adds its
@@ -207,7 +212,7 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   (`usableToken`): each one reads the membership and the tenant status itself, and each path that takes a
   refresh token checks it was issued after the token's own membership; a path that takes the role or the
   tenant from the presented token; `users.tenant_id`; the role read from `users.role` into a tenant token or
-  any response (`/users/me` carries no role with tenancy: the membership's is in `GET /users/me/tenants`);
+  any response (`/users/me` carries no role with tenancy: at Level 1 the membership's is in `GET /users/me/tenants`);
   an endpoint that grants or keeps roles checked by its `@Requires` alone (the token's permissions, AUTHZ-10); a members
   service that takes no caller id; a membership lookup by user or by id alone on a tenant-plane path
   (it reaches the person's membership in another tenant).

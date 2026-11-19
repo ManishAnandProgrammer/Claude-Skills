@@ -11,10 +11,16 @@
 -- * Every reference is a real foreign key with the default ON DELETE (no action): a role is deleted only while
 --   nobody holds it, and no assignment ever goes with it.
 -- * All four are in the change history (change-history piece, 0035).
--- * The users.role column goes: each account's one role becomes its assignment of the built-in role of that name,
---   and the tables are the one source from then on. A role with no built-in copy stops the migration (an account
---   would lose its access). The previous release reads and writes that column: stop its instances before this
---   runs (no rolling deploy across it).
+-- tenancy:begin
+-- * The memberships' role column goes, its roles copied into the tables (each mode below): a role with no built-in copy
+--   stops the migration (a member would lose their access). The previous release reads and writes that column: stop
+--   its instances before this runs (no rolling deploy across it).
+-- tenancy:else
+-- -- * The users.role column goes: each account's one role becomes its assignment of the built-in role of that name,
+-- --   and the tables are the one source from then on. A role with no built-in copy stops the migration (an account
+-- --   would lose its access). The previous release reads and writes that column: stop its instances before this
+-- --   runs (no rolling deploy across it).
+-- tenancy:end
 -- tenancy-row:begin
 -- * Row mode: the four are tenant tables (a tenant's roles, its members' assignments and grants), each with its
 --   tenant_id, forced row-level security and keys that keep a row inside its tenant (TEN-33); a person is a member
@@ -68,6 +74,16 @@ CREATE INDEX idx_roles_name_id ON roles (tenant_id, name, id);
 -- tenancy-row:else
 -- CREATE INDEX idx_roles_name_id ON roles (name, id);
 -- tenancy-row:end
+-- tenancy-row:begin
+-- Forced under the one tenant policy in the changeset that creates it (TEN-30); row-filtered replication of UPDATE and
+-- DELETE needs the filter column in the replica identity (TEN-38).
+ALTER TABLE roles REPLICA IDENTITY USING INDEX uq_roles_id_tenant_id;
+ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE roles FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON roles
+    USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+-- tenancy-row:end
 --rollback DROP TABLE roles;
 
 --changeset dev:0037-role-permissions
@@ -101,6 +117,16 @@ CREATE TABLE role_permissions (
 CREATE INDEX idx_role_permissions_permission_role_id ON role_permissions (permission, tenant_id, role_id);
 -- tenancy-row:else
 -- CREATE INDEX idx_role_permissions_permission_role_id ON role_permissions (permission, role_id);
+-- tenancy-row:end
+-- tenancy-row:begin
+-- Forced under the one tenant policy in the changeset that creates it (TEN-30); row-filtered replication of UPDATE and
+-- DELETE needs the filter column in the replica identity (TEN-38).
+ALTER TABLE role_permissions REPLICA IDENTITY USING INDEX uq_role_permissions_role_id_permission;
+ALTER TABLE role_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE role_permissions FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON role_permissions
+    USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
 -- tenancy-row:end
 --rollback DROP TABLE role_permissions;
 
@@ -144,6 +170,19 @@ CREATE INDEX idx_user_roles_role_id ON user_roles (role_id, tenant_id);
 -- tenancy-row:else
 -- CREATE INDEX idx_user_roles_role_id ON user_roles (role_id);
 -- tenancy-row:end
+-- tenancy-row:begin
+-- Forced under the one tenant policy in the changeset that creates it (TEN-30); row-filtered replication of UPDATE and
+-- DELETE needs the filter column in the replica identity (TEN-38).
+ALTER TABLE user_roles REPLICA IDENTITY USING INDEX uq_user_roles_user_id_role_id;
+-- A member lives in one tenant: without the dependency the planner multiplies the person's share by the tenant's
+-- (TEN-33).
+CREATE STATISTICS st_user_roles_user_id_tenant_id (dependencies) ON user_id, tenant_id FROM user_roles;
+ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_roles FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON user_roles
+    USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+-- tenancy-row:end
 --rollback DROP TABLE user_roles;
 
 --changeset dev:0037-user-permissions
@@ -184,46 +223,20 @@ CREATE INDEX idx_user_permissions_permission_user_id ON user_permissions (permis
 -- tenancy-row:else
 -- CREATE INDEX idx_user_permissions_permission_user_id ON user_permissions (permission, user_id);
 -- tenancy-row:end
---rollback DROP TABLE user_permissions;
 -- tenancy-row:begin
-
---changeset dev:0037-roles-row-security
--- Row-filtered replication of UPDATE and DELETE needs the filter column in the replica identity (TEN-38).
-ALTER TABLE roles REPLICA IDENTITY USING INDEX uq_roles_id_tenant_id;
-ALTER TABLE role_permissions REPLICA IDENTITY USING INDEX uq_role_permissions_role_id_permission;
-ALTER TABLE user_roles REPLICA IDENTITY USING INDEX uq_user_roles_user_id_role_id;
+-- Forced under the one tenant policy in the changeset that creates it (TEN-30); row-filtered replication of UPDATE and
+-- DELETE needs the filter column in the replica identity (TEN-38).
 ALTER TABLE user_permissions REPLICA IDENTITY USING INDEX uq_user_permissions_user_id_permission;
 -- A member lives in one tenant: without the dependency the planner multiplies the person's share by the tenant's
 -- (TEN-33).
-CREATE STATISTICS st_user_roles_user_id_tenant_id (dependencies) ON user_id, tenant_id FROM user_roles;
 CREATE STATISTICS st_user_permissions_user_id_tenant_id (dependencies) ON user_id, tenant_id FROM user_permissions;
-ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE roles FORCE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON roles
-    USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
-    WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
-ALTER TABLE role_permissions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE role_permissions FORCE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON role_permissions
-    USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
-    WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
-ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_roles FORCE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON user_roles
-    USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
-    WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
 ALTER TABLE user_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_permissions FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON user_permissions
     USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
---rollback DROP POLICY tenant_isolation ON user_permissions;
---rollback DROP POLICY tenant_isolation ON user_roles;
---rollback DROP POLICY tenant_isolation ON role_permissions;
---rollback DROP POLICY tenant_isolation ON roles;
---rollback DROP STATISTICS st_user_permissions_user_id_tenant_id;
---rollback DROP STATISTICS st_user_roles_user_id_tenant_id;
 -- tenancy-row:end
+--rollback DROP TABLE user_permissions;
 
 --changeset dev:0037-roles-change-history
 -- Before the seeds, so the history starts with them.
@@ -328,14 +341,23 @@ ALTER TABLE roles FORCE ROW LEVEL SECURITY;
 -- tenancy-row:end
 
 -- tenancy-schema:begin
---changeset dev:0037-role-column-to-assignments
+--changeset dev:0037-role-column-to-assignments splitStatements:false
 --preconditions onFail:MARK_RAN
 -- Only while the platform's column is there: once 0039 dropped it, a new schema has nothing to copy.
 --precondition-sql-check expectedResult:1 SELECT count(*) FROM information_schema.columns WHERE table_schema = 'platform' AND table_name = 'tenant_memberships' AND column_name = 'role'
 -- This schema's tenant's memberships, found through the platform's migration record of the schema (as 0017 finds
 -- them): each one's role becomes its member's assignment of the built-in role of that name, then the platform's
 -- copy is emptied, in this schema's transaction. None in the template; a schema being provisioned copies nothing
--- (its owner's ADMIN role comes from TenantMemberManager) but empties its tenant's too.
+-- (its owner's ADMIN role comes from TenantMemberManager) but empties its tenant's too. A role with no built-in copy
+-- stops it: emptied, the member would lose their access for good.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM tenant_memberships m JOIN tenant_migrations t ON t.tenant_id = m.tenant_id
+                WHERE t.schema_name = current_schema() AND m.role IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM roles r WHERE r.built_in = m.role)) THEN
+        RAISE EXCEPTION 'A membership holds a role with no built-in copy in this changeset: seed it first';
+    END IF;
+END $$;
 INSERT INTO user_roles (id, user_id, role_id, created_at, updated_at, version)
 SELECT uuidv7(), m.user_id, r.id, now(), now(), 0
   FROM tenant_memberships m
@@ -353,7 +375,7 @@ UPDATE tenant_memberships m
 --rollback DELETE FROM user_roles;
 -- tenancy-schema:end
 -- tenancy-row:begin
---changeset dev:0037-role-column-to-assignments
+--changeset dev:0037-role-column-to-assignments splitStatements:false
 -- Each membership's one role becomes its member's assignment of the tenant's built-in role of that name (a
 -- membership of a PENDING tenant registered after 0017 has no member row yet: its owner's ADMIN role comes at its
 -- activation), then the role columns go: the memberships' and, with tenancy meaningless, the accounts'.
@@ -361,6 +383,15 @@ UPDATE tenant_memberships m
 ALTER TABLE members NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE roles NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE user_roles NO FORCE ROW LEVEL SECURITY;
+-- A role with no built-in copy stops it: the column goes, and the member would lose their access.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM tenant_memberships m
+                 JOIN members mb ON mb.user_id = m.user_id AND mb.tenant_id = m.tenant_id
+                WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.tenant_id = m.tenant_id AND r.built_in = m.role)) THEN
+        RAISE EXCEPTION 'A membership holds a role with no built-in copy in this changeset: seed it first';
+    END IF;
+END $$;
 INSERT INTO user_roles (id, tenant_id, user_id, role_id, created_at, updated_at, version)
 SELECT uuidv7(), m.tenant_id, m.user_id, r.id, now(), now(), 0
   FROM tenant_memberships m

@@ -209,8 +209,8 @@ public class PersonAccessService {
     //
     // tenancy:end
     /**
-     * A built-in role for good, in the caller's transaction (a new account's, a new member's, a new tenant's owner):
-     * none if the person holds it already, so a provisioning tried again adds nothing.
+     * A built-in role for good, in the caller's transaction (a new account's; with tenancy a new member's, a new
+     * tenant's owner): none if the person holds it already, so a call made again adds nothing.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     void giveBuiltIn(UUID userId, Role role) {
@@ -233,7 +233,9 @@ public class PersonAccessService {
         if (!caller.holds(Permission.TENANT_MEMBERS_MANAGE)) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
         }
-        requireHeld(caller, roles.getBuiltIn(given).permissions());
+        // The new member holds it for good: only of what the caller holds for good (a grant of theirs that ends never
+        // lives on in someone else's).
+        requireHeldForGoodWhenForGood(callerId, roles.getBuiltIn(given).permissions(), null);
     }
 
     /** A removed member's roles and grants in the tenant, all of them (added again, they start afresh). */
@@ -256,7 +258,8 @@ public class PersonAccessService {
     void requireManagersRemainWithout(UUID userId) {
         Set<UUID> others = new TreeSet<>(assignments.findHoldersForGood(names(KEPT_HELD)));
         others.remove(userId);
-        requireHeldForGoodByOneOf(others);
+        // A SUSPENDED tenant's managers count too: they manage it again once it is reactivated.
+        requireHeldForGood(assignments.findAccessRowsWhateverTheTenantStatus(others, clock.instant()));
     }
 
     /**
@@ -278,9 +281,8 @@ public class PersonAccessService {
     // tenancy:end
 
     /**
-     * For a change that may take access from many people (a role's edit): the caller's row and those of every
-     * account that holds {@link #KEPT_HELD} for good, locked in id order; then 403 {@code ACCESS_DENIED} unless the
-     * caller holds {@code permission} now. Answers what the caller holds.
+     * For a change that may take access from many people (a role's edit): locked ({@link #lockForAccessChange}), then 403
+     * {@code ACCESS_DENIED} unless the caller holds {@code permission} now. Answers what the caller holds.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     EffectiveAccess lockManagersWith(UUID callerId, Permission permission) {
@@ -293,7 +295,8 @@ public class PersonAccessService {
     }
 
     /**
-     * For a change of one person by another (a suspension): their rows locked together, then 403
+     * For a change of one person by another (a suspension; with tenancy a member's removal): locked
+     * ({@link #lockForAccessChange}), then 403
      * {@code ACCESS_DENIED} unless the caller holds {@code permission} now, and 403 {@code ACCESS_TARGET_HOLDS_MORE}
      * when the person holds something the caller doesn't.
      */
@@ -314,8 +317,12 @@ public class PersonAccessService {
 
     /** 409 {@code ACCESS_LAST_MANAGER} unless one of {@code candidates}, active, holds each of {@link #KEPT_HELD} for good. */
     private void requireHeldForGoodByOneOf(Collection<UUID> candidates) {
-        Map<UUID, List<AccessRow>> rows = assignments.findAccessRows(candidates, clock.instant()).stream()
-                .collect(Collectors.groupingBy(AccessRow::userId));
+        requireHeldForGood(assignments.findAccessRows(candidates, clock.instant()));
+    }
+
+    /** 409 {@code ACCESS_LAST_MANAGER} unless the people of {@code accessRows} hold each of {@link #KEPT_HELD} for good. */
+    private void requireHeldForGood(List<AccessRow> accessRows) {
+        Map<UUID, List<AccessRow>> rows = accessRows.stream().collect(Collectors.groupingBy(AccessRow::userId));
         for (Permission kept : KEPT_HELD) {
             boolean held = rows.values().stream().anyMatch(personRows -> EffectiveAccess.forGoodOf(personRows).holds(kept));
             if (!held) {
@@ -335,11 +342,12 @@ public class PersonAccessService {
 
     /** Both people's access in one statement; the person must exist (404). */
     private EffectiveAccess requireMayManage(UUID callerId, UUID userId, Permission permission) {
-        requirePerson(userId);
+        // The caller first: one without the permission learns nothing about who is a person here.
         EffectiveAccess caller = accessOf(callerId);
         if (!caller.holds(permission)) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
         }
+        requirePerson(userId);
         Set<Permission> above = EnumSet.noneOf(Permission.class);
         above.addAll(grantedTo(userId).permissions());
         above.removeAll(caller.permissions());

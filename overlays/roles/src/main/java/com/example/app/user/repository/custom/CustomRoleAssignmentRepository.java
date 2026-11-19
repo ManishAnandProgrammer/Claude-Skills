@@ -21,6 +21,14 @@ public interface CustomRoleAssignmentRepository {
      * the safety rules compare with the caller's (a suspended superior is still above).
      */
     List<AccessRow> findGrantedRows(Collection<UUID> userIds, Instant now);
+    // tenancy:begin
+
+    /**
+     * The current access rows of these people's active accounts whatever the tenant's status: what they would hold in a
+     * SUSPENDED tenant once it is ACTIVE again, which staff's suspension counts (safety rule 6 per tenant).
+     */
+    List<AccessRow> findAccessRowsWhateverTheTenantStatus(Collection<UUID> userIds, Instant now);
+    // tenancy:end
 
     /**
      * The active accounts that may hold one of {@code permissions} for good: a role giving it assigned without an
