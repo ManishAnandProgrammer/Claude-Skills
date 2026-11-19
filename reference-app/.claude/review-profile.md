@@ -48,7 +48,7 @@ nothing: it is the code the skills copy.
 | `NotXss` | `escape-on-output` | JSON API; clients render text |
 | `noEmojiFields` | `none` | |
 | `dropdownSecurity` | `@SignedIn` + `for` | AUTHZ-08: `DropdownFor.check` in the service; the todo-list and tag dropdowns list `OWN` only |
-| `authorization` | `permissions` | Level 1 (AUTHZ-01 to AUTHZ-10): `Permission` and `Role` in code, `@Requires`/`@SignedIn`/`@Public` on every handler, `TodoPolicy`; the roles piece doesn't exist yet |
+| `authorization` | `permissions` | Level 1 (AUTHZ-01 to AUTHZ-10): `Permission` and `Role` in code, `@Requires`/`@SignedIn`/`@Public` on every handler, `TodoPolicy`. The roles piece (Level 2) is an overlay, `overlays/roles`, proven in verify.sh's 2n copy: a copy with it is `roles-piece` |
 | `tokenRevocation` | `session-version` | The reference runs with the session-version piece on (`short-lived(15)` stays its access-token bound); copies without it are `short-lived(15)` |
 | `edgeRateLimiter` | `none` | |
 | `metricsAuth` | `network-only` | `/actuator/prometheus` has no token: served on the management port only, never published; `StartupChecks` refuses a missing or shared management port (test profile alone excepted) |

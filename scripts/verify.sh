@@ -38,6 +38,10 @@
 #      2k, 2l, 2m. every piece but the example, as a project starts: without tenancy (2k), schema per tenant
 #          (2l), row mode (2m): the pieces' own code and tests with none of the example's samples to lean on;
 #          every test runs;
+#      2n. every piece with the roles piece, without tenancy: core + sign-in + example + metadata + media +
+#          session-version + change-history + roles (Level 2). Every Level 1 test runs unchanged (but the one that
+#          asserted the account's role field), with the roles piece's own: the tables, the per-request read, the
+#          endpoints and the safety rules; the upgrade path copies each seeded account's role into an assignment;
 #      the session version is opt-in: every copy without it (2, 2b, 2c, 2e, 2g, 2i, 2d) is checked for
 #      none of its traces (no column, claim, filter, endpoint or configuration key); so is the change history
 #      (the reference, 2h, 2j, 2k, 2l and 2m have it; 2, 2b, 2c, 2e, 2f, 2g, 2i and 2d have none of its traces:
@@ -61,11 +65,11 @@
 # While iterating, --only runs just the named stages (comma list of the ids below); step 0 and the
 # setup the copies share always run:
 #   scripts/verify.sh --only 2i,2j
-#   ids: reference (1), 2, 2b, 2c, 2e, 2f, 2g, 2h, 2i, 2j, 2k, 2l, 2m, 2d, image (3)
+#   ids: reference (1), 2, 2b, 2c, 2e, 2f, 2g, 2h, 2i, 2j, 2k, 2l, 2m, 2n, 2d, image (3)
 # A partial run never records the fingerprint, so a push still needs one full run.
 set -euo pipefail
 
-STAGES="reference 2 2b 2c 2e 2f 2g 2h 2i 2j 2k 2l 2m 2d image"
+STAGES="reference 2 2b 2c 2e 2f 2g 2h 2i 2j 2k 2l 2m 2n 2d image"
 # The highest changeset number of the release in production (main): the upgrade path starts from it.
 # Raise it, and extend the previous-release seeds, when a release ships. The pieces' range alone (0001-0099):
 # the reference has no project changesets (a project passes <pieces>,<project>, PreviousReleaseDatabase).
@@ -102,6 +106,16 @@ no_session_version() {
 # What the change-history piece leaves in a copy (its table, function, actor, job and settings); a copy without it has
 # none of it.
 CHANGE_HISTORY_TRACES='change-history|ChangeHistory|audit_log|audit_row_change|app\.user_id|[Cc]hange history'
+# What the roles piece leaves in a copy (its tables, entities, endpoints, error codes and permissions); a copy without it
+# has none of it, and keeps Level 1 as it is.
+ROLES_TRACES='roles:(begin|else|end)|AccessRole|RoleAssignment|PersonalGrant|PersonAccess|user_roles|user_permissions|role_permissions|ROLES_MANAGE|ACCESS_GRANT|ACCESS_LAST_MANAGER|ACCESS_NOT_HELD|PermissionsUnreadable|[Rr]oles piece'
+no_roles() {
+    if grep -rqE "$ROLES_TRACES" "$@"; then
+        echo "FAILED: roles entries in a copy without the roles piece:" >&2
+        grep -rlE "$ROLES_TRACES" "$@" | head -5 >&2
+        exit 1
+    fi
+}
 no_change_history() {
     if grep -rqE "$CHANGE_HISTORY_TRACES" "$@"; then
         echo "FAILED: change-history entries in a copy without the change-history piece:" >&2
@@ -169,6 +183,9 @@ docker info > /dev/null 2>&1 || {
 
 echo "[0/3] overlays: replacements pinned to the reference's files"
 "$REPO/scripts/overlay-replacements.sh" --check
+# The roles piece is an overlay too: the reference runs Level 1, and a roles block's own lines are comments in it.
+grep -rnE "AccessRole|PersonAccessService|RoleAssignment|Permission\.(ROLES_MANAGE|ACCESS_GRANT)" "$REFERENCE/src/main/java" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*|<!--)' \
+    && { echo "FAILED: roles code in the reference outside a commented roles block (it belongs in overlays/roles)" >&2; exit 1; }
 # A commented line may name them: a tenancy block's own lines are comments in the reference.
 grep -rnE "TenantContext|TenantScope|tenant_memberships" "$REFERENCE/src/main/java" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' \
     && { echo "FAILED: tenancy code in the reference outside a commented tenancy block (it belongs in overlays/)" >&2; exit 1; }
@@ -287,6 +304,7 @@ if wants 2; then
         || { echo "FAILED: the ADMIN role or the account suspension endpoint is missing from the sign-in copy" >&2; exit 1; }
     no_session_version "$project/src" "$project/docs" "$project/compose.yaml" "$project/.env.example"
     no_change_history "$project/src" "$project/docs" "$project/compose.yaml" "$project/.env.example"
+    no_roles "$project/src" "$project/docs" "$project/compose.yaml" "$project/.env.example"
     # Bootstrap renames the application; tests must not depend on the reference's name.
     sed -i 's/\${APP_NAME:reference}/${APP_NAME:smoke}/' "$project/src/main/resources/application.yml"
     grep -q 'APP_NAME:smoke' "$project/src/main/resources/application.yml" || { echo "FAILED: could not rename the smoke application" >&2; exit 1; }
@@ -309,6 +327,7 @@ if wants 2b; then
     [ -f "$example/src/test/java/com/acme/example/metadata/MetadataIntegrationTest.java" ] || { echo "FAILED: the metadata samples' tests are missing from the copy with both pieces" >&2; exit 1; }
     no_session_version "$example/src" "$example/docs"
     no_change_history "$example/src" "$example/docs"
+    no_roles "$example/src" "$example/docs"
     # Coverage measured 2026-11-18 at lines 95.64 %, branches 84.76 %; only ever raised.
     mvn_verify "$example" "$WORK/example.log" "$UPGRADE" -Dcoverage.line.minimum=0.94 -Dcoverage.branch.minimum=0.83
     upgraded "$example"
@@ -328,6 +347,7 @@ if wants 2c; then
     [ -f "$meta/src/main/resources/db/changelog/changes/0007-users-admin-role.sql" ] || { echo "FAILED: the ADMIN role changeset is missing from the metadata copy" >&2; exit 1; }
     no_session_version "$meta/src" "$meta/docs"
     no_change_history "$meta/src" "$meta/docs"
+    no_roles "$meta/src" "$meta/docs"
     # Coverage measured 2026-11-18 at lines 84.73 %, branches 74.80 %; only ever raised.
     mvn_verify "$meta" "$WORK/meta.log" -Dcoverage.line.minimum=0.83 -Dcoverage.branch.minimum=0.73
 fi
@@ -348,6 +368,7 @@ if wants 2e; then
     [ -f "$media/src/main/resources/db/changelog/changes/0010-todo-attachments.sql" ] && { echo "FAILED: the todo attachments changeset in a copy without the example" >&2; exit 1; }
     no_session_version "$media/src" "$media/docs"
     no_change_history "$media/src" "$media/docs"
+    no_roles "$media/src" "$media/docs"
     # The media endpoints' own tests arrive with the piece (skipped until the project declares a purpose).
     for endpoint_test in UploadUrlIntegrationTest UploadPolicyIntegrationTest PresignedUploadIntegrationTest; do
         [ -f "$media/src/test/java/com/acme/media/media/$endpoint_test.java" ] || { echo "FAILED: $endpoint_test is missing from the media copy" >&2; exit 1; }
@@ -379,6 +400,7 @@ if wants 2f; then
     grep -q "SESSION_VERSION_STALE" "$files/src/main/java/com/acme/files/user/domain/Role.java" \
         || { echo "FAILED: the Role javadoc doesn't say a role change reaches the next request with the session version" >&2; exit 1; }
     no_change_history "$files/src" "$files/docs"
+    no_roles "$files/src" "$files/docs"
     # The display number comes with the metadata piece (Counters): not in this copy.
     [ -f "$files/src/main/resources/db/changelog/changes/0026-todo-numbers.sql" ] && { echo "FAILED: the todo numbers in a copy without the metadata piece" >&2; exit 1; }
     for attachment in main/java/com/acme/files/todo/domain/TodoAttachment.java test/java/com/acme/files/todo/TodoAttachmentsIntegrationTest.java \
@@ -415,6 +437,7 @@ if wants 2g; then
         && { echo "FAILED: the Role javadoc of a tenancy copy names the users.role statement (the role is the membership's)" >&2; exit 1; }
     no_session_version "$tenancy/src" "$tenancy/docs"
     no_change_history "$tenancy/src" "$tenancy/docs"
+    no_roles "$tenancy/src" "$tenancy/docs"
     # Accounts are global: platform staff suspend them, never a tenant ADMIN through the tenant plane.
     grep -q '"/{id}/status"' "$tenancy/src/main/java/com/acme/tenancy/user/controller/UserController.java" \
         && { echo "FAILED: the tenant-plane account suspension endpoint in a tenancy copy" >&2; exit 1; }
@@ -443,6 +466,7 @@ if wants 2h; then
     grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version|change-history):(begin|else|end)" "$tenants/src" "$tenants/compose.yaml" "$tenants/.env.example" "$tenants/docs" \
         && { echo "FAILED: markers left in the copy with every piece" >&2; exit 1; }
     grep -rqE "TenantOwnedEntity|app\.tenant_id|ROW LEVEL SECURITY" "$tenants/src" && { echo "FAILED: row mode in a schema-per-tenant copy" >&2; exit 1; }
+    no_roles "$tenants/src" "$tenants/docs"
     grep -q "0002-todo-lists.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" && grep -q "0009-media-files.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" \
         && ! grep -q "0002-todo-lists.sql" "$tenants/src/main/resources/db/changelog/platform.yaml" \
         || { echo "FAILED: the todo and media tables are not in the tenant changelog alone" >&2; exit 1; }
@@ -484,6 +508,7 @@ if wants 2i; then
     [ -f "$rows/src/main/java/com/acme/rows/config/LazyConnectionConfig.java" ] && { echo "FAILED: the lazy proxy in a row-mode copy (the hook borrows lazily)" >&2; exit 1; }
     no_session_version "$rows/src" "$rows/docs"
     no_change_history "$rows/src" "$rows/docs"
+    no_roles "$rows/src" "$rows/docs"
     [ -f "$rows/src/main/resources/db/changelog/platform.yaml" ] && { echo "FAILED: two masters in a row-mode copy" >&2; exit 1; }
     [ -f "$rows/src/main/java/com/acme/rows/user/controller/TenantRegistrationController.java" ] \
         && { echo "FAILED: the public registration endpoint in a copy without tenant-registration" >&2; exit 1; }
@@ -507,6 +532,7 @@ if wants 2j; then
         --with core,sign-in,example,metadata,media,tenancy-row,tenant-registration,session-version,change-history > "$WORK/copy-rowtenants.log" 2>&1
     grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version|change-history):(begin|else|end)" "$rowtenants/src" "$rowtenants/compose.yaml" "$rowtenants/.env.example" "$rowtenants/docs" \
         && { echo "FAILED: markers left in the row-mode copy with every piece" >&2; exit 1; }
+    no_roles "$rowtenants/src" "$rowtenants/docs"
     rowmaster="$rowtenants/src/main/resources/db/changelog/db.changelog-master.yaml"
     # The platform's changesets first: every tenant table references tenants.
     [ "$(grep -n "0012-tenancy.sql" "$rowmaster" | cut -d: -f1)" -lt "$(grep -n "0002-todo-lists.sql" "$rowmaster" | cut -d: -f1)" ] \
@@ -532,6 +558,38 @@ if wants 2j; then
     upgraded "$rowtenants"
 fi
 
+# Every piece with the roles piece (Level 2): $1 stage id, $2 directory and application name, $3 tenancy pieces ("" for
+# none), $4 and $5 the copy's coverage minimums (lines, branches).
+every_piece_with_roles() {
+    local id="$1" name="$2" tenancy="$3" line_minimum="$4" branch_minimum="$5" dir pieces
+    dir="$WORK/$name"
+    pieces="core,sign-in,example,metadata,media,session-version,change-history,roles${tenancy:+,$tenancy}"
+    mkdir -p "$dir/src/main/java/com/acme/$name"
+    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$dir/"
+    sed -e "s|<artifactId>reference-app</artifactId>|<artifactId>$name</artifactId>|" -e "s|<name>reference-app</name>|<name>$name</name>|" \
+        "$REFERENCE/pom.xml" > "$dir/pom.xml"
+    sed -e "s/package com.acme.smoke;/package com.acme.$name;/" -e "s/SmokeApplication/${name^}Application/g" \
+        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$dir/src/main/java/com/acme/$name/${name^}Application.java"
+    "$REPO/scripts/bootstrap-copy.sh" --target "$dir" --package "com.acme.$name" --with "$pieces" > "$WORK/copy-$name.log" 2>&1
+    grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version|change-history|roles):(begin|else|end)" "$dir/src" "$dir/compose.yaml" "$dir/.env.example" "$dir/docs" \
+        && { echo "FAILED: markers left in the $id copy" >&2; exit 1; }
+    # One source of a person's access: no role column on the account or the membership, no roles claim, the
+    # TokenPermissions that reads the tables.
+    grep -rqE "private Role role;|ROLES_CLAIM, List.of\((user|membership)" "$dir/src/main/java" \
+        && { echo "FAILED: a role column or the token's roles claim left in the $id copy (the tables are the one source)" >&2; exit 1; }
+    grep -q "PersonAccessService" "$dir/src/main/java/com/acme/$name/user/service/RolePermissions.java" \
+        && ls "$dir/src/main/resources/db/changelog/changes/"*-roles.sql > /dev/null \
+        || { echo "FAILED: the roles piece's TokenPermissions or changeset is missing from the $id copy" >&2; exit 1; }
+    mvn_verify "$dir" "$WORK/$name.log" "$UPGRADE" -Dcoverage.line.minimum="$line_minimum" -Dcoverage.branch.minimum="$branch_minimum"
+    upgraded "$dir"
+}
+
+if wants 2n; then
+    echo "[2n/3] bootstrap-copy with every piece and the roles piece, without tenancy (package com.acme.roles)"
+    # Coverage measured 2026-11-19 at lines 95.33 %, branches 84.92 %; only ever raised.
+    every_piece_with_roles 2n roles "" 0.94 0.83
+fi
+
 # Every piece but the example, per tenancy mode: what a project starts from before its first entity.
 # $1 stage id, $2 directory and application name, $3 tenancy pieces ("" for none).
 # $4, $5: the copy's coverage minimums (lines, branches).
@@ -550,6 +608,7 @@ every_piece_but_the_example() {
         && { echo "FAILED: markers left in the $id copy" >&2; exit 1; }
     grep -rqE "TODO_LIST|TODO_ATTACHMENT|todo_lists|TodoListSettings|com\.acme\.$name\.(todo|planning)\b" "$dir/src" \
         && { echo "FAILED: the example's entries left in the $id copy, which has no example" >&2; exit 1; }
+    no_roles "$dir/src" "$dir/docs"
     mvn_verify "$dir" "$WORK/$name.log" -Dcoverage.line.minimum="$line_minimum" -Dcoverage.branch.minimum="$branch_minimum"
 }
 
@@ -590,6 +649,7 @@ if wants 2d; then
     [ -d "$core/src/main/java/com/acme/core/user" ] && { echo "FAILED: the user module in a core copy" >&2; exit 1; }
     no_session_version "$core/src" "$core/docs"
     no_change_history "$core/src" "$core/docs"
+    no_roles "$core/src" "$core/docs"
     # The unit tests alone can't reach the suite's coverage minimum: static analysis runs, coverage doesn't.
     mvn_verify "$core" "$WORK/core.log" -Dtest='!*IntegrationTest,!*ArchTest' -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true
 fi

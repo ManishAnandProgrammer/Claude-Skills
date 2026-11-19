@@ -217,12 +217,27 @@ public abstract class IntegrationTest {
     }
 
     // admin:begin
+    // roles:begin
+    // /**
+    //  * A signed-up user holding the built-in {@code role} alone (the roles piece: its copy in the roles table, by SQL, so
+    //  * a test of anything else needs no admin to give it), signed in again as every other fixture is.
+    //  */
+    // protected TestUser newUserWithRole(String role) throws Exception {
+    //     TestUser user = newUser();
+    //     sql("delete from user_roles where user_id = ?", user.id());
+    //     assertThat(sql("""
+    //             insert into user_roles (id, user_id, role_id, created_at, updated_at, version)
+    //             select uuidv7(), ?, id, now(), now(), 0 from roles where built_in = ?""", user.id(), role)).isEqualTo(1);
+    //     return signIn(user);
+    // }
+    // roles:else
     /** A signed-up user given {@code role} (no endpoint grants one), signed in again so the token carries it. */
     protected TestUser newUserWithRole(String role) throws Exception {
         TestUser user = newUser();
         assertThat(sql("update users set role = ? where id = ?", role, user.id())).isEqualTo(1);
         return signIn(user);
     }
+    // roles:end
 
     protected TestUser newAdmin() throws Exception {
         return newUserWithRole("ADMIN");

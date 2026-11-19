@@ -8,29 +8,57 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+// roles:begin
+// roles:else
 import org.springframework.beans.factory.annotation.Autowired;
+// roles:end
+// roles:begin
+// roles:else
 import org.springframework.security.core.GrantedAuthority;
+// roles:end
+// roles:begin
+// roles:else
 import org.springframework.security.core.authority.FactorGrantedAuthority;
+// roles:end
+// roles:begin
+// roles:else
 import org.springframework.security.oauth2.jwt.Jwt;
+// roles:end
+// roles:begin
+// roles:else
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+// roles:end
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Arrays;
 import java.util.EnumSet;
+// roles:begin
+// roles:else
 import java.util.List;
+// roles:end
 import java.util.Set;
+// roles:begin
+// roles:else
 import java.util.UUID;
+// roles:end
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** What a token grants: its role's permissions as its authorities, and GET /users/me/access showing them. */
+/**
+ * What a token grants: its role's permissions as its authorities, and GET /users/me/access showing them.
+ *   <!-- roles:begin -->
+ <!-- * With the roles piece a token carries no role: the converter's own tests are RolePermissionsIntegrationTest's. -->
+ *   <!-- roles:end -->
+ */
 class AccessIntegrationTest extends IntegrationTest {
 
     private static final String ACCESS = "/api/v1/users/me/access";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
+    // roles:begin
+    // roles:else
     @Autowired
     private JwtAuthenticationConverter converter;
 
@@ -63,6 +91,7 @@ class AccessIntegrationTest extends IntegrationTest {
         assertThat(authoritiesOf(Jwt.withTokenValue("probe").header("alg", "HS256").subject(UUID.randomUUID().toString())
                 .claim("scope", "admin").build())).isEmpty();
     }
+    // roles:end
 
     @ParameterizedTest(name = "{0}")
     @EnumSource(Role.class)

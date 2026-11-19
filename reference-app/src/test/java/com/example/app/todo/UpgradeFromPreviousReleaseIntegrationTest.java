@@ -75,6 +75,25 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
                 .isEqualTo("ROTATED");
     }
 
+    // roles:begin
+    // @Test
+    // @DisplayName("""
+    //         The roles piece's changeset made each seeded account's role its assignment of the built-in role of that \
+    //         name, for good, and dropped the column: the tables are the one source""")
+    // void eachSeededRoleBecameAnAssignment() {
+    //     assertThat(jdbc.queryForList("""
+    //             select u.email || ':' || r.built_in
+    //               from user_roles a join users u on u.id = a.user_id join roles r on r.id = a.role_id
+    //              where u.email like 'upgrade-%' and a.valid_until is null""", String.class))
+    //             .contains("upgrade-heavy@example.com:USER", "upgrade-light@example.com:USER", "upgrade-idle@example.com:USER")
+    //             .contains("upgrade-admin@example.com:ADMIN")
+    //             .hasSize(4);
+    //     assertThat(jdbc.queryForObject(
+    //             "select count(*) from information_schema.columns where table_name = 'users' and column_name = 'role'",
+    //             Integer.class)).isZero();
+    // }
+    //
+    // roles:end
     @Test
     @DisplayName("The seeded owner reads their lists' todos, a todo with its list's name, and creates one")
     void theSeededOwnerWorksAsBefore() throws Exception {

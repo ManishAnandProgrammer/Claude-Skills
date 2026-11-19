@@ -21,7 +21,10 @@ public class UserMapper {
                 user.getFullName(),
                 // tenancy:begin
                 // tenancy:else
+                // roles:begin
+                // roles:else
                 user.getRole(),
+                // roles:end
                 // tenancy:end
                 user.getStatus(),
                 user.getCreatedAt(),

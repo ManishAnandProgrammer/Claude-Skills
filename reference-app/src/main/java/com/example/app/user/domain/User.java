@@ -12,7 +12,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/** An account. The email is stored normalised ({@link Emails}), so it is unique as people read it. */
+/**
+ * An account. The email is stored normalised ({@link Emails}), so it is unique as people read it.
+ *   <!-- roles:begin -->
+ <!-- * Its access is its role assignments and personal grants (the roles piece: {@code RoleAssignment}, -->
+ <!-- * {@code PersonalGrant}), never a column of its own; a new account's first role is signup's built-in {@code USER}. -->
+ *   <!-- roles:end -->
+ */
 @Entity
 @Table(name = "users")
 @Getter
@@ -29,10 +35,13 @@ public class User extends AuditableEntity {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    // roles:begin
+    // roles:else
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
 
+    // roles:end
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserStatus status;
@@ -56,7 +65,10 @@ public class User extends AuditableEntity {
                 .email(Emails.normalize(email))
                 .fullName(fullName.strip())
                 .passwordHash(passwordHash)
+                // roles:begin
+                // roles:else
                 .role(Role.USER)
+                // roles:end
                 .status(UserStatus.ACTIVE)
                 .build();
     }

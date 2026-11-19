@@ -20,7 +20,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// roles:begin
+// roles:else
 import java.util.List;
+// roles:end
 import java.util.UUID;
 
 /**
@@ -41,10 +44,17 @@ import java.util.UUID;
  * suspend the tenant.</p>
  *   <!-- tenancy:else -->
  *
+ *   <!-- roles:begin -->
+ <!-- * <p>An account that holds {@code ACCOUNT_STATUS_CHANGE} now (the roles piece: read under the lock that serialises -->
+ <!-- * these changes, and an inactive account holds nothing) does it ({@code PATCH /users/{id}/status}), never to their -->
+ <!-- * own account, never to one that holds a permission they don't (403 {@code ACCESS_TARGET_HOLDS_MORE}), and never -->
+ <!-- * when no active account would then hold what manages access for good (409 {@code ACCESS_LAST_MANAGER}).</p> -->
+ *   <!-- roles:else -->
  * <p>An account whose role grants {@code ACCOUNT_STATUS_CHANGE} (an application ADMIN) does it
  * ({@code PATCH /users/{id}/status}), never to their own account, and only while that account is ACTIVE and its
  * role grants it, read under the lock that serialises these changes, whatever their token says. So the last
  * active holder of the permission can never be suspended: only another one can.</p>
+ *   <!-- roles:end -->
  *   <!-- tenancy:end -->
  */
 @Service
@@ -59,6 +69,9 @@ public class AccountStatusService {
     // tenancy:begin
     // private final MembershipService memberships;
     // tenancy:end
+    // roles:begin
+    // private final PersonAccessService access;
+    // roles:end
 
     /** The account with this address, or none: the operator's read before a change, which needs its id and version. */
     public ListWrapper<UserResponse> lookUp(UserFilter filter) {
@@ -89,6 +102,15 @@ public class AccountStatusService {
         if (userId.equals(callerId)) {
             throw AppException.of(ErrorCode.USER_OWN_STATUS_CHANGE);
         }
+        // roles:begin
+        // // The caller's access read under the lock (an inactive account holds nothing), and nobody above them.
+        // access.lockToManage(callerId, userId, Permission.ACCOUNT_STATUS_CHANGE);
+        // User target = users.getUser(userId);
+        // target.checkVersion(request.version());
+        // UserResponse changed = apply(target, request.status());
+        // access.requireManagersRemain();
+        // return ObjectWrapper.withObject(changed);
+        // roles:else
         List<User> locked = users.lockForStatusChange(List.of(callerId, userId));
         boolean callerMayChangeStatus = locked.stream()
                 .anyMatch(user -> user.getId().equals(callerId) && user.isActive()
@@ -100,6 +122,7 @@ public class AccountStatusService {
                 .orElseThrow(AppException.supply(ErrorCode.USER_NOT_FOUND));
         target.checkVersion(request.version());
         return ObjectWrapper.withObject(apply(target, request.status()));
+        // roles:end
     }
     // tenancy:end
 

@@ -203,6 +203,24 @@ and ends the access tokens at once (the session version);
 SQL would leave them working. `ACTIVE` reactivates (the ended sessions stay ended). An ADMIN never
 suspends their own account, so one ADMIN always remains.
 
+<!-- roles:begin -->
+<!-- **The first admin** (the roles piece: roles are rows, people hold them). The person signs up (they get the -->
+<!-- built-in `USER`); then an operator with the database owner's credentials gives them the built-in `ADMIN`, once: -->
+<!-- `INSERT INTO user_roles (id, user_id, role_id, created_at, updated_at, version) SELECT uuidv7(), u.id, r.id, now(), -->
+<!-- now(), 0 FROM users u, roles r WHERE u.email = '<their email>' AND r.built_in = 'ADMIN';` (check it says -->
+<!-- `INSERT 0 1`) and writes down who asked and why. It applies on their next request: the permissions are read on every -->
+<!-- one. Every later admin, and every other role or personal grant, is an admin's (`PUT /api/v1/users/{id}/roles/{roleId}`), -->
+<!-- never SQL: the endpoints keep the safety rules and the change history names who did it. -->
+<!-- -->
+<!-- **Nobody can manage access any more** (no active account holds `ROLES_MANAGE` or `ACCESS_GRANT` for good: a DENY or -->
+<!-- an edit made by hand, a restore). The application refuses every change that would cause it (409 -->
+<!-- `ACCESS_LAST_MANAGER`), so it only happens outside it. Give one trusted account the built-in `ADMIN` with the statement -->
+<!-- above, and remove any DENY of those two on it: -->
+<!-- `DELETE FROM user_permissions WHERE user_id = (SELECT id FROM users WHERE email = '<their email>') AND permission IN -->
+<!-- ('ROLES_MANAGE', 'ACCESS_GRANT') AND effect = 'DENY';`. Check the built-in `ADMIN` still holds both -->
+<!-- (`SELECT permission FROM role_permissions p JOIN roles r ON r.id = p.role_id WHERE r.built_in = 'ADMIN';`), and add -->
+<!-- them back with an `INSERT INTO role_permissions` if an edit took them. -->
+<!-- roles:else -->
 **The first admin** (and every later one). No endpoint grants a role: the person signs up, then an
 operator with the database owner's credentials runs, once per account,
 `UPDATE users SET role = 'ADMIN' WHERE email = '<their email>';` (check it says `UPDATE 1`) and writes
@@ -216,6 +234,7 @@ reaches every device at once instead: `UPDATE users SET role = 'USER', session_v
 refused from the next request (401 `SESSION_VERSION_STALE`) and their app refreshes into the new role.
 Without the `DEL`, the old number stays accepted for up to `app.session-version.cache-ttl` (1 minute).
 <!-- session-version:end -->
+<!-- roles:end -->
 <!-- admin:end -->
 <!-- sign-in:end -->
 <!-- tenancy:end -->

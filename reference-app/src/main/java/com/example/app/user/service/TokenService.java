@@ -27,7 +27,10 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
+// roles:begin
+// roles:else
 import java.util.List;
+// roles:end
 import java.util.UUID;
 
 /**
@@ -178,9 +181,16 @@ class TokenService {
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .subject(user.getId().toString())
+                // roles:begin
+                // roles:else
                 .claim(RolePermissions.ROLES_CLAIM, List.of(user.getRole().name()))
+                // roles:end
                 // session-version:begin
+                // roles:begin
+                // // From the account's row, read under the token issue's share lock.
+                // roles:else
                 // From the same row as the role: a token never pairs a newer number with an older role.
+                // roles:end
                 .claim(SessionVersions.CLAIM, user.getSessionVersion())
                 // session-version:end
                 .build();

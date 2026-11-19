@@ -4,7 +4,7 @@ Who may do what: a **permission** says whether a caller may use an action at all
 they may use it on this record. The default for every house project is Level 1 below: permissions in code,
 roles in code listing them, a policy per owned resource. Level 2 (*With the roles piece*) moves the roles into
 tables an admin edits, and changes no endpoint, policy or client. The profile's `authorization` key says which
-level a project is on (`permissions`, the default; `roles-piece` once that piece exists).
+level a project is on (`permissions`, the default; `roles-piece` with that piece).
 
 Golden code, in the reference application (`~/.claude/skills-reference/src/main/java/com/example/app/`):
 `common/security/` (`Permission`, `Area`, `Reach`, `Requires`, `SignedIn`, `Public`, `Decision`,
@@ -70,7 +70,7 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
   - every role holds the prerequisites of each permission it holds (`RoleTest`);
   - **freshness** is stated where the role javadoc states it: permissions come from the token's role, so a role
     change reaches the person within one access-token lifetime, or at their next request with the
-    `session-version` piece (SEC-07).
+    `session-version` piece (SEC-07) or the `roles` piece (which reads the tables on every request, AUTHZ-11).
 - **A new role** needs, in one change: its constant with its list, the changeset widening the role check
   constraint (`ck_users_role`), and the test base's `new<Role>()` (REST-25). **A new permission** needs its
   constant (area, reach, prerequisites) and a line in each role that gets it: crud-gen asks which roles.
@@ -145,7 +145,8 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
 ### AUTHZ-06: `GET /users/me/access` answers the caller's areas and permissions
 - **Check:**
   - `GET {{urlPrefix}}/users/me/access` (`@SignedIn`) answers `{"areas": [...], "permissions": [...]}` for the
-    caller (with tenancy, the current membership's: its token's role), read from the token, no database read;
+    caller (with tenancy, the current membership's: its token's role), read from the token, no database read
+    (with the roles piece, the set the per-request read gave the security chain: still no read of its own);
   - an area is listed when the caller holds at least one of its permissions; `Area` is an enum of the menu's
     top-level items (in the reference `TODOS`, `ACCOUNTS`, `SETTINGS`), and every area holds a permission
     (`PermissionTest`);
@@ -222,40 +223,109 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
     caller's role **read from the database under the lock that serialises those changes**
     (`role.grants(ACCOUNT_STATUS_CHANGE)` in `AccountStatusService.changeStatus`, TEN-08's
     `MembershipService.lockAsCurrentAdmin`), on top of its `@Requires`: the token's permissions are up to one
-    lifetime old, and a stale token that changes access makes its change permanent.
+    lifetime old, and a stale token that changes access makes its change permanent. With the roles piece the
+    caller's effective set is read again under that lock (`PersonAccessService.lockToManage`), the same rule.
 - **Detect:** `holds(...)` replaced by a role comparison; an access-changing write checked by its annotation
   alone.
 - **Severity:** High for an access-changing write on the token alone; Medium otherwise.
 
 ## Level 2: with the roles piece
 
-These rules apply once the project has the `roles` piece (profile `authorization: roles-piece`); until then
-they describe where Level 1 goes, and a Level 1 project is not reviewed against them.
+These rules apply once the project has the `roles` piece (profile `authorization: roles-piece`, bootstrap's `roles`,
+which needs `sign-in` and `change-history`); a Level 1 project is not reviewed against them. Golden code, in the
+skills repository's `overlays/roles/` (`scripts/bootstrap-copy.sh --with ...,roles` copies it over the reference):
+`user/domain/AccessRole`, `RolePermission`, `RoleAssignment`, `PersonalGrant`, `GrantEffect`, `EffectiveAccess`,
+`PermissionCodes`, `AccessRow`; `user/repository/impl/RoleAssignmentRepositoryImpl` (the per-request read);
+`user/service/RolePermissions` (`TokenPermissions` from the tables), `PersonAccessService`, `AccessRoleService`,
+`AccessRoleManager`; the controllers `AccessRoleController`, `PersonAccessController`,
+`PermissionCatalogueController`; changeset `0037-roles.sql`; the reference's `roles` blocks (`SecurityConfig`'s
+converter and entry point, `AccountStatusService`, `UserService.signup`, `TokenService`, `User`). Tests:
+`RolePermissionsIntegrationTest`, `RolesIntegrationTest`, `PersonAccessIntegrationTest`,
+`BuiltInRolesIntegrationTest`, `EffectiveAccessTest`, and every Level 1 test, unchanged.
 
-### AUTHZ-11: The tables, and the effective set
+### AUTHZ-11: The tables, the one source, and the effective set
 - **Check:**
-  - tables `roles`, `role_permissions`, `user_roles (valid_until)` and `user_permissions (ALLOW|DENY)` (the
-    shape of Spring Security's own `groups`, `group_members`, `group_authorities`), all four audited (DATA-08);
-  - the effective set is the roles' permissions plus the personal ALLOWs minus the personal DENYs: a deny always
-    wins, roles only allow (no role-level DENY); an assignment past its `valid_until` grants nothing;
-  - a permission whose prerequisite a personal DENY removed is dropped from the effective set too;
-  - read per request from PostgreSQL through `TokenPermissions` (the token keeps the user id; no Redis
-    permission cache and no revocation keys); the endpoints, the policies and `/users/me/access` stay as they
-    are: moving from Level 1 changes no endpoint, policy or client.
-- **Detect:** a role-level DENY; permissions cached past the request; an effective set computed in two places;
-  a table without its audit trigger.
+  - tables `roles` (a code, a name, `built_in`: the `Role` constant a built-in role was seeded from, or null;
+    `version`), `role_permissions (role_id, permission)`, `user_roles (user_id, role_id, valid_until)` and
+    `user_permissions (user_id, permission, effect ALLOW|DENY, valid_until)`, one grant per person and permission
+    (Spring Security's own `groups`, `group_members`, `group_authorities`): entities with the audit columns, real
+    foreign keys with the default ON DELETE, the reads' indexes leading with the person and the role, all four
+    audited (DATA-08: the piece requires `change-history`);
+  - **one source of a person's access:** the account's single `role` column and the token's `roles` claim are gone
+    (the piece's changeset copies each account's role into `user_roles`, onto its built-in role, then drops the
+    column; `TokenService` writes no claim); every endpoint that set the role became the assignment endpoints.
+    A role field in a response, a role claim, or a second table holding a person's roles is a finding;
+  - permission codes are text the application checks: a code that names no `Permission` grants nothing and is
+    logged once per code (`PermissionCodes.known`), never an exception and never a default;
+  - **the effective set** (`EffectiveAccess`): the current roles' permissions plus the current personal ALLOWs
+    minus the current personal DENYs; a deny always wins; roles only allow (no role-level DENY); an assignment or a
+    grant past its `valid_until` gives nothing; a permission whose prerequisite isn't held (a DENY took it, or
+    nothing gave it) is dropped too, until nothing changes: no implied grant ever;
+  - **read on every authenticated request** through `TokenPermissions` (the Level 2 `RolePermissions`), in **one
+    indexed statement** joined with the account's status (a suspended account holds nothing on its next request),
+    inside a short read-only transaction that returns its connection before the handler runs, after admission
+    control, through the lazy proxy, and invisible to Hibernate's statistics (plain JDBC), so the handlers'
+    statement counts don't change. A test counts it (`RolePermissionsIntegrationTest.theReadIsOneStatement`);
+  - a database outage during that read is the request's 503 with its code and `Retry-After` (an
+    `AuthenticationException` the entry point answers, `SecurityConfig.PermissionsUnreadable`), never a 401 (the
+    client would sign out) nor a 500;
+  - no Redis permission cache, no permissions in the token, no revocation keys: a change applies on the person's
+    next request, and `/users/me/access` and every check read the same set;
+  - the endpoints, the policies, `/users/me/access` and the dropdowns' `for` are Level 1's, unchanged: the Level 1
+    tests pass in a copy with the piece, but the ones that asserted the role column or claim (those are marked
+    `roles:else` and have Level 2 counterparts);
+  - **with tenancy** (TEN-08, designed, not built yet): roles belong to the tenant and assignments and grants to
+    the membership's member row (`members`, TEN-16): row mode with `tenant_id`, forced policies and keys that keep a
+    row in its tenant (TEN-33), schema per tenant in the tenant's schema; the per-request read runs in the token's
+    tenant and joins the platform's account, membership and tenant register. Until it is built, bootstrap refuses
+    `roles` with a tenancy piece.
+- **Detect:** a role-level DENY; permissions cached past the request or put into the token; an effective set
+  computed in two places; a second read per request; the role column kept beside the tables; a table without its
+  audit trigger; an unknown code that grants or throws.
 - **Severity:** High.
 
-### AUTHZ-12: Managing roles
-- **Check:**
-  - an admin grants only what they hold themselves, and never changes their own grants or roles;
-  - saving a role that misses a prerequisite of one of its permissions is refused (400 with its code); no
-    implied grant fills it in;
-  - a role is deleted only while no one holds it (409 otherwise);
-  - built-in roles are seeded from the `Role` enum and **copied**, never linked: editing one changes the copy;
-  - a new permission arrives with a changeset that grants it to the built-in roles that should hold it, so
-    existing installations get it on upgrade;
+### AUTHZ-12: Managing roles and people's access
+- **Check:** each rule is a refusal with its own error code and a test:
+  1. **grant only what you hold** (403 `ACCESS_NOT_HELD`): a role you create or edit holds only permissions you hold;
+     you give a role only if you hold all its permissions; a personal ALLOW or DENY (or its removal) only of a
+     permission you hold;
+  2. **never your own** roles or grants (403 `ACCESS_OWN_CHANGE`);
+  3. **never someone above you** (403 `ACCESS_TARGET_HOLDS_MORE`): you change the access of (or suspend) only a
+     person who holds nothing you don't, which a DENY could otherwise use to sabotage them;
+  4. a role saved without a **prerequisite** of one of its permissions is refused (400
+     `ROLE_PREREQUISITE_MISSING`), nothing filled in;
+  5. a role is **deleted only while nobody holds it** (409 `ROLE_IN_USE`, its assignment's key), assignments never
+     cascade; a built-in role is never deleted (409 `ROLE_BUILT_IN`: signup gives it);
+  6. **never leave nobody** holding `ROLES_MANAGE` or `ACCESS_GRANT` for good among active accounts (409
+     `ACCESS_LAST_MANAGER`): counted after the change, through grants without an end only (an expiring one is
+     never the last), every current DENY counted. Rules 2 and 3 already keep the caller of a person's change a
+     holder, so in practice it is a role's edit that trips it; the runbook names the operator's SQL for the case it
+     happened outside the application;
+  7. **concurrency:** `version` on the role (409 `OPTIMISTIC_LOCK_CONFLICT`); a person's change locks the caller's
+     and the person's account rows in id order (DATA-29: the narrowest row every such change shares) and checks
+     rules 1 to 3 on what the database holds under that lock, never on the request's earlier read; a role's edit
+     locks the rows of the caller and of every account holding the kept permissions for good, so it and a person's
+     change always share a row before either can take the last holder away.
+  - the API: the catalogue (`GET /permissions`: each permission's code, area, reach and prerequisites, and the
+    areas; `@SignedIn`, the same list the OpenAPI enum publishes, never who holds what), roles (`/roles`: paged
+    list, detail with permissions, create, update with `version`, delete; `ROLES_MANAGE`), a person's access
+    (`GET /users/{id}/access`: roles, grants, what they hold with the roles or the ALLOW that give it and what a
+    DENY or a missing prerequisite removed) and its changes (`PUT`/`DELETE /users/{id}/roles/{roleId}` with an
+    optional `validUntil`, `PUT`/`DELETE /users/{id}/permissions/{permission}` with the effect; `ACCESS_GRANT`,
+    which needs `ACCOUNT_READ`);
+  - built-in roles are seeded from the `Role` enum's contents **at the time of writing**, as literal SQL in the
+    changeset, and **copied**, never linked: an admin's edit changes the copy. A test on a fresh database compares
+    each built-in role's rows with its constant (`BuiltInRolesIntegrationTest`), so a permission added to a constant
+    without its grant changeset fails the build;
+  - **a new permission** arrives with a changeset that grants it to the built-in roles that should hold it
+    (`INSERT INTO role_permissions ... SELECT ... FROM roles WHERE built_in = 'ADMIN'`), so existing installations get
+    it on upgrade; with tenancy, every tenant's copy (crud-gen asks which built-in roles);
+  - **with tenancy** a new tenant gets its built-in roles in its creation: schema per tenant from the tenant
+    changelog's literal seed (it runs into every new schema), row mode by copying the enum in the activation's
+    transaction (there the migration ran before the tenant existed);
   - limits stay out of role tables (AUTHZ-04).
-- **Detect:** a grant endpoint without the "holds it" check; self-grants; a cascade delete of assignments;
-  seeds that read the enum at run time; a permission constant with no changeset.
+- **Detect:** a grant endpoint without the "holds it" check; a self-grant; a change of someone who holds more; a
+  check on the request's earlier read instead of under the lock; a cascade delete of assignments; seeds that read
+  the enum at run time in a migration; a permission constant with no grant changeset; an access change that can
+  leave nobody holding the management permissions.
 - **Severity:** High.

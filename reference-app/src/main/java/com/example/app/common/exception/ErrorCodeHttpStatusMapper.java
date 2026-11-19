@@ -59,6 +59,18 @@ public final class ErrorCodeHttpStatusMapper {
         // session-version:begin
         MAPPING.put(ErrorCode.SESSION_VERSION_STALE, HttpStatus.UNAUTHORIZED);
         // session-version:end
+        // roles:begin
+        // MAPPING.put(ErrorCode.ROLE_NOT_FOUND, HttpStatus.NOT_FOUND);
+        // MAPPING.put(ErrorCode.ROLE_GONE, HttpStatus.NOT_FOUND);
+        // MAPPING.put(ErrorCode.ROLE_CODE_TAKEN, HttpStatus.CONFLICT);
+        // MAPPING.put(ErrorCode.ROLE_IN_USE, HttpStatus.CONFLICT);
+        // MAPPING.put(ErrorCode.ROLE_BUILT_IN, HttpStatus.CONFLICT);
+        // MAPPING.put(ErrorCode.ROLE_PREREQUISITE_MISSING, HttpStatus.BAD_REQUEST);
+        // MAPPING.put(ErrorCode.ACCESS_NOT_HELD, HttpStatus.FORBIDDEN);
+        // MAPPING.put(ErrorCode.ACCESS_OWN_CHANGE, HttpStatus.FORBIDDEN);
+        // MAPPING.put(ErrorCode.ACCESS_TARGET_HOLDS_MORE, HttpStatus.FORBIDDEN);
+        // MAPPING.put(ErrorCode.ACCESS_LAST_MANAGER, HttpStatus.CONFLICT);
+        // roles:end
         // tenancy:begin
         // MAPPING.put(ErrorCode.TENANT_NOT_ACTIVE, HttpStatus.FORBIDDEN);
         // MAPPING.put(ErrorCode.TENANT_MEMBERSHIP_REQUIRED, HttpStatus.FORBIDDEN);

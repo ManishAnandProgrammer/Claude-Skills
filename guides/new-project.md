@@ -54,6 +54,14 @@ are unacceptable (firing someone, a compromised account, "log out everywhere"). 
 blacklisting them is not offered: the store becomes a list of live logins and misses racing tokens.
 Details and costs: question 4 of the bootstrap reference.
 
+**Change history and roles in tables** (both opt-in, default no). The `change-history` piece writes every insert,
+update and delete of the audited tables to an append-only `audit_log` through one trigger function (who, when, the
+row before and after), purged past a retention: say yes when someone must answer "who changed this" (question 10).
+The `roles` piece (needs `sign-in` and `change-history`; not yet with a tenancy piece) moves the roles into tables an
+admin edits, lets one person hold several and gives personal ALLOWs and DENYs, read on every request: say yes when
+roles are the customer's to build, not the application's (question 11). Without it the roles stay in code (Level 1),
+and moving later changes no endpoint or policy.
+
 Bootstrap **asks before adding any dependency** (libraries-first rule) and shows the current
 version and its compatibility. The copy script prints what each piece needs: springdoc-openapi,
 Resilience4j, logstash-logback-encoder, Testcontainers, ArchUnit, the Hibernate metamodel

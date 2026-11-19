@@ -83,6 +83,7 @@ Fill values from the codebase, not from memory.
 | `DropdownItem` | `com.example.common.dropdown.DropdownItem` | Record `{value, label}`: one shape for every dropdown |
 | `DropdownFilter` | `com.example.common.dropdown.DropdownFilter` | Extends `CursorFilter` (`size`, `after`) with `status`, `sortDirection`, `query`; subclassed for the annotation's mandatory and optional filters |
 | `dropdownSecurity` | `@SignedIn` + `for` | house-review AUTHZ-08: the handler is `@SignedIn`, the service checks the required `for=<Permission>` (`DropdownFor.check`: 403 unless held, 400 `DROPDOWN_REACH_UNSUPPORTED` for a reach it doesn't list) and narrows to its reach in the same query |
+| `authorization` | `permissions` | house-review AUTHZ-xx: `permissions` (Level 1: a new permission is a constant and a line in each `Role` that gets it) or `roles-piece` (Level 2: also its grant changeset for the built-in roles the developer names, AUTHZ-12) |
 
 ## Media
 

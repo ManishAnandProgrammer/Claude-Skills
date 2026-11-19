@@ -1083,3 +1083,56 @@ news-pulse (changeset 0048, its actor listener and purge job), in the reference'
   the example its todo lists and todos, so the golden shows a real table. Personal data (an email, a name) is
   copied: a project that must erase a person also erases their history rows, or excludes the columns.
 
+**Level 2 batch, Phase 2 (2026-11-19): the `roles` piece, built.** Decided while building it:
+- **An overlay, like tenancy, not a reference piece like the session version:** the reference stays the Level 1
+  golden (the default of every project), so Level 2's own files live in `overlays/roles`, and its changes to shared
+  files are commented `roles` blocks in the reference (bootstrap uncomments them with the piece). `verify.sh` 2n
+  copies every piece with it and runs every Level 1 test unchanged beside the piece's own: only the one assertion of
+  the account's `role` field is a `roles:else` block. The reference holds no live roles code (a step 0 check), and
+  every other copy none of its traces.
+- **One source:** the changeset copies each account's role onto its built-in role and drops `users.role`; the token
+  carries no role claim; `UserResponse` loses `role` (with tenancy it never had one). Signup gives the built-in USER
+  in the account's own transaction: `UserService.signup` runs a `TransactionTemplate` that saves the account and
+  publishes `AccountCreated`, whose listener (`PersonAccessService`) writes the assignment, because the two services
+  would otherwise depend on each other.
+- **The per-request read** is `TokenPermissions` (the Level 2 `RolePermissions`, replacing sign-in's) over plain JDBC
+  (`NamedParameterJdbcTemplate`) in a read-only transaction, one `UNION ALL` statement of the role rows and the
+  personal rows of active accounts, `valid_until` in SQL. JDBC, not Hibernate: Hibernate's statistics, which every
+  list's statement-count test reads, don't see it, so those tests pass unchanged; the read's own count is a test
+  component counting the template's queries (`StatementCounter`, scanned into the shared context). Its outage is an
+  `AuthenticationException` subclass the entry point answers with the failure's 503 code (a plain exception escaped
+  the filter chain as a 500, and an `AuthenticationServiceException` is rethrown by Spring's failure handler); the
+  unchanged Level 1 `PoolExhaustionIntegrationTest` proves it.
+- **Names:** the enum `Role` stays (the built-in roles, and `RoleTest`); the table's entity is `AccessRole`, a
+  person's rows `RoleAssignment` and `PersonalGrant`, all in the user module, which owns the accounts the one read
+  joins. Two aggregates: a role with its permissions (`AccessRoleService`), a person's access (`PersonAccessService`);
+  a role's edit reads both, so it is a Manager (`AccessRoleManager`).
+- **Endpoints:** `GET /permissions` is `@SignedIn`: it is the Permission enum the API document already publishes,
+  with each constant's area, reach and prerequisites (what a role editor needs), never who holds what. Roles at
+  `/roles` (`ROLES_MANAGE`); a person's access at `/users/{id}/access`, `/users/{id}/roles/{roleId}` and
+  `/users/{id}/permissions/{permission}` (`ACCESS_GRANT`, which needs `ACCOUNT_READ`, Phase 0's): one assignment or
+  grant per PUT or DELETE, idempotent, so two admins never overwrite each other's lists (no version to send).
+  Creates answer 201 without `Location`, as the golden todo creates do (REST-05).
+- **Safety rule 3, why:** with personal DENYs, an admin holding less could sabotage one holding more (deny them the
+  permission they would use to undo it). "You manage only people who hold nothing you don't" closes it, and with rule
+  2 it keeps the caller of any person's change a holder of what they used, so rule 6 can't be tripped that way.
+- **Safety rule 6, why and how:** without an active account holding `ROLES_MANAGE` and one holding `ACCESS_GRANT`,
+  nobody could ever change access again (rule 1 forbids giving what you don't hold), so both are kept, for good:
+  an expiring grant never counts as the last holder, since it would lapse without any write to refuse. Counted
+  after the change in its transaction; in practice a role's edit trips it (a person's change keeps its caller, rules
+  2 and 3). Serialised by the account rows: a person's change locks caller and person, a role's edit the caller and
+  every holder for good, so any two changes that could each remove a last holder share a locked row. The runbook
+  names the operator's SQL for the case it happened outside the application.
+- **Rule 7:** `version` on the role; a person's change locks the two account rows in id order and re-reads what the
+  caller holds under the lock (a granter whose ACCESS_GRANT was just denied is refused at once). Proven by a test that
+  holds both rows while two admins deny each other: one 200, one 403.
+- **Built-in roles** can't be deleted (409 `ROLE_BUILT_IN`): signup gives the USER one. Their seed is literal SQL in
+  0037, written from the enum on the day; `BuiltInRolesIntegrationTest` compares them on the test database (tests
+  that edit a built-in role restore it).
+- **Tenancy: designed, not built.** Roles per tenant, assignments and grants on the tenant's member row (TEN-16),
+  row mode with `tenant_id` and policies, schema per tenant in the tenant schema; a new tenant's built-in roles from
+  the tenant changelog's seed (schema per tenant) or copied from the enum at its activation (row mode). Building it
+  touches every membership path (adding a member with a role, changing it, the last-ADMIN rules, impersonation's
+  member, the staff suspension's per-tenant count, which a platform transaction can't read under the tenant hooks):
+  bootstrap refuses `roles` with a tenancy piece until then (backlog).
+

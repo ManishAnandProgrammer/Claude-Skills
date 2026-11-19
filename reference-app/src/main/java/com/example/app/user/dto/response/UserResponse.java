@@ -2,7 +2,10 @@ package com.example.app.user.dto.response;
 
 // tenancy:begin
 // tenancy:else
+// roles:begin
+// roles:else
 import com.example.app.user.domain.Role;
+// roles:end
 // tenancy:end
 import com.example.app.user.domain.UserStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -12,6 +15,10 @@ import java.util.UUID;
 
 // tenancy:begin
 // /** An account. No role: with tenancy a role is per tenant, the membership's (GET /users/me/tenants lists them). */
+// tenancy:else
+// roles:begin
+// /** An account. No role: with the roles piece a person's roles and grants are their access (GET /users/{id}/access). */
+// roles:end
 // tenancy:end
 @Schema(description = "An account")
 public record UserResponse(
@@ -20,7 +27,10 @@ public record UserResponse(
         @Schema(description = "Name shown in the app", example = "Asha Kaur") String fullName,
         // tenancy:begin
         // tenancy:else
+        // roles:begin
+        // roles:else
         @Schema(description = "Role", example = "USER") Role role,
+        // roles:end
         // tenancy:end
         @Schema(description = "ACTIVE, or SUSPENDED (no sign-in until reactivated)", example = "ACTIVE") UserStatus status,
         @Schema(description = "When the account was created") Instant createdAt,

@@ -11,6 +11,12 @@ import com.example.app.user.api.Users;
 // tenancy:end
 import com.example.app.user.domain.User;
 import com.example.app.user.domain.UserStatus;
+// roles:begin
+// tenancy:begin
+// tenancy:else
+// import com.example.app.user.dto.internal.AccountCreated;
+// tenancy:end
+// roles:end
 import com.example.app.user.dto.request.SignupRequest;
 import com.example.app.user.dto.response.AccessResponse;
 import com.example.app.user.dto.response.UserResponse;
@@ -25,10 +31,22 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 // tenancy:end
 // session-version:end
+// roles:begin
+// tenancy:begin
+// tenancy:else
+// import org.springframework.context.ApplicationEventPublisher;
+// tenancy:end
+// roles:end
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+// roles:begin
+// tenancy:begin
+// tenancy:else
+// import org.springframework.transaction.support.TransactionTemplate;
+// tenancy:end
+// roles:end
 
 // session-version:begin
 // tenancy:begin
@@ -63,6 +81,14 @@ public class UserService implements Users {
     private final ApplicationEventPublisher events;
     // tenancy:end
     // session-version:end
+    // roles:begin
+    // tenancy:begin
+    // tenancy:else
+    // /** The account and its first role (the built-in USER, PersonAccessService) in one short transaction. */
+    // private final TransactionTemplate transactions;
+    // private final ApplicationEventPublisher accountEvents;
+    // tenancy:end
+    // roles:end
 
     /**
      * Runs without a transaction: hashing the password takes about a quarter of a second of CPU and
@@ -80,11 +106,31 @@ public class UserService implements Users {
         }
         breachedPasswordCheck.requireNotBreached(request.password());
         User user = User.register(email, request.fullName(), passwordEncoder.encode(request.password()));
+        // roles:begin
+        // tenancy:begin
+        // User saved = repository.saveAndFlush(user);
+        // tenancy:else
+        // User saved = transactions.execute(status -> created(user));
+        // tenancy:end
+        // roles:else
         User saved = repository.saveAndFlush(user);
+        // roles:end
         log.info("Account created: userId={}", saved.getId());
         return ObjectWrapper.withObject(mapper.toResponse(saved));
     }
 
+    // roles:begin
+    // tenancy:begin
+    // tenancy:else
+    // /** The account, and its first role in the same transaction (AccountCreated's listener, PersonAccessService). */
+    // private User created(User user) {
+    //     User saved = repository.saveAndFlush(user);
+    //     accountEvents.publishEvent(new AccountCreated(saved.getId()));
+    //     return saved;
+    // }
+    //
+    // tenancy:end
+    // roles:end
     public ObjectWrapper<UserResponse> me(UUID userId) {
         return ObjectWrapper.withObject(mapper.toResponse(getUser(userId)));
     }
@@ -146,6 +192,21 @@ public class UserService implements Users {
         return repository.findAllForUpdate(userIds);
     }
 
+    // roles:begin
+    // tenancy:begin
+    // tenancy:else
+    // /**
+    //  * The accounts with these ids, locked for update in id order until the caller's transaction ends: every change
+    //  * of someone's access (a role, a grant, a suspension, a role's edit) locks the rows of the people it may change,
+    //  * so two such changes of one person queue (PersonAccessService).
+    //  */
+    // @Transactional(propagation = Propagation.MANDATORY)
+    // void lockForAccessChange(Collection<UUID> userIds) {
+    //     repository.findAllForUpdate(userIds);
+    // }
+    //
+    // tenancy:end
+    // roles:end
     /** The status change's write, after its checks; its caller ends the sessions in the same transaction. */
     @Transactional(propagation = Propagation.MANDATORY)
     UserResponse changeStatus(User user, UserStatus status) {

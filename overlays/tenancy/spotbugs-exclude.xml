@@ -95,6 +95,20 @@
         <Bug pattern="CRLF_INJECTION_LOGS"/>
     </Match>
     <!-- change-history:end -->
+    <!-- roles:begin -->
+    <Match>
+        <Class name="com.example.app.user.domain.PermissionCodes"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.AccessRoleManager"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.service.PersonAccessService"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+    <!-- roles:end -->
     <!-- sign-in:begin -->
     <Match>
         <Class name="com.example.app.common.ratelimit.RedisRateLimiter"/>
@@ -159,6 +173,20 @@
         <Class name="com.example.app.user.controller.UserController"/>
         <Bug pattern="SPRING_ENDPOINT"/>
     </Match>
+    <!-- roles:begin -->
+    <Match>
+        <Class name="com.example.app.user.controller.AccessRoleController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.controller.PermissionCatalogueController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.controller.PersonAccessController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <!-- roles:end -->
     <!-- sign-in:end -->
     <!-- metadata:begin -->
     <Match>
@@ -213,6 +241,14 @@
         <Method name="securityFilterChain"/>
         <Bug pattern="THROWS_METHOD_THROWS_CLAUSE_BASIC_EXCEPTION"/>
     </Match>
+    <!-- roles:begin -->
+    <!-- Rethrows a failure that is not a database outage while the permissions are read, so it propagates as any other. -->
+    <Match>
+        <Class name="com.example.app.config.SecurityConfig"/>
+        <Method name="readPermissions"/>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+    </Match>
+    <!-- roles:end -->
     <!-- session-version:begin -->
     <!-- Rethrows a failure that is not a database outage, so the error handling above answers it as any other. -->
     <Match>

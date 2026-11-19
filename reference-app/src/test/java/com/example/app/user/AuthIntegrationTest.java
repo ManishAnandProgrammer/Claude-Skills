@@ -135,7 +135,12 @@ class AuthIntegrationTest extends IntegrationTest {
                 // // A role is per tenant, the membership's: the account carries none.
                 // .andExpect(jsonPath("$.response.role").doesNotExist())
                 // tenancy:else
+                // roles:begin
+                // // The roles piece: an account's access is its role assignments (GET /users/{id}/access), not a field.
+                // .andExpect(jsonPath("$.response.role").doesNotExist())
+                // roles:else
                 .andExpect(jsonPath("$.response.role").value("USER"))
+                // roles:end
                 // tenancy:end
                 .andExpect(jsonPath("$.response.version").value(0))
                 .andExpect(jsonPath("$.response.createdAt").isNotEmpty())

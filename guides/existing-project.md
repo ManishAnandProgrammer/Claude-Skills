@@ -82,6 +82,30 @@ A project that checks role names (`@RolesAllowed("TEACHER")`, `@PreAuthorize("ha
    error contract). Only then, if admins must build roles themselves, the roles piece (Level 2) moves `Role` into
    tables with no endpoint, policy or client change.
 
+### Moving to Level 2: roles in tables (house-review AUTHZ-11, AUTHZ-12)
+For a Level 1 project whose admins must now build roles, give one person several, or grant and revoke one
+permission per person. Nothing a client calls changes but the account's `role` field, which goes (a breaking change
+of `UserResponse`: announce it).
+1. Copy the pieces it needs into the project (`--with change-history,roles`, after `sign-in`): the four tables'
+   entities, the per-request read, the endpoints and their tests. Bootstrap never overwrites: the project's own
+   `RolePermissions`, `User`, `TokenService`, `UserService`, `AccountStatusService` and `SecurityConfig` get the
+   piece's `roles` blocks by hand (`scripts/bootstrap-copy.sh --render` shows a golden file with every block applied
+   but roles: diff the overlay's and the reference's `roles` blocks against them).
+2. **One changeset seeds the tables from the role column, then drops it** (the piece's `0037-roles.sql` is the
+   model; number it in the project's range when its own tables come first): create the four tables with their keys,
+   indexes and audit triggers; insert one built-in role per `Role` constant **with its permissions written out as
+   literal rows**, as the enum lists them that day (never read from the enum by a migration); copy each account's
+   role into `user_roles` onto the built-in role of that name (`INSERT ... SELECT u.id, r.id FROM users u JOIN roles r
+   ON r.built_in = u.role`); then `ALTER TABLE users DROP COLUMN role`. One transaction per changeset: an upgrade that
+   fails halfway leaves the column. Test it on a copy of production first (*Before upgrading a live database*, the
+   runbook): count the accounts per role before, and the assignments per built-in role after.
+3. Stop writing the role anywhere: the token's `roles` claim, signup's role (signup gives the built-in `USER`
+   through `AccountCreated`), the operator's `UPDATE users SET role` (the runbook's statement becomes an
+   `INSERT INTO user_roles`). Two sources of a person's access are never allowed, not even for a release.
+4. Turn on `BuiltInRolesIntegrationTest`: from now on every new permission comes with its grant changeset for the
+   built-in roles that should hold it, or the build fails (crud-gen asks which).
+5. Record `authorization: roles-piece` in both profiles; a review then reads AUTHZ-11 and AUTHZ-12.
+
 ### Existing tables and ids
 - Keep existing ids (`Long`, UUIDv4) on existing tables. Set `idStrategy` in the profile to
   what new tables use (`uuidv7`). Converting ids is a data migration of its own: only if worth it.

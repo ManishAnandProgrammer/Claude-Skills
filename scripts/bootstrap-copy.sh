@@ -48,6 +48,12 @@
 #              id set transaction-locally by ChangeHistoryActor), its secrets and hashes never copied, and the
 #              purge job past the retention (house-review DATA-08). Audits users (with sign-in, and the
 #              memberships with tenancy) and, with the example, the todo lists and todos
+#     roles    with sign-in and change-history, opt-in (house-review AUTHZ-11, AUTHZ-12: Level 2): roles in
+#              tables an admin edits (roles, role_permissions), a person's roles and personal grants (user_roles,
+#              user_permissions: ALLOW or DENY, each until a date or for good), the effective permissions read
+#              from PostgreSQL on every request in one statement; the built-in roles seeded from the Role
+#              enum; the account's (with tenancy the membership's) role column and the token's roles claim
+#              gone. From overlays/roles: no endpoint, policy or client changes
 #   sign-in (account suspension), metadata, media and the tenancy pieces have admin endpoints: each brings
 #   the ADMIN role and the test base's newAdmin() (the "admin" markers), and its permissions: their constants in
 #   common/security/Permission and Area, and their lines in Role (house-review AUTHZ-01, AUTHZ-02).
@@ -63,7 +69,7 @@
 # Shared files (ErrorCode, messages, limits, db.yml, compose.yaml, .env.example, Role, test base,
 # ArchUnit) mark a piece's entries with "<piece>:begin" / "<piece>:end" comment lines (sign-in,
 # example, metadata, media, admin, tenancy, tenancy-schema, tenancy-row, tenant-registration,
-# session-version, change-history): without that piece
+# session-version, change-history, roles): without that piece
 # those blocks are left out; blocks may nest (a media block inside an example block arrives only with
 # both). A block may hold "<piece>:else": its lines after that marker are commented out in the
 # reference and replace the block's first part without the piece (uncommented: "// ", "# ", "-- " or
@@ -71,6 +77,8 @@
 # grows. The reference runs without tenancy, so in reference files a tenancy block is the other way
 # round: its lines are commented out (the reference compiles and reads without them) and arrive
 # uncommented with the piece; its ":else" part is the reference's own code, left out with the piece.
+# The roles piece is the same: the reference runs Level 1, so a roles block in a reference file is
+# commented out, and the piece's own files are a layer of their own (overlays/roles, over the others).
 # In layer files every marker keeps the plain meaning. A file a piece names on its own belongs to that
 # piece, even inside a directory another piece copies (sign-in's rate limiter in core's common/ and
 # config/, media's todo attachments in the example's todo/). Sample content of an optional piece
@@ -138,6 +146,9 @@ if chosen_piece tenancy-schema; then
 fi
 if chosen_piece tenancy-row; then
     layers+=" overlays/tenancy-row"
+fi
+if chosen_piece roles; then
+    layers+=" overlays/roles"
 fi
 SHARED="overlays/tenancy"
 SCHEMA="overlays/tenancy-schema"
@@ -374,6 +385,11 @@ LIST
                 echo "src/main/resources/db/changelog/changes/0021-users-session-version.sql"
             fi
             ;;
+        roles)
+            # Its own layer: the tables' entities, the per-request read, the endpoints, their tests; and its
+            # replacement of sign-in's RolePermissions (TokenPermissions read from the tables).
+            echo "overlays/roles/src"
+            ;;
         change-history)
             # The actor, the purge (core's common/ holds them, named here), the changeset and their tests.
             cat <<LIST
@@ -385,7 +401,7 @@ src/test/java/$reference_path/common/persistence/ChangeHistoryIntegrationTest.ja
 src/test/java/$reference_path/common/persistence/ChangeHistoryActorTest.java
 LIST
             ;;
-        *) die "unknown piece: $1 (core, sign-in, example, metadata, media, tenancy-schema, tenancy-row, tenant-registration, session-version, change-history)" ;;
+        *) die "unknown piece: $1 (core, sign-in, example, metadata, media, tenancy-schema, tenancy-row, tenant-registration, session-version, change-history, roles)" ;;
     esac
 }
 
@@ -402,6 +418,7 @@ dependencies_for() {
         tenant-registration) echo "(none beyond sign-in)" ;;
         session-version) echo "(none beyond core and sign-in: Redis and Resilience4j's circuit breaker, already there)" ;;
         change-history) echo "(none beyond core: PostgreSQL triggers and Spring's TransactionExecutionListener)" ;;
+        roles) echo "(none beyond core, sign-in and change-history)" ;;
     esac
 }
 
@@ -418,7 +435,7 @@ dest_for() {
 # with it, only the marker lines (and an ":else" part) go. In reference files a tenancy block is
 # commented out instead: kept uncommented with the piece, dropped without it.
 kept_markers=","
-for optional in sign-in example metadata media admin tenancy tenancy-schema tenancy-row tenant-registration session-version change-history; do
+for optional in sign-in example metadata media admin tenancy tenancy-schema tenancy-row tenant-registration session-version change-history roles; do
     if { [ "$optional" = admin ] && admin_chosen; } || { [ "$optional" = tenancy ] && tenancy_chosen; } || chosen_piece "$optional"; then
         kept_markers+="$optional,"
     fi
@@ -428,10 +445,10 @@ done
 piece_filter() {
     KEPT="$kept_markers" SOURCE="$1" perl -ne '
         BEGIN { @open = (); $last_blank = 0; $dropped = 0; }
-        if (/\b(sign-in|example|metadata|media|admin|tenancy-schema|tenancy-row|tenancy|tenant-registration|session-version|change-history):(begin|else|end)\b/) {
+        if (/\b(sign-in|example|metadata|media|admin|tenancy-schema|tenancy-row|tenancy|tenant-registration|session-version|change-history|roles):(begin|else|end)\b/) {
             my ($piece, $marker) = ($1, $2);
             my $kept = index($ENV{KEPT}, ",$piece,") >= 0;
-            my $commented = $ENV{SOURCE} eq "reference" && $piece =~ /^tenan/;
+            my $commented = $ENV{SOURCE} eq "reference" && $piece =~ /^(tenan|roles$)/;
             if ($marker eq "begin") { push @open, $kept ? ($commented ? "uncomment" : "keep") : "drop"; }
             elsif ($marker eq "else") { $open[-1] = $kept ? "drop" : ($commented ? "keep" : "uncomment"); }
             else { pop @open; }
@@ -547,6 +564,12 @@ fi
 if chosen_piece session-version && ! chosen_piece sign-in; then
     die "session-version needs sign-in: it checks the tokens sign-in issues"
 fi
+if chosen_piece roles && tenancy_chosen; then
+    die "the roles piece doesn't come with a tenancy piece yet: Level 2 per tenant is designed (house-review AUTHZ-11) but not built"
+fi
+if chosen_piece roles && { ! chosen_piece sign-in || ! chosen_piece change-history; }; then
+    die "roles needs sign-in (its people are sign-in's accounts) and change-history (its four tables are audited, house-review AUTHZ-11)"
+fi
 if chosen_piece tenancy-schema; then
     echo "note: tenancy needs the database roles and the platform schema before the first start (docs/tenancy-runbook.md; compose.yaml creates them locally), and DB_OWNER_USER / DB_OWNER_PASSWORD" >&2
 fi
@@ -554,7 +577,7 @@ if chosen_piece tenancy-row; then
     echo "note: tenancy needs the database roles before the first start (docs/tenancy-runbook.md; compose.yaml creates them locally), and DB_OWNER_USER / DB_OWNER_PASSWORD" >&2
 fi
 # Every file any piece can name, whatever was chosen: a directory copy never takes another piece's file.
-all_pieces="core sign-in example metadata media tenancy-schema tenancy-row tenant-registration session-version change-history"
+all_pieces="core sign-in example metadata media tenancy-schema tenancy-row tenant-registration session-version change-history roles"
 with_reference_prefix() { sed -e '/^overlays\//!s|^|reference-app/|'; }
 named_files="$(pieces="${all_pieces// /,}"; for piece in $all_pieces; do files_for "$piece"; done | with_reference_prefix)"
 # Core files a tenancy mode replaces: its connection hook borrows lazily, so the lazy proxy goes; a person in

@@ -68,6 +68,28 @@ public enum ErrorCode {
     /** The access token was issued before the account's access last changed: refresh the tokens. */
     SESSION_VERSION_STALE,
     // session-version:end
+    // roles:begin
+    //
+    // // ── Roles and people's access (the roles piece) ──────────────────────
+    // ROLE_NOT_FOUND,
+    // /** An assignment written while its role was deleted (the foreign key): the role is gone. */
+    // ROLE_GONE,
+    // ROLE_CODE_TAKEN,
+    // /** A role is deleted only while nobody holds it (safety rule 5): assignments never cascade. */
+    // ROLE_IN_USE,
+    // /** A built-in role stays: signup and new tenants give it. Edit its copy instead. */
+    // ROLE_BUILT_IN,
+    // /** A role saved without a prerequisite of one of its permissions (safety rule 4): nothing is filled in. */
+    // ROLE_PREREQUISITE_MISSING,
+    // /** A role or a grant with a permission the caller doesn't hold (safety rule 1): grant only what you hold. */
+    // ACCESS_NOT_HELD,
+    // /** Nobody changes their own roles or grants (safety rule 2): a rule that never depends on state, so 403. */
+    // ACCESS_OWN_CHANGE,
+    // /** The person holds a permission the caller doesn't (safety rule 3): nobody manages someone above them. */
+    // ACCESS_TARGET_HOLDS_MORE,
+    // /** The change would leave no active account holding a permission that manages access for good (safety rule 6). */
+    // ACCESS_LAST_MANAGER,
+    // roles:end
     // tenancy:begin
     //
     // // ── Tenancy ──────────────────────────────────────────────────────────

@@ -28,6 +28,11 @@ class AggregateArchTest {
     // entity inside an aggregate into its root's `members` (that entity gets no service of its own).
     private static final List<Aggregate> AGGREGATES = List.of(
             new Aggregate("User", "UserService", List.of()),
+            // roles:begin
+            // new Aggregate("AccessRole", "AccessRoleService", List.of("RolePermission")),
+            // // A person's access: their assignments and personal grants, under the lock of their row.
+            // new Aggregate("RoleAssignment", "PersonAccessService", List.of("PersonalGrant")),
+            // roles:end
             // tenancy:begin
             // new Aggregate("Tenant", "TenantService", List.of("TenantStatusChange")),
             // new Aggregate("TenantMembership", "MembershipService", List.of("Member")),

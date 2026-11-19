@@ -32,6 +32,10 @@ app:
       user.email: 254
       user.full-name: 100
       user.refresh-token: 100
+      # roles:begin
+      # role.code: 50
+      # role.name: 100
+      # roles:end
       # media:begin
       media.file-name: 255
       media.content-type: 100
@@ -64,6 +68,11 @@ app:
     # and sizes of collections (@ConfiguredMaxSize("<entity>.max-<field>")). A new entity's section:
     #   <entity>:
     #     max-<field>: 100
+    # roles:begin
+    # role:
+    #   # Permissions in one role's create or edit: at least the number of Permission constants (a role may hold all).
+    #   max-permissions: 200
+    # roles:end
     # example:begin
     time-entry:
       # Time logged in one entry, in minutes.

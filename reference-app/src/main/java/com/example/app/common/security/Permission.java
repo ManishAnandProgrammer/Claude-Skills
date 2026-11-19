@@ -16,6 +16,11 @@ import java.util.Set;
  * ({@link #prerequisites()}: an edit needs the read that opens the record). A prerequisite is checked, never
  * granted for it: every role that holds a permission holds its prerequisites too ({@code RoleTest}). An
  * authority that names no constant is ignored ({@link CurrentUser#permissions()}): unknown codes grant nothing.</p>
+ *   <!-- roles:begin -->
+ <!-- * -->
+ <!-- * <p>With the roles piece the constants stay the list of codes; the tables assign them (a role's permissions, a -->
+ <!-- * person's grants), and a code a row holds that names no constant grants nothing.</p> -->
+ *   <!-- roles:end -->
  */
 @Schema(enumAsRef = true, description = "A capability the caller holds; a client shows a tab or a button by it")
 public enum Permission {
@@ -51,6 +56,19 @@ public enum Permission {
     /** Suspends or reactivates another account, found first by {@link #ACCOUNT_READ}. */
     ACCOUNT_STATUS_CHANGE(Area.ACCOUNTS, Reach.ALL, ACCOUNT_READ),
     // tenancy:end
+    // roles:begin
+    // /** Creates, edits and deletes roles, never with a permission the caller doesn't hold (the roles piece). */
+    // ROLES_MANAGE(Area.ACCOUNTS, Reach.ALL),
+    // /**
+    //  * Gives people roles and personal grants (ALLOW or DENY), and reads where their access comes from; only what
+    //  * the caller holds, never their own, never someone who holds what the caller doesn't (the roles piece).
+    //  */
+    // // tenancy:begin
+    // ACCESS_GRANT(Area.ACCOUNTS, Reach.ALL, TENANT_MEMBERS_MANAGE),
+    // // tenancy:else
+    // ACCESS_GRANT(Area.ACCOUNTS, Reach.ALL, ACCOUNT_READ),
+    // // tenancy:end
+    // roles:end
     // sign-in:end
     // metadata:begin
     /** Reads and changes the configuration metadata. */

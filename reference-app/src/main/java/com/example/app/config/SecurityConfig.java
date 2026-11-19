@@ -1,6 +1,9 @@
 package com.example.app.config;
 
 import com.example.app.common.exception.ErrorCode;
+// roles:begin
+// import com.example.app.common.exception.TransientDatabaseFailure;
+// roles:end
 import com.example.app.common.logging.UserLogContextFilter;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.security.Permission;
@@ -21,11 +24,17 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+// roles:begin
+// import org.springframework.security.core.AuthenticationException;
+// roles:end
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+// roles:begin
+// import org.springframework.security.oauth2.jwt.Jwt;
+// roles:end
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
@@ -47,6 +56,10 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+// roles:begin
+// import java.util.Optional;
+// import java.util.Set;
+// roles:end
 
 /**
  * Stateless JWT security.
@@ -54,10 +67,22 @@ import java.util.List;
  * <ul>
  *   <li>Access tokens are HS256 JWTs signed and verified with {@code app.jwt.secret} by Spring
  *       Security's resource server: checked by signature, expiry and issuer, with no database
+ *   <!-- roles:begin -->
+ <!-- *       lookup per request for the token itself. The {@code sub} claim is the user id.</li> -->
+ *   <!-- roles:else -->
  *       lookup per request. The {@code sub} claim is the user id, {@code roles} the roles.</li>
+ *   <!-- roles:end -->
+ *   <!-- roles:begin -->
+ <!-- *   <li>A token's authorities are the permissions its bearer holds now ({@link TokenPermissions}: with the roles -->
+ <!-- *       piece read from PostgreSQL on every request, one statement), one authority per {@link Permission} name and -->
+ <!-- *       nothing else; a handler names the one it needs ({@code @Requires}, method security), or is -->
+ <!-- *       {@code @SignedIn} or {@code @Public}. A database outage during that read is its 503 (the entry point -->
+ <!-- *       writes it, {@link PermissionsUnreadable}), never a 401 that would sign the client out.</li> -->
+ *   <!-- roles:else -->
  *   <li>A token's authorities are the permissions its bearer holds ({@link TokenPermissions}: the role's), one
  *       authority per {@link Permission} name and nothing else; a handler names the one it needs
  *       ({@code @Requires}, method security), or is {@code @SignedIn} or {@code @Public}.</li>
+ *   <!-- roles:end -->
  *   <li>Public: the sign-in endpoints, health, the prometheus scrape (management port only), and
  *       the API docs (disabled in prod). Everything else needs a token.</li>
  *   <li>{@code DispatcherType.ERROR} is permitted, so an exception that escapes to the container's
@@ -131,8 +156,13 @@ class SecurityConfig {
 
     @Bean
     AuthenticationEntryPoint authenticationEntryPoint(ProblemResponses problemResponses) {
+        // roles:begin
+        // return (request, response, exception) -> problemResponses.write(request, response,
+        //         exception instanceof PermissionsUnreadable unreadable ? unreadable.errorCode() : ErrorCode.AUTHENTICATION_REQUIRED);
+        // roles:else
         return (request, response, exception) ->
                 problemResponses.write(request, response, ErrorCode.AUTHENTICATION_REQUIRED);
+        // roles:end
     }
 
     @Bean
@@ -150,9 +180,49 @@ class SecurityConfig {
     @Bean
     JwtAuthenticationConverter jwtAuthenticationConverter(TokenPermissions tokenPermissions) {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        // roles:begin
+        // converter.setJwtGrantedAuthoritiesConverter(token -> authoritiesOf(readPermissions(tokenPermissions, token)));
+        // roles:else
         converter.setJwtGrantedAuthoritiesConverter(token -> authoritiesOf(tokenPermissions.of(token)));
+        // roles:end
         return converter;
     }
+    // roles:begin
+
+    // /**
+    //  * The roles piece reads the permissions from PostgreSQL on every request: a lock wait, a timeout or no connection
+    //  * there is the request's 503 with its code and a Retry-After, written by the entry point, never a 401 (the client
+    //  * would sign the person out) nor a 500. Anything else propagates.
+    //  */
+    // private static Set<Permission> readPermissions(TokenPermissions tokenPermissions, Jwt token) {
+    //     try {
+    //         return tokenPermissions.of(token);
+    //     } catch (RuntimeException failure) {
+    //         Optional<TransientDatabaseFailure> outage = TransientDatabaseFailure.of(failure);
+    //         if (outage.isEmpty()) {
+    //             throw failure;
+    //         }
+    //         throw new PermissionsUnreadable(outage.get().errorCode(), failure);
+    //     }
+    // }
+
+    // /** The permissions couldn't be read: an authentication failure the entry point answers with its 503 code. */
+    // static final class PermissionsUnreadable extends AuthenticationException {
+
+    //     private static final long serialVersionUID = 1L;
+
+    //     private final ErrorCode errorCode;
+
+    //     PermissionsUnreadable(ErrorCode errorCode, Throwable cause) {
+    //         super("The caller's permissions couldn't be read: " + errorCode, cause);
+    //         this.errorCode = errorCode;
+    //     }
+
+    //     ErrorCode errorCode() {
+    //         return errorCode;
+    //     }
+    // }
+    // roles:end
 
     private static List<GrantedAuthority> authoritiesOf(Iterable<Permission> permissions) {
         List<GrantedAuthority> authorities = new ArrayList<>();

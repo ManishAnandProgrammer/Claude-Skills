@@ -163,7 +163,13 @@ name); (5) **the prerequisites** (an edit needs the read that opens the record: 
 the constants to `{{Permission}}` (`<ENTITY>_<ACTION>[_OWN|_ASSIGNED]`, its area, reach and prerequisites: golden
 `Permission`'s `TODO_*`) and each role's lines to `{{Role}}` (golden `Role.USER`, `Role.ADMIN`), in the same commit;
 `RoleTest` fails a role missing a prerequisite, `PermissionTest` a reach that disagrees with its name or an unused
-area. **An owned entity** (a reach other than none, or a second party such as a requester) gets a
+area. **With `authorization: roles-piece`** (house-review AUTHZ-12) the `Role` lines are the built-in roles' and
+the tables grant: the same commit adds a **grant changeset** of the next free number that gives each new permission
+to the built-in roles the developer named (ask which: never guess; `INSERT INTO role_permissions (id, role_id,
+permission, created_at, updated_at, version) SELECT uuidv7(), r.id, p.permission, now(), now(), 0 FROM roles r CROSS
+JOIN unnest(ARRAY['<ENTITY>_READ', ...]) AS p (permission) WHERE r.built_in = 'ADMIN';`, with its `--rollback`
+deleting those rows), so an existing installation's copies get it on upgrade; `BuiltInRolesIntegrationTest` fails a
+`Role` line without its changeset. Roles an admin built stay as they are: the admin gives the new permission to them. **An owned entity** (a reach other than none, or a second party such as a requester) gets a
 `<Entity>Policy` in its service package (golden `TodoPolicy`, tested by a table like `TodoPolicyTest`): a `Decision`
 per rule (`read`, `edit`, an action's own), the list's condition (`listScope`, a `PredicateSpecification` its
 Criteria list adds), and the rules Step 1 and Step 3 found (a second party's rights, a terminal status that freezes the
@@ -921,7 +927,8 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] Permissions asked, never guessed (Step 1): the actions, reach, roles, area and prerequisites in *Decisions per
       entity*; the constants in `Permission` and each role's lines in `Role`; every handler `@Requires`/`@SignedIn`/
       `@Public`; an owned entity's `<Entity>Policy` with its list scope and its table test; `RoleTest`,
-      `PermissionTest` and `EndpointContractIntegrationTest` green.
+      `PermissionTest` and `EndpointContractIntegrationTest` green. With `authorization: roles-piece`, the grant
+      changeset for the built-in roles the developer named, and `BuiltInRolesIntegrationTest` green.
 - [ ] A convention changed during the run (what a role holds, what a permission means): the class
       javadoc of the services generated earlier, `Role`'s javadoc and the profiles say the new rule
       (grep them). A role that now writes a shared root names it in `Role`'s javadoc (Step 1).
