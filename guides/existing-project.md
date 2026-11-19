@@ -65,6 +65,23 @@ what clients see:
 
   Agree these with the client teams first; ideally batch them into one API version change.
 
+### Role annotations become permissions (house-review AUTHZ-01 to AUTHZ-03)
+A project that checks role names (`@RolesAllowed("TEACHER")`, `@PreAuthorize("hasRole('ADMIN')")`, an
+`@AdminOnly`, a `RoleHierarchy`, a frontend table of which role may do what) moves to **Level 1 first**:
+1. List every role check, endpoint by endpoint, and name the capability each one protects (`FEE_CONCESSION_GIVE`,
+   `ATTENDANCE_MARK_ASSIGNED`), not the role: two endpoints the same role guards today may be two permissions.
+2. Add `Permission` (each constant's area, reach and prerequisites) and give each existing role, in `Role`, exactly
+   the permissions its endpoints let it use today: behaviour stays the same. A role hierarchy becomes explicit lists
+   (the higher role lists the lower one's permissions too).
+3. Map the token's role to its permissions in the converter (`TokenPermissions`), replace each role check by
+   `@Requires(Permission.X)`, the authenticated-only ones by `@SignedIn`, the public ones by `@Public`, then turn on
+   the ArchUnit rules and the generated 403 test (bootstrap copies them).
+4. Move what isn't a yes/no permission out of the roles into the module's `<Resource>Policy`: ownership and
+   assignment, states, amounts ("up to 2,000": a module setting, never a role column), dates.
+5. Give the client `GET /users/me/access` and retire its copy of the role table (client-visible: plan it like the
+   error contract). Only then, if admins must build roles themselves, the roles piece (Level 2) moves `Role` into
+   tables with no endpoint, policy or client change.
+
 ### Existing tables and ids
 - Keep existing ids (`Long`, UUIDv4) on existing tables. Set `idStrategy` in the profile to
   what new tables use (`uuidv7`). Converting ids is a data migration of its own: only if worth it.
