@@ -173,11 +173,14 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     void theUpgradedIndexesServeTheSeededOwner() {
         migratedOwner();
 
+        // Alpha's table, which holds the seeded owner's rows: jdbc's is the test tenant's, where the owner has
+        // none, and for an owner put at a row either index costs the same.
+        String alpha = TenantSchemas.of(ALPHA);
         MapSqlParameterSource owner = new MapSqlParameterSource("owner", HEAVY);
         String open = QueryPlan.explain(jdbc, transactionManager,
-                "select id from todos where owner_id = :owner and status = 'OPEN' order by due_sort, id limit 21", owner);
+                "select id from %s.todos where owner_id = :owner and status = 'OPEN' order by due_sort, id limit 21".formatted(alpha), owner);
         String newest = QueryPlan.explain(jdbc, transactionManager,
-                "select id from todos where owner_id = :owner order by created_at desc, id desc limit 21", owner);
+                "select id from %s.todos where owner_id = :owner order by created_at desc, id desc limit 21".formatted(alpha), owner);
 
         assertThat(QueryPlan.indexesScanned(open)).as(open).contains("idx_todos_owner_id_status_due_sort_id");
         assertThat(QueryPlan.indexesScanned(newest)).as(newest).contains("idx_todos_owner_id_created_at_id");

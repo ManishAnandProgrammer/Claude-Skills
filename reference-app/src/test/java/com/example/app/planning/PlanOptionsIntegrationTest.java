@@ -105,19 +105,21 @@ class PlanOptionsIntegrationTest extends IntegrationTest {
         String single = createList(user);
         createTodo(user, single, "Only");
         String many = createList(user);
-        for (int index = 0; index < 21; index++) {
+        // A full batch of 2 and one more: the count can't grow with the batch. Few rows, since the shared todos
+        // table's statistics steer other classes' plans (UpgradeFromPreviousReleaseIntegrationTest).
+        for (int index = 0; index < 3; index++) {
             createTodo(user, many, "Option " + index);
         }
-        getAs(user.accessToken(), todoOptions(many) + "&size=20")
-                .andExpect(jsonPath("$.response.length()").value(20))
+        getAs(user.accessToken(), todoOptions(many) + "&size=2")
+                .andExpect(jsonPath("$.response.length()").value(2))
                 .andExpect(jsonPath("$.pageInfo.hasMore").value(true));
         TestUser stranger = newUser();
         getAs(stranger.accessToken(), todoOptions(single))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.length()").value(0));
 
-        assertThat(statementsFor(user, todoOptions(single) + "&size=20")).isEqualTo(1);
-        assertThat(statementsFor(user, todoOptions(many) + "&size=20")).isEqualTo(1);
+        assertThat(statementsFor(user, todoOptions(single) + "&size=2")).isEqualTo(1);
+        assertThat(statementsFor(user, todoOptions(many) + "&size=2")).isEqualTo(1);
         assertThat(statementsFor(stranger, todoOptions(single))).isEqualTo(1);
     }
 
