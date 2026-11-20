@@ -1048,8 +1048,28 @@ scope trees; role-level DENY (a role only allows, so "what may this role do" sta
   and rolls back: one row of the owner's, negligible). Kept without a flag: a refusal only the database decides at
   the write (`*_IN_USE`), answered when it happens. Also decided: what a reason may say (values the caller already
   sees, a generic code for a sensitive rule), and the authorization log, one logger (`<rootPackage>.authorization`),
-  off by default, codes only; Level 2's per-request TRACE line of the effective set is backlog
-  (`field-authz-capabilities`).
+  off by default, codes only. Level 2's per-request TRACE line of the effective set followed (2026-11-20, below).
+- **Options a rule can refuse, availability, the Level 2 log line** (the user, 2026-11-20, the
+  `field-authz-capabilities` backlog entries): a picker whose options a domain rule can refuse right now (a done todo,
+  a withdrawn or lent book, a booked room) gets a second item type, `SelectableDropdownItem {value, label,
+  selectable: AllowedAction}`, with its own schema; `DropdownItem` stays `{value, label}` (an optional flag whose
+  absence meant allowed was rejected). The alternative, a plain filter leaving the refused ones out, stays the
+  developer's choice per screen, and crud-gen asks. **Where it lives** was the design question: its flags are the
+  write's policy, which the resource's module can't call (the write's module depends on it, ARCH-02), and a statement
+  joining both modules' tables is ARCH-04's to refuse. So the options are the write's: `GET /plans/todo-options`
+  beside the create, `@Requires(PLAN_CREATE_OWN)`, no `for` (one action), reading the todos through the facade's
+  batch (`Todos.getOwnedTodoViewBatch`, the dropdown's own query returning views) and flagging each with
+  `PlanPolicy.create`, which the create now calls too: one statement. A rule on the write's own table over another
+  module's candidates (library-desk: a book's overlapping loans) costs one more statement for the whole batch,
+  never one per option. The shared dropdown with `for` (AUTHZ-08) stays for every screen that only picks. The
+  availability read (`GET /plans/availability?from&to`, the caller's own: plans overlap per owner) answers every day
+  as free and taken spans, a taken one with the create's `PLAN_OVERLAPS` reason, at most `plan.max-availability-days`
+  (92), one statement on the starts_on index with the list's overlap bound (the constraint's GiST index would serve
+  it too, but only through native SQL: Criteria has no range operator). `ex_plans_owner_id_dates` is named the golden
+  of DATA-35, so a booking or an assignment is an exclusion constraint, never check-then-insert. Level 2's TRACE
+  line: `PersonAccessService.effectivePermissions`, the read every request makes (every tenancy mode goes through
+  it), `Effective access: roles [...], allowed [...], denied [...], held [...]`, built only under
+  `isTraceEnabled()`.
 - **The 403 documentation is generated** from `@Requires` (`PermissionOpenApiCustomizer`, an `OperationCustomizer`
   beside the CORS one), never hand-written per operation: the round-1 review found every todo, list, tag and plan
   operation's 403 silent about its permission, and a generated line can't drift.

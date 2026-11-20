@@ -50,6 +50,32 @@ class PlanPolicyTest {
         assertThat(decision.refusals()).containsExactlyElementsOf(refusals);
     }
 
+    @ParameterizedTest(name = "todo open {0}")
+    @MethodSource("createsByTodo")
+    @DisplayName("A new plan: only for an open todo, a done one refused naming it (the create and its todo options alike)")
+    void create(TodoView todo, List<Decision.Refusal> refusals) {
+        assertThat(POLICY.create(todo).refusals()).containsExactlyElementsOf(refusals);
+    }
+
+    static Stream<Arguments> createsByTodo() {
+        return Stream.of(
+                Arguments.of(OPEN_TODO, List.of()),
+                Arguments.of(DONE_TODO, List.of(Decision.Refusal.of(ErrorCode.PLAN_TODO_DONE, DONE_TODO.id()))));
+    }
+
+    @ParameterizedTest(name = "taken {0}")
+    @MethodSource("plannedDays")
+    @DisplayName("Days of the availability read: taken ones refused as the overlap constraint answers, with no arguments")
+    void planDays(boolean taken, List<Decision.Refusal> refusals) {
+        assertThat(POLICY.planDays(taken).refusals()).containsExactlyElementsOf(refusals);
+    }
+
+    static Stream<Arguments> plannedDays() {
+        return Stream.of(
+                Arguments.of(false, List.of()),
+                Arguments.of(true, List.of(Decision.Refusal.of(ErrorCode.PLAN_OVERLAPS))));
+    }
+
     static Stream<Arguments> statusChanges() {
         return Stream.of(
                 Arguments.of(PlanStatus.PLANNED, PlanStatus.DONE, true),

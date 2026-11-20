@@ -695,8 +695,10 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
 - **Severity:** Medium (High when old records stop loading or lose their meaning).
 
 ### DATA-35: No overlapping ranges is an exclusion constraint
-- **Check:** "a person's bookings never share a day", "one price per product per period" is an
-  `EXCLUDE USING gist (<scope> WITH =, daterange(start, end, '[]') WITH &&)` constraint, with
+- **Check:** "a person's bookings never share a day", "a room is booked once at a time", "a driver drives one
+  trip at a time", "one price per product per period" is an
+  `EXCLUDE USING gist (<scope> WITH =, daterange(start, end, '[]') WITH &&)` constraint (a `tstzrange(start, end,
+  '[)')` for instants), with
   `WHERE (status <> 'CANCELLED')` when only live records hold their range. Never a check-then-insert:
   two concurrent creates both see no overlap and both commit. Parts:
   - `CREATE EXTENSION IF NOT EXISTS btree_gist` in its own changeset (the `=` on a uuid or a number
@@ -715,13 +717,24 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
   - the constraint is named (`ex_<table>_<columns>`) and mapped by its module's
     `ConstraintErrorCodes` to a 409 code (`<ENTITY>_OVERLAPS`, a message without placeholders: ERR-06).
     Hibernate leaves 23P01 unnamed; the driver names it (error-contract.md ERR-02);
+  - **a read that shows the rule before the write never replaces it** (AUTHZ-07): an option flagged taken
+    (AUTHZ-08's selectable options, an `EXISTS` on the overlap) and an availability read are computed at the
+    read; the constraint decides at the write, answering the same code and message. The availability read
+    (`GET /<resources>/{id}/availability?from&to`, or the caller's own where the scope is the caller, as plans
+    are) takes both ends, at most a configured span (`@ConfiguredMax(... reportedOn = "to")`, 400), reads the
+    live rows overlapping it in one statement on an index that serves it (DATA-10: the start's index with the
+    overlap's lower bound below, or the constraint's own GiST index), and answers every day of the range as
+    free and taken spans in order, each taken one with the write's reason through `AllowedActionMapper` (what a
+    reason may say: never who holds the days, unless the caller may see that);
   - tests: an overlap on the first day and on the last day of an existing range, one inside and one
     around it, all 409 without internals; the day before and the day after accepted; another scope's
     same range accepted; concurrent overlapping creates store exactly one, the others 409
     `<ENTITY>_OVERLAPS` or 503 `DATABASE_CONTENTION` with their bodies checked, never 500 (TEST-05).
 
-  Reference: `planning/` (`Plan`, changeset `0011-plans.sql`, `PlanningConstraintErrorCodes`,
-  `PlanIntegrationTest`).
+  Reference (the golden): `ex_plans_owner_id_dates` (changeset `0011-plans.sql`, live plans only since
+  `0033-plans-status.sql`), mapped by `PlanningConstraintErrorCodes` to `PLAN_OVERLAPS`, tested in
+  `PlanIntegrationTest`; its availability read `PlanService.availability` (`PlanRepositoryImpl.findLiveDays`,
+  `PlanOptionsIntegrationTest`, `PlanIndexIntegrationTest`).
 - **Version chains** (successive versions of one thing: a rate, a price list, contract terms;
   DATA-36) are a different range from a span a person types:
   - **half-open `[effective_from, effective_to)`**: the successor starts on the day the predecessor
@@ -749,8 +762,8 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
     (DATA-36): unlike a single insert, it spans two rows of the scope.
 
   Evidence: DESIGN.md, *Temporal rules* (PostgreSQL 18.6, Hibernate 7.4).
-- **Detect:** a `exists…Overlapping` / `count…Between` query before an insert; an overlap rule only in
-  Java; a daterange without stated bounds; a version chain on `'[]'` or closed with `minusDays(1)`;
+- **Detect:** a `exists…Overlapping` / `count…Between` query before an insert (a booking, an assignment); an
+  overlap rule only in Java; an availability read without both ends or a configured bound; a daterange without stated bounds; a version chain on `'[]'` or closed with `minusDays(1)`;
   a version table with no `CHECK (from < to)`; `'infinity'`, `LocalDate.MAX` or `Instant.MAX` as an
   open end; a `GENERATED` range column without `STORED`.
 - **Severity:** High (two overlapping bookings is corrupt data).

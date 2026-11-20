@@ -1,6 +1,9 @@
 package com.example.app.user;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import com.example.app.common.security.Permission;
+import com.example.app.support.CapturedLog;
 import com.example.app.support.RolesFixtures;
 import com.example.app.support.StatementCounter;
 import com.example.app.user.domain.Role;
@@ -8,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.FactorGrantedAuthority;
@@ -29,6 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code TokenPermissions}. {@code /users/me/access} and every check read the same set.
  */
 class RolePermissionsIntegrationTest extends RolesFixtures {
+
+    private static final String AUTHORIZATION_LOGGER = "com.example.app.authorization";
 
     @Autowired
     private JwtAuthenticationConverter converter;
@@ -80,6 +86,45 @@ class RolePermissionsIntegrationTest extends RolesFixtures {
                 {"effect": "DENY"}""").andExpect(status().isOk());
         // The DENY takes NEEDED, and NEEDING with it: its prerequisite is gone.
         assertThat(myPermissions(user.accessToken())).doesNotContain(NEEDED.name(), NEEDING.name());
+    }
+
+    @Test
+    @DisplayName("""
+            At TRACE the authorization logger writes the per-request read's line: the roles, ALLOWs, DENYs and what is \
+            held, codes only; off by default, it writes nothing""")
+    void thePerRequestReadIsLoggedAtTrace() throws Exception {
+        String admin = newAdmin().accessToken();
+        TestUser user = newUserWithRole("USER");
+        assign(admin, user.id(), createRole(admin, NEEDED), null).andExpect(status().isOk());
+        putAs(admin, userPermission(user.id(), NEEDING), """
+                {"effect": "ALLOW"}""").andExpect(status().isOk());
+        putAs(admin, userPermission(user.id(), NEEDED), """
+                {"effect": "DENY"}""").andExpect(status().isOk());
+        Logger authorization = (Logger) LoggerFactory.getLogger(AUTHORIZATION_LOGGER);
+        Level configured = authorization.getLevel();
+
+        CapturedLog off = new CapturedLog();
+        off.open();
+        try {
+            getAs(user.accessToken(), MY_ACCESS).andExpect(status().isOk());
+        } finally {
+            off.close();
+        }
+        CapturedLog on = new CapturedLog();
+        authorization.setLevel(Level.TRACE);
+        on.open();
+        try {
+            getAs(user.accessToken(), MY_ACCESS).andExpect(status().isOk());
+        } finally {
+            on.close();
+            authorization.setLevel(configured);
+        }
+
+        assertThat(off.text()).doesNotContain("Effective access");
+        assertThat(on.text())
+                .containsPattern("Effective access: roles \\[[A-Z0-9_, ]*USER[A-Z0-9_, ]*], allowed \\[%s], denied \\[%s], held \\["
+                        .formatted(NEEDING.name(), NEEDED.name()))
+                .doesNotContain(user.email());
     }
 
     @Test

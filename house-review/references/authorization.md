@@ -191,6 +191,11 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
   - the flags of a list's rows come from fields the row already has; a rule needing another table's data comes from
     the list's own query (an aggregate in the projection, DATA-26) or the page's one facade lookup (ARCH-04's
     `get<Parent>Views`, golden `PlanService.withTodos`), never a query per row;
+  - **an option a rule can refuse right now** (a done todo for a new plan, a booked room, an assigned driver) is
+    flagged the same way when its screen shows it disabled with its reasons: a write's selectable options (AUTHZ-08),
+    each `{value, label, selectable}`, `selectable` the `AllowedAction` of the policy method the write calls; and
+    days a constraint holds (DATA-35) are shown by an availability read whose taken spans carry the write's reason.
+    The UI never derives either from a record's fields (`book.status === 'WITHDRAWN'` labelling an option);
   - **what a reason may say** (this holds for the write's error message too: both are the same message line):
     only what the caller is entitled to know and can act on. Its message arguments are values the caller can
     already see (the record's own id, its own status; never another person's data: "reserved by <name>"); a
@@ -208,7 +213,7 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
     per policy method. It is not an audit (the change history is, DATA-08) and not a metric. A test proves a
     refused write writes its DEBUG line (`PlanAllowedActionsIntegrationTest.aRefusedWriteIsLoggedAtDebug`).
 - **Detect:** an `allowedActions` flag computed by its own condition (a copy of the policy), or a boolean flag
-  with no reasons; a reasons list cut to the first; a reason's message written for the flag instead of the code's
+  with no reasons; an option labelled or disabled by the client from its fields (`[withdrawn]` from a status); a reasons list cut to the first; a reason's message written for the flag instead of the code's
   message; a client that shows a record's button by its status or fields; flags for actions the permission alone
   decides; a flag that reads another table per row; message arguments taken from another person's record, or a
   threshold in a message; an authorization log line with a message, a name or an email, or one written in a policy
@@ -232,8 +237,23 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
     level of a dependent chain is independent. A test counts one statement per call;
   - a dropdown never lists who may call it, never needs a READ permission of its own, and the write it feeds
     re-checks everything. The parallel is the upload purpose: the client names it, the server checks it and
-    applies its rules.
-- **Detect:** a dropdown per screen (`/classes/for-attendance`, `/classes/for-fees`); a public dropdown; a
+    applies its rules;
+  - **a write's selectable options** (only where a domain rule can refuse an option right now and the screen
+    shows it disabled with its reasons; a plain filter on the shared dropdown, the refused ones left out, is the
+    other answer, the developer's choice per screen): a second item type, `SelectableDropdownItem {value, label,
+    selectable}` with its own OpenAPI schema, `selectable` an `AllowedAction` (AUTHZ-07) from **the policy method
+    the write calls**; `DropdownItem` stays exactly `{value, label}`, never with an optional flag whose absence
+    means allowed. Its flags are the write's rules, so the write's module serves it, beside the write:
+    `GET /<write's resources>/<resource>-options` (golden `GET /plans/todo-options`, `PlanService.todoOptions`),
+    `@Requires(<the write's permission>)` and that permission's reach, no `for` (it serves one action). **One
+    statement**: the batch with each rule's data in it, a column of the projection (`TodoView.open`) or an
+    `EXISTS` on the module's own table (an overlap with the asked dates); when the candidates are another
+    module's (through its facade's batch, `Todos.getOwnedTodoViewBatch`) and the rule's data the write's module's
+    own table, one more statement for the whole batch (ARCH-04 forbids the join), never one per option. The write
+    still decides (its checks, its lock, its constraint: DATA-35), answering the same code and message.
+- **Detect:** a dropdown per screen (`/classes/for-attendance`, `/classes/for-fees`; not a write's selectable
+  options above, which serve one write's rules); a `selectable` flag on `DropdownItem`, or one computed by a
+  condition of its own instead of the write's policy method, or by a statement per option; a public dropdown; a
   dropdown guarded by a READ permission a write's screen doesn't otherwise need; a `for` accepted but not
   checked, or its reach ignored; a parent looked up first (two statements, and a 404 that tells ids apart).
 - **Severity:** High for a dropdown that lists records outside the action's reach; Medium otherwise.
@@ -323,6 +343,14 @@ test, unchanged but where it asserted a role column or claim.
     inside a short read-only transaction that returns its connection before the handler runs, after admission
     control, through the lazy proxy, and invisible to Hibernate's statistics (plain JDBC), so the handlers'
     statement counts don't change. A test counts it (`RolePermissionsIntegrationTest.theReadIsOneStatement`);
+  - **the read's TRACE line** (the authorization log, AUTHZ-07): with `{{rootPackage}}.authorization` at TRACE,
+    the per-request read writes one line, `Effective access: roles [...], allowed [...], denied [...], held [...]`
+    (`PersonAccessService.effectivePermissions`, `EffectiveAccess.describe`): the role codes that gave a
+    permission, the personal ALLOWs and DENYs, and the result, codes only (the line's context names the user, the
+    request and, with tenancy, the tenant), so "why may this person do X" is answered from the log. Written once,
+    in that read (every tenancy mode goes through it), and built only when TRACE is on (`isTraceEnabled()`: free
+    when off). Level 1's startup line per role doesn't apply here (roles are data). A test turns TRACE on and finds
+    the line, and finds none when it is off (`RolePermissionsIntegrationTest.thePerRequestReadIsLoggedAtTrace`);
   - a database outage during that read is the request's 503 with its code and `Retry-After` (an
     `AuthenticationException` the entry point answers, `SecurityConfig.PermissionsUnreadable`), never a 401 (the
     client would sign out) nor a 500;

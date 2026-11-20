@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.transaction.PlatformTransactionManager;
 
+import java.time.LocalDate;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -66,6 +67,27 @@ class PlanIndexIntegrationTest extends IntegrationTest {
 
         String plan = QueryPlan.explain(jdbc, transactionManager,
                 PLAN_ROW + " where owner_id = :owner" + AND_TENANT + " order by starts_on, id limit 21", parameters);
+
+        assertThat(plan).doesNotContain("Seq Scan");
+        assertThat(QueryPlan.indexesScanned(plan)).as(plan).contains("idx_plans_owner_id_starts_on_id");
+    }
+
+    @Test
+    @DisplayName("The availability read (PlanRepositoryImpl.findLiveDays) is planned on the starts_on index, never a sequential scan")
+    void theAvailabilityIsPlannedOnTheStartsOnIndex() {
+        MapSqlParameterSource parameters = new MapSqlParameterSource("owner", UUID.randomUUID())
+                .addValue("lowest", LocalDate.parse("2026-02-07"))
+                .addValue("from", LocalDate.parse("2026-03-09"))
+                .addValue("to", LocalDate.parse("2026-03-16"));
+        // tenancy-row:begin
+        // parameters.addValue("tenantId", testTenant().id());
+        // tenancy-row:end
+
+        String plan = QueryPlan.explain(jdbc, transactionManager, """
+                select starts_on, ends_on from plans
+                 where owner_id = :owner and status <> 'CANCELLED'
+                   and starts_on >= :lowest and starts_on <= :to and ends_on >= :from"""
+                + AND_TENANT + " order by starts_on", parameters);
 
         assertThat(plan).doesNotContain("Seq Scan");
         assertThat(QueryPlan.indexesScanned(plan)).as(plan).contains("idx_plans_owner_id_starts_on_id");

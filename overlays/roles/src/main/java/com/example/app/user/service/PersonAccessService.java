@@ -30,6 +30,8 @@ import com.example.app.user.repository.RoleAssignmentRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 // tenancy:begin
 // tenancy:else
 // import org.springframework.context.event.EventListener;
@@ -88,6 +90,8 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class PersonAccessService {
 
+    private static final Logger AUTHORIZATION_LOG = LoggerFactory.getLogger("com.example.app.authorization");
+
     // tenancy:begin
     /**
      * What must stay held for good by an active member of the tenant: without one of them, nobody could ever change
@@ -112,9 +116,17 @@ public class PersonAccessService {
     private final PersonAccessMapper mapper;
     private final Clock clock;
 
-    /** What {@code userId} holds now, in one statement: the security chain's read on every request. */
+    /**
+     * What {@code userId} holds now, in one statement: the security chain's read on every request. At TRACE on the
+     * authorization logger, the read's line, codes only (the line's context names the user and the request), so
+     * "why may this person do X" is answered from the log; built only when TRACE is on.
+     */
     public Set<Permission> effectivePermissions(UUID userId) {
-        return accessOf(userId).permissions();
+        EffectiveAccess effective = accessOf(userId);
+        if (AUTHORIZATION_LOG.isTraceEnabled()) {
+            AUTHORIZATION_LOG.trace("Effective access: {}", effective.describe());
+        }
+        return effective.permissions();
     }
 
     /** A person's roles, grants and what they give, with where each permission comes from. 404 for nobody. */

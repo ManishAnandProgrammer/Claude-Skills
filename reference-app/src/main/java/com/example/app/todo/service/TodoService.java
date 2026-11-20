@@ -175,7 +175,8 @@ public class TodoService implements Todos {
      * dropdown lists, and the list one more condition of the same statement, never looked up first: a list that is
      * missing or someone else's offers nothing, as an empty one of the caller's does. Todos have no active flag
      * (DONE ones are offered too, and a write that needs an open one refuses it), so a {@code status} other than
-     * the default is refused, not ignored.
+     * the default is refused, not ignored. A screen that shows the done ones greyed out, with the reason, takes a
+     * plan's todo options instead ({@code PlanService.todoOptions}, over {@link #getOwnedTodoViewBatch}).
      */
     public CursorWrapper<DropdownItem> dropdown(Permission action, TodoDropdownFilter filter) {
         DropdownFor.check(action, currentUser.permissions(), EnumSet.of(Reach.OWN));
@@ -183,9 +184,9 @@ public class TodoService implements Todos {
             throw AppException.withErrors(ErrorCode.REQUEST_PARAMETER_INVALID,
                     List.of(RequestError.atParameter("status", RequestError.INVALID_VALUE)));
         }
-        CursorBatch<DropdownItem> batch =
-                repository.findDropdownItems(filter, policy.listScope(currentUser.id()), paging.cursorSize(filter));
-        return CursorWrapper.of(batch.items(), batch.nextCursor());
+        CursorBatch<TodoView> batch =
+                repository.findDropdownViews(filter, policy.listScope(currentUser.id()), paging.cursorSize(filter));
+        return CursorWrapper.of(batch.items().stream().map(mapper::toDropdownItem).toList(), batch.nextCursor());
     }
 
     /**
@@ -339,6 +340,19 @@ public class TodoService implements Todos {
             return List.of();
         }
         return repository.findViewsByIdInAndOwnerId(ids, ownerId);
+    }
+
+    /**
+     * The dropdown's batch as views, by the same query and owner condition ({@link #dropdown}): one statement, in
+     * title order, its cursor the dropdown's.
+     */
+    @Override
+    public CursorBatch<TodoView> getOwnedTodoViewBatch(UUID todoListId, String query, String after, int size, UUID ownerId) {
+        TodoDropdownFilter filter = new TodoDropdownFilter();
+        filter.setTodoListId(todoListId);
+        filter.setQuery(query);
+        filter.setAfter(after);
+        return repository.findDropdownViews(filter, policy.listScope(ownerId), size);
     }
 
     /** Not locked: an entry written while its todo is deleted is refused by its foreign key, 404 {@code TODO_GONE}. */

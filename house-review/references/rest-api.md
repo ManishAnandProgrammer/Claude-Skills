@@ -296,7 +296,10 @@ types.
 - **Also:** a picker for a write offers exactly what that write accepts (the roles an assignee may have,
   the statuses a parent may be in): one definition both use (a constant or a method of the owning module),
   and a test that a value the dropdown leaves out is refused by the write. The screen names that write in
-  `for` (AUTHZ-08); a dependent dropdown's parent is a plain filter of the same query.
+  `for` (AUTHZ-08); a dependent dropdown's parent is a plain filter of the same query. Where a domain rule can
+  refuse an option right now and the screen shows it disabled with its reasons, the write serves its own options
+  (`GET /<write's resources>/<resource>-options`, `CursorWrapper<SelectableDropdownItem>`, `{value, label,
+  selectable}`, the same batching and `query`; AUTHZ-08), never a flag added to `{value, label}`.
 - **Also:** a screen that needs a picker has its dropdown (an assignee picker for "reassign"); a
   resource other screens pick from (another entity references it) without `@DropdownCandidate` is
   worth asking about.

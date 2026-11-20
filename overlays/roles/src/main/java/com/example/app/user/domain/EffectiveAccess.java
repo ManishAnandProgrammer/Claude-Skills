@@ -44,15 +44,23 @@ public final class EffectiveAccess {
 
     private final Map<Permission, Granted> granted;
     private final List<Removed> removed;
+    private final Set<String> roleCodes;
+    private final Set<Permission> allowed;
+    private final Set<Permission> denied;
 
-    private EffectiveAccess(Map<Permission, Granted> granted, List<Removed> removed) {
+    private EffectiveAccess(Map<Permission, Granted> granted, List<Removed> removed, Set<String> roleCodes,
+                            Set<Permission> allowed, Set<Permission> denied) {
         this.granted = granted;
         this.removed = removed;
+        this.roleCodes = roleCodes;
+        this.allowed = allowed;
+        this.denied = denied;
     }
 
     /** The access the rows of one person give now (the read returns current rows only). */
     public static EffectiveAccess of(Collection<AccessRow> rows) {
         Map<Permission, Set<String>> fromRoles = new EnumMap<>(Permission.class);
+        Set<String> roleCodes = new TreeSet<>();
         Set<Permission> allowed = EnumSet.noneOf(Permission.class);
         Set<Permission> denied = EnumSet.noneOf(Permission.class);
         for (AccessRow row : rows) {
@@ -61,6 +69,7 @@ public final class EffectiveAccess {
                 continue;
             }
             if (!row.isPersonal()) {
+                roleCodes.add(row.roleCode());
                 fromRoles.computeIfAbsent(known.get(), permission -> new TreeSet<>()).add(row.roleCode());
             } else if (row.effect() == GrantEffect.ALLOW) {
                 allowed.add(known.get());
@@ -81,10 +90,10 @@ public final class EffectiveAccess {
         dropThoseMissingAPrerequisite(held, removed);
         Map<Permission, Granted> granted = new EnumMap<>(Permission.class);
         for (Permission permission : held) {
-            List<String> roleCodes = List.copyOf(fromRoles.getOrDefault(permission, Set.of()));
-            granted.put(permission, new Granted(permission, roleCodes, allowed.contains(permission)));
+            List<String> givenBy = List.copyOf(fromRoles.getOrDefault(permission, Set.of()));
+            granted.put(permission, new Granted(permission, givenBy, allowed.contains(permission)));
         }
-        return new EffectiveAccess(granted, removed);
+        return new EffectiveAccess(granted, removed, roleCodes, allowed, denied);
     }
 
     /**
@@ -139,5 +148,13 @@ public final class EffectiveAccess {
     /** The permissions something gave but the person doesn't hold, with the reason, in the order they were removed. */
     public List<Removed> removed() {
         return List.copyOf(removed);
+    }
+
+    /**
+     * The read's inputs and result as codes, for the authorization log's TRACE line: the roles that gave a
+     * permission, the personal ALLOWs and DENYs (known codes only, as the read counts them), and what is held.
+     */
+    public String describe() {
+        return "roles %s, allowed %s, denied %s, held %s".formatted(roleCodes, allowed, denied, permissions());
     }
 }

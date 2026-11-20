@@ -1,5 +1,7 @@
 package com.example.app.todo.api;
 
+import com.example.app.common.pagination.CursorBatch;
+
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -32,4 +34,12 @@ public interface Todos {
      * (a page of plans); unknown and another owner's ids are simply absent.
      */
     List<TodoView> getOwnedTodoViews(Collection<UUID> ids, UUID ownerId);
+
+    /**
+     * One batch of the owner's todos in one list, in one statement, ordered by title then id, for options another
+     * module flags by its own rules (a plan's todo options): {@code query} narrows by title (null for none),
+     * {@code after} is the previous batch's cursor (null for the first). Another owner's list, or an unknown one,
+     * gives an empty batch; a tampered cursor is 400 {@code REQUEST_PARAMETER_INVALID} at {@code after}.
+     */
+    CursorBatch<TodoView> getOwnedTodoViewBatch(UUID todoListId, String query, String after, int size, UUID ownerId);
 }

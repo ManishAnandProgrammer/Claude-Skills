@@ -5,7 +5,9 @@ import com.example.app.common.pagination.Cursor;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Seek;
 import com.example.app.planning.domain.Plan;
+import com.example.app.planning.domain.PlanStatus;
 import com.example.app.planning.domain.Plan_;
+import com.example.app.planning.dto.internal.PlanDays;
 import com.example.app.planning.dto.internal.PlanRow;
 import com.example.app.planning.dto.request.PlanFilter;
 import com.example.app.planning.dto.request.PlanSort;
@@ -20,6 +22,7 @@ import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -63,6 +66,28 @@ class PlanRepositoryImpl implements CustomPlanRepository {
             case STARTS_ON -> CursorBatch.of(rows, size, row -> Cursor.write(sort, row.startsOn(), row.id()));
             case NEWEST -> CursorBatch.of(rows, size, row -> Cursor.write(sort, row.createdAt(), row.id()));
         };
+    }
+
+    /**
+     * A live plan shares a day with the range when it starts on or before {@code to} and ends on or after
+     * {@code from}; bounded below as the plannedFrom filter is (a plan spans at most {@code plan.max-days}), so
+     * the starts_on index reads at most the range plus that many days. Live plans never share a day
+     * ({@code ex_plans_owner_id_dates}), so the rows are disjoint and in calendar order.
+     */
+    @Override
+    public List<PlanDays> findLiveDays(UUID ownerId, LocalDate from, LocalDate to) {
+        CriteriaBuilder builder = entityManager.getCriteriaBuilder();
+        CriteriaQuery<PlanDays> query = builder.createQuery(PlanDays.class);
+        Root<Plan> root = query.from(Plan.class);
+        query.select(builder.construct(PlanDays.class, root.get(Plan_.startsOn), root.get(Plan_.endsOn)));
+        query.where(
+                builder.equal(root.get(Plan_.ownerId), ownerId),
+                builder.notEqual(root.get(Plan_.status), PlanStatus.CANCELLED),
+                builder.greaterThanOrEqualTo(root.get(Plan_.startsOn), from.minusDays(limits.get("plan.max-days") - 1L)),
+                builder.lessThanOrEqualTo(root.get(Plan_.startsOn), to),
+                builder.greaterThanOrEqualTo(root.get(Plan_.endsOn), from));
+        query.orderBy(builder.asc(root.get(Plan_.startsOn)));
+        return entityManager.createQuery(query).getResultList();
     }
 
     private static CompoundSelection<PlanRow> rowOf(CriteriaBuilder builder, Root<Plan> root) {

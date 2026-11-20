@@ -1,7 +1,7 @@
 package com.example.app.todo.repository.custom;
 
-import com.example.app.common.dropdown.DropdownItem;
 import com.example.app.common.pagination.CursorBatch;
+import com.example.app.todo.api.TodoView;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.dto.request.TodoDropdownFilter;
 import com.example.app.todo.dto.request.TodoFilter;
@@ -31,7 +31,8 @@ public interface CustomTodoRepository {
 
     /**
      * One batch of the todo dropdown, in one statement: {@code scope} is the reach of the action the options serve
-     * (TodoPolicy.listScope for {@code OWN}), and the parent list one more condition of the same query.
+     * (TodoPolicy.listScope for {@code OWN}), and the parent list one more condition of the same query. Views, so
+     * the same batch serves the plain dropdown and a plan's todo options, whose flags read {@code open}.
      */
-    CursorBatch<DropdownItem> findDropdownItems(TodoDropdownFilter filter, PredicateSpecification<Todo> scope, int size);
+    CursorBatch<TodoView> findDropdownViews(TodoDropdownFilter filter, PredicateSpecification<Todo> scope, int size);
 }

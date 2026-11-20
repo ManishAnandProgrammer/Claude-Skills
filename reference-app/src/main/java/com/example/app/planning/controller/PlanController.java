@@ -1,14 +1,18 @@
 package com.example.app.planning.controller;
 
+import com.example.app.common.dropdown.SelectableDropdownItem;
 import com.example.app.common.security.Permission;
 import com.example.app.common.security.Requires;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.planning.controller.api.PlanApi;
+import com.example.app.planning.dto.request.PlanAvailabilityFilter;
 import com.example.app.planning.dto.request.PlanCreateRequest;
 import com.example.app.planning.dto.request.PlanFilter;
 import com.example.app.planning.dto.request.PlanStatusRequest;
+import com.example.app.planning.dto.request.PlanTodoOptionsFilter;
 import com.example.app.planning.dto.request.PlanUpdateRequest;
+import com.example.app.planning.dto.response.PlanAvailabilityResponse;
 import com.example.app.planning.dto.response.PlanResponse;
 import com.example.app.planning.service.PlanService;
 import jakarta.validation.Valid;
@@ -46,6 +50,20 @@ class PlanController implements PlanApi {
     @Requires(Permission.PLAN_READ_OWN)
     public ObjectWrapper<PlanResponse> get(@PathVariable UUID id) {
         return service.findById(id);
+    }
+
+    @Override
+    @GetMapping(path = "/todo-options", version = "v1+")
+    @Requires(Permission.PLAN_CREATE_OWN)
+    public CursorWrapper<SelectableDropdownItem> todoOptions(@Valid PlanTodoOptionsFilter filter) {
+        return service.todoOptions(filter);
+    }
+
+    @Override
+    @GetMapping(path = "/availability", version = "v1+")
+    @Requires(Permission.PLAN_READ_OWN)
+    public ObjectWrapper<PlanAvailabilityResponse> availability(@Valid PlanAvailabilityFilter filter) {
+        return service.availability(filter);
     }
 
     @Override

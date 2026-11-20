@@ -60,6 +60,37 @@ out-of-reach parent yields an empty page, and nothing leaks. The write the optio
 When the pre-flight finds a resource that other screens pick from (another entity references it)
 but no `@DropdownCandidate`, ask whether to add one.
 
+## Options a rule can refuse (a write's selectable options)
+Generated only when the developer asks for it (SKILL.md Step 1: **ask which**, never assume): a write's screen
+where a domain rule can refuse an option **right now** (a done todo for a new plan, a withdrawn or already lent book
+for a loan, a driver already assigned, a room booked at the asked time) and the screen shows it **disabled with its
+reasons**. The other answer, a plain filter on the shared dropdown (`free=true`, the refused ones left out), stays
+the developer's choice per screen; record the answer in *Decisions per entity*. House-review AUTHZ-08 has the rules.
+**Golden:** a new plan's todos, `GET /plans/todo-options?todoListId=` (`PlanService.todoOptions`,
+`PlanPolicy.create`, `Todos.getOwnedTodoViewBatch`, `common/dropdown/SelectableDropdownItem`, tests
+`planning/PlanOptionsIntegrationTest`).
+
+1. **Where:** the write's own module, beside the write (`GET /<write's resources>/<resource>-options`): its flags
+   are that write's rules, which the resource's module can't call. `@Requires(<the write's permission>)`, no
+   `for` (it serves that one action); the reach is the write's (the caller's own records for `OWN`).
+2. **Shape:** `CursorWrapper<SelectableDropdownItem>`, each `{value, label, selectable}`, `selectable` an
+   `AllowedAction` from `AllowedActionMapper.toAllowedAction("<action>", policy.<write>(...))`: **the policy method
+   the write calls** (the write calls `policy.<write>(...).orThrow()` before its own guards), so a reason is the
+   code and message the write answers. Never an optional `selectable` on `DropdownItem`: the plain dropdown stays
+   exactly `{value, label}`.
+3. **One statement:** the options' batch with each rule's data in it: a column of the projection (the todo's
+   `open`), or an `EXISTS` on the module's own table (a loan overlapping the asked dates). The resource in another
+   module comes through its facade's batch (`get<Owned><Thing>ViewBatch(parent, query, after, size, scope)`, its
+   views carrying the state the owner computes); a rule whose data is the write's module's own table and whose
+   candidates are another module's then takes one more statement for the whole batch (ids `IN` the batch), never
+   one per option (ARCH-04 forbids the join).
+4. **The write still decides:** its own checks, locks and constraint stay as they are (DATA-35's exclusion
+   constraint for an overlap), answering the same code.
+5. **Tests:** each option exactly `{value, label, selectable}`; an allowed one with no reasons; a refused one with
+   every reason, each `errorCode` the write's and `message` equal to the write's Problem Details `detail` (the
+   write called first, its `detail` read); the statement count, for one option and a full batch; an out-of-reach
+   parent an empty batch.
+
 ## Tests (golden: `TodoListIntegrationTest`)
 - Default order and shape: fixtures in an order different from the expected one; only the caller's
   items; exactly `value` and `label`. On a **shared root** (no owner: every caller sees every item, other

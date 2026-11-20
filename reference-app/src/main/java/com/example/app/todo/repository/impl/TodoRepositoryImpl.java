@@ -1,14 +1,15 @@
 package com.example.app.todo.repository.impl;
 
 import com.example.app.common.dropdown.DropdownCandidate;
-import com.example.app.common.dropdown.DropdownItem;
 import com.example.app.common.pagination.Cursor;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Seek;
 import com.example.app.common.pagination.TextSearch;
 import com.example.app.todo.domain.Tag_;
+import com.example.app.todo.api.TodoView;
 import com.example.app.todo.domain.Todo;
 import com.example.app.todo.domain.TodoList_;
+import com.example.app.todo.domain.TodoStatus;
 import com.example.app.todo.domain.TodoTag;
 import com.example.app.todo.domain.TodoTag_;
 import com.example.app.todo.domain.Todo_;
@@ -22,6 +23,7 @@ import jakarta.persistence.LockModeType;
 import jakarta.persistence.criteria.CompoundSelection;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -99,15 +101,18 @@ class TodoRepositoryImpl implements CustomTodoRepository {
      * {@code idx_todos_todo_list_id_owner_id_title_id} (changeset 0034) serves the list, the owner and the order.
      */
     @Override
-    public CursorBatch<DropdownItem> findDropdownItems(TodoDropdownFilter filter, PredicateSpecification<Todo> scope, int size) {
+    public CursorBatch<TodoView> findDropdownViews(TodoDropdownFilter filter, PredicateSpecification<Todo> scope, int size) {
         boolean descending = filter.getSortDirection() == DropdownCandidate.SortDirection.DESC;
         String sort = descending ? TITLE_DESC : TITLE_ASC;
         Cursor cursor = Cursor.read(filter.getAfter(), sort, CURSOR_KEYS);
 
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
-        CriteriaQuery<DropdownItem> query = builder.createQuery(DropdownItem.class);
+        CriteriaQuery<TodoView> query = builder.createQuery(TodoView.class);
         Root<Todo> root = query.from(Todo.class);
-        query.select(builder.construct(DropdownItem.class, root.get(Todo_.id), root.get(Todo_.title)));
+        Expression<Boolean> open = builder.<Boolean>selectCase()
+                .when(builder.equal(root.get(Todo_.status), TodoStatus.OPEN), true)
+                .otherwise(false);
+        query.select(builder.construct(TodoView.class, root.get(Todo_.id), root.get(Todo_.title), open));
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(builder.equal(root.get(Todo_.todoList).get(TodoList_.id), filter.getTodoListId()));
         predicates.add(scope.toPredicate(root, builder));
@@ -122,8 +127,8 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         query.where(predicates.toArray(new Predicate[0]));
         query.orderBy(Seek.order(builder, descending, root.get(Todo_.title), root.get(Todo_.id)));
 
-        List<DropdownItem> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();
-        return CursorBatch.of(rows, size, item -> Cursor.write(sort, item.label(), item.value()));
+        List<TodoView> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();
+        return CursorBatch.of(rows, size, view -> Cursor.write(sort, view.title(), view.id()));
     }
 
     /** The rows after the cursor's, in the sort's keyset (id last). */

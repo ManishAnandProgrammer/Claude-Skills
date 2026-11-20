@@ -1,21 +1,27 @@
 package com.example.app.planning.service;
 
+import com.example.app.common.dropdown.SelectableDropdownItem;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Paging;
+import com.example.app.common.security.AllowedAction;
 import com.example.app.common.security.AllowedActionMapper;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.planning.domain.Plan;
 import com.example.app.planning.domain.PlanStatus;
+import com.example.app.planning.dto.internal.PlanDays;
 import com.example.app.planning.dto.internal.PlanRow;
+import com.example.app.planning.dto.request.PlanAvailabilityFilter;
 import com.example.app.planning.dto.request.PlanCreateRequest;
 import com.example.app.planning.dto.request.PlanFilter;
 import com.example.app.planning.dto.request.PlanStatusRequest;
+import com.example.app.planning.dto.request.PlanTodoOptionsFilter;
 import com.example.app.planning.dto.request.PlanUpdateRequest;
 import com.example.app.planning.dto.response.PlanAllowedActionsResponse;
+import com.example.app.planning.dto.response.PlanAvailabilityResponse;
 import com.example.app.planning.dto.response.PlanResponse;
 import com.example.app.planning.mapper.PlanMapper;
 import com.example.app.planning.repository.PlanRepository;
@@ -63,11 +69,35 @@ public class PlanService {
     public ObjectWrapper<PlanResponse> create(PlanCreateRequest request) {
         UUID ownerId = currentUser.id();
         TodoView todo = todos.getOwnedTodoViewForUpdate(request.todoId(), ownerId);
-        if (!todo.open()) {
-            throw AppException.of(ErrorCode.PLAN_TODO_DONE, todo.id());
-        }
+        policy.create(todo).orThrow();
         Plan saved = repository.saveAndFlush(mapper.toEntity(request, ownerId));
         return ObjectWrapper.withObject(toResponse(saved, todo));
+    }
+
+    /**
+     * The todos of one of the caller's lists a new plan may be for, each flagged by the create's own rule
+     * ({@link PlanPolicy#create}), so a screen greys out a done todo with the reason the create would answer. One
+     * statement: the todo module's batch, whose views carry {@code open}. The create still decides, on the locked
+     * todo; a list that is missing or someone else's offers nothing, as the plain todo dropdown does.
+     */
+    public CursorWrapper<SelectableDropdownItem> todoOptions(PlanTodoOptionsFilter filter) {
+        CursorBatch<TodoView> batch = todos.getOwnedTodoViewBatch(filter.getTodoListId(), filter.getQuery(),
+                filter.getAfter(), paging.cursorSize(filter), currentUser.id());
+        return CursorWrapper.of(batch.items().stream().map(this::toTodoOption).toList(), batch.nextCursor());
+    }
+
+    /**
+     * The caller's days from {@code from} to {@code to}, both inclusive, as free and taken spans: taken by a plan
+     * that isn't cancelled (the days {@code ex_plans_owner_id_dates} holds), each refused for a new plan by the
+     * reason the create would answer. One statement over the starts_on index, bounded as the list's plannedFrom
+     * filter is (a plan spans at most {@code plan.max-days}); the range itself at most
+     * {@code plan.max-availability-days}. The create still decides, in the constraint.
+     */
+    public ObjectWrapper<PlanAvailabilityResponse> availability(PlanAvailabilityFilter filter) {
+        List<PlanDays> taken = repository.findLiveDays(currentUser.id(), filter.getFrom(), filter.getTo());
+        AllowedAction free = allowedActionMapper.toAllowedAction("plan", policy.planDays(false));
+        AllowedAction busy = allowedActionMapper.toAllowedAction("plan", policy.planDays(true));
+        return ObjectWrapper.withObject(mapper.toAvailability(filter.getFrom(), filter.getTo(), taken, free, busy));
     }
 
     /**
@@ -156,6 +186,11 @@ public class PlanService {
             }
         }
         return responses;
+    }
+
+    private SelectableDropdownItem toTodoOption(TodoView todo) {
+        return new SelectableDropdownItem(todo.id(), todo.title(),
+                allowedActionMapper.toAllowedAction("create", policy.create(todo)));
     }
 
     private PlanResponse toResponse(Plan plan, TodoView todo) {

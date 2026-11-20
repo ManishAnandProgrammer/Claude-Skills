@@ -1,5 +1,6 @@
 package com.example.app.todo.mapper;
 
+import com.example.app.common.dropdown.DropdownItem;
 // media:begin
 import com.example.app.media.api.MediaFileView;
 // media:end
@@ -48,6 +49,11 @@ public class TodoMapper {
     /** The todo as other modules see it (the todo.api facade). */
     public TodoView toView(Todo todo) {
         return new TodoView(todo.getId(), todo.getTitle(), todo.getStatus() == TodoStatus.OPEN);
+    }
+
+    /** One option of the plain todo dropdown: {@code {value, label}}. */
+    public DropdownItem toDropdownItem(TodoView view) {
+        return new DropdownItem(view.id(), view.title());
     }
 
     public void update(Todo todo, TodoUpdateRequest request, TodoList todoList) {

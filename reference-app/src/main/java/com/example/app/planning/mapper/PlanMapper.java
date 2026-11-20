@@ -1,14 +1,21 @@
 package com.example.app.planning.mapper;
 
+import com.example.app.common.security.AllowedAction;
 import com.example.app.planning.domain.Plan;
+import com.example.app.planning.dto.internal.PlanDays;
 import com.example.app.planning.dto.internal.PlanRow;
 import com.example.app.planning.dto.request.PlanCreateRequest;
 import com.example.app.planning.dto.response.PlanAllowedActionsResponse;
+import com.example.app.planning.dto.response.PlanAvailabilityResponse;
+import com.example.app.planning.dto.response.PlanAvailabilitySpan;
 import com.example.app.planning.dto.response.PlanResponse;
 import com.example.app.planning.dto.response.PlanTodoResponse;
 import com.example.app.todo.api.TodoView;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Component
@@ -45,6 +52,29 @@ public class PlanMapper {
     public PlanResponse toResponse(PlanRow row, TodoView todo, PlanAllowedActionsResponse allowedActions) {
         return new PlanResponse(row.id(), toTodoResponse(todo), row.ownerId(), row.startsOn(), row.endsOn(), row.status(),
                 row.doneOn(), allowedActions, row.createdAt(), row.updatedAt(), row.createdBy(), row.updatedBy(), row.version());
+    }
+
+    /**
+     * Every day from {@code from} to {@code to} in one span: the taken ones (disjoint and in calendar order, as
+     * {@code findLiveDays} reads them) cut to the range, and the gaps between them free.
+     */
+    public PlanAvailabilityResponse toAvailability(LocalDate from, LocalDate to, List<PlanDays> taken,
+                                                   AllowedAction free, AllowedAction busy) {
+        List<PlanAvailabilitySpan> spans = new ArrayList<>();
+        LocalDate next = from;
+        for (PlanDays days : taken) {
+            LocalDate first = days.startsOn().isBefore(from) ? from : days.startsOn();
+            LocalDate last = days.endsOn().isAfter(to) ? to : days.endsOn();
+            if (first.isAfter(next)) {
+                spans.add(new PlanAvailabilitySpan(next, first.minusDays(1), free));
+            }
+            spans.add(new PlanAvailabilitySpan(first, last, busy));
+            next = last.plusDays(1);
+        }
+        if (!next.isAfter(to)) {
+            spans.add(new PlanAvailabilitySpan(next, to, free));
+        }
+        return new PlanAvailabilityResponse(from, to, spans);
     }
 
     /** The todo module's view, in this API's own shape (ARCH-06: no other module's type on the wire). */

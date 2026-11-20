@@ -1,11 +1,15 @@
 package com.example.app.planning.controller.api;
 
+import com.example.app.common.dropdown.SelectableDropdownItem;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
+import com.example.app.planning.dto.request.PlanAvailabilityFilter;
 import com.example.app.planning.dto.request.PlanCreateRequest;
 import com.example.app.planning.dto.request.PlanFilter;
 import com.example.app.planning.dto.request.PlanStatusRequest;
+import com.example.app.planning.dto.request.PlanTodoOptionsFilter;
 import com.example.app.planning.dto.request.PlanUpdateRequest;
+import com.example.app.planning.dto.response.PlanAvailabilityResponse;
 import com.example.app.planning.dto.response.PlanResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -54,6 +58,41 @@ public interface PlanApi {
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     ObjectWrapper<PlanResponse> get(UUID id);
+
+    @Operation(summary = "Todos a new plan may be for", description = """
+            The todos of one of your lists (todoListId) as {value, label, selectable}, for the screen that creates \
+            a plan: selectable says whether the create would take the todo now, and when not, every reason, each \
+            the errorCode and message the create would answer (PLAN_TODO_DONE for a done todo): show it disabled \
+            with them. Ordered by title then id, in batches: pageInfo.nextCursor goes back as after for the next \
+            batch; size sets the batch (default and maximum from configuration). Narrow it with query. A list \
+            that isn't yours, or doesn't exist, offers no todos: an empty batch, never a 404. The create still \
+            decides when it is called.""")
+    @ApiResponse(responseCode = "200", description = "The options")
+    @ApiResponse(responseCode = "400", description = """
+            VALIDATION_FAILED (todoListId missing; size, query or after out of range); REQUEST_PARAMETER_INVALID \
+            (todoListId not a UUID, a non-numeric size, or an after that is tampered; see errors)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    CursorWrapper<SelectableDropdownItem> todoOptions(@ParameterObject PlanTodoOptionsFilter filter);
+
+    @Operation(summary = "Your free and taken days", description = """
+            Every day from from to to (both inclusive, at most a configured number of days) in spans, in \
+            calendar order: a span is free when no plan of yours holds it (a cancelled plan holds none), taken \
+            when one does. plannable says whether a new plan may take the span's days, and when not, the reason \
+            the create would answer (PLAN_OVERLAPS). The create still decides when it is called.""")
+    @ApiResponse(responseCode = "200", description = "The spans")
+    @ApiResponse(responseCode = "400", description = """
+            VALIDATION_FAILED (from or to missing or outside the configured dates, to before from, or too far \
+            after it, reported on to; see errors); REQUEST_PARAMETER_INVALID (a malformed day)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ObjectWrapper<PlanAvailabilityResponse> availability(@ParameterObject PlanAvailabilityFilter filter);
 
     @Operation(summary = "Plan days for a todo", description = """
             From startsOn to endsOn, both inclusive (one day: the same date twice), between a configured \

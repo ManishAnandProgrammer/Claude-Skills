@@ -187,6 +187,14 @@ preconditions lists them all with plain `if`s into a `List<Decision.Refusal>` (g
 reach refusal alone. Actions the permission alone decides, creates, and a delete only a foreign key refuses get no
 flag. Tests: the policy's table with each refusal's arguments (`PlanPolicyTest`), and the shape on the detail and a
 list row, a reason's message equal to the write's `detail` (`PlanAllowedActionsIntegrationTest`).
+**Options a rule can refuse, and free days.** For a write whose picker a domain rule can refuse an option of right
+now (a done todo for a plan, a booked room, an assigned driver), ask whether its screen shows the refused options
+disabled with their reasons (a write's selectable options, `GET /<write's resources>/<resource>-options`,
+`SelectableDropdownItem`, golden `PlanService.todoOptions`; references/dropdown.md) or leaves them out (a plain filter
+on the shared dropdown); never assume either. For a time-bound resource whose overlap an exclusion constraint guards
+(DATA-35), ask whether its screen shows free and taken days: an availability read (`GET /<resources>/{id}/availability
+?from&to`, or the caller's own, golden `PlanService.availability`), its span a configured limit (`plan.max-availability-days`).
+Both are reads: the write keeps its own checks and its constraint.
 
 **Module** (if `{{modules}}` is set): every generated class goes under `{{appPackage}}` with
 `{module}` substituted; cross-module access follows `{{moduleContracts}}` (architecture.md
@@ -257,7 +265,9 @@ request or the profile already says. Record each answer in the crud profile's *D
   collection's maximum size and whether it may be empty (4.2);
 - **date bounds**: each date's earliest and latest day (4.1's `@EarliestDate` / `@LatestDate` values);
 - **dropdown**: per dropdown, whether it is searchable (`searchable`, the `query` parameter), its label,
-  and whether it is cached (`cacheable`);
+  and whether it is cached (`cacheable`); per write whose options a rule can refuse now, selectable options or a
+  plain filter (references/dropdown.md); per time-bound resource, whether an availability read is wanted and its
+  longest range;
 - **parent by name**: whether the detail and the list rows show each referenced parent or person by name
   (4.3; without tenancy a person stays an id), or by id only;
 - **upload limits**: per upload purpose, the file sizes, file counts and content types (Step 5);

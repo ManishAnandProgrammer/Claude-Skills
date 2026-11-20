@@ -88,6 +88,8 @@ app:
       # day (an overlap needs a bound below, or it walks the owner's whole history): raise it any time,
       # lower it only once no stored plan is longer, or the filter misses the longer ones.
       max-days: 31
+      # Days one availability read covers, both ends counted (GET /plans/availability): a quarter.
+      max-availability-days: 92
     # example:end
     # Latest dates the API accepts, by field (@LatestDate("…") on request records and filters). The
     # first one starts the section:

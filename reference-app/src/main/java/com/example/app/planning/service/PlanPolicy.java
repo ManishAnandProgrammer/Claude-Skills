@@ -21,6 +21,29 @@ import java.util.UUID;
 @Component
 public class PlanPolicy {
 
+    /**
+     * A new plan for {@code todo}: only while the todo is open. The create asks it of the locked todo, and a plan's
+     * todo options ask it of each option, so a refused option shows the create's own reason.
+     */
+    public Decision create(TodoView todo) {
+        if (todo.open()) {
+            return Decision.allowed();
+        }
+        return Decision.refused(ErrorCode.PLAN_TODO_DONE, todo.id());
+    }
+
+    /**
+     * Days of the availability read: taken ones as the create and the reschedule answer them, 409
+     * {@code PLAN_OVERLAPS}. Those writes leave the rule to {@code ex_plans_owner_id_dates}, which alone sees
+     * every concurrent write; this names its answer for a read that shows the days before the write.
+     */
+    public Decision planDays(boolean taken) {
+        if (taken) {
+            return Decision.refused(ErrorCode.PLAN_OVERLAPS);
+        }
+        return Decision.allowed();
+    }
+
     /** New days: only for a PLANNED plan (DONE and CANCELLED are final) whose todo is still open. */
     public Decision reschedule(UUID planId, PlanStatus status, TodoView todo) {
         List<Decision.Refusal> refusals = new ArrayList<>();
