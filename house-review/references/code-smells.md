@@ -29,6 +29,16 @@ Lines are counted without blank or comment lines.
     `grep -cvE '^\s*($|//|/\*|\*)' <File>.java`;
   - list the class's responsibilities, one line each; 4 or more is a finding;
   - injected collaborators: 8 or more is a finding; 5–7 sends you to the responsibility list above;
+  - **an aggregate root's service** (one service per aggregate, ARCH-15) counts this way:
+    - **the per-entity house kit** counts neither as a collaborator nor as a responsibility: its repository, mapper,
+      policy, `AllowedActionMapper`, `CurrentUser`, `Clock`, `Paging`, its properties, `BusinessCalendar`, and
+      `Users` / `PermissionHolders` (or `Members`) for its named parties;
+    - **its own use cases** (CRUD, the lists, the state moves, naming its party, the flags, the facade it serves
+      other modules) are one responsibility, the aggregate's lifecycle;
+    - **each collaborator beyond the kit counts one**: a member entity (its repository and mapper together), another
+      aggregate's service or facade, an outside port (storage, a counter, a mail sender). Golden `TodoService`:
+      7 (`TimeEntry`, the tag links, the attachments, `TodoListService`, `TagService`, `Counters`, `Uploads`), one
+      responsibility, no finding;
   - ask "if two unrelated rules change, do they both hit this class?".
 - **Severity:** Medium.
 - **Fix:** split by use case or workflow slice, within the same module. Don't extract random

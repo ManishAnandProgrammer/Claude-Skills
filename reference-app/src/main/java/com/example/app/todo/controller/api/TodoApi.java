@@ -41,8 +41,10 @@ public interface TodoApi {
     String REQUESTER_NOT_FOUND = "USER_NOT_FOUND (requesterId is no account); ";
     // tenancy:end
     // tenancy:begin
+    // String REQUESTER_IS_OWNER = "";
     // String REQUESTER_INELIGIBLE = "";
     // tenancy:else
+    String REQUESTER_IS_OWNER = "TODO_REQUESTER_IS_OWNER (requesterId is you: leave it out for nobody); ";
     String REQUESTER_INELIGIBLE = "TODO_REQUESTER_INELIGIBLE (requesterId is suspended, or can't read todos); ";
     // tenancy:end
     String NOT_YOURS = "TODO_NOT_YOURS (you are its requester: you may read the todo, only its owner acts on it)";
@@ -92,13 +94,13 @@ public interface TodoApi {
             shows the list by name.""")
     @ApiResponse(responseCode = "201", description = "Created")
     // media:begin
-    @ApiResponse(responseCode = "400", description = """
+    @ApiResponse(responseCode = "400", description = REQUESTER_IS_OWNER + """
             VALIDATION_FAILED (see errors; tagIds over the maximum or holding null), REQUEST_UNREADABLE \
             (a malformed id); UPLOAD_FILE_COUNT_OUT_OF_RANGE (attachmentKeys outside the purpose's minFiles \
             and maxFiles)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:else
-    // @ApiResponse(responseCode = "400", description = """
+    // @ApiResponse(responseCode = "400", description = REQUESTER_IS_OWNER + """
     //         VALIDATION_FAILED (see errors; tagIds over the maximum or holding null), REQUEST_UNREADABLE \
     //         (a malformed id)""",
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -155,12 +157,12 @@ public interface TodoApi {
     // media:end
     @ApiResponse(responseCode = "200", description = "Updated; the version increments when something changed")
     // media:begin
-    @ApiResponse(responseCode = "400", description = """
+    @ApiResponse(responseCode = "400", description = REQUESTER_IS_OWNER + """
             VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID; \
             UPLOAD_FILE_COUNT_OUT_OF_RANGE (its files would end outside the purpose's minFiles and maxFiles)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:else
-    // @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
+    // @ApiResponse(responseCode = "400", description = REQUESTER_IS_OWNER + "VALIDATION_FAILED (see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID",
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:end
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",

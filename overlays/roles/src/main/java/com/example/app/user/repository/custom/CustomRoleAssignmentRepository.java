@@ -32,7 +32,8 @@ public interface CustomRoleAssignmentRepository {
     // tenancy:begin
     // tenancy:else
     //
-    // /** Active accounts holding every one of {@code permissions} now, none of them denied. */
-    // CursorBatch<DropdownItem> findHolders(Collection<String> permissions, DropdownFilter filter, int size, Instant now);
+    // /** Active accounts but {@code leftOut} (null for none) holding every one of {@code permissions} now, none of them denied. */
+    // CursorBatch<DropdownItem> findHolders(Collection<String> permissions, UUID leftOut, DropdownFilter filter, int size,
+    //         Instant now);
     // tenancy:end
 }

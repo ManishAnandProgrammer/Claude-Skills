@@ -408,6 +408,10 @@ public class TodoService implements Todos {
         //     throw AppException.of(ErrorCode.TENANT_MEMBER_NOT_FOUND, requesterId);
         // }
         // tenancy:else
+        if (!NamedParty.TODO_REQUESTER.mayBeTheOwner() && requesterId.equals(currentUser.id())) {
+            throw AppException.withErrors(ErrorCode.TODO_REQUESTER_IS_OWNER,
+                    List.of(RequestError.atPointer("#/requesterId", "is you: leave it out for nobody")));
+        }
         users.requireUser(requesterId);
         if (!holders.holds(requesterId, NamedParty.TODO_REQUESTER.mustHold())) {
             throw AppException.of(ErrorCode.TODO_REQUESTER_INELIGIBLE, requesterId);

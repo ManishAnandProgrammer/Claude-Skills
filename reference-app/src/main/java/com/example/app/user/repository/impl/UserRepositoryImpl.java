@@ -23,7 +23,9 @@ import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -32,7 +34,7 @@ class UserRepositoryImpl implements CustomUserRepository {
     private final EntityManager entityManager;
 
     @Override
-    public CursorBatch<DropdownItem> findActiveWithRoleIn(Set<Role> roles, DropdownFilter filter, int size) {
+    public CursorBatch<DropdownItem> findActiveWithRoleIn(Set<Role> roles, UUID leftOut, DropdownFilter filter, int size) {
         boolean descending = filter.getSortDirection() == DropdownCandidate.SortDirection.DESC;
         String sort = PermissionHolders.sortOf(filter);
         Cursor cursor = Cursor.read(filter.getAfter(), sort, PermissionHolders.CURSOR_KEYS);
@@ -47,6 +49,9 @@ class UserRepositoryImpl implements CustomUserRepository {
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(builder.equal(root.get(User_.status), UserStatus.ACTIVE));
         predicates.add(root.get(User_.role).in(roles));
+        if (Objects.nonNull(leftOut)) {
+            predicates.add(builder.notEqual(root.get(User_.id), leftOut));
+        }
         if (filter.requireQueryPredicate()) {
             predicates.add(TextSearch.contains(builder, root.get(User_.fullName), filter.getQuery()));
         }

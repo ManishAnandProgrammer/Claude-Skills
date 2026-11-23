@@ -6,6 +6,9 @@ This crud-gen run is unattended (`--unattended`, the skill's *Unattended mode*),
   itself and reviews your change with house-review, independently.
 - Work only inside this project directory. Never edit the skills, the reference application or anything under
   `~/.claude`; report a conflict you find in them instead (the skill's precedence rule).
+- Claude Code refuses this headless session's edits under `.claude/` (the two profiles). Make every profile edit
+  the skill asks for anyway, with Edit or Write, *Decisions per entity* included: the harness applies each refused
+  edit after the run, as the developer would approve it. Never move a profile's content into your report instead.
 - Commit, or leave the change in the working tree, as the skill says: the harness compares the tree with its
   baseline commit either way.
 

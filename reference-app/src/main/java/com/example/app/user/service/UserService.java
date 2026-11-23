@@ -171,7 +171,12 @@ public class UserService implements Users, PermissionHolders {
 
     @Override
     public CursorBatch<DropdownItem> findHolders(Permission permission, DropdownFilter filter, int size) {
-        return repository.findActiveWithRoleIn(Role.holding(permission), filter, size);
+        return repository.findActiveWithRoleIn(Role.holding(permission), null, filter, size);
+    }
+
+    @Override
+    public CursorBatch<DropdownItem> findHoldersOtherThan(Permission permission, UUID leftOut, DropdownFilter filter, int size) {
+        return repository.findActiveWithRoleIn(Role.holding(permission), leftOut, filter, size);
     }
     // roles:end
 

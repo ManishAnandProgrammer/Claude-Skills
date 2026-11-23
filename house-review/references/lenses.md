@@ -629,7 +629,10 @@ resilience or failure-injection test is Medium).
   read (`writesHeldPastTheirReads`), so the `@Version` condition of the UPDATE is what refuses the losers (tests.md
   row 13); a latch race alone lets the losers read the winner's commit. **A delete the state refuses** is raced
   against the move into that state, the move held uncommitted: exactly 409 `OPTIMISTIC_LOCK_CONFLICT`, the record
-  kept (row 13d).
+  kept (row 13d). **A named party's write** (an approver's approve or reject) is raced against the write that changes
+  that party (the owner's reassignment), both held past their reads: one 200, the other 409
+  `OPTIMISTIC_LOCK_CONFLICT`, the end state the winner's (row 13e). Without it, only reading proves the former party
+  can't act after the reassignment committed (REST-16).
 
 ### TEST-06: Query count
 - **Check:** new lists and dropdowns assert a constant statement count, for 1 row and for page size + 1

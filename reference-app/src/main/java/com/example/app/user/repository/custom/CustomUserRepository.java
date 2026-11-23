@@ -6,8 +6,10 @@ import com.example.app.common.pagination.CursorBatch;
 import com.example.app.user.domain.Role;
 
 import java.util.Set;
+import java.util.UUID;
 
 public interface CustomUserRepository {
 
-    CursorBatch<DropdownItem> findActiveWithRoleIn(Set<Role> roles, DropdownFilter filter, int size);
+    /** {@code leftOut}, an account the batch never holds; null for none. */
+    CursorBatch<DropdownItem> findActiveWithRoleIn(Set<Role> roles, UUID leftOut, DropdownFilter filter, int size);
 }

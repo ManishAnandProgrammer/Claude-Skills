@@ -7,6 +7,7 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -68,6 +69,42 @@ class TodoRequesterPickerIntegrationTest extends IntegrationTest {
         postTodo(owner, listId, away.id())
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("TODO_REQUESTER_INELIGIBLE"));
+    }
+
+    @Test
+    @DisplayName("""
+            The picker leaves its caller out, who is never the requester of their own todo: naming yourself is 400 \
+            TODO_REQUESTER_IS_OWNER at #/requesterId on the create and the update, and nothing is stored""")
+    void theOwnerIsNeverTheirOwnRequester() throws Exception {
+        String prefix = "Self-" + UUID.randomUUID();
+        TestUser owner = named(newUser(), prefix + " Ann");
+        TestUser asker = named(newUser(), prefix + " Bob");
+        String listId = createList(owner);
+
+        getAs(owner.accessToken(), PICKER + "?for=TODO_CREATE_OWN&query=" + prefix)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].value", contains(asker.id().toString())));
+        getAs(owner.accessToken(), PICKER + "?for=TODO_EDIT_OWN&query=" + prefix)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].value", contains(asker.id().toString())));
+        getAs(asker.accessToken(), PICKER + "?for=TODO_CREATE_OWN&query=" + prefix)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response[*].value", contains(owner.id().toString())));
+
+        postTodo(owner, listId, owner.id())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("TODO_REQUESTER_IS_OWNER"))
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/requesterId"));
+        assertThat(jdbc.queryForObject("select count(*) from todos where todo_list_id = ?", Integer.class, UUID.fromString(listId)))
+                .isZero();
+        String id = read(postTodo(owner, listId, asker.id()).andExpect(status().isCreated()), "$.response.id");
+        putTodo(owner, id, listId, owner.id(), 0)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("TODO_REQUESTER_IS_OWNER"))
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/requesterId"));
+        getAs(owner.accessToken(), TODOS + "/" + id)
+                .andExpect(jsonPath("$.response.version").value(0))
+                .andExpect(jsonPath("$.response.requesterId").value(asker.id().toString()));
     }
 
     @Test

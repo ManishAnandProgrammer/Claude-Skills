@@ -103,6 +103,7 @@ public enum ErrorCode {
     TODO_NOT_YOURS,
     // tenancy:begin
     // tenancy:else
+    TODO_REQUESTER_IS_OWNER,
     TODO_REQUESTER_INELIGIBLE,
     // tenancy:end
     TODO_IN_USE,

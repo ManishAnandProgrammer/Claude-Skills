@@ -42,7 +42,8 @@ public record TodoCreateRequest(
         //         A PUT replaces it.""",
         //         example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
         // tenancy:else
-        @Schema(description = "The account that asked for it (its id); null or absent for none. A PUT replaces it.",
+        @Schema(description = """
+                Another account that asked for it (its id), never yours; null or absent for none. A PUT replaces it.""",
                 example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
         // tenancy:end
         UUID requesterId,

@@ -395,7 +395,12 @@ public class PersonAccessService {
     // /** The SQL twin of {@link EffectiveAccess}: each of these held, by a role or an ALLOW, and none denied. */
     // @Override
     // public CursorBatch<DropdownItem> findHolders(Permission permission, DropdownFilter filter, int size) {
-    //     return assignments.findHolders(names(withPrerequisites(permission)), filter, size, clock.instant());
+    //     return assignments.findHolders(names(withPrerequisites(permission)), null, filter, size, clock.instant());
+    // }
+    //
+    // @Override
+    // public CursorBatch<DropdownItem> findHoldersOtherThan(Permission permission, UUID leftOut, DropdownFilter filter, int size) {
+    //     return assignments.findHolders(names(withPrerequisites(permission)), leftOut, filter, size, clock.instant());
     // }
     //
     // private static Set<Permission> withPrerequisites(Permission permission) {

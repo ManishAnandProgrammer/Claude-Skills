@@ -105,6 +105,7 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.TODO_NOT_YOURS, HttpStatus.FORBIDDEN);
         // tenancy:begin
         // tenancy:else
+        MAPPING.put(ErrorCode.TODO_REQUESTER_IS_OWNER, HttpStatus.BAD_REQUEST);
         MAPPING.put(ErrorCode.TODO_REQUESTER_INELIGIBLE, HttpStatus.CONFLICT);
         // tenancy:end
         MAPPING.put(ErrorCode.TODO_IN_USE, HttpStatus.CONFLICT);

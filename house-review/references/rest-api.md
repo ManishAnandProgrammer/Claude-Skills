@@ -333,11 +333,18 @@ types.
   {{urlPrefix}}/users/dropdown?for=<the write's permission>` (golden `NamedPartyService`): the active accounts
   holding the permission the write's `user.api.NamedParty` constant names, `{value: id, label: full name}`, keyset
   on `idx_users_full_name_id`; a `for` whose write names nobody is 400 at `for`. A module never lists people
-  itself, and `GET /users` (`ACCOUNT_READ`) is no picker.
+  itself, and `GET /users` (`ACCOUNT_READ`) is no picker. **Every account it lists is one the write accepts:** for a
+  party the owner may not be (the constant's `Owner.NEVER_NAMED`, AUTHZ-04: an approver of their own claim), the
+  picker leaves the caller out in the same statement (`for` names the caller's own write, so the caller is the
+  record's owner: `PermissionHolders.findHoldersOtherThan`), and the write refuses naming oneself with 400
+  `<ENTITY>_<PARTY>_IS_OWNER`; golden `TodoRequesterPickerIntegrationTest.theOwnerIsNeverTheirOwnRequester`, a
+  caller who holds the party's permission calling the picker.
 - **Also:** a screen that needs a picker has its dropdown (an assignee picker for "reassign"); a
   resource other screens pick from (another entity references it) without `@DropdownCandidate` is
   worth asking about.
 - **Detect:**
+  - a picker listing the caller for a write that refuses the caller (the owner as their own approver), or a picker
+    test whose caller never holds the party's permission, so it can't see the caller listed;
   - other shapes or paths for id+name lists (`/lookup`, `/options`, `{id, name}`);
   - ad-hoc params (`activeOnly`, `q`, `search`, `limit`);
   - a dropdown that can't return more than one batch;

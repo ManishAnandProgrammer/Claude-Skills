@@ -24,12 +24,14 @@ needed: a new built-in role is a `Role` constant, a changeset widening `ck_users
     `EXPENSE_CLAIM_APPROVER_IS_OWNER`; no account: 404 `USER_NOT_FOUND` through `Users`; suspended, or without the
     permission, a `USER` or `FINANCE` account for one: 409 `EXPENSE_CLAIM_APPROVER_INELIGIBLE` through `PermissionHolders`).
     The party is a `user.api.NamedParty` constant, `EXPENSE_CLAIM_APPROVER`, named by `EXPENSE_CLAIM_CREATE_OWN`
-    and `EXPENSE_CLAIM_EDIT_OWN`. The approver may be changed by the update while the claim is a `DRAFT`, and
-    by the reassignment below while it is `SUBMITTED`, each checked again only when it changes. The approver reads
+    and `EXPENSE_CLAIM_EDIT_OWN`, which the owner may never name themselves as (four eyes). The approver may be
+    changed by the update while the claim is a `DRAFT`, and by the reassignment below while it is `SUBMITTED`, each
+    checked again only when it changes. The approver reads
     the claims that name them, and approves or rejects them;
   - **finance** reads every claim, and does nothing else.
-  Anyone else gets 404 for a claim, as if it didn't exist; a party trying an action it may not take on a claim it
-  can read gets 403 `EXPENSE_CLAIM_NOT_YOURS`.
+  The approver and finance see a claim once it is submitted; a draft is the claimant's alone (the approver's and
+  finance's lists leave it out, and their detail answers 404). Anyone else gets 404 for a claim, as if it didn't
+  exist; a party trying an action it may not take on a claim it can read gets 403 `EXPENSE_CLAIM_NOT_YOURS`.
 - **Roles** (Level 1): two new built-in roles. Signup is public, so the signup role `USER` is a claimant only
   (an approver it could hold would let anyone sign up a second account, name it and approve their own claims,
   SEC-01); `APPROVER` (given by an operator, like `ADMIN`) holds what `USER` holds and the approver's permissions;
@@ -42,11 +44,11 @@ needed: a new built-in role is a `Role` constant, a changeset widening `ck_users
   - `EXPENSE_CLAIM_READ` (reach `ALL`): finance's (`FINANCE`, `ADMIN`).
   Prerequisites: each `_OWN` action needs `EXPENSE_CLAIM_READ_OWN`, each `_ASSIGNED` action
   `EXPENSE_CLAIM_READ_ASSIGNED`. No READ is another READ's prerequisite.
-- **Fields:** `amount` (more than 0, at most a configured 10000.00, two decimals at most), `currency` (ISO 4217,
-  three upper-case ASCII letters, stored as sent), `spentOn` (the day spent: never after today, `@NotAfterToday`,
-  never before 2000-01-01), `description` (required, at most 500 characters, not searched), `approverId`; at a
-  rejection `rejectionReason` (required with a rejection, at most 500 characters); `decidedAt` the moment of the
-  approval or rejection, the server's clock.
+- **Fields:** `amount` (more than 0, at most a configured 10000.00, two decimals at most, stored and answered with
+  two), `currency` (ISO 4217, three upper-case ASCII letters, stored as sent), `spentOn` (the day spent: never after
+  today, `@NotAfterToday`, never before 2000-01-01), `description` (required, at most 500 characters, not searched),
+  `approverId`; at a rejection `rejectionReason` (required with a rejection, at most 500 characters); `decidedAt` the
+  moment of the approval or rejection, the server's clock.
 - **The workflow:** `DRAFT` → `SUBMITTED` (submit, the claimant) → `APPROVED` (approve, the approver) or
   `REJECTED` (reject, the approver, with the reason). `APPROVED` and `REJECTED` are final. A move the workflow
   doesn't list, the move to the current status included, is 409 `EXPENSE_CLAIM_STATUS_CHANGE_INVALID`.
@@ -57,8 +59,9 @@ needed: a new built-in role is a `Role` constant, a changeset widening `ck_users
 - **Frozen:** only a `DRAFT` is edited (PUT, a full replace of amount, currency, spentOn, description, approverId)
   or deleted; otherwise 409 `EXPENSE_CLAIM_SUBMITTED`, `EXPENSE_CLAIM_APPROVED` or `EXPENSE_CLAIM_REJECTED`.
 - **A stale approver** (suspended, or who lost the permission after being named) can't decide: every move checks
-  the caller's permission at the request. The claimant reassigns the claim while it is not final: `PATCH
-  /expense-claims/{id}/approver` (`EXPENSE_CLAIM_EDIT_OWN`; the body holds `approverId` and the version), allowed
+  the caller's permission at the request (`@Requires`, the token's: the access token's lifetime is the window, as for
+  every permission; no second read of the caller's own access). The claimant reassigns the claim while it is not
+  final: `PATCH /expense-claims/{id}/approver` (`EXPENSE_CLAIM_EDIT_OWN`; the body holds `approverId` and the version), allowed
   on a `DRAFT` or `SUBMITTED` claim (a final one: 409 `EXPENSE_CLAIM_APPROVED` or `EXPENSE_CLAIM_REJECTED`), the
   new approver checked as at the create. Its `allowedActions` flag is `reassign`.
 - **The date rule:** a claim is approved only while its `spentOn` is within the last 90 days of the organisation's
@@ -76,8 +79,8 @@ needed: a new built-in role is a `Role` constant, a changeset widening `ck_users
   latest day first). Filter: `status`. The team and finance lists show the claimant by id only (no names).
 - **No dropdown** of claims. The approver is picked from the user module's picker, `GET
   /users/dropdown?for=EXPENSE_CLAIM_CREATE_OWN` (or `EXPENSE_CLAIM_EDIT_OWN` on the edit and the reassignment),
-  which lists the accounts the `EXPENSE_CLAIM_APPROVER` constant accepts: no dropdown of the module's own. The
-  owner's decision (SEC-04): every claimant sees the approvers' full names and ids in that picker, and nobody
+  which lists the accounts the `EXPENSE_CLAIM_APPROVER` constant accepts (the caller, the claim's owner, left out):
+  no dropdown of the module's own. The owner's decision (SEC-04): every claimant sees the approvers' full names and ids in that picker, and nobody
   else's; record it in *Decisions per entity*.
 - **Retention:** claims are kept (a business record); no purge.
 
@@ -85,7 +88,8 @@ needed: a new built-in role is a `Role` constant, a changeset widening `ck_users
 
 The gates decide the verdict (README.md); a reader checks by hand in the work copy:
 - `ExpenseClaimPolicy` with `read` picking the reach, an action method per move (the party's rule, then
-  `ExpenseClaimStatus.canBecome`), `listScope` per reach; its table test with each refusal;
+  `ExpenseClaimStatus.canBecome`), `listScope` per reach, the `ASSIGNED` and `ALL` ones and `read` leaving drafts
+  out on one condition; its table test with each refusal;
 - `@Requires({EXPENSE_CLAIM_READ_OWN, EXPENSE_CLAIM_READ_ASSIGNED, EXPENSE_CLAIM_READ})` on the detail; each list
   `@Requires` its reach's READ; each move's endpoint its own permission, and its flag built with that permission
   (an `AllowedActionContract` row per flag);
@@ -94,6 +98,8 @@ The gates decide the verdict (README.md); a reader checks by hand in the work co
 - `Role.APPROVER` and `Role.FINANCE` with their permissions, a changeset widening `ck_users_role`, `newApprover()` and `newFinance()` in the test base;
 - the approver checked through `Users` and `PermissionHolders.holds(id, NamedParty.EXPENSE_CLAIM_APPROVER.mustHold())`
   at the create, at an update that changes it and at the reassignment; the `NamedParty` constant the only user-module
-  change; tests.md row 27e (a `USER` or `FINANCE` approver refused, the picker leaving them out);
+  change (`Owner.NEVER_NAMED`); tests.md row 27e (a `USER` or `FINANCE` approver refused, the picker leaving them
+  out, an approver's own picker leaving them out and their self-naming 400); row 13e (approve and reject each raced
+  against the reassignment); the moves' permission and their flags both read from the request;
 - the tests of references/tests.md, each party by each call (`TodoRequesterIntegrationTest`'s shape), the flags'
   `ACCESS_DENIED` for finance.

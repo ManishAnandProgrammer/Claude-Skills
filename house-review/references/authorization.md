@@ -159,7 +159,12 @@ and Policy.
     acts with now (409 `<ENTITY>_<PARTY>_INELIGIBLE`), through the user module's `PermissionHolders.holds` (Level 1
     the role, the roles piece the effective access), never "any account". The party and that permission are one
     `user.api.NamedParty` constant, read by the check and by the write's picker (REST-13): golden
-    `TodoService.requireRequester`, `NamedParty.TODO_REQUESTER`. A stored party is checked again only when a write
+    `TodoService.requireRequester`, `NamedParty.TODO_REQUESTER`. **Whether the owner may name themselves** is the
+    constant's too, and the owner's decision: never a party who decides on the owner's record (an approver, a
+    reviewer: four eyes), nor one the owner would name themselves as to no purpose (golden `TODO_REQUESTER`,
+    `Owner.NEVER_NAMED`: a todo one asked oneself for is one nobody asked for). Such a write refuses the owner first, 400
+    `<ENTITY>_<PARTY>_IS_OWNER` with its `errors` pointer (golden `TODO_REQUESTER_IS_OWNER` at `#/requesterId`), and
+    the picker leaves the caller out (REST-13). A stored party is checked again only when a write
     changes it, so an edit keeping a party who has since lost the permission passes; that party can't act (every
     call checks the permission at the request), and the house answer to a stale party is the owner's
     reassignment while the record is not final (the update, or a reassign endpoint of its own where the state
@@ -170,7 +175,8 @@ and Policy.
   read from the role; the same "is it theirs" written in two services; a policy that throws an HTTP status or
   a Spring exception; a record rule inside a `@PreAuthorize` expression; a named party checked for existence alone
   (`requireUser`), so a record can name someone who may never act on it; a final state reachable while its only
-  party can't act and nobody may reassign it.
+  party can't act and nobody may reassign it; a party who decides on the owner's record that the owner may name
+  themselves as, with no recorded owner decision.
 - **Not a finding when:** a resource whose only rule about the caller is the owner's reach, and no action whose
   answer differs between its records (AUTHZ-07), keeps the owner id in its queries (`TodoListService`,
   `TagService`; `PlanService` keeps its owner condition in its queries too, and its state rules are
@@ -187,10 +193,17 @@ and Policy.
   with its own `@Requires` (that reach's READ permission alone) and the policy's scope for that reach
   (`listScope(Reach.ASSIGNED, callerId)`, or a method per reach); the detail they open accepts every reach
   (AUTHZ-03), and its policy uses the same conditions, so each list shows only what the detail lets its caller read.
+  **A state its owner releases** (a draft before its submit): from which state each other reach (`ASSIGNED`, `ALL`)
+  sees the record is the owner's decision, recorded in the crud profile's *Decisions per entity* (crud-gen asks it;
+  unattended, from the release on, a draft the owner's alone, recorded assumed); that reach's list scope and the
+  detail's rule carry the one condition (`status <> DRAFT` in both).
 - **Detect:** a list query with its own owner condition next to a policy with another; a list filtered in
-  memory after the query; a scope that needs a second statement per page.
+  memory after the query; a scope that needs a second statement per page; another reach shown a record in a state
+  its owner hasn't released (a draft in the approver's or finance's list or detail), or kept from it, with no
+  recorded answer: the unrecorded answer is the finding, whichever way the code went.
 - **Not a finding when:** a facade's batch lookup for another module states that it is the scope's condition
-  written as its own query (`TodoRepository.findViewsByIdInAndOwnerId`).
+  written as its own query (`TodoRepository.findViewsByIdInAndOwnerId`); another reach sees a released state by a
+  recorded decision (either answer), its scope and detail on the one condition.
 - **Severity:** High when the list shows what the detail refuses; Medium otherwise.
 
 ### AUTHZ-06: `GET /users/me/access` answers the caller's areas and permissions
@@ -239,6 +252,13 @@ and Policy.
     `TodoService.toResponse` with `TODO_EDIT_OWN`, the availability's and the options' flags with
     `PLAN_CREATE_OWN`). A flag never says `allowed: true`
     to a caller its endpoint refuses (a role with the read but not the edit; with the roles piece, a personal DENY);
+  - **the flag and the write read the caller's permission from one source**, the request's: `CurrentUser.holds`,
+    what `@Requires` reads (Level 1 the token, kept current by the session version or bounded by the token's
+    lifetime; the roles piece's per-request read). A write never re-reads the caller's own permission from the
+    database (`PermissionHolders.holds` checks an account the write names, never the caller): beside a flag from the
+    token, the two disagree for a token's lifetime (`allowed: true`, then 403). Where the owner wants an access
+    change to apply at once, that is the session version (SEC-07), not a per-write re-check (golden: every write and
+    flag of `PlanService`, `TodoService`);
   - **the flag's permission proven equal to its endpoint's:** the permission is written twice, in the
     `toAllowedAction` call and the endpoint's `@Requires`, so the resource's tests declare one row per flag of each
     flag record, its name and its endpoint (`PATCH /api/{version}/plans/{id}/status`), never the permission, in a
@@ -277,7 +297,9 @@ and Policy.
 - **Detect:** an `allowedActions` flag computed by its own condition (a copy of the policy), or a boolean flag
   with no reasons; a flag naming no permission, or another one than its endpoint's `@Requires` (allowed for a
   caller that call answers 403); a flag's permission not proven equal to its endpoint's (a flag record with no
-  `AllowedActionContract`, which `archunit/AllowedActionContractArchTest` fails on, or a flag without its row); an option labelled or disabled by the client from its fields (`[withdrawn]` from a status); a reasons list cut to the first; a reason's message written for the flag instead of the code's
+  `AllowedActionContract`, which `archunit/AllowedActionContractArchTest` fails on, or a flag without its row); a
+  write re-checking the caller's own permission in the database (`PermissionHolders.holds(callerId, …)`) while its
+  flag reads `CurrentUser`; an option labelled or disabled by the client from its fields (`[withdrawn]` from a status); a reasons list cut to the first; a reason's message written for the flag instead of the code's
   message; a client that shows a record's button by its status or fields; flags for actions the permission alone
   decides; a flag that reads another table per row; message arguments taken from another person's record, or a
   threshold in a message; an authorization log line with a message, a name or an email, or one written in a policy

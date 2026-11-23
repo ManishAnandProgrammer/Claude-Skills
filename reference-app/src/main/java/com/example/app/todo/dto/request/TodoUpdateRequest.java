@@ -48,8 +48,8 @@ public record TodoUpdateRequest(
         //         example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
         // tenancy:else
         @Schema(description = """
-                The account that asked for it; null or absent for none. The account it names already is kept; \
-                a new one must exist.""", example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
+                Another account that asked for it, never yours; null or absent for none. The account it names \
+                already is kept; a new one must exist.""", example = "0190a9c2-5b21-7d3e-8f4a-2b3c4d5e6f7a")
         // tenancy:end
         UUID requesterId,
 

@@ -123,7 +123,11 @@
 - **Also:** `BigDecimal.equals` compares scale (`2` ≠ `2.0`), and records and `Objects.equals`
   inherit it: compare with `compareTo`, or normalise the scale once, and round once at the end.
   A change check that compared `2` with `2.0` recorded a change that wasn't one.
-- **Severity:** Medium.
+- **Detect:** a decimal stored at the scale it was sent: the create's answer echoes `42.5` (or `1E+1`) while every
+  later read answers the column's `42.50`. The house stores it at the column's scale where input is normalised, the
+  mapper beside `strip()` (`amount.setScale(2)`, on the create and the update), which never rounds once `@Digits`
+  has refused more fraction digits; every answer then carries the same scale (crud-gen tests.md row 25d).
+- **Severity:** Medium; Low for an answer echoing the sent scale.
 
 ### JAVA-16: Entities: Lombok, equality, collections
 - **Check:**

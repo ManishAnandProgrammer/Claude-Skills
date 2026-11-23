@@ -125,6 +125,19 @@ class PermissionHoldersIntegrationTest extends IntegrationTest {
                 .containsExactly(new DropdownItem(ann.id(), prefix + " Ann"));
     }
 
+    @Test
+    @DisplayName("The holders other than an account are the same holders without that one account")
+    void findHoldersOtherThanLeavesOneAccountOut() throws Exception {
+        String prefix = "Other " + UUID.randomUUID();
+        TestUser ann = named(newAdmin(), prefix + " Ann");
+        TestUser bob = named(newAdmin(), prefix + " Bob");
+
+        assertThat(holders.findHoldersOtherThan(Permission.ACCOUNT_READ, ann.id(), matching(prefix, null, null), 10).items())
+                .containsExactly(new DropdownItem(bob.id(), prefix + " Bob"));
+        assertThat(holders.findHolders(Permission.ACCOUNT_READ, matching(prefix, null, null), 10).items())
+                .extracting(DropdownItem::value).containsExactly(ann.id(), bob.id());
+    }
+
     static Stream<Arguments> batches() {
         return Stream.of(
                 Arguments.of("first, by name", HOLDERS + "order by u.full_name, u.id limit 21", null),

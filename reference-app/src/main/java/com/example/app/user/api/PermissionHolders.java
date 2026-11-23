@@ -20,4 +20,6 @@ public interface PermissionHolders {
     boolean holds(UUID userId, Permission permission);
 
     CursorBatch<DropdownItem> findHolders(Permission permission, DropdownFilter filter, int size);
+
+    CursorBatch<DropdownItem> findHoldersOtherThan(Permission permission, UUID leftOut, DropdownFilter filter, int size);
 }

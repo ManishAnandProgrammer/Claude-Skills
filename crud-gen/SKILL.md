@@ -225,8 +225,11 @@ reach's READ permission (`<ENTITY>_READ_OWN`, `_READ_ASSIGNED`, `_READ`), its ha
 one lets in) and its policy picks the reach; one reach's READ is never made the others' prerequisite so that one
 permission could guard it (AUTHZ-03). Its lists are one per reach (REST-08: the bare collection `ALL`, `/mine`
 `OWN`, `/team` or `/assigned` `ASSIGNED`), each `@Requires` that reach's READ and uses the policy's scope for it
-(AUTHZ-05); (3) **which roles get each**, role by role (roles don't include each other, so a
-permission two roles hold is on both lists; a role the developer names that doesn't exist yet is a new built-in
+(AUTHZ-05). **A state its owner releases** (a draft before its submit): ask, per other reach, from which state it
+sees the record (an approver from the submit on? finance?); unattended, from the release on (a draft is the owner's
+alone), recorded **assumed**. That reach's list scope and the policy's `read` carry the one condition (`status <>
+DRAFT` in both, AUTHZ-05), and tests.md row 14c proves it; (3) **which roles get each**, role by role (roles
+don't include each other, so a permission two roles hold is on both lists; a role the developer names that doesn't exist yet is a new built-in
 role: references/bootstrap.md, *A new built-in role*); (4) **its menu `Area`** (an existing one, or a new constant: ask its
 name); (5) **the prerequisites** (an edit needs the read that opens the record: offer `EDIT`/`DELETE`/`CREATE` →
 `READ`, and let the developer change it). Record the answers in *Decisions per entity*. The generation then adds
@@ -256,7 +259,11 @@ every reason, a reason the code and its existing message) made by `AllowedAction
 <the permission the action's endpoint @Requires>, policy.x(...))` from the same policy method the write calls (a
 caller holding none of that permission gets `allowed: false` with `ACCESS_DENIED` alone, the call's own 403:
 AUTHZ-07; the permission written there is proven equal to the endpoint's by an `AllowedActionContract` row per flag,
-references/tests.md row 28l), on the detail and on the list's rows from the row's
+references/tests.md row 28l; the flag and its write read the caller's permission from one source, the request's,
+`@Requires` and `CurrentUser.holds`: a write never re-reads the caller's own permission from the database, as
+`PermissionHolders.holds` checks the account a write names and never the caller, or the flag says allowed where the
+write refuses; "a stale party can't act" is that request check, made immediate by the session version where the
+project has it), on the detail and on the list's rows from the row's
 own fields (a parent's state from the page's one facade lookup, golden `PlanService.withTodos`); a rule with several
 preconditions lists them all with plain `if`s into a `List<Decision.Refusal>` (golden `PlanPolicy.reschedule`), a
 reach refusal alone. Actions the permission alone decides, creates, and a delete only a foreign key refuses get no
@@ -352,7 +359,11 @@ request or the profile already says. Record each answer in the crud profile's *D
   (4.3; without tenancy a person stays an id), or by id only;
 - **named parties**: per person a write names who will act (an approver, an assignee), "who may be named as
   <party>?", default **an active account holding <ACTING_PERMISSION>** (the permission that party acts with), and
-  what happens when they lose it (default: the owner reassigns while the record is not final; 4.3). **A party whose
+  what happens when they lose it (default: the owner reassigns while the record is not final; 4.3); **"may the
+  owner name themselves as <party>?"**, default **no** for a party who decides on the owner's record (approves,
+  rejects, reviews, signs off: four eyes), **yes** for one who only reads or is served (golden `TODO_REQUESTER` is a
+  no by the owner's decision: a todo one asked oneself for is one nobody asked for); the answer is the constant's
+  `Owner` (4.3). **A party whose
   action checks the owner** (approves, rejects, signs off): without tenancy, while signup is public, its permission
   is never held by the role signup grants (`USER`), or anyone signs up a second account, names it and approves
   their own record (SEC-01); it goes to a role an operator gives (`APPROVER`, `MANAGER`), and a request giving it to
@@ -541,7 +552,9 @@ target, as golden `Plan`'s below, when one permission covers every move. **Money
 the house-review rules are the bar; ask. A **status workflow**
 (several states, only some moves allowed) copies golden `PlanStatus` and `Plan.changeStatus`
 (`PATCH /plans/{id}/status`, `PlanStatusRequest`, `PlanStatusIntegrationTest`): the moves as one
-`canBecome(target)` switch on the status enum (with tenancy also `TenantStatus`), the
+`canBecome(target)` switch on the status enum (with tenancy also `TenantStatus`; the enum carries that alone, as
+`PlanStatus` does: a predicate such as `isFinal()` only when the entity's guard and the policy's rule call it,
+never beside a guard and a rule that each spell the states out, SMELL-18), the
 entity's change method refusing the rest with 409 `<ENTITY>_STATUS_CHANGE_INVALID` naming both
 states, and a test per allowed and per refused move. A move to the record's **current** status is
 refused like any move the switch doesn't list (409, tested), unless the owner decides it is a no-op
@@ -735,7 +748,10 @@ limit (`@ConfiguredMaxSize("<entity>.<field>")`) and `@NotNull` elements, plus `
 the developer says it may not be empty (an optional set of tags may be empty); a configured upper bound of a number
 carries `@ConfiguredMax("<entity>.<field>")`, a money amount's too (`BigDecimal`: the core's decimal validator, the
 setting quoted, `max-amount: "10000.00"`; golden `LimitsIntegrationTest.decimalMaximumComesFromConfiguration`), never a
-validator of the module's own; a date carries `@LatestDate("<entity>.<field>")`
+validator of the module's own; a decimal carries `@Digits(integer, fraction)` of its column, and the mapper stores it
+at the column's scale where it strips text (`.amount(request.amount().setScale(2))` on the create and the update:
+never a rounding, `@Digits` has refused more fraction digits), so the create's answer is the reads' `42.50`, never
+the sent `42.5` or `1E+1` (house-review JAVA-15, tests.md row 25g); a date carries `@LatestDate("<entity>.<field>")`
 (`app.limits.latest-date`) when the developer gives it a latest day or a sort sentinel lies above it. `@Schema` on every component. Golden:
 `TodoCreateRequest`. **A text field a cursor carries** (a cursor list's text sort key, a dropdown's
 label) sizes the cursor: `app.limits.text.cursor` must hold `(6 × its @MaxLength + 100) × 4/3`
@@ -782,11 +798,15 @@ parent (an id column and a facade). Three more shapes, golden on `Todo` (tests.m
   the person's module **whenever a write names someone new** (`TodoService.requireRequester`: `Users`, with
   tenancy `Members.isMember`, 404 `TENANT_MEMBER_NOT_FOUND`): the create, and an update only when the id
   changes. **A party who will act** (Step 1's *named parties*) is checked too: a `user.api.NamedParty` constant
-  (the party, the permission it acts with, the writes that name it; golden `TODO_REQUESTER`), and
-  `PermissionHolders.holds(id, party.mustHold())` after `requireUser`, else 409 `<ENTITY>_<PARTY>_INELIGIBLE`
-  with the id (golden `TODO_REQUESTER_INELIGIBLE`; house-review AUTHZ-04). Its picker is the user module's
-  `GET /users/dropdown?for=<the write's permission>`, which reads the same constant: add the constant, never a
-  dropdown of your own (REST-13). Where the state freezes the update while the party still has to act (a
+  (the party, the permission it acts with, whether the owner may name themselves, the writes that name it; golden
+  `TODO_REQUESTER`), and `PermissionHolders.holds(id, party.mustHold())` after `requireUser`, else 409
+  `<ENTITY>_<PARTY>_INELIGIBLE` with the id (golden `TODO_REQUESTER_INELIGIBLE`; house-review AUTHZ-04). A party
+  the owner may not be (`Owner.NEVER_NAMED`, Step 1's answer) is refused first, before the account is read: `if
+  (!NamedParty.<PARTY>.mayBeTheOwner() && id.equals(currentUser.id()))`, 400 `<ENTITY>_<PARTY>_IS_OWNER` with its
+  `errors` pointer (`#/<party>Id`; golden `TodoService.requireRequester`, `TODO_REQUESTER_IS_OWNER`). Its picker is
+  the user module's `GET /users/dropdown?for=<the write's permission>`, which reads the same constant and leaves
+  the caller out for `Owner.NEVER_NAMED` (golden `NamedPartyService`): add the constant, never a dropdown of your
+  own (REST-13). Where the state freezes the update while the party still has to act (a
   submitted claim), the owner's reassignment is its own endpoint (`PATCH /<resources>/{id}/<party>`, the owner's
   EDIT permission, while the record is not final) with the same check. Tests: tests.md row 27e. A PUT is a full replace and re-sends the person it read, who may have left since: checked again,
   every record of a former member would refuse every later edit, so the one it already names is kept
@@ -1126,9 +1146,18 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] Asked, and recorded: each picked parent's dropdown and Step 1's *Ask, don't guess* list (Step 1),
       whether a terminal status freezes the record (Step 3), a unique code's shape (Step 2).
 - [ ] A same-module parent's service changed (4.8): listed among the changed shared files.
-- [ ] A party a write names to act: its `NamedParty` constant, the check after `requireUser` (409
-      `<ENTITY>_<PARTY>_INELIGIBLE`), its picker the users dropdown (no dropdown of the module's own), the stale
-      party's reassignment, and tests.md row 27e (4.3, AUTHZ-04).
+- [ ] A party a write names to act: its `NamedParty` constant with the owner's answer to "may the owner name
+      themselves?" (`Owner`, recorded), the check after `requireUser` (409 `<ENTITY>_<PARTY>_INELIGIBLE`) and, for
+      `NEVER_NAMED`, the 400 `<ENTITY>_<PARTY>_IS_OWNER` before it, its picker the users dropdown (no dropdown of the
+      module's own; it leaves the caller out for `NEVER_NAMED`), the stale party's reassignment, tests.md row 27e, and
+      each of the party's writes raced against the change of party (row 13e) (4.3, AUTHZ-04, REST-13, TEST-05).
+- [ ] A state the owner releases (a draft): from which state each other reach sees the record, asked and recorded
+      (unattended: from the release on, assumed), one condition in the reach's list scope and the policy's `read`,
+      tests.md row 14c (AUTHZ-05).
+- [ ] Each flag and its write decide the caller's permission from the request alone (`@Requires`,
+      `CurrentUser.holds`): no write re-reads the caller's own permission from the database (AUTHZ-07). The status
+      enum carries no method the code doesn't call (SMELL-18). Each decimal stored at its column's scale, tests.md
+      row 25g (JAVA-15).
 - [ ] Per offered filter, "index this filter?" asked and recorded (unattended: the rules' answer, else no index,
       assumed). Row 28: every offered order and each requested filter index names its index, which exists; each
       list's first page and a cursor list's batch after a cursor are planned on its order's index (4.1); a range

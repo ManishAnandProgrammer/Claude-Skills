@@ -71,7 +71,7 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
         String todo = TODOS + "/" + asked.todoId();
         String entry = todo + "/time-entries/" + asked.entryId();
         return switch (call) {
-            case UPDATE -> putTodo(caller, asked, caller.id().toString(), 0);
+            case UPDATE -> putTodo(caller, asked, asked.requester().id().toString(), 0);
             case REPLACE_TAGS -> putAs(caller.accessToken(), todo + "/tags", """
                     {"tagIds": [], "version": 0}
                     """);

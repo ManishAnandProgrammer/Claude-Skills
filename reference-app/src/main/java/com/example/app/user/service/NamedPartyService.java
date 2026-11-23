@@ -41,7 +41,11 @@ public class NamedPartyService {
         // The request's own parameters before the lookup, as every list: a tampered cursor is refused whatever for names.
         Cursor.read(filter.getAfter(), PermissionHolders.sortOf(filter), PermissionHolders.CURSOR_KEYS);
         NamedParty party = NamedParty.namedBy(write).orElseThrow(() -> invalid(DropdownFor.PARAMETER));
-        CursorBatch<DropdownItem> batch = holders.findHolders(party.mustHold(), filter, paging.cursorSize(filter));
+        int size = paging.cursorSize(filter);
+        // The write is the caller's own (for= names an OWN permission), so the caller is the record's owner.
+        CursorBatch<DropdownItem> batch = party.mayBeTheOwner()
+                ? holders.findHolders(party.mustHold(), filter, size)
+                : holders.findHoldersOtherThan(party.mustHold(), currentUser.id(), filter, size);
         return CursorWrapper.of(batch.items(), batch.nextCursor());
     }
 

@@ -173,6 +173,7 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
     //                             WHERE g.user_id = u.id AND g.permission IN (:permissions) AND g.effect = 'DENY'
     //                               AND (g.valid_until IS NULL OR g.valid_until > :now))
     //            AND (CAST(:query AS text) IS NULL OR position(CAST(:query AS text) IN lower(u.full_name)) > 0)
+    //            AND (CAST(:leftOut AS uuid) IS NULL OR u.id <> CAST(:leftOut AS uuid))
     //         """;
     // static final String HOLDERS_ASC = HOLDERS + "ORDER BY u.full_name, u.id LIMIT :limit";
     // static final String HOLDERS_ASC_AFTER = HOLDERS + "AND (u.full_name, u.id) > (:name, :id) ORDER BY u.full_name, u.id LIMIT :limit";
@@ -236,13 +237,15 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
     // tenancy:begin
     // tenancy:else
     // @Override
-    // public CursorBatch<DropdownItem> findHolders(Collection<String> permissions, DropdownFilter filter, int size, Instant now) {
+    // public CursorBatch<DropdownItem> findHolders(Collection<String> permissions, UUID leftOut, DropdownFilter filter, int size,
+    //         Instant now) {
     //     boolean descending = filter.getSortDirection() == DropdownCandidate.SortDirection.DESC;
     //     String sort = PermissionHolders.sortOf(filter);
     //     Cursor cursor = Cursor.read(filter.getAfter(), sort, PermissionHolders.CURSOR_KEYS);
     //     MapSqlParameterSource parameters = new MapSqlParameterSource("permissions", permissions)
     //             .addValue("needed", permissions.size()).addValue("now", Timestamp.from(now)).addValue("limit", size + 1)
-    //             .addValue("query", filter.requireQueryPredicate() ? filter.getQuery().strip().toLowerCase(Locale.ROOT) : null);
+    //             .addValue("query", filter.requireQueryPredicate() ? filter.getQuery().strip().toLowerCase(Locale.ROOT) : null)
+    //             .addValue("leftOut", leftOut);
     //     String statement = descending ? HOLDERS_DESC : HOLDERS_ASC;
     //     if (cursor.hasPosition()) {
     //         statement = descending ? HOLDERS_DESC_AFTER : HOLDERS_ASC_AFTER;
