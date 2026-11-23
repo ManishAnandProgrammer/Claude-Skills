@@ -24,7 +24,7 @@ class DropdownForTest {
     void aHeldPermissionOfASupportedReachPasses() {
         Permission action = first(Reach.OWN);
 
-        assertThat(DropdownFor.check(action, EnumSet.of(action), EnumSet.of(Reach.OWN))).isEqualTo(Reach.OWN);
+        assertThat(DropdownFor.requireReach(action, EnumSet.of(action), EnumSet.of(Reach.OWN))).isEqualTo(Reach.OWN);
     }
 
     @Test
@@ -34,7 +34,7 @@ class DropdownForTest {
         Set<Permission> allButIt = EnumSet.allOf(Permission.class);
         allButIt.remove(action);
 
-        assertThatThrownBy(() -> DropdownFor.check(action, allButIt, EnumSet.allOf(Reach.class)))
+        assertThatThrownBy(() -> DropdownFor.requireReach(action, allButIt, EnumSet.allOf(Reach.class)))
                 .isInstanceOfSatisfying(AppException.class, refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.ACCESS_DENIED));
     }
 
@@ -43,7 +43,7 @@ class DropdownForTest {
     void anUnsupportedReachIsRefused() {
         Permission action = first(Reach.ALL);
 
-        assertThatThrownBy(() -> DropdownFor.check(action, EnumSet.of(action), EnumSet.of(Reach.OWN)))
+        assertThatThrownBy(() -> DropdownFor.requireReach(action, EnumSet.of(action), EnumSet.of(Reach.OWN)))
                 .isInstanceOfSatisfying(AppException.class, refused -> {
                     assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.DROPDOWN_REACH_UNSUPPORTED);
                     assertThat(refused.getErrors()).singleElement()

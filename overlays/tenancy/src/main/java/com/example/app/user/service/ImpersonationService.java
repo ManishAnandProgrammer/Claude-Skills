@@ -27,13 +27,7 @@ import java.util.Objects;
 // roles:end
 import java.util.UUID;
 
-/**
- * Platform staff acting as a member of a tenant (owner decision O6): a short-lived tenant token for
- * that member, with the staff member as its actor ({@code act.sub}, RFC 8693). The tenant plane takes
- * it like any tenant token; {@code CurrentUser.actorId} and the logs name the real person. Every
- * issuance is a {@code platform_audit} row, written before the policy is asked, so a refused attempt
- * is on record too.
- */
+/** The audit row is written before the policy is asked, so a refused attempt is on record too. */
 @Service
 @Slf4j
 @RequiredArgsConstructor(access = AccessLevel.PACKAGE)
@@ -53,11 +47,6 @@ public class ImpersonationService {
     private final CurrentUser currentUser;
     private final StaffAccounts staffAccounts;
 
-    /**
-     * 401 {@code AUTHENTICATION_REQUIRED} for a staff member deactivated since their token's check, 403
-     * {@code TENANT_NOT_ACTIVE}, 404 {@code MEMBERSHIP_NOT_FOUND}, 403 {@code SUPPORT_ACCESS_DENIED}, 403
-     * {@code AUTH_ACCOUNT_SUSPENDED} (the member's account).
-     */
     public ObjectWrapper<TokenResponse> impersonate(UUID tenantId, ImpersonationRequest request) {
         UUID staffId = currentUser.id();
         // Read again at the issue, like every other token path: the request's filter read it a moment ago.
@@ -66,7 +55,7 @@ public class ImpersonationService {
         }
         tenants.requireActive(tenantId);
         // roles:begin
-        // Who manages the tenant is its own data (the roles piece), read in its scope; a named member is taken as named.
+        // Who manages the tenant is the tenant's own data, read in its scope.
         UUID member = Objects.isNull(request.userId())
                 ? TenantScope.callAs(tenantId, access::defaultToImpersonate)
                         .orElseThrow(AppException.supply(ErrorCode.MEMBERSHIP_NOT_FOUND, tenantId))

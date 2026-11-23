@@ -26,7 +26,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Spring's API versioning with the version in the path: routing, refusals, docs, logs and metrics. */
 class ApiVersionIntegrationTest extends IntegrationTest {
 
     private static final String COMPLETION_LOGGER = "com.example.app.common.logging.RequestCompletionLogFilter";

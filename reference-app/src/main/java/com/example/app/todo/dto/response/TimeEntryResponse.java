@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
-/** The detail and the list row: the note is short (a configured maximum), so rows keep it. */
 @Schema(description = "Time spent on a todo")
 public record TimeEntryResponse(
         @Schema(description = "Time entry id", example = "0190a9c2-8e22-7a1b-9c3d-4e5f6a7b8c9d") UUID id,

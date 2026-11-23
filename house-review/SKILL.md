@@ -299,10 +299,12 @@ Also check any number you report (counts of endpoints, tests, files) by recomput
 - **Push back on book prescriptions this system doesn't need**, listed under "Questionable
   recommendations, and why not". The house has already rejected these, with the reason:
   - a breaker in front of the only database (Hikari's wait + 503 already fails fast), a message
-    broker, platform threads;
+    broker;
+  - **virtual threads for request handling** (CFG-04): concurrency is bounded by the pool and
+    admission, far below Tomcat's threads, so they buy nothing and make `threads.max` inert;
   - **raising the pool as a fix**: instances × pool must stay below `max_connections`, and a bigger
     pool only moves the queue into the database (OPS-10);
-  - **`@Async`, WebFlux or R2DBC** instead of virtual threads + bulkheads (PERF-03);
+  - **`@Async`, WebFlux or R2DBC** instead of bounded request threads + bulkheads (PERF-03);
   - **`show-sql` in prod** (CFG-02: datasource-proxy in dev only);
   - **migrations on a read replica** (a replica is read-only; DATA-19 bounds migration locks
     instead);

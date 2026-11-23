@@ -72,17 +72,12 @@ class TodoIntegrationTest extends IntegrationTest {
                 """.formatted(status, version);
     }
 
-    /** Creates a todo as {@code user} in {@code listId}; fails the test unless it answers 201. */
     private String createTodo(TestUser user, String listId, String title, String priority, String dueDate) throws Exception {
         return read(postAs(user.accessToken(), TODOS, todoPayload(listId, title, priority, dueDate))
                 .andExpect(status().isCreated()), "$.response.id");
     }
 
-    /**
-     * Follows {@code pageInfo.nextCursor} from {@code firstBatch} (a path with its query string) to
-     * the last batch, which must say {@code hasMore} false with no cursor; returns each batch's titles.
-     */
-    private List<List<String>> walk(TestUser user, String firstBatch) throws Exception {
+    private List<List<String>> titlesOfEveryBatch(TestUser user, String firstBatch) throws Exception {
         List<List<String>> batches = new ArrayList<>();
         String next = firstBatch;
         while (Objects.nonNull(next)) {
@@ -251,7 +246,6 @@ class TodoIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.version").value(1));
     }
 
-    /** A create with one value in another form than the documented one: refused naming that field. */
     private void assertCreateIsUnreadable(TestUser user, String body, String field) throws Exception {
         postAs(user.accessToken(), TODOS, body)
                 .andExpect(status().isBadRequest())
@@ -345,7 +339,7 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Todos created while their list is deleted: the delete is 204, every create 404 TODO_LIST_GONE, and no todo is left without its list")
+    @DisplayName("Todos created while their list is deleted: the delete is 204, every create 404 TODO_LIST_DELETED_MEANWHILE, and no todo is left without its list")
     void createsRacingTheListDeleteNeverOrphanATodo() throws Exception {
         TestUser user = newUser();
         String listId = createList(user, "Contested");
@@ -357,13 +351,13 @@ class TodoIntegrationTest extends IntegrationTest {
                 () -> deleteAs(user.accessToken(), LISTS + "/" + listId).andExpect(status().isNoContent()));
 
         assertThat(creates).extracting(Answer::status).containsOnly(404);
-        assertRefusalsAre(creates, 404, "TODO_LIST_GONE");
+        assertRefusalsAre(creates, 404, "TODO_LIST_DELETED_MEANWHILE");
         Integer todos = jdbc.queryForObject("select count(*) from todos where todo_list_id = ?::uuid", Integer.class, listId);
         assertThat(todos).isZero();
     }
 
     @Test
-    @DisplayName("Todos moved to a list while it is deleted: the delete is 204, every move 404 TODO_LIST_GONE, and each todo stays in its list")
+    @DisplayName("Todos moved to a list while it is deleted: the delete is 204, every move 404 TODO_LIST_DELETED_MEANWHILE, and each todo stays in its list")
     void movesRacingTheListDeleteKeepEveryTodoInItsList() throws Exception {
         TestUser user = newUser();
         String homeList = createList(user, "Home");
@@ -379,7 +373,7 @@ class TodoIntegrationTest extends IntegrationTest {
                 () -> deleteAs(user.accessToken(), LISTS + "/" + doomedList).andExpect(status().isNoContent()));
 
         assertThat(moves).extracting(Answer::status).containsOnly(404);
-        assertRefusalsAre(moves, 404, "TODO_LIST_GONE");
+        assertRefusalsAre(moves, 404, "TODO_LIST_DELETED_MEANWHILE");
         Integer stayed = jdbc.queryForObject("select count(*) from todos where todo_list_id = ?::uuid and version = 0",
                 Integer.class, homeList);
         assertThat(stayed).isEqualTo(HELD_CREATES);
@@ -629,7 +623,7 @@ class TodoIntegrationTest extends IntegrationTest {
             createTodo(user, listId, fixture[0], "LOW", fixture[1]);
         }
 
-        assertThat(walk(user, TODOS + "?size=4")).containsExactly(
+        assertThat(titlesOfEveryBatch(user, TODOS + "?size=4")).containsExactly(
                 List.of("Due 01", "Due 02", "Due 03", "Due 04"),
                 List.of("Due 05", "Due 06", "Undated 1", "Undated 2"),
                 List.of("Undated 3"));
@@ -646,7 +640,7 @@ class TodoIntegrationTest extends IntegrationTest {
         createTodo(user, listId, "Fourth", "LOW", "2026-12-05");
         createTodo(user, listId, "Fifth", "LOW", "2026-12-02");
 
-        assertThat(walk(user, TODOS + "?sort=NEWEST&size=2")).containsExactly(
+        assertThat(titlesOfEveryBatch(user, TODOS + "?sort=NEWEST&size=2")).containsExactly(
                 List.of("Fifth", "Fourth"), List.of("Third", "Second"), List.of("First"));
     }
 
@@ -940,10 +934,6 @@ class TodoIntegrationTest extends IntegrationTest {
         assertThat(forMany).isEqualTo(forOne).isEqualTo(3);
     }
 
-    /**
-     * Statements run by one list request. A cursor list never counts; the rows carry their tags, read
-     * for the whole batch in a second statement (two steps instead of a collection fetch), so two.
-     */
     private long statementsFor(TestUser user, String path) throws Exception {
         statistics().clear();
         getAs(user.accessToken(), path).andExpect(status().isOk());
@@ -973,7 +963,7 @@ class TodoIntegrationTest extends IntegrationTest {
             } finally {
                 release.countDown();
             }
-            within(holder);
+            awaitResult(holder);
         }
     }
 

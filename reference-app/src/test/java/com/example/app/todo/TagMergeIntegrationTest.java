@@ -24,10 +24,6 @@ import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Merging one tag into another (TagMergeManager): a use case that writes two aggregates in one transaction,
- * the todos' tag rows and the tags. Each test's user is fresh, so its tags and todos are its own.
- */
 class TagMergeIntegrationTest extends IntegrationTest {
 
     private static final String TODOS = "/api/v1/todos";
@@ -58,7 +54,6 @@ class TagMergeIntegrationTest extends IntegrationTest {
                 """.formatted(listId, idsJson(tagIds))).andExpect(status().isCreated()), "$.response.id");
     }
 
-    /** Merges {@code sourceId} into {@code targetId}. */
     private ResultActions merge(TestUser user, String sourceId, String targetId) throws Exception {
         return postAs(user.accessToken(), TAGS + "/" + targetId + "/merge", """
                 {"sourceTagId": "%s"}
@@ -71,7 +66,6 @@ class TagMergeIntegrationTest extends IntegrationTest {
                 """.formatted(idsJson(tagIds), version));
     }
 
-    /** The todo's tags, in id order, read from the table. */
     private List<String> tagsOf(String todoId) {
         return jdbc.queryForList("select tag_id::text from todo_tags where todo_id = ?::uuid order by tag_id", String.class, todoId);
     }
@@ -119,7 +113,6 @@ class TagMergeIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), TAGS + "/" + source)
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("TAG_NOT_FOUND"));
-        // A client holding a todo's copy from before the merge holds a stale version.
         putTags(user, sourceOnly, List.of(source), 0)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("OPTIMISTIC_LOCK_CONFLICT"));
@@ -140,17 +133,18 @@ class TagMergeIntegrationTest extends IntegrationTest {
         String foreignTodo = createTodo(stranger, createList(stranger), List.of(foreign));
         String unknown = UUID.randomUUID().toString();
 
-        // Each case: the source, the target, and the one of them the answer names.
-        List<List<String>> cases = List.of(
-                List.of(source, unknown, unknown),
-                List.of(unknown, target, unknown),
-                List.of(source, foreign, foreign),
-                List.of(foreign, target, foreign));
-        for (List<String> refused : cases) {
-            merge(user, refused.get(0), refused.get(1))
+        record RefusedMerge(String source, String target, String namedInTheAnswer) {
+        }
+        List<RefusedMerge> refusals = List.of(
+                new RefusedMerge(source, unknown, unknown),
+                new RefusedMerge(unknown, target, unknown),
+                new RefusedMerge(source, foreign, foreign),
+                new RefusedMerge(foreign, target, foreign));
+        for (RefusedMerge refused : refusals) {
+            merge(user, refused.source(), refused.target())
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.errorCode").value("TAG_NOT_FOUND"))
-                    .andExpect(jsonPath("$.detail", containsString(refused.get(2))));
+                    .andExpect(jsonPath("$.detail", containsString(refused.namedInTheAnswer())));
         }
         merge(stranger, source, target)
                 .andExpect(status().isNotFound())
@@ -203,10 +197,8 @@ class TagMergeIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * Runs {@code merge} while the test holds the tags table in SHARE mode: the merge's locks on the tags pass
-     * (row locks), its todo half runs, and its delete of the source waits. Once it waits there, runs
-     * {@code meanwhile} on its own thread and waits until that finishes or waits on a lock too; then opens the
-     * gate. Returns the merge's answer, then {@code meanwhile}'s.
+     * The tags table held in SHARE mode lets the merge's row locks on the tags pass and its todo half run; its
+     * delete of the source waits.
      */
     private List<Answer> mergeHeldAtTheSourcesDelete(Callable<ResultActions> merge, Callable<ResultActions> meanwhile)
             throws Exception {
@@ -232,26 +224,21 @@ class TagMergeIntegrationTest extends IntegrationTest {
                     other = executor.submit(meanwhileOnce);
                     awaitLockWaiters(2, other, deadline);
                 } else {
-                    within(merged);
+                    awaitResult(merged);
                 }
             } finally {
                 openGate.countDown();
             }
-            within(gate);
+            awaitResult(gate);
             List<Answer> answers = new ArrayList<>();
-            answers.add(within(merged));
+            answers.add(awaitResult(merged));
             if (other != null) {
-                answers.add(within(other));
+                answers.add(awaitResult(other));
             }
             return answers;
         }
     }
 
-    /**
-     * The Manager's transaction is the only one: when the merge fails after its todo half ran (here the source's
-     * delete waits past the lock timeout), the todos' rows and versions roll back with the tags. With the todo
-     * half in a transaction of its own, the links would stay moved to the target while the source stays too.
-     */
     @Test
     @DisplayName("""
             A merge that fails at the source's delete (503 DATABASE_CONTENTION after the lock timeout) rolls back \
@@ -275,14 +262,8 @@ class TagMergeIntegrationTest extends IntegrationTest {
         assertThat(tagsOf(todo)).containsExactly(target);
     }
 
-    /**
-     * The source's key lock: a todo tagged with the source while the merge runs waits at its link's foreign key
-     * check, and fails on the key once the source is deleted, 404 TAG_GONE. With the plain write lock the link
-     * is stored at once, after the merge moved the links it saw, and the source's delete takes it away: the
-     * todo would end with neither tag, and its request answered 200.
-     */
     @Test
-    @DisplayName("A todo tagged with the source while the merge runs waits for it, then is 404 TAG_GONE: no link is lost unmoved")
+    @DisplayName("A todo tagged with the source while the merge runs waits for it, then is 404 TAG_DELETED_MEANWHILE: no link is lost unmoved")
     void aTodoTaggedWithTheSourceDuringTheMergeIsRefused() throws Exception {
         TestUser user = newUser();
         String listId = createList(user);
@@ -296,17 +277,12 @@ class TagMergeIntegrationTest extends IntegrationTest {
 
         assertThat(answers.get(0).status()).isEqualTo(200);
         assertThat(answers.get(1).status()).isEqualTo(404);
-        assertRefusalsAre(answers.subList(1, 2), 404, "TAG_GONE");
+        assertRefusalsAre(answers.subList(1, 2), 404, "TAG_DELETED_MEANWHILE");
         assertThat(tagsOf(moved)).containsExactly(target);
         assertThat(tagsOf(late)).isEmpty();
         assertThat(versionOf(late)).isZero();
     }
 
-    /**
-     * Merges of three tags into each other, every direction at once: each locks both of its tags, the lower id
-     * first, so two merges of one pair queue (the second finds a tag gone, 404) instead of deadlocking (503).
-     * Whatever wins, every todo keeps a tag: all of its tags merged into the ones still there.
-     */
     @Test
     @DisplayName("""
             Concurrent merges of three tags into each other, in every direction: each 200 or 404 TAG_NOT_FOUND, \
@@ -320,7 +296,6 @@ class TagMergeIntegrationTest extends IntegrationTest {
             List<String> tagIds = carried.stream().map(tags::get).toList();
             todos.add(createTodo(user, listId, tagIds));
         }
-        // Each racer one ordered pair (source, target): A->B, B->A, B->C, C->B, A->C, C->A.
         List<List<Integer>> pairs = List.of(List.of(0, 1), List.of(1, 0), List.of(1, 2), List.of(2, 1), List.of(0, 2), List.of(2, 0));
         AtomicInteger racer = new AtomicInteger();
 
@@ -339,10 +314,6 @@ class TagMergeIntegrationTest extends IntegrationTest {
         }
     }
 
-    /**
-     * Merges of different tags whose todos are the same: each locks those todos in id order, so they queue and
-     * all succeed. Every todo ends with the targets only.
-     */
     @Test
     @DisplayName("Concurrent merges of different tags carried by the same todos all answer 200, never 503: they lock the todos in one order")
     void concurrentMergesSharingTodosAllApply() throws Exception {
@@ -410,6 +381,6 @@ class TagMergeIntegrationTest extends IntegrationTest {
                         containsString("TAG_MERGE_INTO_ITSELF")))
                 .andExpect(jsonPath("$.paths['/api/v1/tags/{id}/merge'].post.responses['404'].description",
                         containsString("TAG_NOT_FOUND")))
-                .andExpect(jsonPath("$.paths['/api/v1/tags/{id}/merge'].post.description", containsString("TAG_GONE")));
+                .andExpect(jsonPath("$.paths['/api/v1/tags/{id}/merge'].post.description", containsString("TAG_DELETED_MEANWHILE")));
     }
 }

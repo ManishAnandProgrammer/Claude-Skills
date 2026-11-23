@@ -2,7 +2,7 @@ package com.example.app.user.controller;
 
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.security.SignedIn;
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.user.controller.api.MembershipApi;
 import com.example.app.user.dto.response.MembershipResponse;
 import com.example.app.user.service.MembershipService;
@@ -22,7 +22,7 @@ class MembershipController implements MembershipApi {
     @Override
     @GetMapping(version = "v1+")
     @SignedIn
-    public ListWrapper<MembershipResponse> mine() {
+    public BoundedListWrapper<MembershipResponse> mine() {
         return service.mine(currentUser.id());
     }
 }

@@ -24,13 +24,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * Configuration metadata: the typed methods of {@link Metadata} for other modules, and the admin
- * API's by-name methods, which reach only the fixed keys of {@link MetadataKeys}.
- *
- * <p>Every read is one primary-key-like lookup ({@code uq_configuration_metadata_key}), so there is
- * no cache.</p>
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -48,10 +41,9 @@ public class MetadataService implements Metadata {
      */
     @Override
     public <T> T get(MetadataKey<T> key) {
-        return mapper.toValue(getMetadata(key), key);
+        return mapper.readStoredValue(getMetadata(key), key);
     }
 
-    /** A key that exists is refused at the flush by {@code uq_configuration_metadata_key}: 409 {@code METADATA_KEY_TAKEN}. */
     @Override
     @Transactional
     public <T> void create(MetadataKey<T> key, T value) {
@@ -98,11 +90,10 @@ public class MetadataService implements Metadata {
         repository.flush();
     }
 
-    /** 404 {@code METADATA_KEY_UNKNOWN} for a name that isn't a fixed key of {@link MetadataKeys}. */
     public ObjectWrapper<MetadataResponse> findByName(String name) {
         MetadataKey<?> key = declaredKey(name);
         ConfigurationMetadata metadata = getMetadata(key);
-        return ObjectWrapper.withObject(mapper.toResponse(metadata, mapper.toValue(metadata, key)));
+        return ObjectWrapper.withObject(mapper.toResponse(metadata, mapper.readStoredValue(metadata, key)));
     }
 
     @Transactional
@@ -111,7 +102,7 @@ public class MetadataService implements Metadata {
     }
 
     private <T> MetadataResponse updateFromRequest(MetadataKey<T> key, MetadataUpdateRequest request) {
-        T value = mapper.toValue(request.value(), key);
+        T value = mapper.readRequestValue(request.value(), key);
         validate(value);
         return mapper.toResponse(replace(key, value, request.version()), value);
     }
@@ -123,7 +114,7 @@ public class MetadataService implements Metadata {
     private <T> ConfigurationMetadata replace(MetadataKey<T> key, T value, long version) {
         ConfigurationMetadata metadata = getMetadata(key);
         metadata.checkVersion(version);
-        if (!mapper.toValue(metadata, key).equals(value)) {
+        if (!mapper.readStoredValue(metadata, key).equals(value)) {
             metadata.setValue(mapper.toJson(value));
             repository.flush();
         }
@@ -142,16 +133,15 @@ public class MetadataService implements Metadata {
         }
     }
 
-    /** The record is the body's {@code value}, so each violation's pointer starts there. */
     private static RequestError describe(ConstraintViolation<?> violation) {
         return RequestError.atPointer(JsonPointers.fromPropertyPath(VALUE + violation.getPropertyPath()), violation.getMessage());
     }
 
     private static MetadataKey<?> declaredKey(String name) {
-        return MetadataKeys.byName(name).orElseThrow(AppException.supply(ErrorCode.METADATA_KEY_UNKNOWN));
+        return MetadataKeys.fixedKeyNamed(name).orElseThrow(AppException.supply(ErrorCode.METADATA_KEY_UNKNOWN));
     }
 
     private ConfigurationMetadata getMetadata(MetadataKey<?> key) {
-        return repository.findByKey(key.name()).orElseThrow(AppException.supply(ErrorCode.METADATA_NOT_FOUND, key.name()));
+        return repository.findByKey(key.name()).orElseThrow(AppException.supply(ErrorCode.METADATA_VALUE_MISSING, key.name()));
     }
 }

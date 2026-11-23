@@ -9,18 +9,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
-/**
- * The one domain exception: an {@link ErrorCode} plus message arguments. No HTTP status and no
- * English text: the REST boundary resolves both ({@link ErrorCodeHttpStatusMapper}, the
- * MessageSource).
- *
- * <p>Thrown through its factories: {@code AppException.of(code, args)}, and
- * {@code orElseThrow(AppException.supply(code, args))} for lookups.</p>
- */
 @Getter
 public class AppException extends RuntimeException {
 
-    /** Members every error response already has; an extension under one of them would replace it. */
     private static final Set<String> RESERVED_EXTENSIONS =
             Set.of("type", "title", "status", "detail", "instance", "errorCode", "errors");
 
@@ -29,10 +20,6 @@ public class AppException extends RuntimeException {
     private final transient List<RequestError> errors;
     private final transient Map<String, Object> extensions = new LinkedHashMap<>();
 
-    /**
-     * For the rare subclass a caller must catch on its own (ERR-04); everyone else throws through the
-     * factories. A subclass is still answered by its code.
-     */
     protected AppException(ErrorCode errorCode, Object[] args, List<RequestError> errors, Throwable cause) {
         super(errorCode.name(), cause);
         this.errorCode = errorCode;
@@ -48,7 +35,6 @@ public class AppException extends RuntimeException {
         return new AppException(errorCode, args, List.of(), cause);
     }
 
-    /** The values that failed, each where it is in the request: sent as the {@code errors} member of the response. */
     public static AppException withErrors(ErrorCode errorCode, List<RequestError> errors) {
         return new AppException(errorCode, new Object[0], List.copyOf(errors), null);
     }
@@ -57,10 +43,6 @@ public class AppException extends RuntimeException {
         return () -> of(errorCode, args);
     }
 
-    /**
-     * Adds a member to the response beside {@code errorCode}: a fact a client acts on. Client
-     * errors only; a server error's body stays generic.
-     */
     public AppException withExtension(String name, Object value) {
         if (RESERVED_EXTENSIONS.contains(name)) {
             throw new IllegalArgumentException("'%s' is already a member of every error response".formatted(name));

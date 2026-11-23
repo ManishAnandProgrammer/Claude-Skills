@@ -7,11 +7,6 @@ import jakarta.validation.constraints.Min;
 import lombok.Getter;
 import lombok.Setter;
 
-/**
- * Query parameters of a cursor-paged list: the batch size, and {@code after}, the
- * {@code pageInfo.nextCursor} of the previous batch (absent for the first). Sizes come from
- * {@code app.limits.cursor-page}.
- */
 @Getter
 @Setter
 public abstract class CursorFilter {

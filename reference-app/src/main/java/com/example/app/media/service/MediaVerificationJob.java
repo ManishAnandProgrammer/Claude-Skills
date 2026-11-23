@@ -20,16 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Confirms attached files once their upload URL has expired: present in the store, UPLOADED; absent,
- * MISSING (final, counted on {@code media.files.missing}). Only after the expiry is the answer final:
- * no bytes can reach the key any more. It never detaches a file: a MISSING one keeps its slot until
- * the record's own write replaces it.
- *
- * <p>Each batch: leased in a short transaction, checked with HEAD outside any transaction, its results
- * written in a second short one. A store that doesn't answer ends the run; the leased rows return to
- * the next run when their lease ends. Settings: {@code app.jobs.media-verification.*}.</p>
- */
+/** Only after the upload URL expired is the answer final: no bytes can reach the key any more. */
 @Slf4j
 @Component
 class MediaVerificationJob {
@@ -39,7 +30,7 @@ class MediaVerificationJob {
     private final Settings settings;
     private final Counter missingFiles;
 
-    // Hand-written (JAVA-26): the counter is registered at startup, so its series reads 0 before the first missing file.
+    // Hand-written: the counter is registered at startup, so its series reads 0 before the first missing file.
     MediaVerificationJob(MediaFileService mediaFiles, MediaStorage storage, Settings settings, MeterRegistry meterRegistry) {
         this.mediaFiles = mediaFiles;
         this.storage = storage;
@@ -48,12 +39,12 @@ class MediaVerificationJob {
     }
 
     @Scheduled(cron = "${app.jobs.media-verification.cron}")
-    @MultiInstanceSafe("""
+    @MultiInstanceSafe(reason = """
             Each instance leases its own batch (FOR UPDATE SKIP LOCKED, then lease_until), so instances never \
             check the same file; a crashed instance's batch returns when its lease ends, and every result is \
-            written only while the file is still IN_REVIEW""")
+            written only while the file is still ATTACHED""")
     void verify() {
-        int uploaded = 0;
+        int verified = 0;
         int missing = 0;
         List<MediaFileKey> batch;
         do {
@@ -61,18 +52,17 @@ class MediaVerificationJob {
             List<UUID> present = new ArrayList<>();
             List<UUID> absent = new ArrayList<>();
             boolean storageAnswered = check(batch, present, absent);
-            int markedMissing = mediaFiles.recordVerification(present, absent);
+            verified += mediaFiles.markVerified(present);
+            int markedMissing = mediaFiles.markMissing(absent);
             missingFiles.increment(markedMissing);
-            uploaded += present.size();
             missing += markedMissing;
             if (!storageAnswered) {
                 break;
             }
         } while (batch.size() == settings.batchSize());
-        log.info("Media verification: uploaded={}, missing={}", uploaded, missing);
+        log.info("Media verification: verified={}, missing={}", verified, missing);
     }
 
-    /** Sorts the batch into present and absent; false when the store stopped answering (the rest stays leased). */
     private boolean check(List<MediaFileKey> batch, List<UUID> present, List<UUID> absent) {
         for (MediaFileKey file : batch) {
             try {
@@ -89,11 +79,6 @@ class MediaVerificationJob {
         return true;
     }
 
-    /**
-     * {@code app.jobs.media-verification.*}.
-     *
-     * @param lease how long a leased batch is this instance's; longer than a batch takes
-     */
     @Validated
     @ConfigurationProperties(prefix = "app.jobs.media-verification")
     record Settings(@NotNull Cron cron, @Positive int batchSize, @NotNull @DurationMin(millis = 1) Duration lease) {

@@ -26,9 +26,8 @@ import org.springframework.http.ResponseEntity;
 public interface AuthApi {
 
     @Operation(summary = "Create an account", description = """
-            Creates a USER account. The email (ASCII) is stored lower-case; the password needs at \
-            least 8 characters and at most 72 bytes, with an upper-case letter, a lower-case letter, \
-            a digit and another character, and must not appear in a known data breach (checked \
+            Creates a USER account. The email (ASCII) is stored lower-case; the password follows \
+            its field's rules and must not appear in a known data breach (checked \
             against Have I Been Pwned without sending the password; skipped while that service is \
             unreachable or busy). Sign in afterwards with login.""")
     @ApiResponse(responseCode = "201", description = "Created; Location points at /api/{version}/users/me, in the version called")
@@ -52,7 +51,8 @@ public interface AuthApi {
     @ApiResponse(responseCode = "401", description = "AUTH_INVALID_CREDENTIALS",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = """
-            TENANT_MEMBERSHIP_REQUIRED (the account belongs to no tenant yet); TENANT_NOT_ACTIVE (none of \
+            AUTH_ACCOUNT_SUSPENDED (the account is suspended); TENANT_MEMBERSHIP_REQUIRED (the account belongs \
+            to no tenant yet); TENANT_NOT_ACTIVE (none of \
             your tenants is ACTIVE; tenantStatus is your most recently used one's: PENDING means awaiting \
             provisioning or approval)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -71,7 +71,7 @@ public interface AuthApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTH_INVALID_REFRESH_TOKEN (unknown, expired or reused, or issued before you were removed from its tenant, even if added again since)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus): the tenant was suspended or closed; the refresh token stays usable",
+    @ApiResponse(responseCode = "403", description = "AUTH_ACCOUNT_SUSPENDED (the account was suspended after the token was issued); TENANT_NOT_ACTIVE (with tenantStatus): the tenant was suspended or closed; the refresh token stays usable",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "MEMBERSHIP_NOT_FOUND: the account was removed from the token's tenant; sign in again",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -90,7 +90,7 @@ public interface AuthApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTH_INVALID_REFRESH_TOKEN (unknown, expired or reused, or issued before you were removed from its tenant, even if added again since)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus)",
+    @ApiResponse(responseCode = "403", description = "AUTH_ACCOUNT_SUSPENDED; TENANT_NOT_ACTIVE (with tenantStatus)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "MEMBERSHIP_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

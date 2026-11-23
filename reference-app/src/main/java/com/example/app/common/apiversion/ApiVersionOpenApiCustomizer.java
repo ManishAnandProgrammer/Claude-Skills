@@ -18,10 +18,6 @@ import java.util.Objects;
 
 import static org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE;
 
-/**
- * Adds {@code API_VERSION_UNSUPPORTED} to the 400 of every API operation: every one of them can
- * answer it, so it is written here once instead of on each {@code *Api} interface.
- */
 @Component
 class ApiVersionOpenApiCustomizer implements OpenApiCustomizer {
 

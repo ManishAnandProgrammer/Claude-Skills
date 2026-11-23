@@ -6,26 +6,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-/**
- * The list and tag names unique per owner, and the foreign keys by the side that trips them. A delete
- * of a parent with children is refused: a list with todos, a todo with time entries. A child written
- * while its parent is deleted (the service read the parent, the delete committed before the insert)
- * answers the parent's not-found code: nothing locks the parent for the write, and the foreign key
- * keeps the data right on its own. A tag's delete cascades to its links, so that key trips only on
- * the write side; a todo's delete removes its links first, under the todo's lock.
- *
- * <p>Two keys stay unmapped because they can't trip: {@code fk_todos_requester_id}, as the create checks the
- * person through the user module first and their row is never deleted (an account; with tenancy a member's
- * row in {@code members}, which a removal marks left), and {@code uq_todos_number}, whose numbers come from
- * the counter's row, one create at a time.</p>
- *   <!-- media:begin -->
- *
- * <p>The attachments' keys stay unmapped as well: every write of a todo's files holds the todo's lock, and a
- * file is claimed (one claim wins) before it is attached, so neither {@code uq_todo_attachments_media_file_id}
- * nor {@code fk_todo_attachments_media_file_id} can trip, and {@code fk_todo_attachments_todo_id} only when the
- * todo goes, which waits for that lock and removes its attachments first.</p>
- *   <!-- media:end -->
- */
 @Component
 class TodoConstraintErrorCodes implements ConstraintErrorCodes {
 
@@ -41,9 +21,9 @@ class TodoConstraintErrorCodes implements ConstraintErrorCodes {
     @Override
     public Map<String, ErrorCode> byForeignKeyOnWrite() {
         return Map.of(
-                "fk_todos_todo_list_id_owner_id", ErrorCode.TODO_LIST_GONE,
-                "fk_time_entries_todo_id_owner_id", ErrorCode.TODO_GONE,
-                "fk_todo_tags_todo_id_owner_id", ErrorCode.TODO_GONE,
-                "fk_todo_tags_tag_id_owner_id", ErrorCode.TAG_GONE);
+                "fk_todos_todo_list_id_owner_id", ErrorCode.TODO_LIST_DELETED_MEANWHILE,
+                "fk_time_entries_todo_id_owner_id", ErrorCode.TODO_DELETED_MEANWHILE,
+                "fk_todo_tags_todo_id_owner_id", ErrorCode.TODO_DELETED_MEANWHILE,
+                "fk_todo_tags_tag_id_owner_id", ErrorCode.TAG_DELETED_MEANWHILE);
     }
 }

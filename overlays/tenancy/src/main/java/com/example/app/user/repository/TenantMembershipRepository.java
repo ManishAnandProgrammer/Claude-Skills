@@ -26,15 +26,12 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
 
     boolean existsByUserIdAndTenantId(UUID userId, UUID tenantId);
 
-    /** The user is fetched with it, in the same statement: a member's email and name are on the account. */
     @EntityGraph(attributePaths = "user")
     Optional<TenantMembership> findWithUserByUserIdAndTenantId(UUID userId, UUID tenantId);
 
-    /** One tenant's memberships among {@code userIds}, their users fetched in the same statement. */
     @EntityGraph(attributePaths = "user")
     List<TenantMembership> findWithUserByTenantIdAndUserIdIn(UUID tenantId, Collection<UUID> userIds);
 
-    /** A user's memberships in login's order: the most recently used first, then the oldest. */
     @Query("""
             select m from TenantMembership m
              where m.user.id = :userId
@@ -42,13 +39,11 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
     List<TenantMembership> findByUserIdMostRecentlyUsedFirst(UUID userId);
 
     // roles:begin
-    /** The tenant's oldest membership: before its first activation, its owner's (nobody else can join yet). */
     Optional<TenantMembership> findFirstByTenantIdOrderById(UUID tenantId);
 
-    /** Of these accounts, the one with the tenant's oldest membership. */
     Optional<TenantMembership> findFirstByTenantIdAndUserIdInOrderById(UUID tenantId, Collection<UUID> userIds);
 
-    /** The tenants the user belongs to, in id order (the order their locks are taken in). */
+    /** In id order: the order their locks are taken in. */
     @Query("""
             select m.tenantId from TenantMembership m
              where m.user.id = :userId
@@ -62,14 +57,13 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
     //
     // long countByTenantIdAndRole(UUID tenantId, Role role);
     //
-    // /** The tenants where the user is an ADMIN, in id order (the order their locks are taken in). */
+    // /** In id order: the order their locks are taken in. */
     // @Query("""
     //         select m.tenantId from TenantMembership m
     //          where m.user.id = :userId and m.role = com.example.app.user.domain.Role.ADMIN
     //          order by m.tenantId""")
     // List<UUID> findTenantIdsWhereAdmin(UUID userId);
     //
-    // /** The tenant's ADMINs besides {@code userId} whose account is ACTIVE: the ones who could still manage it. */
     // @Query("""
     //         select count(m) from TenantMembership m
     //          where m.tenantId = :tenantId and m.role = com.example.app.user.domain.Role.ADMIN and m.user.id <> :userId
@@ -78,49 +72,40 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
     //
     // roles:end
     /**
-     * Stamps a token issue on the membership. A machine-written stamp, not an edit (DATA-24's exception):
-     * it sets neither {@code version} nor {@code updated_at}, so the membership's version stays what its last
-     * change left through the member's sign-ins, and two token issues at once never conflict. It
-     * clears the persistence context, so a membership read before it is detached (its fields stay readable).
+     * A machine-written stamp (house-review DATA-24's exception): neither {@code version} nor {@code updated_at}, so
+     * two token issues at once never conflict. It clears the persistence context: a membership read before it is
+     * detached (its fields stay readable).
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("update TenantMembership m set m.lastUsedAt = :now where m.id = :id")
     int markUsed(UUID id, Instant now);
     // session-version:begin
 
-    /** The membership's session version, by primary key; empty once the membership is removed. */
     @Query("select m.sessionVersion from TenantMembership m where m.id = :id")
     Optional<Integer> findSessionVersion(UUID id);
 
     /**
-     * The bumps below raise session versions in the transaction of the access change that needs them. A
-     * machine-written stamp (DATA-24's exception): the number alone, neither {@code version} nor
-     * {@code updated_at}, so the version an ADMIN sends back stays current. No clear: the entity maps the
-     * column read-only, so a copy loaded earlier can't write its older number back, and the caller's
-     * entities stay attached.
+     * A machine-written stamp (house-review DATA-24's exception): the number alone, neither {@code version} nor
+     * {@code updated_at}. No clear: the entity maps the column read-only, so the caller's entities stay attached.
      */
     @Modifying(flushAutomatically = true)
     @Query("update TenantMembership m set m.sessionVersion = m.sessionVersion + 1 where m.id = :id")
     int bumpSessionVersion(UUID id);
 
-    /** Every membership of the user (signing out everywhere). */
     @Modifying(flushAutomatically = true)
     @Query("update TenantMembership m set m.sessionVersion = m.sessionVersion + 1 where m.user.id = :userId")
     int bumpSessionVersionsOfUser(UUID userId);
 
-    /** Every membership of the tenant (it was suspended), in one statement. */
     @Modifying(flushAutomatically = true)
     @Query("update TenantMembership m set m.sessionVersion = m.sessionVersion + 1 where m.tenantId = :tenantId")
     int bumpSessionVersionsOfTenant(UUID tenantId);
 
-    /** The user's memberships' session versions as stored now (after a bump: read from the database, not the context). */
     @Query("""
             select new com.example.app.user.dto.internal.MembershipSessionVersion(m.id, m.sessionVersion)
               from TenantMembership m
              where m.user.id = :userId""")
     List<MembershipSessionVersion> findSessionVersionsOfUser(UUID userId);
 
-    /** The tenant's memberships' session versions as stored now ({@code idx_tenant_memberships_tenant_id_id}). */
     @Query("""
             select new com.example.app.user.dto.internal.MembershipSessionVersion(m.id, m.sessionVersion)
               from TenantMembership m

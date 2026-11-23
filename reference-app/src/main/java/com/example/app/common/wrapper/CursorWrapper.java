@@ -12,10 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * One batch of a cursor-paged list: the items under {@code response}, where the batch ends under
- * {@code pageInfo}. No total count: a cursor list is open-ended, and counting it costs a scan.
- */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 @Schema(description = "One batch of a cursor-paged list")

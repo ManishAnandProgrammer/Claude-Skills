@@ -62,16 +62,11 @@ class TodoListIntegrationTest extends IntegrationTest {
                 """.formatted(name, version);
     }
 
-    /** Creates a list as {@code user} and returns its id; fails the test unless it answers 201. */
     private String createList(TestUser user, String name) throws Exception {
         return read(postAs(user.accessToken(), LISTS, namePayload(name)).andExpect(status().isCreated()), "$.response.id");
     }
 
-    /**
-     * Follows {@code pageInfo.nextCursor} from {@code firstBatch} (a path with its query string) to
-     * the last batch, which must say {@code hasMore} false with no cursor; returns each batch's labels.
-     */
-    private List<List<String>> walk(TestUser user, String firstBatch) throws Exception {
+    private List<List<String>> labelsOfEveryBatch(TestUser user, String firstBatch) throws Exception {
         List<List<String>> batches = new ArrayList<>();
         String next = firstBatch;
         while (Objects.nonNull(next)) {
@@ -262,9 +257,9 @@ class TodoListIntegrationTest extends IntegrationTest {
             } finally {
                 commit.countDown();
             }
-            within(rename);
+            awaitResult(rename);
 
-            Answer answer = within(delete);
+            Answer answer = awaitResult(delete);
             assertThat(answer.status()).isEqualTo(409);
             assertThat(answer.errorCode()).isEqualTo("OPTIMISTIC_LOCK_CONFLICT");
             assertNoInternals(answer.body());
@@ -674,7 +669,6 @@ class TodoListIntegrationTest extends IntegrationTest {
         assertThat(forMany).isEqualTo(forOne).isEqualTo(1);
     }
 
-    /** Statements run by one request: for a page, plus the count only when the page is full. */
     private long statementsFor(TestUser user, String path) throws Exception {
         statistics().clear();
         getAs(user.accessToken(), path).andExpect(status().isOk());
@@ -844,7 +838,7 @@ class TodoListIntegrationTest extends IntegrationTest {
             createList(user, name);
         }
 
-        assertThat(walk(user, DROPDOWN + "&size=2"))
+        assertThat(labelsOfEveryBatch(user, DROPDOWN + "&size=2"))
                 .containsExactly(List.of("Alpha", "Bravo"), List.of("Charlie", "Delta"), List.of("Echo"));
     }
 
@@ -856,7 +850,7 @@ class TodoListIntegrationTest extends IntegrationTest {
             createList(user, name);
         }
 
-        assertThat(walk(user, DROPDOWN + "&size=2&sortDirection=DESC"))
+        assertThat(labelsOfEveryBatch(user, DROPDOWN + "&size=2&sortDirection=DESC"))
                 .containsExactly(List.of("Echo", "Delta"), List.of("Charlie", "Bravo"), List.of("Alpha"));
     }
 
@@ -883,7 +877,7 @@ class TodoListIntegrationTest extends IntegrationTest {
         createList(user, "B");
 
         assertThat(longest.codePointCount(0, longest.length())).isEqualTo(100);
-        assertThat(walk(user, DROPDOWN + "&size=1")).containsExactly(List.of(longest), List.of("B"));
+        assertThat(labelsOfEveryBatch(user, DROPDOWN + "&size=1")).containsExactly(List.of(longest), List.of("B"));
     }
 
     @Test
@@ -953,8 +947,7 @@ class TodoListIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/todo-lists'].get.parameters[?(@.name == 'size')].schema.maximum").value(100))
                 .andExpect(jsonPath("$.paths['/api/v1/todo-lists/dropdown'].get.parameters[?(@.name == 'query')].schema.maxLength").value(100))
                 .andExpect(jsonPath("$.paths['/api/v1/todo-lists/{id}'].delete.responses['409'].content['application/problem+json']").exists())
-                // The codes a client switches on, as written: never resolved as message keys into their messages
-                // (a piece may append its own codes to every 401, hence "starts with").
+                // Never resolved as message keys; a piece may append its own codes to every 401, hence "starts with".
                 .andExpect(jsonPath("$.paths['/api/v1/todo-lists'].get.responses['401'].description").value(startsWith("AUTHENTICATION_REQUIRED")))
                 .andExpect(jsonPath("$.paths['/api/v1/todo-lists'].post.responses['409'].description").value("TODO_LIST_NAME_TAKEN"));
     }

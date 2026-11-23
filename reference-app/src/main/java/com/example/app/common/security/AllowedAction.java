@@ -5,10 +5,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 
-/**
- * One action of a record's {@code allowedActions}: whether the caller may do it, and when not, every reason at
- * once. Made from the policy's {@link Decision} by {@link AllowedActionMapper}, never assembled by hand.
- */
 @Schema(description = """
         Whether you may do this action with this record. When you may not, every reason is listed at once, so all \
         of them can be shown and fixed together; the server checks again on every call""")

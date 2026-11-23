@@ -6,13 +6,6 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * The single place where {@link ErrorCode} meets {@link HttpStatus}. Another protocol would get its
- * own mapper without touching this one.
- *
- * <p>An {@code ErrorCode} without an entry makes {@link #resolve} throw, and
- * {@code ErrorCodeContractTest} fails the build before that can reach production.</p>
- */
 public final class ErrorCodeHttpStatusMapper {
 
     private static final Map<ErrorCode, HttpStatus> MAPPING = new EnumMap<>(ErrorCode.class);
@@ -61,7 +54,7 @@ public final class ErrorCodeHttpStatusMapper {
         // session-version:end
         // roles:begin
         // MAPPING.put(ErrorCode.ROLE_NOT_FOUND, HttpStatus.NOT_FOUND);
-        // MAPPING.put(ErrorCode.ROLE_GONE, HttpStatus.NOT_FOUND);
+        // MAPPING.put(ErrorCode.ROLE_DELETED_MEANWHILE, HttpStatus.NOT_FOUND);
         // MAPPING.put(ErrorCode.ROLE_CODE_TAKEN, HttpStatus.CONFLICT);
         // MAPPING.put(ErrorCode.ROLE_IN_USE, HttpStatus.CONFLICT);
         // MAPPING.put(ErrorCode.ROLE_BUILT_IN, HttpStatus.CONFLICT);
@@ -90,11 +83,11 @@ public final class ErrorCodeHttpStatusMapper {
         // tenancy:end
         // metadata:begin
         MAPPING.put(ErrorCode.METADATA_KEY_UNKNOWN, HttpStatus.NOT_FOUND);
-        MAPPING.put(ErrorCode.METADATA_NOT_FOUND, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.METADATA_VALUE_MISSING, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.METADATA_KEY_TAKEN, HttpStatus.CONFLICT);
         // metadata:end
         // media:begin
-        MAPPING.put(ErrorCode.UPLOAD_POLICY_NOT_FOUND, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.UPLOAD_POLICY_NOT_SEEDED, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.UPLOAD_SIZE_OUT_OF_RANGE, HttpStatus.BAD_REQUEST);
         MAPPING.put(ErrorCode.UPLOAD_TYPE_NOT_ALLOWED, HttpStatus.BAD_REQUEST);
         MAPPING.put(ErrorCode.UPLOAD_FILE_COUNT_OUT_OF_RANGE, HttpStatus.BAD_REQUEST);
@@ -105,15 +98,15 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.TODO_LIST_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TODO_LIST_NAME_TAKEN, HttpStatus.CONFLICT);
         MAPPING.put(ErrorCode.TODO_LIST_IN_USE, HttpStatus.CONFLICT);
-        MAPPING.put(ErrorCode.TODO_LIST_GONE, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.TODO_LIST_DELETED_MEANWHILE, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TODO_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TODO_NOT_YOURS, HttpStatus.FORBIDDEN);
         MAPPING.put(ErrorCode.TODO_IN_USE, HttpStatus.CONFLICT);
-        MAPPING.put(ErrorCode.TODO_GONE, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.TODO_DELETED_MEANWHILE, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TIME_ENTRY_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TAG_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TAG_NAME_TAKEN, HttpStatus.CONFLICT);
-        MAPPING.put(ErrorCode.TAG_GONE, HttpStatus.NOT_FOUND);
+        MAPPING.put(ErrorCode.TAG_DELETED_MEANWHILE, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TAG_MERGE_INTO_ITSELF, HttpStatus.BAD_REQUEST);
         // media:begin
         MAPPING.put(ErrorCode.TODO_ATTACHMENT_NOT_FOUND, HttpStatus.NOT_FOUND);

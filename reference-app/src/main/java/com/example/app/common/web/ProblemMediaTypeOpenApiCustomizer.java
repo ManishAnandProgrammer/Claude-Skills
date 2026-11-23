@@ -14,11 +14,7 @@ import java.util.Objects;
 import static org.springframework.http.MediaType.ALL_VALUE;
 import static org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE;
 
-/**
- * Publishes every error response as {@code application/problem+json}, the type the handler writes:
- * springdoc documents an {@code @Content} without a media type as {@code *}{@code /*}, and writing the
- * type on every error annotation of every {@code *Api} is the kind of repetition that drifts.
- */
+/** Springdoc documents an {@code @Content} without a media type as {@code *}{@code /*}. */
 @Component
 class ProblemMediaTypeOpenApiCustomizer implements OpenApiCustomizer {
 

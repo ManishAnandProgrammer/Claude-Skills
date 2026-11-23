@@ -21,7 +21,6 @@ import java.util.List;
 // roles:end
 import java.util.UUID;
 
-/** The members page is an admin screen that needs page numbers and a total, so it is offset-paged. */
 @Getter
 @Setter
 public class TenantMemberFilter extends PageFilter {

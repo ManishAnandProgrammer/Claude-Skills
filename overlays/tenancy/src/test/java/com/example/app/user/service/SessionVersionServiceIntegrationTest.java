@@ -29,11 +29,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The session version's cache rules (SessionVersionService), with tenancy: the number is the membership's,
- * keyed by its id. The HTTP behaviour is {@code SessionVersionIntegrationTest}'s and
- * {@code SessionVersionTenancyIntegrationTest}'s.
- */
 class SessionVersionServiceIntegrationTest extends IntegrationTest {
 
     @Autowired
@@ -70,8 +65,7 @@ class SessionVersionServiceIntegrationTest extends IntegrationTest {
         return redis.opsForValue().get(SessionVersionService.key(membershipId));
     }
 
-    /** One committed access change: the user signed out everywhere, every membership raised. */
-    private void bump(TestUser user) {
+    private void signOutEverywhere(TestUser user) {
         tokens.endAllSessions(user.id());
     }
 
@@ -103,7 +97,7 @@ class SessionVersionServiceIntegrationTest extends IntegrationTest {
         redis.delete(SessionVersionService.key(membership));
         int readBeforeTheBump = storedVersion(membership);
 
-        bump(user);
+        signOutEverywhere(user);
         sessionVersions.fillIfAbsent(membership, readBeforeTheBump);
 
         assertThat(cached(membership)).isEqualTo(Integer.toString(readBeforeTheBump + 1));
@@ -168,7 +162,7 @@ class SessionVersionServiceIntegrationTest extends IntegrationTest {
     void aTokenNewerThanTheCacheAsksTheDatabase() throws Exception {
         TestUser user = newUser();
         UUID membership = membershipOf(user, testTenant());
-        bump(user);
+        signOutEverywhere(user);
         Jwt current = decoded(signIn(user).accessToken());
         redis.opsForValue().set(SessionVersionService.key(membership), "0");
 
@@ -212,7 +206,7 @@ class SessionVersionServiceIntegrationTest extends IntegrationTest {
                     properties, breakers, meters);
 
             assertThat(withoutRedis.isCurrent(revoked)).isTrue();
-            bump(user);
+            signOutEverywhere(user);
             assertThat(withoutRedis.isCurrent(revoked)).isFalse();
             assertThat(breakers.circuitBreaker(SessionVersionService.CIRCUIT_BREAKER).getState()).isEqualTo(CircuitBreaker.State.OPEN);
             assertThat(withoutRedis.isCurrent(decoded(signIn(user).accessToken()))).isTrue();

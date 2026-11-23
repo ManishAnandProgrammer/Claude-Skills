@@ -17,17 +17,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Self-registration of an organisation: a PENDING tenant owned by the registering account, which staff
- * approve or reject. The answer is the same whether or not the email has an account, so the endpoint
- * reveals nothing about who is registered:
- * <ul>
- *   <li>a new email gets a new account (signup's own path: its rate limit, breached-password check and
- *       hash), which owns the tenant;</li>
- *   <li>an existing account owns the tenant only when the password is its own; otherwise nothing
- *       happens, so no one can attach a tenant to someone else's account. This path takes the same
- *       rate limit, check and one hash, so its timing matches too.</li>
- * </ul>
- * Runs without a transaction, like signup: hashing and the remote check must not hold a connection.
+ * The answer is the same whether or not the email has an account, and an existing account's path takes signup's
+ * rate limit, breached-password check and one hash: neither the answer nor its timing reveals who is registered.
+ * Without a transaction, like signup: hashing and the remote check must not hold a connection.
  */
 @Service
 @Slf4j

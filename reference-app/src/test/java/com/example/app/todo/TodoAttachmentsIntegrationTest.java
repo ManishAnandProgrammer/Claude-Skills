@@ -32,11 +32,6 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * A todo's files (the media piece in the example module): attached on create and update by upload key,
- * removed by id, the count kept within the purpose's range, the claim refusing every key that isn't
- * the caller's to use. Bootstrap copies this class with the example and media pieces together.
- */
 @ResourceLock(IntegrationTest.UPLOAD_POLICIES_LOCK)
 class TodoAttachmentsIntegrationTest extends IntegrationTest {
 
@@ -56,7 +51,6 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
 
     private UploadPolicyLimits saved;
 
-    /** Known limits before each test, whatever ran before it; the stored ones back after it, for every other class. */
     @BeforeEach
     void setThePolicy() {
         saved = uploadPolicyOf(PURPOSE);
@@ -125,7 +119,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Create attaches the uploads: the todo lists them IN_REVIEW with name, type, size and a read URL")
+    @DisplayName("Create attaches the uploads: the todo lists them ATTACHED with name, type, size and a read URL")
     void createAttachesTheUploads() throws Exception {
         TestUser user = newUser();
         List<String> keys = uploads(user, 2);
@@ -136,11 +130,11 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.attachments[0].fileName").value("scan.pdf"))
                 .andExpect(jsonPath("$.response.attachments[0].contentType").value("application/pdf"))
                 .andExpect(jsonPath("$.response.attachments[0].sizeBytes").value(PDF.length))
-                .andExpect(jsonPath("$.response.attachments[0].status").value("IN_REVIEW"))
+                .andExpect(jsonPath("$.response.attachments[0].status").value("ATTACHED"))
                 .andExpect(jsonPath("$.response.attachments[0].url").isNotEmpty())
                 .andExpect(jsonPath("$.response.version").value(0));
-        assertThat(statusOfKey(keys.get(0))).isEqualTo("IN_REVIEW");
-        assertThat(statusOfKey(keys.get(1))).isEqualTo("IN_REVIEW");
+        assertThat(statusOfKey(keys.get(0))).isEqualTo("ATTACHED");
+        assertThat(statusOfKey(keys.get(1))).isEqualTo("ATTACHED");
     }
 
     @Test
@@ -171,27 +165,24 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
                 .contains("filename*=UTF-8''Bericht%20M%C3%A4rz.pdf");
     }
 
-    /** A PENDING upload of another purpose, which no endpoint here creates. */
     private void insertOtherPurposeFile(String key, UUID uploadedBy) {
         // tenancy-row:begin
-        // // Row mode: every insert names its tenant (tenant_id has no default).
         // sql("""
         //         insert into media_files (id, tenant_id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
-        //                                  upload_expires_at, expires_at, created_at, updated_at, version)
-        //         values (gen_random_uuid(), ?, ?, 'OTHER_PURPOSE', 'a.pdf', 'application/pdf', 10, 'PENDING', ?,
+        //                                  upload_expires_at, claimable_until, created_at, updated_at, version)
+        //         values (gen_random_uuid(), ?, ?, 'OTHER_PURPOSE', 'a.pdf', 'application/pdf', 10, 'UNCLAIMED', ?,
         //                 now() + interval '5 minutes', now() + interval '1 hour', now(), now(), 0)
         //         """, testTenant().id(), key, uploadedBy);
         // tenancy-row:else
         sql("""
                 insert into media_files (id, key, purpose, file_name, content_type, size_bytes, status, uploaded_by,
-                                         upload_expires_at, expires_at, created_at, updated_at, version)
-                values (gen_random_uuid(), ?, 'OTHER_PURPOSE', 'a.pdf', 'application/pdf', 10, 'PENDING', ?,
+                                         upload_expires_at, claimable_until, created_at, updated_at, version)
+                values (gen_random_uuid(), ?, 'OTHER_PURPOSE', 'a.pdf', 'application/pdf', 10, 'UNCLAIMED', ?,
                         now() + interval '5 minutes', now() + interval '1 hour', now(), now(), 0)
                 """, key, uploadedBy);
         // tenancy-row:end
     }
 
-    /** Sends {@code refusedKey} beside a good one: 409, no todo, and the good one is still claimable. */
     private void assertClaimRefused(TestUser user, String refusedKey) throws Exception {
         String listId = createList(user);
         String goodKey = upload(user);
@@ -204,7 +195,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         assertNoInternals(body);
 
         assertThat(todosOf(user)).isEqualTo(todosBefore);
-        assertThat(statusOfKey(goodKey)).isEqualTo("PENDING");
+        assertThat(statusOfKey(goodKey)).isEqualTo("UNCLAIMED");
     }
 
     @Test
@@ -213,7 +204,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         String othersKey = upload(newUser());
 
         assertClaimRefused(newUser(), othersKey);
-        assertThat(statusOfKey(othersKey)).isEqualTo("PENDING");
+        assertThat(statusOfKey(othersKey)).isEqualTo("UNCLAIMED");
     }
 
     @Test
@@ -231,7 +222,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
     void expiredUploadIs409() throws Exception {
         TestUser user = newUser();
         String key = upload(user);
-        assertThat(sql("update media_files set upload_expires_at = now() - interval '2 hours', expires_at = now() - interval '1 minute' where key = ?",
+        assertThat(sql("update media_files set upload_expires_at = now() - interval '2 hours', claimable_until = now() - interval '1 minute' where key = ?",
                 key)).isEqualTo(1);
 
         assertClaimRefused(user, key);
@@ -264,10 +255,9 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
 
         assertThat(attachmentIds(user, todoId)).isEmpty();
         assertThat(jdbc.queryForObject("select version from todos where id = ?::uuid", Long.class, todoId)).isZero();
-        assertThat(statusOfKey(othersKey)).isEqualTo("PENDING");
+        assertThat(statusOfKey(othersKey)).isEqualTo("UNCLAIMED");
     }
 
-    /** Sends {@code refusedKey} in an update of a todo without files: 409, and the todo is unchanged. */
     private void assertUpdateClaimRefused(TestUser user, String refusedKey) throws Exception {
         String listId = createList(user);
         String todoId = createTodo(user, listId, List.of());
@@ -288,7 +278,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         String attached = upload(user);
         createTodo(user, createList(user), List.of(attached));
         String expired = upload(user);
-        assertThat(sql("update media_files set upload_expires_at = now() - interval '2 hours', expires_at = now() - interval '1 minute' where key = ?",
+        assertThat(sql("update media_files set upload_expires_at = now() - interval '2 hours', claimable_until = now() - interval '1 minute' where key = ?",
                 expired)).isEqualTo(1);
         String otherPurposeKey = "OTHER_PURPOSE/" + UUID.randomUUID();
         insertOtherPurposeFile(otherPurposeKey, user.id());
@@ -326,7 +316,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_FILE_COUNT_OUT_OF_RANGE"));
         for (String key : six) {
-            assertThat(statusOfKey(key)).isEqualTo("PENDING");
+            assertThat(statusOfKey(key)).isEqualTo("UNCLAIMED");
         }
     }
 
@@ -343,7 +333,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("OPTIMISTIC_LOCK_CONFLICT"));
         assertThat(attachmentIds(user, todoId)).isEmpty();
-        assertThat(statusOfKey(key)).isEqualTo("PENDING");
+        assertThat(statusOfKey(key)).isEqualTo("UNCLAIMED");
     }
 
     @Test
@@ -358,7 +348,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errorCode").value("UPLOAD_FILE_COUNT_OUT_OF_RANGE"));
         }
-        assertThat(statusOfKey(key)).isEqualTo("PENDING");
+        assertThat(statusOfKey(key)).isEqualTo("UNCLAIMED");
     }
 
     @Test
@@ -396,7 +386,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         update(user, listId, todoId, 0, "With files", List.of(extra), List.of())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_FILE_COUNT_OUT_OF_RANGE"));
-        assertThat(statusOfKey(extra)).isEqualTo("PENDING");
+        assertThat(statusOfKey(extra)).isEqualTo("UNCLAIMED");
     }
 
     @Test
@@ -465,7 +455,7 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         update(user, listId, todoId, 0, "With files", List.of(), List.of(othersFile))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("TODO_ATTACHMENT_NOT_FOUND"));
-        assertThat(statusOf(othersFile)).isEqualTo("IN_REVIEW");
+        assertThat(statusOf(othersFile)).isEqualTo("ATTACHED");
     }
 
     @Test
@@ -525,10 +515,9 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
         assertThat(attachmentIds(user, todoId)).hasSize(1);
         assertThat(statusOf(original)).isEqualTo("RELEASED");
         List<String> statuses = replacements.stream().map(this::statusOfKey).toList();
-        assertThat(statuses).containsOnlyOnce("IN_REVIEW").containsOnly("IN_REVIEW", "PENDING");
+        assertThat(statuses).containsOnlyOnce("ATTACHED").containsOnly("ATTACHED", "UNCLAIMED");
     }
 
-    /** The tables (not their indexes) on which a session that waits for a lock already holds one. */
     private List<String> tablesLockedByWaitingSessions() {
         return jdbc.queryForList("""
                 select distinct c.relname
@@ -541,11 +530,8 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * The guard of the replacement race above: todos has no unique column, so here two replacements
-     * without the lock would still end in one 200 and 409s; an owner whose update changes a unique column
-     * would deadlock instead (media.md). So the order is proven directly: held at the todo, the update
-     * has touched nothing else yet. An owner with a unique column also has its racers each change that
-     * column to their own value (media.md, Tests): then the race itself goes red without the lock.
+     * todos has no unique column, so the replacement race above ends in one 200 and 409s even without the
+     * todo's lock: the lock order is proven here directly.
      */
     @Test
     @DisplayName("An update of the files locks the todo before any other table: its list, its files, its attachment rows")
@@ -575,10 +561,10 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
             } finally {
                 release.countDown();
             }
-            within(holder);
+            awaitResult(holder);
         }
 
-        assertThat(within(replace).status()).isEqualTo(200);
+        assertThat(awaitResult(replace).status()).isEqualTo(200);
     }
 
     private int statementsOfGet(TestUser user, String todoId) throws Exception {
@@ -702,8 +688,8 @@ class TodoAttachmentsIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/todos'].post.responses['409'].description", containsString("UPLOAD_NOT_AVAILABLE")))
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].put.responses['400'].description", containsString("UPLOAD_FILE_COUNT_OUT_OF_RANGE")))
                 .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].put.responses['404'].description", containsString("TODO_ATTACHMENT_NOT_FOUND")))
-                .andExpect(jsonPath("$.paths['/api/v1/todos'].post.responses['404'].description", containsString("UPLOAD_POLICY_NOT_FOUND")))
-                .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].put.responses['404'].description", containsString("UPLOAD_POLICY_NOT_FOUND")))
+                .andExpect(jsonPath("$.paths['/api/v1/todos'].post.responses['404'].description", containsString("UPLOAD_POLICY_NOT_SEEDED")))
+                .andExpect(jsonPath("$.paths['/api/v1/todos/{id}'].put.responses['404'].description", containsString("UPLOAD_POLICY_NOT_SEEDED")))
                 .andExpect(jsonPath("$.components.schemas.TodoUpdateRequest.properties.removeAttachmentIds").exists())
                 .andExpect(jsonPath("$.components.schemas.TodoCreateRequest.properties.attachmentKeys.items.maxLength").value(UPLOAD_KEY_LIMIT))
                 .andExpect(jsonPath("$.components.schemas.TodoUpdateRequest.properties.addAttachmentKeys.items.maxLength").value(UPLOAD_KEY_LIMIT))

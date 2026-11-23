@@ -27,20 +27,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * The row mode's guard on the schema itself (house-review TEN-16, TEN-30..TEN-33, TEN-38), read from
- * PostgreSQL's catalogue: every table is either a tenant table, with its forced policy, tenant-carrying keys
- * and a replica identity with tenant_id, or a platform table named below with its reason. A new table that
- * is neither, a policy left out, a foreign key that could point into another tenant or into the platform,
- * or an identity that row-filtered replication can't use fails the build.
- */
 @WithoutTestTenant
 class RowSecurityCatalogIntegrationTest extends IntegrationTest {
 
-    /**
-     * The control plane's tables: no tenant_id, or one that the platform reads across tenants. Add a
-     * project's own platform table here with its reason; every other table is a tenant table.
-     */
     private static final Map<String, String> PLATFORM_TABLES = Map.of(
             "users", "global identities: one account, memberships in several tenants",
             "refresh_tokens", "read at refresh, before any tenant is known (the token names its tenant)",
@@ -55,15 +44,10 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
             "databasechangelog", "Liquibase's own",
             "databasechangeloglock", "Liquibase's own");
 
-    /** The one policy every tenant table has, as PostgreSQL prints it back. */
+    /** The tenant policy as {@code pg_get_expr} prints it back. */
     private static final String POLICY_EXPRESSION = "(tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)";
 
-    /**
-     * Tenant tables (a tenant_id column, not a platform table) that miss any part of their protection:
-     * row-level security enabled and forced (the owner too), exactly one policy, for every command, whose
-     * USING and WITH CHECK are the tenant predicate. A second permissive policy would widen the first, so
-     * the count matters.
-     */
+    /** A second permissive policy would widen the first, so the count matters. */
     private static final String TENANT_TABLES_WITHOUT_THEIR_POLICY = """
             select c.relname
               from pg_class c
@@ -96,10 +80,7 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
                and not (c.relname = any (?))
              order by c.relname""";
 
-    /**
-     * A tenant table's tenant_id must be NOT NULL, reference the register and have no default: every insert
-     * names its tenant, so a forgotten one fails at once instead of taking whatever the session was told.
-     */
+    /** No default: an insert that forgets its tenant fails at once instead of taking whatever the session was told. */
     private static final String TENANT_IDS_UNCHECKED = """
             select c.relname
               from pg_class c
@@ -116,8 +97,8 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
              order by c.relname""";
 
     /**
-     * Foreign keys between two tenant tables that don't pair tenant_id with tenant_id: such a key lets a
-     * row point at another tenant's parent, which no policy can see (key checks bypass row security).
+     * A key that doesn't pair tenant_id with tenant_id lets a row point at another tenant's parent, which no policy
+     * can see: key checks bypass row security.
      */
     private static final String FOREIGN_KEYS_ACROSS_TENANTS = """
             select f.conname
@@ -136,9 +117,8 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
              order by f.conname""";
 
     /**
-     * Tenant tables whose replica identity isn't a unique index holding tenant_id. One tenant's rows leave
-     * through a publication filtered by tenant_id, and PostgreSQL refuses UPDATE and DELETE on a table whose
-     * row filter names a column outside the replica identity (TEN-38).
+     * One tenant's rows leave through a publication filtered by tenant_id, and PostgreSQL refuses UPDATE and DELETE
+     * on a table whose row filter names a column outside the replica identity.
      */
     private static final String TENANT_TABLES_WITHOUT_A_TENANT_REPLICA_IDENTITY = """
             select c.relname
@@ -154,10 +134,7 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
                                        and a.attnum = any (i.indkey::int2[])))
              order by c.relname""";
 
-    /**
-     * Foreign keys from a tenant table into the platform, the register aside: a tenant's rows must form a
-     * closed graph, to move to a database of their own. A person is a row of the tenant's members (TEN-16).
-     */
+    /** A tenant's rows must form a closed graph, to move to a database of their own. */
     private static final String FOREIGN_KEYS_INTO_THE_PLATFORM = """
             select f.conname
               from pg_constraint f
@@ -174,9 +151,8 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
              order by f.conname""";
 
     /**
-     * Sequences: none. One sequence serves every tenant in row mode, so numbers drawn from it for tenant data
-     * interleave across tenants and leak their volume; a tenant's display numbers are its own counters
-     * (TEN-18). A platform sequence a project needs is named here with its reason.
+     * One sequence serves every tenant, so numbers drawn from it for tenant data interleave across tenants and leak
+     * their volume.
      */
     private static final Map<String, String> PLATFORM_SEQUENCES = Map.of();
 
@@ -350,11 +326,7 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
         }
     }
 
-    /**
-     * The extraction itself, short of a subscriber: a publication filtered to one tenant accepts UPDATE and
-     * DELETE on a table whose replica identity holds tenant_id, and refuses both on one whose identity is
-     * the primary key alone. Publications don't need wal_level=logical to exist, and the check runs anyway.
-     */
+    /** Publications don't need wal_level=logical to exist, and the replica identity check runs anyway. */
     @Test
     @DisplayName("A publication filtered by tenant_id: UPDATE and DELETE pass with the tenant in the replica identity, and fail without it")
     void aTenantFilteredPublicationAcceptsUpdatesAndDeletes() throws SQLException {
@@ -362,7 +334,7 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
         try (Connection owner = ownerConnection()) {
             JdbcTemplate asOwner = new JdbcTemplate(new SingleConnectionDataSource(owner, true));
             try {
-                // The owner is bound by the forced policy too: it names the tenant, as the runbook's fixes do.
+                // The owner is bound by the forced policy too.
                 asOwner.queryForObject("select set_config('app.tenant_id', ?, true)", String.class, tenantId.toString());
                 asOwner.execute("create publication extract_probe for table tenancy_probe where (tenant_id = '%s')".formatted(tenantId));
                 UUID probe = UUID.randomUUID();
@@ -388,7 +360,6 @@ class RowSecurityCatalogIntegrationTest extends IntegrationTest {
         }
     }
 
-    /** The owner role, in a transaction the test rolls back: DDL and publications leave nothing behind. */
     private Connection ownerConnection() throws SQLException {
         String jdbcUrl = dataSource.unwrap(HikariDataSource.class).getJdbcUrl();
         Connection owner = DriverManager.getConnection(jdbcUrl, ownerUser, ownerPassword);

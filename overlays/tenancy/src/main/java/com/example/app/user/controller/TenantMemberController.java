@@ -42,7 +42,6 @@ class TenantMemberController implements TenantMemberApi {
 
     private final MembershipService service;
     // roles:begin
-    /** Adding and removing a member changes their access too (the roles piece). */
     private final TenantMemberManager manager;
     // roles:end
     private final CurrentUser currentUser;

@@ -71,7 +71,8 @@ query plan cache size left at its default.
 ## CFG-04: Server, threads and overload
 | Key | Value | Why |
 |---|---|---|
-| `spring.threads.virtual.enabled` | `true` | Then `server.tomcat.threads.max` bounds **nothing** (REL-07): concurrency is bounded by admission control (PERF-03) |
+| `spring.threads.virtual.enabled` | `false`, set explicitly (owner decision) | Every request waits on the connection pool, and admission caps the requests in flight far below Tomcat's threads, so virtual threads buy nothing here; on, they make `server.tomcat.threads.max` inert (REL-07). Virtual threads for one piece of work (an outbound call fan-out) are that code's own executor, bounded (REL-09) |
+| `server.tomcat.threads.max` | `${TOMCAT_MAX_THREADS:100}`, above the sum of every admission group's cap plus headroom (checked at startup) | A refused request still needs a thread for its 503, and the actuator is never capped; at or below the caps, admission never refuses and the excess waits unseen in `accept-count` (REL-07) |
 | `server.shutdown` / `spring.lifecycle.timeout-per-shutdown-phase` | `graceful` / `30s` | Longer than a normal request (pool wait 3 s + statement timeout 25 s), so a drain doesn't cut requests that would have finished; the container's stop grace is longer still (REL-13) |
 | `server.compression.*` | enabled with `min-response-size=1KB` and JSON mime types, **or** documented as done by the edge proxy | Off in prod when Nginx compresses |
 | `server.tomcat.connection-timeout` | `5s` | |
@@ -79,10 +80,10 @@ query plan cache size left at its default.
 | `server.tomcat.max-http-form-post-size`, `max-swallow-size`, `max-http-response-header-size` | set | Bounded input. These bound forms and headers only: Jackson reads a whole JSON body into memory before validation, and nothing in Boot caps it. The reverse proxy's body limit is the bound (Nginx `client_max_body_size`, a deployment setting); an in-app cap (a declared `Content-Length` check plus a counting stream for chunked bodies, 413) is a project's own filter |
 | `spring.servlet.multipart.enabled` | `false` where no endpoint takes a file (the house uploads go to storage directly, MEDIA-01); else `max-file-size` / `max-request-size` set | The resolver parses every part of a multipart body before any filter or wrapper sees it |
 | `spring.mvc.formcontent.filter.enabled` | `false` where no endpoint reads form parameters | Boot's `FormContentFilter` (order -9900, on by default) reads a PUT, PATCH or DELETE form body whole into memory ahead of admission control, the security chain and any body cap. Reference: `ConfigurationBaselineIntegrationTest.noBodyIsReadAheadOfTheFilters` |
-| Scheduler | a `TaskScheduler` bean with N named platform threads, `waitForTasksToCompleteOnShutdown`, `awaitTerminationSeconds` | `spring.task.scheduling.pool.size` is ignored under virtual threads (REL-08) |
+| Scheduler | a `TaskScheduler` bean with N named threads, `waitForTasksToCompleteOnShutdown`, `awaitTerminationSeconds` | One hung job can't stall the others, and shutdown waits for a running job (REL-08) |
 | `spring.task.execution.mode` | `force` (whenever a `TaskScheduler` bean exists) | A scheduler is an `Executor`, so Boot otherwise skips its `applicationTaskExecutor`, and the MDC `TaskDecorator` with it |
 | `spring.task.execution.thread-name-prefix` | set | Readable thread dumps |
-| Admission control | PERF-03 | Never the thread-pool bulkhead: it undoes virtual threads |
+| Admission control | PERF-03 | A semaphore bulkhead, never the thread-pool bulkhead: that adds a second pool and a hand-off in front of Tomcat's |
 
 ## CFG-05: Jackson (strict input)
 ```

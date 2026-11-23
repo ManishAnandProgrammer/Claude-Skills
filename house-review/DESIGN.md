@@ -81,7 +81,7 @@ locks in turn on a scratch copy (repeated 6-way races and trigger-gated read-to-
   delete that wins the read-to-insert window only changes the create's answer. That answer was the
   wrong code (409 `*_IN_USE`, or 500 for the unmapped tag-link keys), so foreign keys now map by side
   (`ConstraintErrorCodes.byForeignKeyOnWrite`, decided from `JDBCException.getSQL()`: PostgreSQL names
-  the child table on both sides) to new placeholder-free `*_GONE` codes (404). Chosen over services
+  the child table on both sides) to new placeholder-free `*_DELETED_MEANWHILE` codes (404). Chosen over services
   catching the violation and passing the id: one declarative map entry per key, no try/catch in every
   child-writing service, and no guessing which of two parents (a todo's list or its tags) was gone.
 - **Kept:** the todo's `findForUpdate…` (without it, double submits answered `DUPLICATE_RECORD` or 503
@@ -498,7 +498,7 @@ The user asked for an explicit paginated wrapper instead of page details hidden 
 - `PaginationWrapper<T>` holds `response`, an explicit `pageInfo` (`PageInfo`: number, size,
   totalElements, totalPages, hasNext, hasPrevious, all with `@Schema`) and optional
   `extraDetails`.
-- `ListWrapper` is only for lists bounded by nature (dropdowns, small fixed sets).
+- `BoundedListWrapper` is only for lists bounded by nature (dropdowns, small fixed sets).
 - Both skills follow it:
   - REST-11 and REST-08 (house-review);
   - TEST-11 and TEST-12 (house-review);
@@ -510,7 +510,7 @@ The user asked for an explicit paginated wrapper instead of page details hidden 
 
 The user standardised dropdowns in another project; the frontend then needed one component for
 all of them. Shared reference: their `DropdownItem` class (`Object value`, `String label`) and
-`ListWrapper<DropdownItem>` endpoints at `<resource>/dropdown`.
+`BoundedListWrapper<DropdownItem>` endpoints at `<resource>/dropdown`.
 
 Decided:
 - **`DropdownItem` is a record** with the same JSON `{value, label}`; null-checked; `@Schema`
@@ -946,8 +946,8 @@ two URLs and six crons as `String`, environment variables with the unit in the n
   (the brief's example of a rule across fields), both presigned-URL expiries within SigV4's 1 s to 7 days (only the read
   URL's maximum was checked: anything else failed every presign, at each request), the impersonation token at most 15m
   like an access token (nothing ends it early), `@DurationMin(millis = 1)` on the timeouts, leases, the lock timeout, the rate
-  limit's window and the slow-request threshold (a timeout or lock timeout of zero often means none at all, and a
-  zero-length window refills nothing), `@DurationMin(days = 0)` on the waits and the pending lifetime; the overlays'
+  limit's refill period and the slow-request threshold (a timeout or lock timeout of zero often means none at all, and a
+  zero-length refill period refills nothing), `@DurationMin(days = 0)` on the waits and the claim grace period; the overlays'
   copies of those records alike. db.yml's Hikari
   and PgJDBC numbers got comments naming their units (milliseconds, seconds): the libraries' setters take a number.
 - **Enforcement: ArchUnit**, `ConventionArchTest.settingsAreTypedByWhatTheyMean`, so it travels with every copy through
@@ -1075,7 +1075,7 @@ scope trees; role-level DENY (a role only allows, so "what may this role do" sta
   operation's 403 silent about its permission, and a generated line can't drift.
   The todo list keeps its owner condition in its queries (its only rule): AUTHZ-04's *Not a finding*.
 - **Shared dropdowns:** `for` is a `@RequestParam` beside the filter (`for` is a Java keyword, so no filter
-  property), checked in memory by `DropdownFor.check`; the todo-list and tag dropdowns list `OWN` only, so an
+  property), checked in memory by `DropdownFor.requireReach`; the todo-list and tag dropdowns list `OWN` only, so an
   all-records permission is 400 `DROPDOWN_REACH_UNSUPPORTED`. A dependent dropdown is a rule and crud-gen's
   generation (its parent a plain filter of the one query); its golden came with Level 2's batch (below).
 - **Permission names** for the reference: `TODO_LIST_*`, `TODO_*`, `TAG_*`, `PLAN_*` with `READ`, `CREATE`, `EDIT`,

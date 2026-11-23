@@ -24,24 +24,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Checks access tokens against the current session version (the session-version piece). The number
- * lives in a {@code session_version} column of what the token was issued for ({@link #storedVersion}),
- * and is raised by that aggregate's service in the transaction of each access change, which then
- * publishes {@link SessionVersionsRaised}. Redis holds a copy ({@code sv:<id>}), read once per request.
- *
- * <ul>
- *   <li><b>Publish:</b> after the commit only, with a plain SET, so a rolled-back change never touches
- *       Redis and the newest number wins.</li>
- *   <li><b>Miss:</b> the number is read from the database and written with SET NX: a bump that committed
- *       after that read has already written its newer number, and the late fill must not undo it.</li>
- *   <li><b>A token newer than Redis:</b> numbers only go up, so Redis missed a publish; the database
- *       decides, and Redis catches up when its copy expires ({@code app.session-version.cache-ttl}).</li>
- *   <li><b>Redis down</b> (an error, a timeout, or the circuit breaker {@value #CIRCUIT_BREAKER} open):
- *       the number is read from the database, one read by primary key per request, so a revoked token
- *       stays refused. Logged once per outage, counted on {@value #FALLBACK_METRIC}; a publish that
- *       failed is counted on {@value #LOST_PUBLISH_METRIC}. Chosen over accepting the token (the window
- *       would reopen) and over refusing it (a Redis blip would sign everyone out).</li>
- * </ul>
+ * While Redis is down the number is read from the database, one read by primary key per request: accepting the
+ * token would reopen the window a revocation closed, and refusing it would sign everyone out on a Redis blip.
  */
 @Service
 @Slf4j
@@ -69,9 +53,8 @@ public class SessionVersionService implements SessionVersions {
     private final Counter lostPublishes;
     private final AtomicBoolean cacheAvailable = new AtomicBoolean(true);
 
-    // Hand-written (JAVA-26): the circuit breaker is looked up once (a missing instance stops the startup) and
-    // the counters registered, so their series read 0 before the first fallback. Package-private: its
-    // properties are (JAVA-27).
+    // Hand-written: the circuit breaker is looked up once (a missing instance stops the startup) and the counters
+    // registered, so their series read 0 before the first fallback.
     SessionVersionService(
                           // tenancy:begin
                           // MembershipService memberships,
@@ -97,7 +80,6 @@ public class SessionVersionService implements SessionVersions {
                 .register(meterRegistry);
     }
 
-    /** Without a transaction: a Redis hit, the common case, borrows no database connection. */
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public boolean isCurrent(Jwt accessToken) {
@@ -132,13 +114,13 @@ public class SessionVersionService implements SessionVersions {
             return stored.filter(version -> version == tokenVersion).isPresent();
         }
         long cachedVersion = Long.parseLong(cached.get());
+        // Numbers only go up: Redis missed a publish, and the database decides.
         if (tokenVersion > cachedVersion) {
             return isStored(tokenVersion, id);
         }
         return tokenVersion == cachedVersion;
     }
 
-    /** After the commit only: a rolled-back change leaves Redis as it was. A plain SET: the newest number wins. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void publish(SessionVersionsRaised raised) {
@@ -171,10 +153,8 @@ public class SessionVersionService implements SessionVersions {
         }
     }
 
-    /** By primary key; empty when it no longer exists, which no token passes. */
     private Optional<Integer> storedVersion(UUID id) {
         // tenancy:begin
-        // // The membership's: a change in one tenant leaves the user's tokens for the others alone.
         // return memberships.findSessionVersion(id);
         // tenancy:else
         return users.findSessionVersion(id);

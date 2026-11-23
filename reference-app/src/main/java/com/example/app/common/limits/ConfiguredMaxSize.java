@@ -9,10 +9,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-/**
- * The collection holds at most {@code app.limits.<value>} elements, e.g. {@code "todo.max-tags"}. A
- * {@code Set} counts each distinct element once, so a repeated id in a JSON array doesn't count twice.
- */
 @Documented
 @Constraint(validatedBy = ConfiguredMaxSizeValidator.class)
 @Target({ElementType.FIELD, ElementType.PARAMETER, ElementType.RECORD_COMPONENT})

@@ -8,11 +8,8 @@ import org.springframework.security.authentication.password.CompromisedPasswordC
 import org.springframework.security.authentication.password.CompromisedPasswordDecision;
 
 /**
- * Replaces Have I Been Pwned in the tests, which must not depend on the internet: a password
- * containing {@link #BREACHED} is compromised; one containing {@link #UNREACHABLE} behaves like the
- * real wiring during an outage, which counts the failure and answers "not compromised" (the real
- * checker never throws for a failed request). The real wiring itself is tested against a local
- * range API in {@code BreachedPasswordConfigTest}.
+ * {@link #UNREACHABLE} behaves like the real wiring during an outage, which counts the failure and answers "not
+ * compromised" (the real checker never throws for a failed request).
  */
 @TestConfiguration(proxyBeanMethods = false)
 public class StubBreachedPasswords {

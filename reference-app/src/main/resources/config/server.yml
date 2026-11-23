@@ -2,9 +2,7 @@
 spring:
   threads:
     virtual:
-      # Under virtual threads server.tomcat.threads.max bounds nothing: concurrency is capped by
-      # app.admission (AdmissionControlFilter) instead.
-      enabled: true
+      enabled: false
   task:
     execution:
       # SchedulingConfig's TaskScheduler is an Executor too; without force Boot would skip its async
@@ -66,6 +64,10 @@ server:
     min-response-size: 1KB
     mime-types: application/json,application/problem+json
   tomcat:
+    threads:
+      # Above the sum of the app.admission caps (checked at startup): a refused request still needs a
+      # thread for its 503, and the actuator is never capped.
+      max: ${TOMCAT_MAX_THREADS:100}
     connection-timeout: 5s
     max-connections: 5000
     accept-count: 1000

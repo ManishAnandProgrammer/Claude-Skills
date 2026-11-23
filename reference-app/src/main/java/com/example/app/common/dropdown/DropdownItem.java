@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Objects;
 
-/** One dropdown option: exactly {@code {"value": …, "label": "…"}}. */
 @Schema(description = "One dropdown option")
 public record DropdownItem(
         @Schema(description = """

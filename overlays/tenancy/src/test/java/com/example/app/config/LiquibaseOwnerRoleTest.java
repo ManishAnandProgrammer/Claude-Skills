@@ -10,7 +10,6 @@ import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** With tenancy, migrations never run as the pool's role: it would own every table, and isolation would be gone. */
 class LiquibaseOwnerRoleTest {
 
     private static final JdbcConnectionDetails POOL = new JdbcConnectionDetails() {

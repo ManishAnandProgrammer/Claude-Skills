@@ -31,18 +31,14 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class PlanRepositoryImpl implements CustomPlanRepository {
 
-    /** Every order's keyset: its sort key, then the id. */
     private static final int CURSOR_KEYS = 2;
 
     private final EntityManager entityManager;
     private final Limits limits;
 
     /**
-     * STARTS_ON in calendar order, NEWEST by the creation time, newest first. One owner's plans never share
-     * a day, so {@code starts_on} alone would order them; the id stays last so the keyset holds for every
-     * scope. NEWEST is never the id alone: the primary key, which leads with the id, would then compete with
-     * the owner's index, and with UUIDv7 ids in heap order the planner walks it backward through every newer
-     * row of every owner (house-review DATA-10).
+     * NEWEST is never the id alone: the primary key, which leads with the id, would then compete with the owner's
+     * index, and with UUIDv7 ids in heap order the planner walks it backward through every newer row of every owner.
      */
     @Override
     public CursorBatch<PlanRow> findByFilter(PlanFilter filter, UUID ownerId, int size) {
@@ -55,7 +51,7 @@ class PlanRepositoryImpl implements CustomPlanRepository {
         query.select(rowOf(builder, root));
         List<Predicate> predicates = filterPredicates(builder, root, filter, limits.get("plan.max-days"));
         predicates.add(builder.equal(root.get(Plan_.ownerId), ownerId));
-        if (cursor.isPresent()) {
+        if (cursor.hasPosition()) {
             predicates.add(seekAfter(builder, root, filter.getSort(), cursor));
         }
         query.where(predicates.toArray(new Predicate[0]));
@@ -68,12 +64,6 @@ class PlanRepositoryImpl implements CustomPlanRepository {
         };
     }
 
-    /**
-     * A live plan shares a day with the range when it starts on or before {@code to} and ends on or after
-     * {@code from}; bounded below as the plannedFrom filter is (a plan spans at most {@code plan.max-days}), so
-     * the starts_on index reads at most the range plus that many days. Live plans never share a day
-     * ({@code ex_plans_owner_id_dates}), so the rows are disjoint and in calendar order.
-     */
     @Override
     public List<PlanDays> findLiveDays(UUID ownerId, LocalDate from, LocalDate to) {
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
@@ -83,7 +73,7 @@ class PlanRepositoryImpl implements CustomPlanRepository {
         query.where(
                 builder.equal(root.get(Plan_.ownerId), ownerId),
                 builder.notEqual(root.get(Plan_.status), PlanStatus.CANCELLED),
-                builder.greaterThanOrEqualTo(root.get(Plan_.startsOn), from.minusDays(limits.get("plan.max-days") - 1L)),
+                builder.greaterThanOrEqualTo(root.get(Plan_.startsOn), earliestStartOfAPlanEndingOnOrAfter(from, limits.get("plan.max-days"))),
                 builder.lessThanOrEqualTo(root.get(Plan_.startsOn), to),
                 builder.greaterThanOrEqualTo(root.get(Plan_.endsOn), from));
         query.orderBy(builder.asc(root.get(Plan_.startsOn)));
@@ -98,14 +88,6 @@ class PlanRepositoryImpl implements CustomPlanRepository {
                 root.get(Plan_.version));
     }
 
-    /**
-     * The predicates of the filters the request sets; the caller adds the owner scope and the seek. The
-     * planned days are an overlap: a plan ends on or after plannedFrom and starts on or before plannedTo.
-     * {@code ends_on >= plannedFrom} alone has no index (every index orders by {@code starts_on}), so the
-     * scope's whole history before plannedTo would be read and filtered; a plan spans at most
-     * {@code maxDays} days, so one ending on or after plannedFrom started no earlier than
-     * {@code plannedFrom - (maxDays - 1)}, and that bound gives the {@code starts_on} index its lower end.
-     */
     private static List<Predicate> filterPredicates(CriteriaBuilder builder, Root<Plan> root, PlanFilter filter, int maxDays) {
         List<Predicate> predicates = new ArrayList<>();
         if (filter.requireIdsPredicate()) {
@@ -116,7 +98,7 @@ class PlanRepositoryImpl implements CustomPlanRepository {
         }
         if (filter.requirePlannedFromPredicate()) {
             predicates.add(builder.greaterThanOrEqualTo(root.get(Plan_.endsOn), filter.getPlannedFrom()));
-            predicates.add(builder.greaterThanOrEqualTo(root.get(Plan_.startsOn), filter.getPlannedFrom().minusDays(maxDays - 1)));
+            predicates.add(builder.greaterThanOrEqualTo(root.get(Plan_.startsOn), earliestStartOfAPlanEndingOnOrAfter(filter.getPlannedFrom(), maxDays)));
         }
         if (filter.requirePlannedToPredicate()) {
             predicates.add(builder.lessThanOrEqualTo(root.get(Plan_.startsOn), filter.getPlannedTo()));
@@ -124,7 +106,14 @@ class PlanRepositoryImpl implements CustomPlanRepository {
         return predicates;
     }
 
-    /** The rows after the cursor's, in the sort's keyset (id last). */
+    /**
+     * An {@code ends_on} bound alone has no index (every index orders by {@code starts_on}), so it would read the
+     * owner's whole history; a plan spans at most {@code maxDays} days, and this bound gives the index its lower end.
+     */
+    private static LocalDate earliestStartOfAPlanEndingOnOrAfter(LocalDate day, int maxDays) {
+        return day.minusDays(maxDays - 1L);
+    }
+
     private static Predicate seekAfter(CriteriaBuilder builder, Root<Plan> root, PlanSort sort, Cursor cursor) {
         return switch (sort) {
             case STARTS_ON -> Seek.after(builder, false,
@@ -134,7 +123,6 @@ class PlanRepositoryImpl implements CustomPlanRepository {
         };
     }
 
-    /** On the same columns as {@link #seekAfter}, in the same order. */
     private static List<Order> orderOf(CriteriaBuilder builder, Root<Plan> root, PlanSort sort) {
         return switch (sort) {
             case STARTS_ON -> Seek.order(builder, false, root.get(Plan_.startsOn), root.get(Plan_.id));

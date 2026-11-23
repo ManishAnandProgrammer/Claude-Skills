@@ -18,11 +18,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The account lifecycle with tenancy: platform staff suspend accounts (global, every tenant at once), a tenant
- * keeps an ACTIVE ADMIN, a suspended member gets no token from switch-tenant or impersonation, and a password
- * change stays in the calling device's tenant. The rest of the lifecycle is AccountLifecycleIntegrationTest's.
- */
 @WithoutTestTenant
 class PlatformUserStatusIntegrationTest extends IntegrationTest {
 
@@ -33,7 +28,6 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
         return mvc.perform(get(ACCOUNTS).param("email", email).header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
     }
 
-    /** As staff change a status: the account's id and version from the lookup by email (the runbook's way), then the change. */
     private ResultActions changeStatus(String token, String email, String status) throws Exception {
         ResultActions found = lookUp(platformToken(), email).andExpect(status().isOk());
         String userId = read(found, "$.response[0].id");
@@ -50,14 +44,12 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
     }
 
     // roles:begin
-    /** The email of the tenant's owner, whom newTenant() created: its oldest membership, holding its ADMIN role. */
     private String ownerOf(TestTenant tenant) {
         return jdbc.queryForObject("""
                 select u.email from tenant_memberships m join users u on u.id = m.user_id
                 where m.tenant_id = ? order by m.id limit 1""", String.class, tenant.id());
     }
     // roles:else
-    // /** The email of the tenant's first ADMIN, whom newTenant() created. */
     // private String ownerOf(TestTenant tenant) {
     //     return jdbc.queryForObject("""
     //             select u.email from tenant_memberships m join users u on u.id = m.user_id
@@ -228,7 +220,7 @@ class PlatformUserStatusIntegrationTest extends IntegrationTest {
         TestTenant second = newTenant();
         TestUser phone = newUserIn(first);
         addMember(second, phone.id(), "USER");
-        // The laptop moves to the second tenant, which becomes the most recently used one.
+        // A switch makes the second tenant the most recently used one.
         TestUser laptop = signIn(phone);
         switchTenant(laptop.refreshToken(), second.id()).andExpect(status().isOk());
 

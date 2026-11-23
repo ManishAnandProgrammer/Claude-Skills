@@ -3,7 +3,7 @@ package com.example.app.media.service;
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
 import com.example.app.common.security.CurrentUser;
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 // tenancy-row:begin
 // import com.example.app.media.api.UploadLimits;
@@ -21,10 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/**
- * The purposes' limits: read by everyone signed in (the frontend's hints), changed by an admin. One
- * row per purpose, read by its unique purpose: no cache.
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -34,11 +30,10 @@ public class UploadPolicyService {
     private final UploadPolicyMapper mapper;
     private final CurrentUser currentUser;
 
-    public ListWrapper<UploadPolicyResponse> findAll() {
-        return ListWrapper.fromList(repository.findAllByOrderByPurpose().stream().map(this::toResponse).toList());
+    public BoundedListWrapper<UploadPolicyResponse> findAll() {
+        return BoundedListWrapper.fromList(repository.findAllByOrderByPurpose().stream().map(this::toResponse).toList());
     }
 
-    /** Takes effect on the next request; a file already attached keeps its slot even when the range shrinks. */
     @Transactional
     public ObjectWrapper<UploadPolicyResponse> update(UploadPurpose purpose, UploadPolicyUpdateRequest request) {
         UploadPolicy policy = getPolicy(purpose);
@@ -55,15 +50,13 @@ public class UploadPolicyService {
         return ObjectWrapper.withObject(toResponse(policy));
     }
 
-    /** 404 {@code UPLOAD_POLICY_NOT_FOUND} when the purpose's seed changeset didn't run. */
     public UploadPolicy getPolicy(UploadPurpose purpose) {
-        return repository.findByPurpose(purpose).orElseThrow(AppException.supply(ErrorCode.UPLOAD_POLICY_NOT_FOUND, purpose));
+        return repository.findByPurpose(purpose).orElseThrow(AppException.supply(ErrorCode.UPLOAD_POLICY_NOT_SEEDED, purpose));
     }
     // tenancy-row:begin
 
-    // /** The purpose's first policy in the current tenant; a purpose that has one keeps it. */
     // @Transactional
-    // public void define(UploadPurpose purpose, UploadLimits limits) {
+    // public void defineIfAbsent(UploadPurpose purpose, UploadLimits limits) {
     //     if (repository.findByPurpose(purpose).isEmpty()) {
     //         List<String> contentTypes = limits.contentTypes().stream().sorted().toList();
     //         repository.save(UploadPolicy.builder().purpose(purpose).minSizeBytes(limits.minSizeBytes())
@@ -74,8 +67,8 @@ public class UploadPolicyService {
     // tenancy-row:end
 
     /**
-     * 400 unless the file fits the policy. The type must also be in the code's allow-list, so a type
-     * removed from it is refused even while an old policy row still lists it.
+     * The type must also be in the code's allow-list, so a type removed from it is refused even while an
+     * old policy row still lists it.
      */
     public void requireAccepts(UploadPolicy policy, UploadFileRequest file) {
         if (!AllowedContentTypes.isAllowed(file.contentType()) || !policy.allowsContentType(file.contentType())) {

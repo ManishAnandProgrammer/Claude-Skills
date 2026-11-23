@@ -25,13 +25,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class PlatformAuditEntryRepositoryImpl implements CustomPlatformAuditEntryRepository {
 
-    /**
-     * The one order: newest first, by the creation time, then the id (idx_platform_audit_tenant_id_created_at_id).
-     * Never the id alone: the primary key would compete with the tenant's index (DATA-10).
-     */
     private static final String SORT = "NEWEST";
-
-    /** Every order's keyset: its sort key, then the id. */
     private static final int CURSOR_KEYS = 2;
 
     private final EntityManager entityManager;
@@ -46,11 +40,13 @@ class PlatformAuditEntryRepositoryImpl implements CustomPlatformAuditEntryReposi
         query.select(rowOf(builder, root));
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(builder.equal(root.get(PlatformAuditEntry_.tenantId), tenantId));
-        if (cursor.isPresent()) {
+        if (cursor.hasPosition()) {
             predicates.add(Seek.after(builder, true, root.get(PlatformAuditEntry_.createdAt), cursor.instant(0),
                     root.get(PlatformAuditEntry_.id), cursor.uuid(1)));
         }
         query.where(predicates.toArray(new Predicate[0]));
+        // Never the id alone: the planner would walk the UUIDv7 primary key backward through every tenant's rows
+        // instead of the tenant's index.
         query.orderBy(Seek.order(builder, true, root.get(PlatformAuditEntry_.createdAt), root.get(PlatformAuditEntry_.id)));
 
         List<PlatformAuditResponse> rows = entityManager.createQuery(query).setMaxResults(size + 1).getResultList();

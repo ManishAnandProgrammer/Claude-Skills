@@ -10,7 +10,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
-/** The row-mode tests' tenant entity, over the test changelog's {@code tenancy_probe}. */
 @Entity
 @Table(name = "tenancy_probe")
 @Getter

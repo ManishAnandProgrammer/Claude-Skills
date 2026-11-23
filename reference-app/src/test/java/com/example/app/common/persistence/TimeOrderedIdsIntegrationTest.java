@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Every entity's id comes from AuditableEntity: a UUIDv7 the application assigns, in creation order (DATA-09). */
 class TimeOrderedIdsIntegrationTest extends IntegrationTest {
 
     @Test

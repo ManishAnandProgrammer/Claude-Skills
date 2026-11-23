@@ -2,8 +2,8 @@
 
 Per-tenant, per-feature configuration stored as one row per key with a JSON value: the owner's
 design, proven in a schema-per-tenant SaaS. Golden code:
-`~/.claude/skills-reference/src/main/java/com/example/app/metadata/` (its `package-info.java` has
-the short rules; this file has them with their reasons and the tenancy guide). Apply these rules
+`~/.claude/skills-reference/src/main/java/com/example/app/metadata/` (this file has the rules with their
+reasons and the tenancy guide). Apply these rules
 only when the project has that piece.
 
 ### META-01: Metadata is configuration, not a hidden table
@@ -27,7 +27,7 @@ only when the project has that piece.
     (`todoListSettings(UUID listId)` → `TODO_LIST_SETTINGS_<uuid>`, the canonical UUID form); no key
     strings assembled elsewhere;
   - the generic admin API (`PUT /metadata/{key}`) resolves **fixed keys only**, through
-    `MetadataKeys.byName`;
+    `MetadataKeys.fixedKeyNamed`;
   - per-context configuration is read and written through the owning module's typed endpoint on its
     own resource (`GET/PUT /todo-lists/{id}/settings`, `/stores/{id}/opening-hours`, a typed record
     body): the owner loads the context (404), checks its own rules (a closed store's opening hours
@@ -35,7 +35,7 @@ only when the project has that piece.
     registry for other modules: a hook calling back into the owner needs a workaround for the bean
     cycle (metadata → owner → metadata), has to parse the context id back out of the key name, and
     hides the typed contract from OpenAPI, where a typed endpoint documents it.
-- **Detect:** `byName` resolving a per-context prefix; key names parsed back into ids; an interface
+- **Detect:** `fixedKeyNamed` resolving a per-context prefix; key names parsed back into ids; an interface
   in the metadata piece implemented by a feature module.
 - **Severity:** High (an undeclared key reachable through the API bypasses validation; a
   per-context key written through the generic API bypasses its owner's rules).
@@ -52,7 +52,7 @@ only when the project has that piece.
   seeded by a changeset or a one-off job, never at application startup (DATA-28). Fixed keys and
   fixed counters are seeded by the changeset that needs them (reference: `0014-todo-list-defaults.sql`;
   in row mode its `tenancy-row` block for the existing tenants and a `TenantProvisioned` listener for
-  new ones, `TodoListDefaultsSeed`). A missing value is 404 `METADATA_NOT_FOUND`, never a silent
+  new ones, `TodoListDefaultsSeed`). A missing value is 404 `METADATA_VALUE_MISSING`, never a silent
   default: it means seeding didn't run.
 - **Tests of a fixed key** capture the stored row and put it back (`storedMetadata` /
   `restoreMetadata` in the test base, under the key's `@ResourceLock`), never delete and re-insert it

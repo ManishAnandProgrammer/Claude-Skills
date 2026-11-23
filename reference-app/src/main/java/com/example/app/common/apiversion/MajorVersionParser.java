@@ -7,11 +7,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Parses {@code v1}, {@code v2}, ... and nothing else, for request paths, the {@code version} of a
- * mapping and {@code spring.mvc.apiversion.supported} alike. Spring's default parser skips any
- * leading non-digits and accepts minor versions, so {@code /api/1/}, {@code /api/x1/} and
- * {@code /api/v1.0/} would all serve v1: one resource under many URLs. A refused value becomes
- * Spring's {@code InvalidApiVersionException} (400 {@code API_VERSION_UNSUPPORTED}).
+ * Spring's default parser skips any leading non-digits and accepts minor versions, so {@code /api/1/},
+ * {@code /api/x1/} and {@code /api/v1.0/} would all serve v1: one resource under many URLs.
  */
 @Component
 class MajorVersionParser implements ApiVersionParser<ApiVersion> {

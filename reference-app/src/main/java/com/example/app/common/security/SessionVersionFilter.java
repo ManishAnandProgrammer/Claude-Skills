@@ -19,12 +19,9 @@ import java.io.IOException;
 import java.util.Optional;
 
 /**
- * The session version check (the session-version piece), right after the bearer token's signature,
- * expiry and issuer are verified: a token issued before its account's access last changed is 401
- * {@code SESSION_VERSION_STALE}, and the client refreshes. Written here, as the security chain's other
- * errors are: no handler runs yet. A number that can't be read is never a pass (SEC-06): a database
- * outage behind a Redis miss answers its 503 with {@code Retry-After}, anything else propagates.
- * Not a bean, so the servlet container doesn't register it a second time outside the chain.
+ * A session version that can't be read is never a pass: a database outage behind a Redis miss answers its 503,
+ * anything else propagates. The refusal is written here, as the security chain's other errors are: no handler
+ * runs yet. Not a bean, so the servlet container doesn't register it a second time outside the chain.
  */
 @Slf4j
 @RequiredArgsConstructor

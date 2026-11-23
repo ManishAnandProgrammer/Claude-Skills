@@ -20,12 +20,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * The predicate's shape against a stub builder: one row-value comparison over every seek column, the cursor's
- * values bound as parameters. The expanded form bounds the index on the first key alone, so a later batch
- * inside a tie group rereads the group (the index tests' tie-group cells); the cursor-walk integration tests
- * run it on PostgreSQL.
- */
 class SeekTest {
 
     private static final LocalDate DAY = LocalDate.of(2026, 11, 14);

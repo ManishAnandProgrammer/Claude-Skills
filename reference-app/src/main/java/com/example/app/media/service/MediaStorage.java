@@ -21,10 +21,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 
-/**
- * The object store: upload URLs, and the jobs' HEAD and DELETE. Every failure is counted
- * ({@code media.storage.failures}, by operation).
- */
 @Component
 @RequiredArgsConstructor
 class MediaStorage {
@@ -65,7 +61,6 @@ class MediaStorage {
         }
     }
 
-    /** Whether the object is there. A store that doesn't answer throws {@link SdkException}. */
     boolean exists(String key) {
         try {
             s3.headObject(request -> request.bucket(properties.bucket()).key(key));
@@ -78,7 +73,6 @@ class MediaStorage {
         }
     }
 
-    /** Idempotent: deleting a key that isn't there succeeds. A store that doesn't answer throws {@link SdkException}. */
     void delete(String key) {
         try {
             s3.deleteObject(request -> request.bucket(properties.bucket()).key(key));
@@ -91,7 +85,6 @@ class MediaStorage {
     /**
      * {@code attachment} with the name in RFC 5987 form ({@code filename*=UTF-8''…}) and an ASCII
      * fallback: the header stays ASCII (browsers send it as is) and a name can't break out of it.
-     * Stored on the object, so it applies however the file is served later (CloudFront too).
      */
     static String contentDisposition(String fileName) {
         return ContentDisposition.attachment().filename(fileName, StandardCharsets.UTF_8).build().toString();

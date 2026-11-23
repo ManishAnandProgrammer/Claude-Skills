@@ -7,10 +7,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Row mode, with the example: every table whose rows an owner scopes has the owner's and the tenant's
- * dependency statistics (0023, house-review TEN-33), so the planner knows an owner lives in one tenant.
- */
 class OwnerTenantStatisticsIntegrationTest extends IntegrationTest {
 
     @ParameterizedTest(name = "{0}")

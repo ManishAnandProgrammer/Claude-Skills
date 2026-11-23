@@ -16,11 +16,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The settings house-review's configuration baseline (CFG-01, CFG-02, CFG-04, CFG-05) requires, read from
- * the bound environment as the application runs: a key a project drops or relaxes in config/*.yml fails the
- * build instead of a review. Values that differ per deployment (pool sizes, ports) are not here.
- */
 class ConfigurationBaselineIntegrationTest extends IntegrationTest {
 
     @Autowired
@@ -53,7 +48,7 @@ class ConfigurationBaselineIntegrationTest extends IntegrationTest {
             spring.jpa.properties.hibernate.default_batch_fetch_size               | 30
             spring.jpa.properties.hibernate.query.fail_on_pagination_over_collection_fetch | true
             spring.jpa.properties.hibernate.query.in_clause_parameter_padding      | true
-            spring.threads.virtual.enabled                                         | true
+            spring.threads.virtual.enabled                                         | false
             server.shutdown                                                        | graceful
             spring.lifecycle.timeout-per-shutdown-phase                            | 30s
             spring.task.execution.mode                                             | force
@@ -82,7 +77,7 @@ class ConfigurationBaselineIntegrationTest extends IntegrationTest {
 
     /**
      * Boot's FormContentFilter (order -9900) reads a PUT, PATCH or DELETE form body whole into memory, and the
-     * multipart resolver parses every part, both before admission control and the security chain (CFG-04).
+     * multipart resolver parses every part, both before admission control and the security chain.
      */
     @Test
     @DisplayName("No body is read ahead of the filters: no form-content filter, no multipart resolver")

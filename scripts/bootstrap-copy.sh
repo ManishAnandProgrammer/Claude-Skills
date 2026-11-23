@@ -258,7 +258,6 @@ LIST
             fi
             ;;
         metadata) cat <<LIST
-src/main/java/$reference_path/metadata/package-info.java
 src/main/java/$reference_path/metadata/MetadataConstraintErrorCodes.java
 src/main/java/$reference_path/metadata/api/Counters.java
 src/main/java/$reference_path/metadata/api/Metadata.java
@@ -278,6 +277,7 @@ LIST
 src/main/java/$reference_path/media
 src/main/resources/config/media.yml
 src/main/resources/db/changelog/changes/0009-media-files.sql
+src/main/resources/db/changelog/changes/0040-media-files-states.sql
 src/test/java/$reference_path/support/MediaStorageContainer.java
 src/test/java/$reference_path/media/api/FileCountRangeTest.java
 src/test/java/$reference_path/media/service/AllowedContentTypesTest.java

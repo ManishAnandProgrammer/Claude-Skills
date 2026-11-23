@@ -13,7 +13,6 @@ import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDate;
 
-/** The days the availability read covers: both ends required, so the read is always bounded. */
 @Getter
 @Setter
 public class PlanAvailabilityFilter {
@@ -36,7 +35,6 @@ public class PlanAvailabilityFilter {
         return DateRanges.isOrdered(from, to);
     }
 
-    /** The days asked for, both ends counted; null when an end is missing or the range inverted (their own checks). */
     @ConfiguredMax(value = "plan.max-availability-days", reportedOn = "to")
     public Long getLengthInDays() {
         return DateRanges.lengthInDays(from, to);

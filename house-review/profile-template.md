@@ -45,12 +45,12 @@ project doesn't have.
 |---|---|---|
 | `urlPrefix` | `/api/{version}` | REST-07: class-level paths start with it; versions are Spring API versioning in the path segment (`v1`) |
 | `DropdownItem` / `DropdownFilter` | FQNs | REST-13 house dropdown standard (cursor-paged) |
-| `ObjectWrapper` / `ListWrapper` / `MapWrapper` / `PaginationWrapper` / `CursorWrapper` | FQNs | REST-11 |
+| `ObjectWrapper` / `BoundedListWrapper` / `MapWrapper` / `PaginationWrapper` / `CursorWrapper` | FQNs | REST-11 |
 | `exceptionHandler` | FQN | REST-06 |
 | `errorCodeType` | `none` | FQN of the ErrorCode enum once it exists |
 | `cursorLists` | `all lists not in offsetLists` | Cursor (keyset) paging, the default, by REST-08's consumer rule; dropdowns always |
 | `offsetLists` | `none` | Offset lists by REST-08's consumer rule, as **entity class names** (`TodoList`), each with its consumer |
-| `unpagedLists` | `none` | REST-11: unpaged (`ListWrapper`) lists the code doesn't bound (not an enum's values, a configured maximum or a fixed relation), each with the developer's statement |
+| `unpagedLists` | `none` | REST-11: unpaged (`BoundedListWrapper`) lists the code doesn't bound (not an enum's values, a configured maximum or a fixed relation), each with the developer's statement |
 | `NotXss` | `escape-on-output` | A JSON API whose clients render text as text; or the FQN of the anti-XSS validator. Never `none`: REST-10 then finds every free-text field |
 | `NoEmoji` | `none` | FQN of the no-emoji constraint, for `noEmojiFields` |
 | `noEmojiFields` | `none` | Fields where `@NoEmoji` applies (codes, identifiers) |

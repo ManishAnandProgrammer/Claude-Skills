@@ -31,8 +31,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AdmissionControlFilterTest {
 
-    /** How long a test waits for a held request, so a broken latch fails instead of hanging the build. */
     private static final long WAIT_SECONDS = 10;
+    private static final int REQUEST_THREADS = 3;
 
     private static final String API_PATH = "/api/v1/todos";
     private static final String SIGN_IN_PATH = "/api/v1/auth/login";
@@ -43,9 +43,8 @@ class AdmissionControlFilterTest {
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final AdmissionControlFilter filter = new AdmissionControlFilter(
             new AdmissionGroups(Map.of("sign-in", SIGN_IN_PATTERNS), Duration.ofSeconds(10)), bulkheads(), meterRegistry,
-            problemResponses(), new WebEndpointProperties());
+            problemResponses(), new WebEndpointProperties(), REQUEST_THREADS);
 
-    /** One permit per group, no wait: the second request in a group is refused at once. */
     private static BulkheadRegistry bulkheads() {
         BulkheadConfig onePermit = BulkheadConfig.custom().maxConcurrentCalls(1).maxWaitDuration(Duration.ZERO).build();
         BulkheadRegistry registry = BulkheadRegistry.ofDefaults();
@@ -192,7 +191,7 @@ class AdmissionControlFilterTest {
         AdmissionGroups unknown = new AdmissionGroups(Map.of("reports", List.of("/api/*/reports/**")), Duration.ofSeconds(10));
 
         assertThatThrownBy(() -> new AdmissionControlFilter(unknown, bulkheads(), meterRegistry, problemResponses(),
-                new WebEndpointProperties()))
+                new WebEndpointProperties(), REQUEST_THREADS))
                 .hasMessageContaining("resilience4j.bulkhead.instances.reports");
     }
 
@@ -228,5 +227,14 @@ class AdmissionControlFilterTest {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    @Test
+    @DisplayName("Request threads no more than the admission caps together stop startup: the caps would never refuse")
+    void refusesRequestThreadsWithinTheCaps() {
+        assertThatThrownBy(() -> new AdmissionControlFilter(new AdmissionGroups(Map.of("sign-in", SIGN_IN_PATTERNS),
+                Duration.ofSeconds(10)), bulkheads(), new SimpleMeterRegistry(), problemResponses(), new WebEndpointProperties(), 2))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("server.tomcat.threads.max (2) must exceed the admission caps together (2)");
     }
 }

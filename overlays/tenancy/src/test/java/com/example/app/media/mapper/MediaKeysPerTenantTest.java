@@ -10,10 +10,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-/**
- * Stored files sit under their tenant's prefix (house-review TEN-19, MEDIA-08): one tenant's objects are
- * one prefix in the bucket, to copy to another store or delete with the tenant, and no key is shared.
- */
 class MediaKeysPerTenantTest {
 
     private final MediaFileMapper mapper = new MediaFileMapper();

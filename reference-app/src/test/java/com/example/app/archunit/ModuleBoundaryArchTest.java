@@ -21,13 +21,6 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
-/**
- * Module boundaries (profile: {@code moduleContracts: api-facades}). Every module, {@code config}
- * included, reaches a feature module ({@code todo}, {@code user}) only through its {@code api} package;
- * {@code common} and {@code config} are infrastructure every module may use, and {@code common} depends
- * on no feature at all. An {@code api} package holds contracts only: records, interfaces, enums and constants holders,
- * with no entity or layer type in them.
- */
 @AnalyzeClasses(packages = "com.example.app", importOptions = ImportOption.DoNotIncludeTests.class)
 class ModuleBoundaryArchTest {
 
@@ -65,7 +58,6 @@ class ModuleBoundaryArchTest {
                     a response that embeds another module's view changes whenever that contract does; map it into \
                     a record of your own (ARCH-06)""");
 
-    /** The allowed packages are the libraries common uses: a project adds its own (a phone-number library), never a feature package. */
     @ArchTest
     static final ArchRule commonDependsOnNoFeature = noClasses().that().resideInAPackage("com.example.app.common..")
             .should().dependOnClassesThat().resideOutsideOfPackages("com.example.app.common..", "java..", "javax..",
@@ -114,13 +106,13 @@ class ModuleBoundaryArchTest {
         };
     }
 
-    /** {@code <module>.api} or below it; never a sibling that merely starts the same ({@code apiclient}). */
+    /** Never a sibling that merely starts the same ({@code apiclient}). */
     private static boolean isApiOf(String module, String packageName) {
         String api = ROOT + module + ".api";
         return packageName.equals(api) || packageName.startsWith(api + ".");
     }
 
-    /** {@code <module>.api..}; {@code controller.api} is HTTP documentation, not a module contract. */
+    /** {@code controller.api} is HTTP documentation, not a module contract. */
     private static DescribedPredicate<JavaClass> areInAModuleApi() {
         return new DescribedPredicate<>("are in a module's api package") {
             @Override
@@ -144,9 +136,8 @@ class ModuleBoundaryArchTest {
     }
 
     /**
-     * A final class of {@code static final} fields behind a private constructor, and nothing else: the
-     * compile-time constants an annotation needs (a pattern), which no record or enum can hold, and an
-     * interface of constants is Effective Java's item 22.
+     * The compile-time constants an annotation needs (a pattern), which no record or enum can hold; an interface of
+     * constants is Effective Java's item 22.
      */
     private static boolean isConstantsHolder(JavaClass javaClass) {
         boolean finalClass = javaClass.getModifiers().contains(JavaModifier.FINAL);

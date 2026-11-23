@@ -9,11 +9,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
 
-/**
- * {@code app.security.breached-passwords.*} (config/security.yml).
- *
- * @param apiUrl the range API's base, absolute with a host: without, every lookup would fail, and the check fails open
- */
+/** @param apiUrl absolute with a host: without, every lookup would fail, and the check fails open */
 @Validated
 @ConfigurationProperties(prefix = "app.security.breached-passwords")
 record BreachedPasswordProperties(boolean enabled,

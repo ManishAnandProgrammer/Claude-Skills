@@ -28,12 +28,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class TimeEntryRepositoryImpl implements CustomTimeEntryRepository {
 
-    /** Every order's keyset: its sort key, then the id. */
     private static final int CURSOR_KEYS = 2;
 
     private final EntityManager entityManager;
 
-    /** Both orders read their index backwards: the most recent day, or the longest entry, first; ties newest first. */
     @Override
     public CursorBatch<TimeEntryResponse> findByFilter(TimeEntryFilter filter, UUID todoId, UUID ownerId, int size) {
         String sort = filter.getSort().name();
@@ -46,7 +44,7 @@ class TimeEntryRepositoryImpl implements CustomTimeEntryRepository {
         List<Predicate> predicates = filterPredicates(builder, root, filter);
         predicates.add(builder.equal(root.get(TimeEntry_.todo).get(Todo_.id), todoId));
         predicates.add(builder.equal(root.get(TimeEntry_.ownerId), ownerId));
-        if (cursor.isPresent()) {
+        if (cursor.hasPosition()) {
             predicates.add(seekAfter(builder, root, filter.getSort(), cursor));
         }
         query.where(predicates.toArray(new Predicate[0]));
@@ -59,7 +57,6 @@ class TimeEntryRepositoryImpl implements CustomTimeEntryRepository {
         };
     }
 
-    /** The rows after the cursor's, in the sort's keyset (both descending, id last). */
     private static Predicate seekAfter(CriteriaBuilder builder, Root<TimeEntry> root, TimeEntrySort sort, Cursor cursor) {
         return switch (sort) {
             case SPENT_ON -> Seek.after(builder, true,
@@ -69,7 +66,6 @@ class TimeEntryRepositoryImpl implements CustomTimeEntryRepository {
         };
     }
 
-    /** On the same columns as {@link #seekAfter}, in the same order. */
     private static List<Order> orderOf(CriteriaBuilder builder, Root<TimeEntry> root, TimeEntrySort sort) {
         return switch (sort) {
             case SPENT_ON -> Seek.order(builder, true, root.get(TimeEntry_.spentOn), root.get(TimeEntry_.id));
@@ -85,7 +81,6 @@ class TimeEntryRepositoryImpl implements CustomTimeEntryRepository {
                 root.get(TimeEntry_.createdBy), root.get(TimeEntry_.updatedBy), root.get(TimeEntry_.version));
     }
 
-    /** The predicates of the filters the request sets; the caller adds the todo and owner scope. */
     private static List<Predicate> filterPredicates(CriteriaBuilder builder, Root<TimeEntry> root, TimeEntryFilter filter) {
         List<Predicate> predicates = new ArrayList<>();
         if (filter.requireIdsPredicate()) {

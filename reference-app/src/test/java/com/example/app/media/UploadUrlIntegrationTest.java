@@ -26,11 +26,6 @@ import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * {@code POST /upload-urls} for the project's first purpose ({@link #TESTED_PURPOSE}; skipped while
- * there is none): who may ask, and the policy's limits. The lock keeps the tests that change a
- * purpose's policy from overlapping.
- */
 @ResourceLock(IntegrationTest.UPLOAD_POLICIES_LOCK)
 class UploadUrlIntegrationTest extends IntegrationTest {
 
@@ -77,7 +72,7 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Each file gets a key, a URL signed with its size, type and disposition, the headers to send and the expiry; it is recorded PENDING")
+    @DisplayName("Each file gets a key, a URL signed with its size, type and disposition, the headers to send and the expiry; it is recorded UNCLAIMED")
     void issuesOneSignedUploadPerFile() throws Exception {
         TestUser user = newUploader();
 
@@ -98,13 +93,13 @@ class UploadUrlIntegrationTest extends IntegrationTest {
         assertThat(signedHeaders(url)).isEqualTo("content-disposition;content-length;content-type;host");
         String uploadKey = read(issued, "$.response[0].uploadKey");
         Map<String, Object> row = jdbc.queryForMap("select * from media_files where key = ?", uploadKey);
-        assertThat(row.get("status")).isEqualTo("PENDING");
+        assertThat(row.get("status")).isEqualTo("UNCLAIMED");
         assertThat(row.get("uploaded_by")).isEqualTo(user.id());
         assertThat(row.get("size_bytes")).isEqualTo(48_213L);
         Instant uploadExpiresAt = ((Timestamp) row.get("upload_expires_at")).toInstant();
         String expiresAt = read(issued, "$.response[0].expiresAt");
         assertThat(uploadExpiresAt).isEqualTo(Instant.parse(expiresAt));
-        assertThat(Duration.between(uploadExpiresAt, ((Timestamp) row.get("expires_at")).toInstant())).isEqualTo(Duration.ofHours(1));
+        assertThat(Duration.between(uploadExpiresAt, ((Timestamp) row.get("claimable_until")).toInstant())).isEqualTo(Duration.ofHours(1));
     }
 
     @Test
@@ -210,14 +205,14 @@ class UploadUrlIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A purpose without its policy row is 404 UPLOAD_POLICY_NOT_FOUND")
+    @DisplayName("A purpose without its policy row is 404 UPLOAD_POLICY_NOT_SEEDED")
     void purposeWithoutAPolicyIs404() throws Exception {
         TestUser user = newUploader();
         assertThat(sql("update upload_policies set purpose = 'HIDDEN_FOR_TEST' where purpose = ?", PURPOSE)).isEqualTo(1);
         try {
             issue(user, PURPOSE, List.of(file("a.pdf", "application/pdf", 10)))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.errorCode").value("UPLOAD_POLICY_NOT_FOUND"));
+                    .andExpect(jsonPath("$.errorCode").value("UPLOAD_POLICY_NOT_SEEDED"));
         } finally {
             assertThat(sql("update upload_policies set purpose = ? where purpose = 'HIDDEN_FOR_TEST'", PURPOSE)).isEqualTo(1);
         }

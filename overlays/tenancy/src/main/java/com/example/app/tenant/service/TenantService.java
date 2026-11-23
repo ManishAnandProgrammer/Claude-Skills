@@ -35,16 +35,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * The tenant register (control plane). Staff create tenants and change their status; every change is
- * a {@code tenant_status_changes} row. A tenant never reads another tenant's row: tenant-plane code
- * reaches this service only through {@link Tenants}.
- *
- * <p>A tenant starts PENDING. {@link #approve} is the one way in: it lets the tenancy mode provision the
- * tenant ({@link TenantApproved}), and provisioning activates it once its tables exist
- * ({@link #activateProvisioned}). Staff-created tenants are approved at once; registered ones wait for
- * staff.</p>
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -58,11 +48,6 @@ public class TenantService implements Tenants {
     private final Paging paging;
     private final ApplicationEventPublisher events;
 
-    /**
-     * Staff's tenant: PENDING and approved at once, with its owner's membership ({@link TenantCreated},
-     * same transaction: an owner without an account rolls it back). ACTIVE once provisioned. The id only:
-     * {@link StaffTenantService} reads the tenant after this transaction, as provisioning left it.
-     */
     @Transactional
     public UUID create(TenantCreateRequest request) {
         Tenant tenant = createPending(request.name(), request.ownerEmail(), TenantChangeSource.STAFF);
@@ -77,7 +62,7 @@ public class TenantService implements Tenants {
     }
 
     public PaginationWrapper<TenantResponse> findByFilter(TenantFilter filter) {
-        return PaginationWrapper.fromPage(repository.findByFilter(filter, paging.offset(filter, filter.getSort().toSort())));
+        return PaginationWrapper.fromPage(repository.findByFilter(filter, paging.offset(filter)));
     }
 
     public ObjectWrapper<TenantResponse> findById(UUID id) {
@@ -99,10 +84,7 @@ public class TenantService implements Tenants {
         events.publishEvent(new TenantApproved(tenantId));
     }
 
-    /**
-     * Staff's changes: suspend, reactivate, close, reject. Activating a PENDING tenant is provisioning's,
-     * after {@link #approve}, so a tenant without its tables can't become ACTIVE from here.
-     */
+    /** A PENDING tenant becomes ACTIVE only through provisioning, so never without its tables. */
     @Transactional
     public ObjectWrapper<TenantResponse> changeStatus(UUID id, TenantStatusRequest request) {
         Tenant tenant = getTenant(id);
@@ -115,11 +97,7 @@ public class TenantService implements Tenants {
         return ObjectWrapper.withObject(mapper.toResponse(tenant));
     }
 
-    /**
-     * Provisioning's last step, run under {@code TenantScope.runAs(tenantId, ...)} once the tenant's tables
-     * exist: modules seed its defaults ({@link TenantProvisioned}) and it becomes ACTIVE, in the caller's
-     * transaction. A tenant staff rejected meanwhile keeps its status.
-     */
+    /** A tenant staff rejected meanwhile keeps its status. */
     @Transactional
     public void activateProvisioned(UUID tenantId) {
         Tenant tenant = getTenant(tenantId);
@@ -129,7 +107,7 @@ public class TenantService implements Tenants {
         }
     }
 
-    /** Its refusal never dooms the caller's transaction: a refresh commits its token's rotation even when it refuses. */
+    /** A refusal leaves the caller's transaction committable: a refresh commits its own writes even when it refuses. */
     @Override
     @Transactional(readOnly = true, noRollbackFor = AppException.class)
     public void requireActive(UUID tenantId) {
@@ -158,7 +136,6 @@ public class TenantService implements Tenants {
         repository.findForUpdateById(tenantId).orElseThrow(AppException.supply(ErrorCode.TENANT_NOT_FOUND, tenantId));
     }
 
-    /** 404 {@code TENANT_NOT_FOUND}. */
     public Tenant getTenant(UUID id) {
         return repository.findById(id).orElseThrow(AppException.supply(ErrorCode.TENANT_NOT_FOUND, id));
     }
@@ -175,7 +152,6 @@ public class TenantService implements Tenants {
         tenant.changeStatus(target);
         statusChanges.save(TenantStatusChange.of(tenant, previous, source));
         // session-version:begin
-        // In this transaction: the members' session versions are raised with the status, or not at all.
         if (previous == TenantStatus.ACTIVE && target != TenantStatus.ACTIVE) {
             events.publishEvent(new TenantDeactivated(tenant.getId()));
         }

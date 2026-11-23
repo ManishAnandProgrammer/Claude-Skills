@@ -13,7 +13,7 @@ app:
     # How long a read URL works; below the credentials' lifetime (a role's session), or it dies with them.
     read-url-expiry: 1h
     # How long after its upload URL expired a file can still be attached; then the cleanup job deletes it.
-    pending-lifetime: 1h
+    claim-grace-period: 1h
     client:
       # The whole call, retries included, and one attempt: the SDK sets neither by default.
       api-call-timeout: 10s

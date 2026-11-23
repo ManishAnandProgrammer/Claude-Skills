@@ -13,7 +13,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Self-registration: a PENDING tenant that staff approve; the answer never tells whether an email has an account. */
 @WithoutTestTenant
 class TenantRegistrationIntegrationTest extends IntegrationTest {
 
@@ -50,11 +49,9 @@ class TenantRegistrationIntegrationTest extends IntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_NOT_ACTIVE"))
                 .andExpect(jsonPath("$.tenantStatus").value("PENDING"));
-        // Not approved: provisioning leaves it alone.
         provisionApprovedTenants();
         login(email, PASSWORD).andExpect(status().isForbidden());
 
-        // The answer is the tenant as provisioning left it: row mode activated it before the answer.
         postAs(platformToken(), "/api/v1/platform/tenants/" + tenantId + "/approve", "")
                 .andExpect(status().isAccepted())
                 // tenancy-row:begin
@@ -92,7 +89,6 @@ class TenantRegistrationIntegrationTest extends IntegrationTest {
 
         UUID tenantId = tenantNamed(mine);
         // roles:begin
-        // Its owner's membership; their ADMIN role is the tenant's own data, given at its provisioning.
         assertThat(jdbc.queryForObject("select count(*) from tenant_memberships where tenant_id = ? and user_id = ?",
                 Integer.class, tenantId, user.id())).isOne();
         // roles:else

@@ -18,11 +18,6 @@ import lombok.experimental.SuperBuilder;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * One permission given to, or taken from, one person whatever their roles give (the roles piece): ALLOW adds it,
- * DENY removes it, and a DENY always wins. For good, or until {@link #getValidUntil()}: past it the grant does
- * nothing. One per person and permission. A member of the person's access ({@link RoleAssignment}).
- */
 @Entity
 @Table(name = "user_permissions")
 @Getter
@@ -37,7 +32,6 @@ public class PersonalGrant extends TenantOwnedEntity {
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
-    /** A {@code Permission} code, checked by the application ({@link PermissionCodes}). */
     @Column(nullable = false, updatable = false)
     private String permission;
 

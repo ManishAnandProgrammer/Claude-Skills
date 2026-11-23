@@ -22,9 +22,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.hamcrest.Matchers.containsString;
 
 /**
- * A transaction holds a pooled connection only from its first statement (LazyConnectionConfig):
- * measured with the pool's own active count, since Hibernate already counts the proxy as connected.
- * The jobs don't run in tests, so nothing else holds a connection meanwhile.
+ * Measured with the pool's own active count, since Hibernate already counts the proxy as connected. The jobs
+ * don't run in tests, so nothing else holds a connection meanwhile.
  */
 class LazyConnectionIntegrationTest extends IntegrationTest {
 

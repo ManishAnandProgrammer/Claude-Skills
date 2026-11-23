@@ -29,18 +29,12 @@ public record PlanCreateRequest(
         @NotNull @EarliestDate("plan.dates") @LatestDate("plan.dates")
         LocalDate endsOn) {
 
-    /** A range in a body is checked like a range filter: inverted is a 400 naming its end, endsOn. */
     @CrossField(reportedOn = "endsOn", message = "{plan.date-range}")
     @Schema(hidden = true)
     public boolean isDateRangeOrdered() {
         return DateRanges.isOrdered(startsOn, endsOn);
     }
 
-    /**
-     * The days the plan spans, both ends counted: bounded so the list's plannedFrom filter has a lower
-     * bound to read back to (PlanRepositoryImpl). Null when a date is missing or the range inverted, which
-     * their own checks report. Too long is reported on the end, as an inverted range is.
-     */
     @ConfiguredMax(value = "plan.max-days", reportedOn = "endsOn")
     @Schema(hidden = true)
     public Long getLengthInDays() {

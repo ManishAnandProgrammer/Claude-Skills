@@ -9,7 +9,7 @@ import com.example.app.common.exception.ErrorCode;
 // tenancy:else
 import com.example.app.common.security.Permission;
 // tenancy:end
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.domain.User;
 import com.example.app.user.domain.UserStatus;
@@ -32,44 +32,6 @@ import java.util.List;
 // roles:end
 import java.util.UUID;
 
-/**
- * Finds, suspends and reactivates accounts (the sign-in piece). A suspension, in one transaction: the account's row
- * updated first (so a token issue racing it waits, then refuses: {@code UserService.activeForTokenIssue}),
- * and every refresh token revoked.
- *   <!-- session-version:begin -->
- * The session version is raised too, so the access tokens already out are refused on their next request.
- *   <!-- session-version:else -->
- <!-- * The access tokens already out expire within their lifetime. -->
- *   <!-- session-version:end -->
- * A suspended account gets no token from any path. A reactivation lets it sign in again; it revives no session.
- *   <!-- tenancy:begin -->
- *
- * <p>With tenancy, accounts are global and platform staff suspend them ({@code PATCH /platform/users/{id}/status}):
- * a tenant ADMIN changes memberships, never an account.
- *   <!-- roles:begin -->
- <!-- * A suspension that would leave an open tenant without another active member holding, for good, each permission -->
- <!-- * that manages it isn't made (409 {@code ACCESS_LAST_MANAGER}, safety rule 6 per tenant): give another member -->
- <!-- * those first, or suspend the tenant.</p> -->
- *   <!-- roles:else -->
- <!-- * A person who is the last ADMIN with an ACTIVE account -->
- <!-- * of a tenant isn't suspended (409 {@code TENANT_MEMBER_LAST_ADMIN}): make another member ADMIN first, or -->
- <!-- * suspend the tenant.</p> -->
- *   <!-- roles:end -->
- *   <!-- tenancy:else -->
- *
- *   <!-- roles:begin -->
- <!-- * <p>An account that holds {@code ACCOUNT_STATUS_CHANGE} now (the roles piece: read under the lock that serialises -->
- <!-- * these changes, and an inactive account holds nothing) does it ({@code PATCH /users/{id}/status}), never to their -->
- <!-- * own account, never to one that holds a permission they don't (403 {@code ACCESS_TARGET_HOLDS_MORE}), and never -->
- <!-- * when no active account would then hold what manages access for good (409 {@code ACCESS_LAST_MANAGER}).</p> -->
- *   <!-- roles:else -->
- * <p>An account whose role grants {@code ACCOUNT_STATUS_CHANGE} (an application ADMIN) does it
- * ({@code PATCH /users/{id}/status}), never to their own account, and only while that account is ACTIVE and its
- * role grants it, read under the lock that serialises these changes, whatever their token says. So the last
- * active holder of the permission can never be suspended: only another one can.</p>
- *   <!-- roles:end -->
- *   <!-- tenancy:end -->
- */
 @Service
 @Slf4j
 @RequiredArgsConstructor(access = AccessLevel.PACKAGE)
@@ -86,21 +48,16 @@ public class AccountStatusService {
     // private final PersonAccessService access;
     // roles:end
 
-    /** The account with this address, or none: the operator's read before a change, which needs its id and version. */
-    public ListWrapper<UserResponse> lookUp(UserFilter filter) {
-        return ListWrapper.fromList(users.findByEmail(filter.getEmail()).map(mapper::toResponse).stream().toList());
+    public BoundedListWrapper<UserResponse> lookUp(UserFilter filter) {
+        return BoundedListWrapper.fromList(users.findByEmail(filter.getEmail()).map(mapper::toResponse).stream().toList());
     }
 
     // tenancy:begin
     // roles:begin
     // /**
-    //  * Platform staff's change. 404 {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}, 409
-    //  * {@code ACCESS_LAST_MANAGER}. A suspension counts, in each open tenant of the person's, the other active members
-    //  * holding what manages it for good: each tenant's own data, read under its scope in a short transaction of its
-    //  * own, while this one holds the tenant's row, which every access change there locks first.
+    //  * Each open tenant of the person's is checked under its own scope, in a short transaction of its own, while this
+    //  * one holds the tenant's row, which every access change there locks first.
     //  */
-    // roles:else
-    // /** Platform staff's change. 404 {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}, 409 {@code TENANT_MEMBER_LAST_ADMIN}. */
     // roles:end
     // @Transactional
     // public ObjectWrapper<UserResponse> changeStatus(UUID userId, UserStatusRequest request) {
@@ -119,26 +76,12 @@ public class AccountStatusService {
     //     return ObjectWrapper.withObject(apply(target, request.status()));
     // }
     // tenancy:else
-    /**
-     *   <!-- roles:begin -->
-     <!-- * A change of another account: 403 {@code USER_OWN_STATUS_CHANGE} for the caller's own; the rows locked -->
-     <!-- * (PersonAccessService.lockToManage), then 403 {@code ACCESS_DENIED} unless the caller holds -->
-     <!-- * {@code ACCOUNT_STATUS_CHANGE} now, 403 {@code ACCESS_TARGET_HOLDS_MORE} for an account holding more, 404 -->
-     <!-- * {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}, 409 {@code ACCESS_LAST_MANAGER}. -->
-     *   <!-- roles:else -->
-     * A change of another account: 403 {@code USER_OWN_STATUS_CHANGE} for the caller's own; the caller and the
-     * target locked together (id order), then 403 {@code ACCESS_DENIED} unless the caller is an ACTIVE account
-     * whose role grants {@code ACCOUNT_STATUS_CHANGE} now (of two ADMINs suspending each other at once, the
-     * second finds itself suspended), 404 {@code USER_NOT_FOUND}, 409 {@code OPTIMISTIC_LOCK_CONFLICT}.
-     *   <!-- roles:end -->
-     */
     @Transactional
     public ObjectWrapper<UserResponse> changeStatus(UUID callerId, UUID userId, UserStatusRequest request) {
         if (userId.equals(callerId)) {
             throw AppException.of(ErrorCode.USER_OWN_STATUS_CHANGE);
         }
         // roles:begin
-        // // The caller's access read under the lock (an inactive account holds nothing), and nobody above them.
         // access.lockToManage(callerId, userId, Permission.ACCOUNT_STATUS_CHANGE);
         // User target = users.getUser(userId);
         // target.checkVersion(request.version());
@@ -146,6 +89,8 @@ public class AccountStatusService {
         // access.requireManagersRemain();
         // return ObjectWrapper.withObject(changed);
         // roles:else
+        // The caller's row read under the lock, whatever their token says: of two ADMINs suspending each other at
+        // once, the second finds itself suspended.
         List<User> locked = users.lockForStatusChange(List.of(callerId, userId));
         boolean callerMayChangeStatus = locked.stream()
                 .anyMatch(user -> user.getId().equals(callerId) && user.isActive()
@@ -161,7 +106,6 @@ public class AccountStatusService {
     }
     // tenancy:end
 
-    /** The current status again changes nothing (no version move, no session ended). */
     private UserResponse apply(User target, UserStatus status) {
         if (target.getStatus() == status) {
             return mapper.toResponse(target);

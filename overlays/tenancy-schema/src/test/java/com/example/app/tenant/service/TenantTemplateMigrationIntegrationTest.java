@@ -18,7 +18,6 @@ import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Instances starting together take turns on the template, however long the one ahead takes. */
 @WithoutTestTenant
 class TenantTemplateMigrationIntegrationTest extends IntegrationTest {
 
@@ -32,7 +31,6 @@ class TenantTemplateMigrationIntegrationTest extends IntegrationTest {
     @LiquibaseDataSource
     private DataSource ownerDataSource;
 
-    /** The owner's connections carry it; an advisory lock's wait honours it too. */
     @Value("${app.liquibase.lock-timeout}")
     private Duration ownerLockTimeout;
 
@@ -50,7 +48,7 @@ class TenantTemplateMigrationIntegrationTest extends IntegrationTest {
             } finally {
                 execute(holder, TEMPLATE_UNLOCK);
             }
-            within(queued);
+            awaitResult(queued);
         }
     }
 

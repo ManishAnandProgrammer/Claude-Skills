@@ -12,10 +12,6 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The session version over HTTP (the session-version piece): signing out everywhere cuts every device's
- * access token at once, while sign-ins and refreshes leave the number alone.
- */
 class SessionVersionIntegrationTest extends IntegrationTest {
 
     private static final String ME = "/api/v1/users/me";

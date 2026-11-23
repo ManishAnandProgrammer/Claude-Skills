@@ -17,11 +17,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * What a new plan's screen shows before the create: the todos it may be for, each {@code selectable} by the create's
- * own rule, and the caller's free and taken days, each taken span refused with the create's overlap answer (house-review
- * AUTHZ-07, AUTHZ-08). Each reason is the code and message the create itself answers; each read is one statement.
- */
 class PlanOptionsIntegrationTest extends IntegrationTest {
 
     private static final String PLANS = "/api/v1/plans";

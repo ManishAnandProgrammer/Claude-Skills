@@ -21,12 +21,9 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * The person's access as rows, in SQL through JDBC: one statement for a request, read before its handler runs, and
- * never counted among the handler's own statements (Hibernate's statistics, which the list tests count, don't see
- * it). It runs inside the caller's read-only transaction, on its connection.
+ * Plain JDBC: Hibernate's statistics, which the tests' statement counts read, never see this per-request read.
  *   <!-- tenancy:begin -->
- * In the tenant's context: the tenant's tables are those of the current tenant, and the platform's account,
- * membership and tenant register are joined in the same statement, so a suspended account, a removed member or a
+ * The account, membership and tenant are joined in the same statement, so a suspended account, a removed member or a
  * suspended tenant holds nothing on its next request.
  *   <!-- tenancy:end -->
  */
@@ -36,7 +33,7 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
 
     // tenancy-schema:begin
     // The platform's tables are named with their schema: a tenant's transaction has its own schema alone on the
-    // search path (TenancyArchTest allows this class, the one read that joins both in one statement).
+    // search path (TenancyArchTest allows this one class).
     static final String ACCESS_ROWS = """
             SELECT a.user_id, r.id AS role_id, r.code AS role_code, p.permission, NULL AS effect, a.valid_until
               FROM user_roles a
@@ -56,7 +53,7 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
     // tenancy-schema:end
     // tenancy-row:begin
     // The tenant condition is the statement's own as well as the policy's, so the indexes that lead with the
-    // person serve it (TEN-36).
+    // person serve it.
     static final String ACCESS_ROWS = """
             SELECT a.user_id, r.id AS role_id, r.code AS role_code, p.permission, NULL AS effect, a.valid_until
               FROM user_roles a
@@ -150,7 +147,7 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
     }
 
     @Override
-    public List<AccessRow> findGrantedRows(Collection<UUID> userIds, Instant now) {
+    public List<AccessRow> findAccessRowsWhateverTheAccountStatus(Collection<UUID> userIds, Instant now) {
         // tenancy:begin
         return accessRows(userIds, now, false, false);
         // tenancy:else

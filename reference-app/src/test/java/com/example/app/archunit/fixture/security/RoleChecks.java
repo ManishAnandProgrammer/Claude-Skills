@@ -6,7 +6,6 @@ import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authorization.AuthorityAuthorizationManager;
 
-/** Every way of checking a role, for noRoleChecks and noRoleChecksOnMethods. */
 public class RoleChecks {
 
     private RoleHierarchy hierarchy;

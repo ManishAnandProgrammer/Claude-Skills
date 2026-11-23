@@ -9,7 +9,6 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** "My tenants": the signed-in user's memberships, the ids switch-tenant takes. */
 @WithoutTestTenant
 class MembershipIntegrationTest extends IntegrationTest {
 

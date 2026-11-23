@@ -39,17 +39,6 @@ import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The metadata mechanism through the example keys: the admin API on the fixed key
- * {@code TODO_LIST_DEFAULTS}, the typed {@link Metadata} on per-context keys
- * ({@code TODO_LIST_SETTINGS_<listId>}), which the admin API never reaches. Bootstrap copies this
- * class only with the example piece.
- *
- * <p>The fixed key is one row, seeded by changeset 0014 and shared by the whole run: each test here
- * starts from the record's defaults at version 0 and puts the seeded row back afterwards (other
- * classes, and real code that reads the key, find it as seeded), and the lock keeps tests that change it
- * from running at the same time. Per-context tests use list ids of their own.</p>
- */
 @ResourceLock(MetadataIntegrationTest.FIXED_KEY)
 class MetadataIntegrationTest extends IntegrationTest {
 
@@ -78,7 +67,6 @@ class MetadataIntegrationTest extends IntegrationTest {
                 """.formatted(value, version);
     }
 
-    /** The fixed key's row as seeded, read before each test changes it. */
     private StoredMetadata seeded;
 
     @BeforeEach
@@ -95,7 +83,6 @@ class MetadataIntegrationTest extends IntegrationTest {
     /** A configuration stored as raw JSON, as an older or newer instance could have written it. */
     private void storeRaw(MetadataKey<?> key, String json) {
         // tenancy-row:begin
-        // // Row mode: every insert names its tenant (tenant_id has no default).
         // assertThat(sql("""
         //         insert into configuration_metadata (id, tenant_id, key, value, created_at, updated_at, version)
         //         values (uuidv7(), ?, ?, ?::jsonb, now(), now(), 0)
@@ -237,7 +224,7 @@ class MetadataIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A declared key whose value was never created is 404 METADATA_NOT_FOUND, through the API and to other modules")
+    @DisplayName("A declared key whose value was never created is 404 METADATA_VALUE_MISSING, through the API and to other modules")
     void declaredButNeverCreatedIs404() throws Exception {
         TestUser admin = newAdmin();
         getAs(admin.accessToken(), DEFAULTS_PATH).andExpect(status().isOk());
@@ -245,14 +232,14 @@ class MetadataIntegrationTest extends IntegrationTest {
 
         getAs(admin.accessToken(), DEFAULTS_PATH)
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.errorCode").value("METADATA_NOT_FOUND"))
+                .andExpect(jsonPath("$.errorCode").value("METADATA_VALUE_MISSING"))
                 .andExpect(jsonPath("$.detail").value("The configuration %s has not been set up yet.".formatted(FIXED_KEY)));
         putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("{}", 0))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.errorCode").value("METADATA_NOT_FOUND"));
+                .andExpect(jsonPath("$.errorCode").value("METADATA_VALUE_MISSING"));
         assertThatThrownBy(() -> metadata.get(MetadataKeys.todoListSettings(newListId())))
                 .isInstanceOfSatisfying(AppException.class,
-                        refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.METADATA_NOT_FOUND));
+                        refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.METADATA_VALUE_MISSING));
     }
 
     @Test
@@ -379,10 +366,6 @@ class MetadataIntegrationTest extends IntegrationTest {
         assertThat(storedVersion(second)).isZero();
     }
 
-    /**
-     * What the todo module's "list created" code would do: the first list starts from the fixed
-     * defaults, a list made from another one from that list's settings. The copy is a row of its own.
-     */
     @Test
     @DisplayName("Seeding a new list copies another list's settings (the first one copies the defaults); the copy is independent")
     void createFromCopiesAnotherList() {
@@ -400,7 +383,7 @@ class MetadataIntegrationTest extends IntegrationTest {
         assertThat(metadata.get(secondList).reminderMinutesBefore()).isEqualTo(3);
         assertThatThrownBy(() -> metadata.createFrom(MetadataKeys.todoListSettings(newListId()), MetadataKeys.todoListSettings(newListId())))
                 .isInstanceOfSatisfying(AppException.class,
-                        refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.METADATA_NOT_FOUND));
+                        refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.METADATA_VALUE_MISSING));
     }
 
     @Test
@@ -446,7 +429,7 @@ class MetadataIntegrationTest extends IntegrationTest {
             start.countDown();
             List<String> answers = new ArrayList<>();
             for (Future<String> answer : pending) {
-                answers.add(within(answer));
+                answers.add(awaitResult(answer));
             }
 
             assertThat(answers).containsOnlyOnce("created").containsOnly("created", "409 METADATA_KEY_TAKEN");
@@ -470,14 +453,14 @@ class MetadataIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A key is UPPER_SNAKE_CASE (with an optional canonical UUID) with a record value; byName resolves fixed keys only")
+    @DisplayName("A key is UPPER_SNAKE_CASE (with an optional canonical UUID) with a record value; fixedKeyNamed resolves fixed keys only")
     void keysAreCheckedWhenDeclared() {
         assertThatThrownBy(() -> new MetadataKey<>("lower_case", TodoListSettings.class)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new MetadataKey<>("NOT_A_RECORD", String.class)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> MetadataKeys.todoListSettings(null)).isInstanceOf(NullPointerException.class);
-        assertThat(MetadataKeys.byName(FIXED_KEY)).contains(DEFAULTS);
-        assertThat(MetadataKeys.byName(MetadataKeys.todoListSettings(newListId()).name())).isEmpty();
-        assertThat(MetadataKeys.byName(UUID.randomUUID().toString())).isEmpty();
+        assertThat(MetadataKeys.fixedKeyNamed(FIXED_KEY)).contains(DEFAULTS);
+        assertThat(MetadataKeys.fixedKeyNamed(MetadataKeys.todoListSettings(newListId()).name())).isEmpty();
+        assertThat(MetadataKeys.fixedKeyNamed(UUID.randomUUID().toString())).isEmpty();
     }
 
     @Test
@@ -496,7 +479,7 @@ class MetadataIntegrationTest extends IntegrationTest {
         transaction.executeWithoutResult(status -> metadata.delete(key));
         assertThatThrownBy(() -> metadata.get(key))
                 .isInstanceOfSatisfying(AppException.class,
-                        refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.METADATA_NOT_FOUND));
+                        refused -> assertThat(refused.getErrorCode()).isEqualTo(ErrorCode.METADATA_VALUE_MISSING));
         metadata.delete(key);
         metadata.create(key, TodoListSettings.defaults());
         assertThat(metadata.get(key)).isEqualTo(TodoListSettings.defaults());

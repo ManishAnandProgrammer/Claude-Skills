@@ -14,10 +14,8 @@ import java.util.Iterator;
 import java.util.Objects;
 
 /**
- * Writes a {@link MaxLength} on a collection's element type ({@code Set<@MaxLength("…") String>}) into
- * the API docs as the items' {@code maxLength}. The property customizer can't: swagger only hands it
- * the field's own annotations, never those on a type argument. So once a request class is resolved,
- * this walks its fields for element limits.
+ * The property customizer can't write a {@link MaxLength} on a collection's element type into the API docs:
+ * swagger only hands it the field's own annotations, never those on a type argument.
  */
 @Component
 @RequiredArgsConstructor
@@ -46,7 +44,6 @@ class ElementLimitsModelConverter implements ModelConverter {
         return resolved;
     }
 
-    /** A resolved class comes back as a reference to its definition, which holds the properties. */
     private static Schema definitionOf(Schema resolved, ModelConverterContext context) {
         if (Objects.isNull(resolved.get$ref())) {
             return resolved;

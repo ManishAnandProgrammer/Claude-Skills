@@ -44,26 +44,18 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The tenancy rules no review should have to catch (house-review {@code references/tenancy.md}): the
- * tenant comes from the token only, one hook tells the database, one scope switches it, and the two
- * planes stay apart. The SQL rules read the sources, since ArchUnit can't see string constants.
- */
+/** The SQL rules read the sources, since ArchUnit can't see string constants. */
 @AnalyzeClasses(packages = "com.example.app", importOptions = ImportOption.DoNotIncludeTests.class)
 class TenancyArchTest {
 
     private static final String TENANCY = "com.example.app.common.tenancy";
     private static final String PLATFORM_PATH = "/api/{version}/platform/";
-    /**
-     * The control plane's services: the tenant module's, and in other modules those named
-     * {@code Platform*} (the staff login, a direct cross-tenant edit) and the impersonation.
-     */
     private static final String TENANT_SERVICES = "com.example.app.tenant.service";
     private static final String PLATFORM_SERVICE_PREFIX = "Platform";
     private static final String IMPERSONATION_SERVICE = "ImpersonationService";
-    /** With tenancy only staff suspend accounts (global ones): a tenant-plane controller never reaches it. */
+    /** With tenancy only staff suspend accounts, which are global. */
     private static final String ACCOUNT_STATUS_SERVICE = "AccountStatusService";
-    /** The one request that names a tenant: which of the caller's own memberships to switch to. */
+    /** It names which of the caller's own memberships to switch to. */
     private static final Set<String> TENANT_NAMING_REQUESTS = Set.of("SwitchTenantRequest");
     private static final Path MAIN_SOURCES = Path.of("src/main/java");
 
@@ -128,7 +120,7 @@ class TenancyArchTest {
     void onlyTheHookSetsTheSchema() throws Exception {
         // roles:begin
         // The roles piece's per-request read joins the member's access in their schema with the platform's account,
-        // membership and tenant in one statement, so it names the platform's tables (house-review AUTHZ-11).
+        // membership and tenant in one statement, so it names the platform's tables.
         Set<String> allowed = Set.of("TransactionLocalSchemaProvider.java", "TenantSchemaMigrator.java", "TenantSchemas.java",
                 "RoleAssignmentRepositoryImpl.java");
         // roles:else
@@ -150,7 +142,6 @@ class TenancyArchTest {
         assertThat(offenders).isEmpty();
     }
 
-    /** {@code platform.}, {@code tenant_template.} or {@code t_<32 hex>.} inside SQL. */
     private static boolean namesASchema(String sql) {
         return Pattern.compile("\\b(platform|tenant_template|t_[0-9a-f]{32})\\.[a-z_]").matcher(sql).find();
     }

@@ -6,13 +6,8 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * Runs work under a given tenant: a job's loop over the tenants, an event listener seeding a new
- * tenant, an async task. The only way to switch the tenant (an ArchUnit rule keeps it so).
- *
- * <p>Wrap the call into the {@code @Transactional} method, never the reverse: the tenant is fixed when
- * the transaction's session opens, so a switch inside an open transaction is ignored by Hibernate and
- * the database alike. The previous tenant comes back in {@code finally}, so nested scopes and thread
- * pools never keep a tenant they didn't set.</p>
+ * Wrap the call into the {@code @Transactional} method, never the reverse: the tenant is fixed when the
+ * transaction's session opens, so a switch inside an open transaction is ignored by Hibernate and the database alike.
  */
 public final class TenantScope {
 

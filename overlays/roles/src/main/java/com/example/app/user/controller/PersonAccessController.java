@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-/** A person's access: their roles and personal grants (the roles piece). */
 @RestController
 @RequestMapping("/api/{version}/users")
 @RequiredArgsConstructor

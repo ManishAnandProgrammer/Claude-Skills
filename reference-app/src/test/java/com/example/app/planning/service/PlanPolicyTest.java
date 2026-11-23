@@ -15,7 +15,6 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** One row per state: every reason each rule gives, in its order, with the arguments its message shows. */
 class PlanPolicyTest {
 
     private static final PlanPolicy POLICY = new PlanPolicy();

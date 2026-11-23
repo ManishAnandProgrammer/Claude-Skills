@@ -13,10 +13,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * A new password (the sign-in piece): signup, a tenant registration's new account and a password change
- * check the same rules, each reported with its own message. Security floors, not tunables: at least 8
- * characters, at most 72 bytes in UTF-8 (bcrypt reads only the first 72), an upper-case and a lower-case
- * letter, a digit and one other character. The breached-password check runs in the service.
+ * At most 72 bytes in UTF-8: bcrypt ignores every byte after the 72nd, so two long passwords with the same start
+ * would match each other.
  */
 @Documented
 @Constraint(validatedBy = {})

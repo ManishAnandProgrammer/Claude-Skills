@@ -19,15 +19,12 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Schema per tenant's guard on the tenant schemas themselves (house-review TEN-16), read from PostgreSQL's
- * catalogue: a tenant schema's foreign keys stay inside it, the register aside, so {@code pg_dump -n} of
- * one schema holds a closed graph that restores into a database of its own. A person is a row of the
- * schema's own members, never {@code platform.users}.
+ * A tenant schema's foreign keys stay inside it, the register aside, so {@code pg_dump -n} of one schema holds a
+ * closed graph that restores into a database of its own.
  */
 @WithoutTestTenant
 class SchemaCatalogIntegrationTest extends IntegrationTest {
 
-    /** Foreign keys from a tenant schema (the template included) to a table outside it but the register. */
     private static final String FOREIGN_KEYS_LEAVING_A_TENANT_SCHEMA = """
             select child_schema.nspname || '.' || f.conname
               from pg_constraint f

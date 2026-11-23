@@ -14,7 +14,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/** A tenant: its name and where it is in its lifecycle. Plans and payment state belong to billing. */
 @Entity
 @Table(name = "tenants")
 @Getter
@@ -29,7 +28,6 @@ public class Tenant extends AuditableEntity {
     @Column(nullable = false)
     private TenantStatus status;
 
-    /** A new tenant, PENDING until it is activated. */
     public static Tenant create(String name) {
         return Tenant.builder()
                 .name(name.strip())
@@ -37,7 +35,6 @@ public class Tenant extends AuditableEntity {
                 .build();
     }
 
-    /** 409 {@code TENANT_STATUS_CHANGE_INVALID} for a change the lifecycle doesn't allow. */
     public void changeStatus(TenantStatus target) {
         if (!status.canBecome(target)) {
             throw AppException.of(ErrorCode.TENANT_STATUS_CHANGE_INVALID, status, target);

@@ -29,11 +29,6 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * What a settings record binds, on Boot's own binder and conversion service as the application runs them (no Spring
- * context): each claim house-review CFG-12 makes about typed settings. The values are what a yml file or an
- * environment variable holds; the records are this test's, so no setting exists only to show a type.
- */
 class SettingsBindingTest {
 
     private static final String PREFIX = "app.example";
@@ -62,7 +57,6 @@ class SettingsBindingTest {
     record Share(Percentage share) {
     }
 
-    /** A value with a grammar and no public constructor: only its {@code of(String)} can make one. */
     static final class Percentage {
 
         private final int value;
@@ -89,7 +83,6 @@ class SettingsBindingTest {
         return binder(values).bind(PREFIX, type).get();
     }
 
-    /** As the application binds a {@code @Validated} record: its constraints checked once it is bound. */
     private static <T> T bindValidated(Class<T> type, Map<String, String> values) {
         ValidationBindHandler validation = new ValidationBindHandler(new SpringValidatorAdapter(VALIDATION.getValidator()));
         return binder(values).bind(PREFIX, Bindable.of(type), validation).get();

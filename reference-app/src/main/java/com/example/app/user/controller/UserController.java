@@ -9,7 +9,7 @@ import com.example.app.common.security.Requires;
 import com.example.app.common.security.SignedIn;
 // tenancy:begin
 // tenancy:else
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 // tenancy:end
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.controller.api.UserApi;
@@ -58,15 +58,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 // tenancy:end
 
-/**
- * Any signed-in user, for their own account only (the id comes from the token, never the path).
- *   <!-- tenancy:begin -->
- * Accounts are suspended by platform staff (PlatformUserController), never through this tenant-plane API.
- *   <!-- tenancy:else -->
- * The exceptions are another account's: finding it by its address (ACCOUNT_READ), and suspending or reactivating it
- * (ACCOUNT_STATUS_CHANGE).
- *   <!-- tenancy:end -->
- */
 @RestController
 @RequestMapping("/api/{version}/users")
 @RequiredArgsConstructor
@@ -107,7 +98,7 @@ class UserController implements UserApi {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @SignedIn
     public void endAllSessions() {
-        authService.logoutEverywhere(currentUser.id());
+        authService.endAllSessions(currentUser.id());
     }
     // session-version:end
     // tenancy:begin
@@ -116,7 +107,7 @@ class UserController implements UserApi {
     @Override
     @GetMapping(version = "v1+")
     @Requires(Permission.ACCOUNT_READ)
-    public ListWrapper<UserResponse> lookUp(@Valid @ParameterObject UserFilter filter) {
+    public BoundedListWrapper<UserResponse> lookUp(@Valid @ParameterObject UserFilter filter) {
         return accountStatus.lookUp(filter);
     }
 

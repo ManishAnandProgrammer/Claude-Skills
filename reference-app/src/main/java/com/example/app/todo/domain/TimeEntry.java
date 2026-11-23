@@ -20,10 +20,6 @@ import lombok.experimental.SuperBuilder;
 import java.time.LocalDate;
 import java.util.UUID;
 
-/**
- * A member of its todo's aggregate: written only through {@code TodoService}, which loads the todo
- * first. It never moves to another todo, and the composite foreign key keeps its owner the todo's.
- */
 @Entity
 @Table(name = "time_entries")
 @Getter

@@ -22,7 +22,7 @@ Fill values from the codebase, not from memory.
 | `urlPrefix` | `/api/{version}` | Class-level `@RequestMapping("{{urlPrefix}}/<resource-plural>")`; methods relative with `version = "v1+"` (REST-07) |
 | `ObjectWrapper` | `com.example.dto.ObjectWrapper` | Fully-qualified single-object response wrapper |
 | `objectFactory` | `ObjectWrapper.withObject` | Static factory that wraps one object (must accept `null`) |
-| `ListWrapper` | `com.example.dto.ListWrapper` | Fully-qualified wrapper for unpaged lists: ones the code bounds (an enum's values, a configured maximum enforced on create, a fixed relation such as a student's subjects this session) or ones the review profile's `unpagedLists` names (house-review REST-11). Never for paginated lists or dropdowns (cursor-paged) |
+| `BoundedListWrapper` | `com.example.dto.BoundedListWrapper` | Fully-qualified wrapper for unpaged lists: ones the code bounds (an enum's values, a configured maximum enforced on create, a fixed relation such as a student's subjects this session) or ones the review profile's `unpagedLists` names (house-review REST-11). Never for paginated lists or dropdowns (cursor-paged) |
 | `BaseRepository` | `org.springframework.data.jpa.repository.JpaRepository` | Project base repository interface (FQN) |
 | `NotXss` | `escape-on-output` | A JSON API whose clients render text as text (no annotation generated); or the FQN of an anti-XSS constraint annotation; same value as the review profile |
 | `NoEmoji` | `none` | FQN of a no-emoji constraint annotation |
@@ -82,7 +82,7 @@ Fill values from the codebase, not from memory.
 | `dropdownAnnotation` | `com.example.common.dropdown.DropdownCandidate` | House annotation (references/dropdown.md); created by bootstrap |
 | `DropdownItem` | `com.example.common.dropdown.DropdownItem` | Record `{value, label}`: one shape for every dropdown |
 | `DropdownFilter` | `com.example.common.dropdown.DropdownFilter` | Extends `CursorFilter` (`size`, `after`) with `status`, `sortDirection`, `query`; subclassed for the annotation's mandatory and optional filters |
-| `dropdownSecurity` | `@SignedIn` + `for` | house-review AUTHZ-08: the handler is `@SignedIn`, the service checks the required `for=<Permission>` (`DropdownFor.check`: 403 unless held, 400 `DROPDOWN_REACH_UNSUPPORTED` for a reach it doesn't list) and narrows to its reach in the same query |
+| `dropdownSecurity` | `@SignedIn` + `for` | house-review AUTHZ-08: the handler is `@SignedIn`, the service checks the required `for=<Permission>` (`DropdownFor.requireReach`: 403 unless held, 400 `DROPDOWN_REACH_UNSUPPORTED` for a reach it doesn't list) and narrows to its reach in the same query |
 | `authorization` | `permissions` | house-review AUTHZ-xx: `permissions` (Level 1: a new permission is a constant and a line in each `Role` that gets it) or `roles-piece` (Level 2: also its grant changeset for the built-in roles the developer names, AUTHZ-12) |
 
 ## Media
@@ -114,7 +114,7 @@ permissions (the actions, their reach, which roles get each, the prerequisites) 
 kind and its consumer, retired or deleted, how a person is erased, kept or accumulating (and for accumulating
 rows the period and the column the purge reads), each picked parent's picker, the
 answers to Step 1's "Ask, don't guess" list (each marked assumed when nobody could be asked), the open
-items. A choice no house rule forbids is recorded here and in the code's javadoc, never as a
+items. A choice no house rule forbids is recorded here (never in the code's comments: SMELL-19), never as a
 review-profile Conventions row (that reads as an override of a rule).
 -->
 
@@ -123,7 +123,7 @@ review-profile Conventions row (that reads as an override of a rule).
 - `NotXss` `escape-on-output` and `NoEmoji` `none` → those annotations are dropped from the validation table.
 - `AuditBase` `none` → no audit fields in Response or mapper.
 - `PaginationWrapper` `none` → run `/crud-gen bootstrap` (it creates `PaginationWrapper` +
-  `PageInfo`); never fall back to `ListWrapper` for a paged list.
+  `PageInfo`); never fall back to `BoundedListWrapper` for a paged list.
 - Create uses `saveAndFlush` (an app-assigned id plus a null `@Version` means persist); update
   changes the managed entity and calls `flush()`. Both flush so the response carries `version` and
   the audit fields.

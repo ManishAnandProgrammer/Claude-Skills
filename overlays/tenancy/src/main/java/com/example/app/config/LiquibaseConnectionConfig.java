@@ -17,20 +17,15 @@ import java.time.Duration;
 import java.util.regex.Pattern;
 
 /**
- * Liquibase's own connection to the application's database, with a lock timeout and no statement
- * timeout (why: {@code app.liquibase} in {@code config/db.yml}). A data source of the driver's,
- * because the setting is a connection option, which Boot's Liquibase properties can't carry. It
- * connects as {@code app.liquibase.username} (a migration role that owns the tables, while
- * the pool's role only reads and writes them). With tenancy that role is required and must differ from
- * the pool's: the isolation rests on the pool's role owning nothing (TEN-12), and migrating as it would
- * make it the owner of every table without any error.
+ * A data source of the driver's: the lock timeout is a connection option, which Boot's Liquibase properties can't
+ * carry. It connects as the owner role, never the pool's: the isolation rests on the pool's role owning nothing.
  */
 @Configuration
 class LiquibaseConnectionConfig {
 
     private static final Pattern PLAIN_ROLE_NAME = Pattern.compile("[a-z_][a-z0-9_]*");
 
-    /** Not a default candidate: the pool stays the auto-configured data source, the only one JPA sees. */
+    /** Not a default candidate, so Boot still auto-configures the pool, the only data source JPA sees. */
     @Bean(defaultCandidate = false)
     @LiquibaseDataSource
     DataSource liquibaseDataSource(JdbcConnectionDetails database, Settings settings) {
@@ -52,8 +47,7 @@ class LiquibaseConnectionConfig {
         dataSource.setPassword(settings.password());
         dataSource.setOptions("-c lock_timeout=" + settings.lockTimeout().toMillis());
         dataSource.setApplicationName(settings.applicationName());
-        // A failed backfill or unique index would otherwise log the rows' values (config/db.yml, the pool's
-        // logServerErrorDetail). The operator finds the rows with a query on a restored copy instead.
+        // A failed backfill or unique index would otherwise log the rows' values.
         dataSource.setLogServerErrorDetail(false);
         return dataSource;
     }

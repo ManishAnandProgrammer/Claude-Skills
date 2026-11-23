@@ -15,10 +15,6 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The staff's tenant list (crud-gen tests.md row 28): every offered filter and order has its index, and the
- * first page, as {@code TenantRepositoryImpl} issues it, is planned on its order's index.
- */
 class TenantIndexIntegrationTest extends IntegrationTest {
 
     @Autowired
@@ -28,7 +24,6 @@ class TenantIndexIntegrationTest extends IntegrationTest {
             select id, name, status, created_at, updated_at, created_by, updated_by, version
               from tenants""";
 
-    /** Each offered filter and order with the index that serves it. */
     static Stream<Arguments> offeredFiltersAndOrders() {
         return Stream.of(
                 Arguments.of("tenants, NEWEST", "idx_tenants_created_at_id"),

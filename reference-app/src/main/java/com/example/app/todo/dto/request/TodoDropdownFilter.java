@@ -8,11 +8,6 @@ import lombok.Setter;
 
 import java.util.UUID;
 
-/**
- * The todo dropdown's parameters: a dependent dropdown, so its parent (the list) is mandatory. The parent is a
- * plain condition of the dropdown's one query, never looked up first: a list that is missing, or someone else's,
- * lists no todos, the same answer as an empty list of your own, so nothing tells ids apart.
- */
 @Getter
 @Setter
 public class TodoDropdownFilter extends DropdownFilter {

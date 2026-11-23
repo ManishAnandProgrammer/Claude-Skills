@@ -32,20 +32,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Token-bucket rate limiting (Bucket4j) with the buckets in Redis, so every instance counts against
- * the same limit. A {@link RateLimit} of N per window allows a burst of N, then refills gradually.
+ * Fails open: while Redis is unreachable or slower than {@code app.rate-limit.backend-timeout}, requests
+ * pass, since a cache outage must not lock users out.
  *
- * <p><b>Fails open:</b> while Redis is unreachable or slower than {@code app.rate-limit.backend-timeout},
- * requests pass: a cache outage must not lock users out. It is logged once per outage, and every
- * request let through unchecked is counted on {@value #LET_THROUGH_METRIC}; failed background
- * reconnects are counted apart, on {@value #RECONNECT_FAILURE_METRIC}, so an alert on the first means
- * requests really went unlimited. Both are registered at zero, so "no data" never reads as "no
- * failures".</p>
- *
- * <p>The connection is opened at startup and retried in the background, never on a request thread;
- * once connected, Lettuce reconnects by itself. The retries run on a thread of their own: an attempt
- * can block for {@code spring.data.redis.connect-timeout}, and must not delay the scheduled jobs.
- * Each instance opens its own connection, so every instance retrying at once is harmless.</p>
+ * <p>Once connected, Lettuce reconnects by itself. Until then the attempts run on a thread of their own: one
+ * can block for {@code spring.data.redis.connect-timeout}, and must not delay a request or the scheduled
+ * jobs.</p>
  */
 @Component
 @Slf4j
@@ -67,7 +59,7 @@ public class RedisRateLimiter implements DisposableBean {
     private volatile StatefulConnection<String, byte[]> connection;
     private volatile ProxyManager<String> buckets;
 
-    // Hand-written (JAVA-26): the counters are registered at startup, so their series read 0 before the first outage.
+    // Hand-written: the counters are registered at startup, so their series read 0 before the first outage.
     public RedisRateLimiter(LettuceConnectionFactory connectionFactory, RateLimitProperties properties,
                             MeterRegistry meterRegistry) {
         this.connectionFactory = connectionFactory;
@@ -80,7 +72,6 @@ public class RedisRateLimiter implements DisposableBean {
                 .register(meterRegistry);
     }
 
-    /** Counts one request against {@code key}; throws {@link RateLimitExceededException} when used up. */
     public void acquire(String key, RateLimit limit) {
         ConsumptionProbe probe;
         try {
@@ -158,8 +149,8 @@ public class RedisRateLimiter implements DisposableBean {
     private static BucketConfiguration configurationFor(RateLimit limit) {
         return BucketConfiguration.builder()
                 .addLimit(Bandwidth.builder()
-                        .capacity(limit.requests())
-                        .refillGreedy(limit.requests(), limit.window())
+                        .capacity(limit.capacity())
+                        .refillGreedy(limit.capacity(), limit.refillPeriod())
                         .build())
                 .build();
     }

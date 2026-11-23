@@ -23,8 +23,8 @@ public record TenantRegistrationRequest(
         String fullName,
 
         @Schema(description = """
-                An existing account's password, or a new account's: at least 8 characters and at most 72 \
-                bytes in UTF-8, with an upper-case letter, a lower-case letter, a digit and one other character.""",
+                An existing account's password, or a new account's: at most 72 bytes in UTF-8, with an \
+                upper-case letter, a lower-case letter, a digit and one other character.""",
                 example = "Correct-Horse-9")
         @PasswordPolicy
         String password) {

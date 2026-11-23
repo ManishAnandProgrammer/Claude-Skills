@@ -19,20 +19,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The two planes and the tenant at token issue: a platform token is refused on every tenant endpoint
- * and a tenant token under {@code /platform/**}; tokens are issued only for an ACTIVE tenant the user
- * belongs to.
- */
 @WithoutTestTenant
 class TenantPlanesIntegrationTest extends IntegrationTest {
 
     private static final String TENANTS = "/api/v1/platform/tenants";
     private static final String SWITCH = "/api/v1/auth/switch-tenant";
-    /** The origin application-test.yml allows. */
     private static final String ALLOWED_ORIGIN = "http://localhost:3000";
 
-    /** The access token's claims, read without checking the signature (the server checked it). */
     private static String claim(String accessToken, String jsonPath) {
         String payload = new String(Base64.getUrlDecoder().decode(accessToken.split("\\.")[1]), StandardCharsets.UTF_8);
         Object value = JsonPath.read(payload, jsonPath);
@@ -171,7 +164,7 @@ class TenantPlanesIntegrationTest extends IntegrationTest {
     @DisplayName("An account that belongs to no tenant can't sign in: 403 TENANT_MEMBERSHIP_REQUIRED")
     void accountWithoutMembershipIsRefused() throws Exception {
         String email = uniqueEmail("lonely");
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
 
         login(email, PASSWORD)
                 .andExpect(status().isForbidden())

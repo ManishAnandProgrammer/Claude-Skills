@@ -6,11 +6,6 @@ import org.springframework.core.task.TaskDecorator;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Carries the submitting thread's log context (request id, user, trace) into an async task, and
- * restores the worker's own afterwards, so a task's lines can be found by the request that
- * started it.
- */
 public class MdcTaskDecorator implements TaskDecorator {
 
     @Override

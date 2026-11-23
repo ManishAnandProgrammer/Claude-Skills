@@ -26,12 +26,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The todo dropdown, the golden dependent dropdown (house-review AUTHZ-08, crud-gen references/dropdown.md): one
- * list's todos, its parent a plain condition of the one query. The mechanics every dropdown shares (cursor
- * tampering, the label's longest cursor, the size limit) are the todo list dropdown's tests
- * ({@code TodoListIntegrationTest}); these are the parent's and the {@code for}'s.
- */
 class TodoDropdownIntegrationTest extends IntegrationTest {
 
     private static final String LISTS = "/api/v1/todo-lists";
@@ -49,20 +43,17 @@ class TodoDropdownIntegrationTest extends IntegrationTest {
                 """.formatted(listId, title)).andExpect(status().isCreated()), "$.response.id");
     }
 
-    /** The dropdown of {@code listId}, for a new plan's screen. */
-    private static String dropdown(String listId) {
+    private static String dropdownForANewPlan(String listId) {
         return TODOS + "/dropdown?for=PLAN_CREATE_OWN&todoListId=" + listId;
     }
 
-    /** Statements run by one request. */
     private long statementsFor(TestUser user, String path) throws Exception {
         statistics().clear();
         getAs(user.accessToken(), path).andExpect(status().isOk());
         return statistics().getPrepareStatementCount();
     }
 
-    /** Follows {@code pageInfo.nextCursor} to the last batch; each batch's values (ids). */
-    private List<List<String>> walkValues(TestUser user, String firstBatch) throws Exception {
+    private List<List<String>> valuesOfEveryBatch(TestUser user, String firstBatch) throws Exception {
         List<List<String>> batches = new ArrayList<>();
         String next = firstBatch;
         while (Objects.nonNull(next)) {
@@ -85,15 +76,15 @@ class TodoDropdownIntegrationTest extends IntegrationTest {
         createTodo(user, list, "Apples");
         createTodo(user, other, "Another list's todo");
 
-        getAs(user.accessToken(), dropdown(list))
+        getAs(user.accessToken(), dropdownForANewPlan(list))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response[*].label", contains("Apples", "Bread", "Milk")))
                 .andExpect(jsonPath("$.response[1].value").value(bread))
                 .andExpect(jsonPath("$.response[1].length()").value(2))
                 .andExpect(jsonPath("$.pageInfo.hasMore").value(false));
-        getAs(user.accessToken(), dropdown(list) + "&sortDirection=DESC")
+        getAs(user.accessToken(), dropdownForANewPlan(list) + "&sortDirection=DESC")
                 .andExpect(jsonPath("$.response[*].label", contains("Milk", "Bread", "Apples")));
-        getAs(user.accessToken(), dropdown(list) + "&query=READ")
+        getAs(user.accessToken(), dropdownForANewPlan(list) + "&query=READ")
                 .andExpect(jsonPath("$.response[*].label", contains("Bread")));
     }
 
@@ -109,9 +100,9 @@ class TodoDropdownIntegrationTest extends IntegrationTest {
         List<String> ascending = ids.stream().sorted().toList();
         List<String> descending = ascending.reversed();
 
-        assertThat(walkValues(user, dropdown(list) + "&size=2")).containsExactly(
+        assertThat(valuesOfEveryBatch(user, dropdownForANewPlan(list) + "&size=2")).containsExactly(
                 ascending.subList(0, 2), ascending.subList(2, 4), ascending.subList(4, 5));
-        assertThat(walkValues(user, dropdown(list) + "&size=2&sortDirection=DESC")).containsExactly(
+        assertThat(valuesOfEveryBatch(user, dropdownForANewPlan(list) + "&size=2&sortDirection=DESC")).containsExactly(
                 descending.subList(0, 2), descending.subList(2, 4), descending.subList(4, 5));
     }
 
@@ -122,14 +113,14 @@ class TodoDropdownIntegrationTest extends IntegrationTest {
         String theirs = createList(owner, "Theirs " + UUID.randomUUID());
         createTodo(owner, theirs, "Their todo");
         TestUser stranger = newUser();
-        getAs(owner.accessToken(), dropdown(theirs)).andExpect(jsonPath("$.response.length()").value(1));
+        getAs(owner.accessToken(), dropdownForANewPlan(theirs)).andExpect(jsonPath("$.response.length()").value(1));
 
         for (String parent : List.of(theirs, UUID.randomUUID().toString())) {
-            getAs(stranger.accessToken(), dropdown(parent))
+            getAs(stranger.accessToken(), dropdownForANewPlan(parent))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.response.length()").value(0))
                     .andExpect(jsonPath("$.pageInfo.hasMore").value(false));
-            assertThat(statementsFor(stranger, dropdown(parent))).isEqualTo(1);
+            assertThat(statementsFor(stranger, dropdownForANewPlan(parent))).isEqualTo(1);
         }
     }
 
@@ -143,12 +134,12 @@ class TodoDropdownIntegrationTest extends IntegrationTest {
         for (int index = 0; index < 21; index++) {
             createTodo(user, many, "Option " + index);
         }
-        getAs(user.accessToken(), dropdown(many) + "&size=20")
+        getAs(user.accessToken(), dropdownForANewPlan(many) + "&size=20")
                 .andExpect(jsonPath("$.response.length()").value(20))
                 .andExpect(jsonPath("$.pageInfo.hasMore").value(true));
 
-        assertThat(statementsFor(user, dropdown(single) + "&size=20")).isEqualTo(1);
-        assertThat(statementsFor(user, dropdown(many) + "&size=20")).isEqualTo(1);
+        assertThat(statementsFor(user, dropdownForANewPlan(single) + "&size=20")).isEqualTo(1);
+        assertThat(statementsFor(user, dropdownForANewPlan(many) + "&size=20")).isEqualTo(1);
     }
 
     @Test
@@ -188,11 +179,10 @@ class TodoDropdownIntegrationTest extends IntegrationTest {
         String list = createList(user, "Mine " + UUID.randomUUID());
         Set<Permission> allButIt = EnumSet.allOf(Permission.class);
         allButIt.remove(Permission.PLAN_CREATE_OWN);
-        // Whatever a caller's first request reads once (and later requests don't) is read here, before the count.
-        getAs(user.accessToken(), dropdown(list)).andExpect(status().isOk());
+        getAs(user.accessToken(), dropdownForANewPlan(list)).andExpect(status().isOk());
 
         statistics().clear();
-        mvc.perform(get(dropdown(list)).with(holding(user.accessToken(), allButIt)))
+        mvc.perform(get(dropdownForANewPlan(list)).with(holding(user.accessToken(), allButIt)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
         assertThat(statistics().getPrepareStatementCount()).isZero();
@@ -232,7 +222,7 @@ class TodoDropdownIntegrationTest extends IntegrationTest {
     @EnumSource(value = DropdownStatus.class, names = "ACTIVE", mode = EnumSource.Mode.EXCLUDE)
     @DisplayName("A dropdown status other than ACTIVE is 400 REQUEST_PARAMETER_INVALID: todos have no active flag")
     void dropdownStatusIsRefusedWithoutAnActiveFlag(DropdownStatus refused) throws Exception {
-        getAs(newUser().accessToken(), dropdown(UUID.randomUUID().toString()) + "&status=" + refused)
+        getAs(newUser().accessToken(), dropdownForANewPlan(UUID.randomUUID().toString()) + "&status=" + refused)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
                 .andExpect(jsonPath("$.errors[0].parameter").value("status"));
@@ -241,7 +231,7 @@ class TodoDropdownIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("Without a token the dropdown is 401 AUTHENTICATION_REQUIRED")
     void theDropdownNeedsAToken() throws Exception {
-        getAs(null, dropdown(UUID.randomUUID().toString()))
+        getAs(null, dropdownForANewPlan(UUID.randomUUID().toString()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("AUTHENTICATION_REQUIRED"));
     }

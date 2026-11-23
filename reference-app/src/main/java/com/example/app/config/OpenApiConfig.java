@@ -11,12 +11,6 @@ import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
 
-/**
- * The OpenAPI document ({@code /v3/api-docs}, Swagger UI at {@code /swagger-ui.html}). Endpoint
- * documentation lives on the {@code controller/api/*Api} interfaces. Off by default
- * ({@code springdoc.*.enabled: false} in {@code config/server.yml}), on in the {@code dev} profile. The
- * document's version is the served versions, {@code spring.mvc.apiversion.supported}.
- */
 @Configuration
 class OpenApiConfig {
 

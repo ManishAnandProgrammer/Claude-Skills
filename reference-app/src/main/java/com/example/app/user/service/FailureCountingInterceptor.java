@@ -11,9 +11,8 @@ import org.springframework.http.client.ClientHttpResponse;
 import java.io.IOException;
 
 /**
- * Counts failed breached-password lookups (no connection, no answer within the timeouts, an error
- * status) and logs one WARN for each. Spring's checker answers "not compromised" on a failed request
- * (its own ERROR log is switched off in config), so this is the only place an outage still shows.
+ * Spring's checker answers "not compromised" on a failed request (its own ERROR log is switched off in config), so
+ * this is the only place an outage still shows.
  */
 @Slf4j
 @RequiredArgsConstructor

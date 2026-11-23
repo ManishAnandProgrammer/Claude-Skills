@@ -21,26 +21,22 @@ class MessageSourceConfig {
         return messageSource("classpath:messages/message");
     }
 
-    /** The application's settings over any bundle, so a test can render its own messages the same way. */
     static MessageSource messageSource(String basename) {
         ReloadableResourceBundleMessageSource messageSource = new ReloadableResourceBundleMessageSource();
         messageSource.setBasename(basename);
-        // The files are UTF-8; read as the default ISO-8859-1, every non-ASCII character would be garbled.
         messageSource.setDefaultEncoding("UTF-8");
         // Without it a message used with no arguments skips MessageFormat, and '' or an unfilled {0}
         // reaches the client raw.
         messageSource.setAlwaysUseMessageFormat(true);
         messageSource.setFallbackToSystemLocale(false);
-        // Any language without its own file (de, pa, hi, ...) is answered in English; without it the
-        // lookup fails and the error response itself breaks.
+        // Without it a language that has no file of its own (de, pa, hi, ...) fails the lookup, and the error
+        // response with it.
         messageSource.setDefaultLocale(Locale.ENGLISH);
         return messageSource;
     }
 
     /**
-     * {@code @PastOrPresent}, {@code @FutureOrPresent} and their kind read "now" from the application's
-     * {@link Clock}, not the system clock, so a test with a fixed clock fixes them too. Boot's own
-     * validator customisers don't reach a validator defined here. The clock is looked up on use: the
+     * Boot's validator customisers don't reach a validator defined here. The clock is looked up on use: the
      * validator is created early, before ordinary beans.
      */
     @Bean
@@ -54,7 +50,6 @@ class MessageSourceConfig {
     @Bean
     static LocaleResolver localeResolver() {
         AcceptHeaderLocaleResolver localeResolver = new AcceptHeaderLocaleResolver();
-        // A language is its messages file plus its locale here; ErrorCodeContractTest checks the files alike.
         localeResolver.setSupportedLocales(List.of(Locale.ENGLISH));
         localeResolver.setDefaultLocale(Locale.ENGLISH);
         return localeResolver;

@@ -78,28 +78,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/**
- * Every read and write is scoped to the caller: another user's todo, or list, answers 404 like a
- * missing one. A todo's requester is the one exception, a second party with fewer rights: they read the
- * todo (findById), and every other call on it is 403 {@code TODO_NOT_YOURS}: the rules are {@link TodoPolicy}'s. The todo's aggregate includes its time entries and its tag rows (which tags it
- * carries): they are read and written only here, always through their todo. The tags themselves are
- * another aggregate's, reached through {@link TagService}. Other modules reach a todo only through
- * {@link Todos}, which this service implements.
- *
- * <p>A response shows the todo's list by name, so it is read with the todo in one statement where the
- * todo isn't locked (the detail, a status change that may change nothing); a locked todo's list can't go
- * while the lock is held (the list's delete is refused while it has todos, and the todo's delete waits),
- * so the writes that lock it read the list afterwards; a list page reads its lists' names in one more
- * statement. The requester is another module's person: an id, checked through that module's facade when a
- * write names someone new, and (with tenancy) shown by name while they are a member.</p>
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class TodoService implements Todos {
 
     // metadata:begin
-    /** The display numbers' counter (Counters): one for the application, or one per tenant with tenancy. */
     static final String NUMBER_COUNTER = "TODO_NUMBER";
 
     // metadata:end
@@ -154,14 +138,12 @@ public class TodoService implements Todos {
         return ObjectWrapper.withObject(toResponse(saved));
     }
 
-    /** Its owner's, or its requester's to read (TodoPolicy.read): the only call a requester may make on a todo. */
     public ObjectWrapper<TodoResponse> findById(UUID id) {
         Todo todo = repository.findWithTodoListById(id).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
         policy.read(todo, currentUser.id()).orThrow();
         return ObjectWrapper.withObject(toResponse(todo));
     }
 
-    /** The policy's list scope: the caller's own todos. */
     public CursorWrapper<TodoSummaryResponse> findByFilter(TodoFilter filter) {
         UUID ownerId = currentUser.id();
         CursorBatch<TodoSummaryResponse> batch =
@@ -169,17 +151,8 @@ public class TodoService implements Todos {
         return CursorWrapper.of(withTags(withTodoLists(batch.items(), ownerId)), batch.nextCursor());
     }
 
-    /**
-     * The todos of one list that the action {@code action} may use ({@link DropdownFor}): a dependent dropdown (a
-     * new plan's screen picks a list, then one of its todos). The reach is the policy's list scope, the one this
-     * dropdown lists, and the list one more condition of the same statement, never looked up first: a list that is
-     * missing or someone else's offers nothing, as an empty one of the caller's does. Todos have no active flag
-     * (DONE ones are offered too, and a write that needs an open one refuses it), so a {@code status} other than
-     * the default is refused, not ignored. A screen that shows the done ones greyed out, with the reason, takes a
-     * plan's todo options instead ({@code PlanService.todoOptions}, over {@link #getOwnedTodoViewBatch}).
-     */
     public CursorWrapper<DropdownItem> dropdown(Permission action, TodoDropdownFilter filter) {
-        DropdownFor.check(action, currentUser.permissions(), EnumSet.of(Reach.OWN));
+        DropdownFor.requireReach(action, currentUser.permissions(), EnumSet.of(Reach.OWN));
         if (filter.getStatus() != DropdownStatus.ACTIVE) {
             throw AppException.withErrors(ErrorCode.REQUEST_PARAMETER_INVALID,
                     List.of(RequestError.atParameter("status", RequestError.INVALID_VALUE)));
@@ -189,14 +162,6 @@ public class TodoService implements Todos {
         return CursorWrapper.of(batch.items().stream().map(mapper::toDropdownItem).toList(), batch.nextCursor());
     }
 
-    /**
-     * The todo is locked first ({@code FOR NO KEY UPDATE}), before its list, its files or any other row:
-     * the update may change its member rows, and two concurrent changes of them with one version then
-     * queue here and the second answers 409. Without it, both would get as far as inserting their link
-     * rows (each insert's foreign key check holds the todo {@code FOR KEY SHARE}), and an owner whose
-     * update also changes a unique column (a code, an email) needs a key lock for that update: each would
-     * wait for the other's key share, a deadlock answered 503 instead of 409.
-     */
     @Transactional
     public ObjectWrapper<TodoResponse> update(UUID id, TodoUpdateRequest request) {
         UUID ownerId = currentUser.id();
@@ -225,13 +190,7 @@ public class TodoService implements Todos {
     }
     // media:begin
 
-    /**
-     * Applies the add/remove of a todo's files. Every attached file counts (MISSING ones too), and the
-     * count is checked only when the files change, so a shrunk policy doesn't block editing the title.
-     * A removed id must be one of its files: 404 {@code TODO_ATTACHMENT_NOT_FOUND}.
-     *
-     * @return the removed ids, to release once the todo's version check has passed
-     */
+    /** The count is checked only when the files change, so a lowered limit doesn't block editing the title. */
     private Set<UUID> changeAttachments(Todo todo, Set<String> addKeys, Set<UUID> removeIds) {
         if (addKeys.isEmpty() && removeIds.isEmpty()) {
             return Set.of();
@@ -251,10 +210,8 @@ public class TodoService implements Todos {
     // media:end
 
     /**
-     * Replaces the tags as a whole; the version increments when they change (Todo.tagLinks). A tag
-     * delete removes its links by the database's cascade, which the todo's lock doesn't cover: a
-     * replace that drops a link such a delete is removing at that moment finds it gone at the flush and
-     * answers 409 {@code OPTIMISTIC_LOCK_CONFLICT}, as documented; the client reloads and retries.
+     * A tag's delete removes its links by the database's cascade, outside the todo's lock: a replace that drops a
+     * link being removed that way finds it gone at the flush and answers 409 {@code OPTIMISTIC_LOCK_CONFLICT}.
      */
     @Transactional
     public ObjectWrapper<TodoResponse> replaceTags(UUID id, TodoTagsRequest request) {
@@ -266,12 +223,6 @@ public class TodoService implements Todos {
         return ObjectWrapper.withObject(toResponse(todo));
     }
 
-    /**
-     * A tag merge's todo half (TagMergeManager), after both tags are locked: every todo carrying the source
-     * carries the target instead (once, when it carried both), and its version moves. The todos are locked
-     * first, in id order, as their own writes lock them, then changed by three statements whatever their
-     * number: the merge never loads them. The source's key lock means no link to it is added meanwhile.
-     */
     @Transactional(propagation = Propagation.MANDATORY)
     public void moveTagLinks(UUID sourceTagId, UUID targetTagId, UUID ownerId) {
         Instant now = clock.instant();
@@ -297,14 +248,6 @@ public class TodoService implements Todos {
         return ObjectWrapper.withObject(toResponse(todo));
     }
 
-    /**
-     * Its tag rows go with it (the tags stay). A todo with time entries or plans is refused at the
-     * flush by their foreign keys: 409 {@code TODO_IN_USE}. Locked first, like the update, so it queues
-     * behind a change of its member rows instead of deadlocking with one. It takes no version and never
-     * answers 409 {@code OPTIMISTIC_LOCK_CONFLICT}: the lock keeps the todo's own writers out, and its
-     * tag rows, which a tag's delete removes by cascade without the todo's lock, go first in one
-     * statement that doesn't count them (a versioned delete per row would miss the removed ones).
-     */
     @Transactional
     public void delete(UUID id) {
         Todo todo = lockEditableTodo(id, currentUser.id());
@@ -315,25 +258,21 @@ public class TodoService implements Todos {
         repository.delete(todo);
         repository.flush();
         // media:begin
-        // Its files go with it: the cleanup job deletes them.
         uploads.release(attachments);
         // media:end
     }
 
-    /** Locked as the todo's own writes lock it (findForUpdate), so they queue behind the caller. */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public TodoView getOwnedTodoViewForUpdate(UUID id, UUID ownerId) {
         return mapper.toView(lockEditableTodo(id, ownerId));
     }
 
-    /** A todo the person may change (TodoPolicy.edit: their own); empty otherwise, as for a missing one. */
     @Override
     public Optional<TodoView> findOwnedTodoView(UUID id, UUID ownerId) {
         return repository.findById(id).filter(todo -> policy.edit(todo, ownerId).isAllowed()).map(mapper::toView);
     }
 
-    /** A page's lookup, by the owner condition of TodoPolicy.listScope written as the query's own (one statement). */
     @Override
     public List<TodoView> getOwnedTodoViews(Collection<UUID> ids, UUID ownerId) {
         if (ids.isEmpty()) {
@@ -342,10 +281,6 @@ public class TodoService implements Todos {
         return repository.findViewsByIdInAndOwnerId(ids, ownerId);
     }
 
-    /**
-     * The dropdown's batch as views, by the same query and owner condition ({@link #dropdown}): one statement, in
-     * title order, its cursor the dropdown's.
-     */
     @Override
     public CursorBatch<TodoView> getOwnedTodoViewBatch(UUID todoListId, String query, String after, int size, UUID ownerId) {
         TodoDropdownFilter filter = new TodoDropdownFilter();
@@ -355,7 +290,6 @@ public class TodoService implements Todos {
         return repository.findDropdownViews(filter, policy.listScope(ownerId), size);
     }
 
-    /** Not locked: an entry written while its todo is deleted is refused by its foreign key, 404 {@code TODO_GONE}. */
     @Transactional
     public ObjectWrapper<TimeEntryResponse> createTimeEntry(UUID todoId, TimeEntryCreateRequest request) {
         Todo todo = getEditableTodo(todoId, currentUser.id());
@@ -368,9 +302,8 @@ public class TodoService implements Todos {
     }
 
     /**
-     * An unknown or foreign todo is a 404, not an empty list. The batch is read first, so its cursor is checked
-     * before any lookup (a tampered one is 400 whatever the todo); the batch is the owner's rows only, so
-     * nothing of another's todo is read.
+     * The batch is read before the todo's check, so a tampered cursor is a 400 whatever the todo; it holds the
+     * owner's rows only, so nothing of another's todo is read.
      */
     public CursorWrapper<TimeEntryResponse> findTimeEntries(UUID todoId, TimeEntryFilter filter) {
         UUID ownerId = currentUser.id();
@@ -408,7 +341,6 @@ public class TodoService implements Todos {
     }
     // tenancy:begin
 
-    // /** By name while they are a member; a former member by id alone (their todos stay as they were). */
     // private TodoRequesterResponse requesterOf(Todo todo) {
     //     if (Objects.isNull(todo.getRequesterId())) {
     //         return null;
@@ -427,10 +359,6 @@ public class TodoService implements Todos {
     }
     // media:end
 
-    /**
-     * The batch's lists by name in one more statement, never a join in the keyset query. A row whose list
-     * went meanwhile (deleted with its todos) is left out; the cursor still goes on after the batch's last row.
-     */
     private List<TodoSummaryResponse> withTodoLists(List<TodoSummaryResponse> rows, UUID ownerId) {
         if (rows.isEmpty()) {
             return rows;
@@ -439,7 +367,6 @@ public class TodoService implements Todos {
         return mapper.withTodoLists(rows, todoListService.findOwnedTodoListNames(listIds, ownerId));
     }
 
-    /** Two steps, never a collection fetch (DATA-26): the batch, then one query for all its tags. */
     private List<TodoSummaryResponse> withTags(List<TodoSummaryResponse> rows) {
         if (rows.isEmpty()) {
             return rows;
@@ -448,7 +375,7 @@ public class TodoService implements Todos {
         return mapper.withTags(rows, todoTagRepository.findTagRowsOfTodos(ids));
     }
 
-    /** With its list: a status it already has changes nothing, so no row lock keeps its list there. */
+    /** With its list: a change to the status it has takes no row lock, so nothing keeps its list there. */
     private Todo getEditableTodoAtVersion(UUID id, UUID callerId, Long expectedVersion) {
         Todo todo = repository.findWithTodoListById(id).orElseThrow(AppException.supply(ErrorCode.TODO_NOT_FOUND, id));
         policy.edit(todo, callerId).orThrow();
@@ -456,11 +383,6 @@ public class TodoService implements Todos {
         return todo;
     }
 
-    /**
-     * Locked only when the caller may change it (TodoPolicy.editScope, one statement): nobody else's request
-     * queues behind its owner's writers. Otherwise read without a lock, for the policy to say why (a requester's
-     * 403), or the 404 of a missing todo.
-     */
     private Todo lockEditableTodo(UUID id, UUID callerId) {
         Optional<Todo> locked = repository.findForUpdate(id, policy.editScope(callerId));
         if (locked.isEmpty()) {
@@ -476,13 +398,9 @@ public class TodoService implements Todos {
         return todo;
     }
 
-    /**
-     * A person a write newly names: an account (with tenancy, a member now: 404 {@code TENANT_MEMBER_NOT_FOUND}
-     * for a removed one, whose row in {@code members} the foreign key would still accept). The update calls it
-     * only when the person changes, so a todo whose requester left stays editable.
-     */
     private void requireRequester(UUID requesterId) {
         // tenancy:begin
+        // // A removed member's row stays in members, so the foreign key alone would accept them.
         // if (!members.isMember(requesterId)) {
         //     throw AppException.of(ErrorCode.TENANT_MEMBER_NOT_FOUND, requesterId);
         // }
@@ -491,7 +409,6 @@ public class TodoService implements Todos {
         // tenancy:end
     }
 
-    /** The todo first, so an unknown or foreign todo answers TODO_NOT_FOUND, and an entry of another todo is not found. */
     private TimeEntry getOwnedTimeEntry(UUID todoId, UUID id, UUID ownerId) {
         getEditableTodo(todoId, ownerId);
         return timeEntryRepository.findByIdAndTodoIdAndOwnerId(id, todoId, ownerId)

@@ -27,13 +27,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
@@ -87,26 +87,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Base of every integration test: the whole application over MockMvc, one shared context and one
- * shared database. Create your own data (unique emails and names), never assume an empty table,
- * and don't add {@code @MockitoBean} or {@code @TestPropertySource}: either starts another context.
- *
- * <p>{@code @AutoConfigureMetrics} keeps the prometheus registry, which Boot switches off in tests,
- * so the scrape is tested. Every request comes from its own client address
- * ({@link DistinctClientAddresses}).</p>
- *
- * <p>Fixture helpers assert their own success, so a setup that fails fails the test.</p>
- *
- * <p>Every test runs under {@link TransactionGuards}: a read-only transaction left with changes, a GET
- * that opens a write transaction or a remote call inside a transaction fails it.</p>
- *
- * <p>With tenancy, the tests run as the reference's do, inside one test tenant shared by the run (the
- * reference's tests already share one database): every account {@link #signup} creates joins it, and
- * each test method (with its {@code @BeforeEach} and {@code @AfterEach}) runs under
- * {@code TenantScope.runAs(testTenant)}, so a service a test calls directly works in that tenant.
- * {@link #jdbc} reads and writes the test tenant's tables ({@code TenantFixtureDataSource}). A test class
- * about tenancy itself is {@link WithoutTestTenant}: no scope, its requests' tokens alone name their
- * tenant, as in production, and {@link #newTenant} gives it more tenants.</p>
+ * One shared context and one shared database for the whole run: create your own data (unique values), never
+ * assume an empty table, and don't add {@code @MockitoBean} or {@code @TestPropertySource}: either starts another
+ * context. {@code @AutoConfigureMetrics} keeps the prometheus registry, which Boot switches off in tests.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -118,27 +101,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public abstract class IntegrationTest {
 
     protected static final String PASSWORD = "Correct-Horse-9";
-    /** How many requests {@link #race} fires at once. */
     protected static final int RACERS = 6;
-    /**
-     * How many writes {@link #createsHeldAtTheirInsert} and {@link #writesHeldWhileTheParentWaits} hold at once:
-     * below the pool size (10) with the parent's write, the gate and the polling connection.
-     */
+    /** Below the pool size (10) with the parent's write, the gate and the polling connection. */
     protected static final int HELD_CREATES = 4;
-    /**
-     * Under lock_timeout (3 s), so a request held by a test lock never times out first. A test that
-     * waits for several sessions in turn shares one deadline across the waits ({@link #lockWaitDeadline}).
-     */
+    /** Under lock_timeout (3 s), so a request held by a test lock never times out first. */
     private static final Duration LOCK_WAIT_DEADLINE = Duration.ofSeconds(2);
-    /** How long a test waits for a latch or for a request it started, so a broken gate fails instead of hanging. */
     private static final Duration WAIT_DEADLINE = Duration.ofSeconds(10);
 
     // example:begin
     // metadata:begin
     /**
-     * A todo inserted as a fixture needs a display number (NOT NULL, unique): a random one, far above any the
-     * counter hands out. Insert statements splice these two in ({@code "insert into todos (id, %stitle ..."}),
-     * so a fixture reads the same with and without the metadata piece, which brings the numbers.
+     * Spliced into fixture inserts ({@code "insert into todos (id, %stitle ..."}) so a fixture reads the same
+     * without the metadata piece, which brings the display number (NOT NULL, unique): random, far above any the
+     * counter hands out.
      */
     protected static final String TODO_NUMBER_COLUMN = "number, ";
     protected static final String TODO_NUMBER = "1000000000 + (random() * 1e15)::bigint, ";
@@ -157,10 +132,7 @@ public abstract class IntegrationTest {
     @Value("${spring.application.name}")
     private String applicationName;
 
-    /**
-     * For asserting database invariants (row counts) that no endpoint exposes. Writes go through {@link #sql}.
-     * It sees the test tenant's tables, then the platform's.
-     */
+    /** It sees the test tenant's tables, then the platform's. */
     protected JdbcTemplate jdbc;
 
     @Autowired
@@ -178,10 +150,8 @@ public abstract class IntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    /** The one test tenant of the run, created by the first test that needs it. */
     private static TestTenant testTenant;
 
-    /** The one platform staff account of the test run. */
     private static final String STAFF_EMAIL = uniqueEmail("staff");
     /** Well within the access token's 15 minutes. */
     private static final Duration STAFF_TOKEN_REUSE = Duration.ofMinutes(5);
@@ -191,27 +161,23 @@ public abstract class IntegrationTest {
     @RegisterExtension
     final TestTenantScope testTenantScope = new TestTenantScope(() -> testTenant().id());
 
-    /** The pool, for {@link #sqlIn}'s fixture connections in another tenant. */
-    private DataSource dataSource;
+    private DataSource pool;
 
-    /**
-     * Liquibase's connection, as the owner role: for the rows the pool's role may not write (staff
-     * accounts). Unpooled, and auto-commit: each statement commits on its own.
-     */
+    /** The pool's role only reads staff accounts (0015). Unpooled and auto-commit: each statement commits on its own. */
     @Autowired
     @LiquibaseDataSource
     private DataSource ownerDataSource;
 
     @Autowired
     void fixtureJdbc(DataSource dataSource) {
-        this.dataSource = dataSource;
+        this.pool = dataSource;
         jdbc = new JdbcTemplate(new TenantFixtureDataSource(dataSource, () -> testTenant().id()));
     }
 
     /**
-     * Runs a fixture write in its own committed transaction. The pool runs with auto-commit off, so
-     * a bare {@code jdbc.update} outside a transaction is rolled back when its connection returns to
-     * the pool, and the test would silently run against data that isn't there.
+     * Commits in its own transaction. The pool runs with auto-commit off, so a bare {@code jdbc.update} outside a
+     * transaction is rolled back when its connection returns to the pool, and the test would silently run against
+     * data that isn't there.
      */
     protected int sql(String statement, Object... args) {
         // The test tenant first: created while this transaction opens its connection, the tenant's
@@ -221,32 +187,25 @@ public abstract class IntegrationTest {
         return rows;
     }
 
-    /**
-     * {@link #sql} in another tenant than the test tenant: a fixture row of a second tenant, written in its
-     * own committed transaction on a connection told that tenant (so its policy accepts the row, or its
-     * schema holds the table). A row-mode insert still names its tenant itself ({@code tenant.id()}).
-     */
+    /** A row-mode insert still names its tenant itself: tenant_id has no default. */
     protected int sqlIn(TestTenant tenant, String statement, Object... args) {
-        JdbcTemplate inTenant = new JdbcTemplate(new TenantFixtureDataSource(dataSource, tenant::id));
+        JdbcTemplate inTenant = new JdbcTemplate(new TenantFixtureDataSource(pool, tenant::id));
         Integer rows = new TransactionTemplate(transactionManager).execute(status -> inTenant.update(statement, args));
         return rows;
     }
 
-    /** A fixture read in another tenant than the test tenant, on a connection told that tenant, as {@link #sqlIn} writes. */
     protected List<Map<String, Object>> queryIn(TestTenant tenant, String query, Object... args) {
-        JdbcTemplate inTenant = new JdbcTemplate(new TenantFixtureDataSource(dataSource, tenant::id));
+        JdbcTemplate inTenant = new JdbcTemplate(new TenantFixtureDataSource(pool, tenant::id));
         return new TransactionTemplate(transactionManager).execute(status -> inTenant.queryForList(query, args));
     }
 
     @Autowired
     private EntityManagerFactory entityManagerFactory;
 
-    /** Hibernate's counters (on in the test profile): clear them, run a request, read the statement count. */
     protected Statistics statistics() {
         return entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
     }
 
-    /** A broken check from before this test (startup, another class's leftovers) isn't this test's. */
     @BeforeEach
     void forgetEarlierTransactionChecks() {
         TransactionGuards.takeViolations();
@@ -257,25 +216,21 @@ public abstract class IntegrationTest {
         assertThat(TransactionGuards.takeViolations()).as("transaction boundaries the test's requests and calls broke").isEmpty();
     }
 
-    /** A signed-up user and their access token. */
     protected record TestUser(UUID id, String email, String accessToken, String refreshToken) {
     }
 
-    /** A provisioned, ACTIVE tenant. */
     protected record TestTenant(UUID id) {
     }
 
-    /** The application's name, which bootstrap renames: never write it into a test. */
+    /** Bootstrap renames the application: never write its name into a test. */
     protected String applicationName() {
         return applicationName;
     }
 
-    /** The Problem Details {@code type} of an error code; the URN carries the application's name. */
     protected String problemType(String errorCode) {
         return "urn:%s:error:%s".formatted(applicationName, errorCode);
     }
 
-    /** {@code count} random UUIDs, comma-separated: an {@code ids} filter of that size. */
     protected static String randomIds(int count) {
         return Stream.generate(UUID::randomUUID).limit(count).map(UUID::toString).collect(Collectors.joining(","));
     }
@@ -284,7 +239,6 @@ public abstract class IntegrationTest {
         return prefix + "-" + UUID.randomUUID() + "@example.com";
     }
 
-    /** Signs up a new account and signs it in. */
     protected TestUser newUser() throws Exception {
         String email = uniqueEmail("user");
         String userId = read(signup(email, PASSWORD).andExpect(status().isCreated()), "$.response.id");
@@ -292,10 +246,9 @@ public abstract class IntegrationTest {
     }
 
     /**
-     * Signs an account in again: fresh tokens carrying its current role. A fixture kept for longer than
-     * one test (an account shared by a class or the whole run) keeps the account and calls this on use,
-     * never a cached access token: that expires after {@code app.jwt.access-token-ttl}, and every later
-     * call would be 401 once a slow run passes it.
+     * A fixture kept for longer than one test keeps the account and calls this on use, never a cached access
+     * token: that expires after {@code app.jwt.access-token-ttl}, and every later call would be 401 once a slow
+     * run passes it.
      */
     protected TestUser signIn(TestUser account) throws Exception {
         ResultActions login = login(account.email(), PASSWORD).andExpect(status().isOk());
@@ -305,11 +258,7 @@ public abstract class IntegrationTest {
 
     // admin:begin
     // roles:begin
-    /**
-     * A signed-up user holding the test tenant's built-in {@code role} alone (the roles piece: its copy in the
-     * tenant's roles table, by SQL, so a test of anything else needs no admin to give it), signed in again as every
-     * other fixture is.
-     */
+    /** By SQL, so a test of anything else needs no admin to give the role. */
     protected TestUser newUserWithRole(String role) throws Exception {
         TestUser user = newUser();
         sql("delete from user_roles where user_id = ?", user.id());
@@ -317,7 +266,7 @@ public abstract class IntegrationTest {
         return signIn(user);
     }
     // roles:else
-    // /** A signed-up user given {@code role} (no endpoint grants one), signed in again so the token carries it. */
+    // /** By SQL: no endpoint grants a role. */
     // protected TestUser newUserWithRole(String role) throws Exception {
     //     TestUser user = newUser();
     //     assertThat(sql("update users set role = ? where id = ?", role, user.id())).isEqualTo(1);
@@ -335,27 +284,18 @@ public abstract class IntegrationTest {
     // media:begin
     private static final HttpClient STORAGE_CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private static final String UPLOAD_URLS = "/api/v1/upload-urls";
-    /** The content types {@link #setUploadPolicy} allows: those of the files the tests upload. */
     private static final String TEST_CONTENT_TYPES = "application/pdf,image/jpeg,image/png";
 
-    /** Every test class that sets an upload policy holds this lock, so none sees another's limits. */
     public static final String UPLOAD_POLICIES_LOCK = "UPLOAD_POLICIES";
 
-    /**
-     * The purpose the media piece's own endpoint tests run against: the project's first
-     * {@link UploadPurpose}, or empty while the project has none (those tests are then skipped, see
-     * {@link #assumeAnUploadPurpose}). Each test sets the purpose's limits itself ({@link #setUploadPolicy}).
-     */
     protected static final String TESTED_PURPOSE = UploadPurpose.values().length == 0 ? "" : UploadPurpose.values()[0].name();
 
-    /** A new user whose role holds one of {@link #TESTED_PURPOSE}'s permissions: the first such role. */
     protected TestUser newUploader() throws Exception {
         Optional<Role> uploader = Arrays.stream(Role.values()).filter(IntegrationTest::mayUploadForTheTestedPurpose).findFirst();
         assertThat(uploader).as("a role that may upload for " + TESTED_PURPOSE).isPresent();
         return newUserWithRole(uploader.get().name());
     }
 
-    /** A new user whose role holds none of {@link #TESTED_PURPOSE}'s permissions; skips the test when every role does. */
     protected TestUser newNonUploader() throws Exception {
         Optional<Role> other = Arrays.stream(Role.values()).filter(role -> !mayUploadForTheTestedPurpose(role)).findFirst();
         assumeTrue(other.isPresent(), "every role may upload for " + TESTED_PURPOSE);
@@ -366,16 +306,13 @@ public abstract class IntegrationTest {
         return UploadPurpose.values()[0].mayUpload(role::grants);
     }
 
-    /** Skips the calling test until the project declares its first upload purpose (crud-gen Step 5). */
     protected static void assumeAnUploadPurpose() {
         assumeTrue(!TESTED_PURPOSE.isEmpty(), "no UploadPurpose yet: the media endpoint tests run once the first one exists");
     }
 
-    /** One upload URL as {@code POST /upload-urls} answers it. */
     protected record UploadUrl(String uploadKey, String url, Map<String, String> headers) {
     }
 
-    /** Asks for one upload URL; fails the test unless it answers 201. */
     protected UploadUrl uploadUrl(TestUser user, String purpose, String fileName, String contentType, long sizeBytes)
             throws Exception {
         ResultActions issued = postAs(user.accessToken(), UPLOAD_URLS, """
@@ -385,7 +322,6 @@ public abstract class IntegrationTest {
                 read(issued, "$.response[0].headers"));
     }
 
-    /** PUTs {@code body} to a presigned URL with {@code headers}, as a browser would; the store's status. */
     protected static int putToStorage(String url, Map<String, String> headers, byte[] body) throws Exception {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(10))
@@ -396,13 +332,11 @@ public abstract class IntegrationTest {
         return STORAGE_CLIENT.send(request.build(), HttpResponse.BodyHandlers.discarding()).statusCode();
     }
 
-    /** GETs a presigned URL, as a browser would. */
     protected static HttpResponse<byte[]> getFromStorage(String url) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(10)).GET().build();
         return STORAGE_CLIENT.send(request, HttpResponse.BodyHandlers.ofByteArray());
     }
 
-    /** Uploads {@code body} as {@code user} for {@code purpose}; returns the upload key, ready to attach. */
     protected String uploadedFile(TestUser user, String purpose, String fileName, String contentType, byte[] body)
             throws Exception {
         UploadUrl upload = uploadUrl(user, purpose, fileName, contentType, body.length);
@@ -410,12 +344,10 @@ public abstract class IntegrationTest {
         return upload.uploadKey();
     }
 
-    /** A purpose's limits as stored, to put back after a test changed them. */
     protected record UploadPolicyLimits(String purpose, long minSizeBytes, long maxSizeBytes, int minFiles, int maxFiles,
                                         String contentTypes) {
     }
 
-    /** The purpose's limits now ({@link #restoreUploadPolicy} puts them back). */
     protected UploadPolicyLimits uploadPolicyOf(String purpose) {
         return jdbc.queryForObject("""
                 select min_size_bytes, max_size_bytes, min_files, max_files, array_to_string(content_types, ',') as content_types
@@ -426,9 +358,8 @@ public abstract class IntegrationTest {
     }
 
     /**
-     * Puts a purpose's limits back as {@link #uploadPolicyOf} read them, so no other class sees a test's
-     * limits (every todo create checks the attachment count, even with no files). Nothing when
-     * {@code limits} is null: the test was skipped before it read them.
+     * Every todo create checks the attachment count, even with no files, so a test's limits left behind break
+     * other classes. {@code limits} is null when the test was skipped before it read them.
      */
     protected void restoreUploadPolicy(UploadPolicyLimits limits) {
         if (Objects.isNull(limits)) {
@@ -443,12 +374,6 @@ public abstract class IntegrationTest {
                 limits.contentTypes(), limits.purpose())).isEqualTo(1);
     }
 
-    /**
-     * Sets a purpose's limits directly (no admin, no version check), with the content types of the test
-     * files (PDF, JPEG, PNG), for tests of how they are applied. A class that relies on a purpose's limits
-     * holds {@link #UPLOAD_POLICIES_LOCK}, reads them ({@link #uploadPolicyOf}) and sets its own in
-     * {@code @BeforeEach}, and puts them back ({@link #restoreUploadPolicy}) in {@code @AfterEach}.
-     */
     protected void setUploadPolicy(String purpose, long minSizeBytes, long maxSizeBytes, int minFiles, int maxFiles) {
         assertThat(sql("""
                 update upload_policies
@@ -460,38 +385,25 @@ public abstract class IntegrationTest {
 
     // media:end
     // metadata:begin
-    /** A fixed metadata key's row as stored: its JSON value and version, to put back after a test changed it. */
     protected record StoredMetadata(String key, String value, long version) {
     }
 
-    /**
-     * The key's row now ({@link #restoreMetadata} puts it back). Fails when the key isn't stored: a fixed
-     * key is seeded by the changeset that needs it (META-05), so a missing one is a seed that didn't run.
-     */
+    /** A fixed key is seeded by the changeset that needs it, so a key that isn't stored is a seed that didn't run. */
     protected StoredMetadata storedMetadata(String key) {
         return jdbc.queryForObject("select value::text as value, version from configuration_metadata where key = ?",
                 (row, number) -> new StoredMetadata(key, row.getString("value"), row.getLong("version")), key);
     }
 
-    /**
-     * Sets a fixed key's value directly, at version 0 (no admin, no version check), creating the row when a
-     * test deleted it. A class that changes a fixed key holds the key's {@code @ResourceLock}, reads it
-     * ({@link #storedMetadata}) and sets its own in {@code @BeforeEach}, and puts it back
-     * ({@link #restoreMetadata}) in {@code @AfterEach}: real code reads the key (a create that starts from
-     * it), and other classes must find the seeded value, never a test's.
-     */
     protected void storeMetadata(String key, String json) {
         storeMetadataRow(key, json, 0);
     }
 
-    /** Puts a key's row back as {@link #storedMetadata} read it, value and version. */
     protected void restoreMetadata(StoredMetadata stored) {
         storeMetadataRow(stored.key(), stored.value(), stored.version());
     }
 
     private void storeMetadataRow(String key, String json, long version) {
         // tenancy-row:begin
-        // Row mode: every insert names its tenant (tenant_id has no default).
         assertThat(sql("""
                 insert into configuration_metadata (id, tenant_id, key, value, created_at, updated_at, version)
                 values (uuidv7(), ?, ?, ?::jsonb, now(), now(), ?)
@@ -510,16 +422,14 @@ public abstract class IntegrationTest {
     // metadata:end
 
     /**
-     * The test tenant exists before any test body, @WithoutTestTenant classes included: the fixture
-     * {@code jdbc} names it on every connection, and created inside a fixture's transaction it would
-     * stay PENDING (row mode provisions after the creating transaction commits).
+     * Before any test body, {@code @WithoutTestTenant} classes included: the fixture {@code jdbc} names the test
+     * tenant on every connection.
      */
     @BeforeEach
     void createTheTestTenantFirst() {
         testTenant();
     }
 
-    /** The run's test tenant; the first call creates it, owned by an account of its own. */
     protected TestTenant testTenant() {
         synchronized (IntegrationTest.class) {
             if (Objects.isNull(testTenant)) {
@@ -529,37 +439,25 @@ public abstract class IntegrationTest {
         }
     }
 
-    /**
-     * A new ACTIVE tenant whose owner (its ADMIN) is a new account; for cross-tenant tests. Its members
-     * come from {@link #newUserIn}.
-     */
+    /** Its owner, a new account, is its first membership, an ADMIN. */
     protected TestTenant newTenant() throws Exception {
         String ownerEmail = uniqueEmail("owner");
-        rawSignup(ownerEmail, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(ownerEmail, PASSWORD).andExpect(status().isCreated());
         return createTenant(ownerEmail);
     }
 
-    /** A new account that is a plain member of {@code tenant}, signed in there. */
     protected TestUser newUserIn(TestTenant tenant) throws Exception {
         return newUserIn(tenant, "USER");
     }
 
-    /**
-     * A new account with {@code role} in {@code tenant} only, signed in there: the stranger of an
-     * isolation test holds a role with the permission that writes the record (an ADMIN for a root only it
-     * writes), so its 404 comes from the tenant scope, not from the permission check.
-     */
     protected TestUser newUserIn(TestTenant tenant, String role) throws Exception {
         String email = uniqueEmail("user");
-        String userId = read(rawSignup(email, PASSWORD).andExpect(status().isCreated()), "$.response.id");
+        String userId = read(signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated()), "$.response.id");
         addMember(tenant, UUID.fromString(userId), role);
         return signIn(new TestUser(UUID.fromString(userId), email, null, null));
     }
 
-    /**
-     * A platform staff member's access token. Staff are fixture rows: no endpoint creates one. Reused
-     * for a while: the login's per-account rate limit would refuse a sign-in per call.
-     */
+    /** Reused for a while: the login's per-account rate limit would refuse a sign-in per call. */
     protected String platformToken() throws Exception {
         synchronized (IntegrationTest.class) {
             if (Objects.isNull(staffToken) || staffTokenIssuedAt.plus(STAFF_TOKEN_REUSE).isBefore(Instant.now())) {
@@ -570,11 +468,10 @@ public abstract class IntegrationTest {
         }
     }
 
-    /** A platform staff member of a test's own, with an access token: for a test that deactivates one. */
+    /** A test's own staff member, for a test that deactivates one. */
     protected record TestStaff(UUID id, String email, String accessToken) {
     }
 
-    /** A new staff member, written as the owner role as the runbook does (the pool's role only reads them), signed in. */
     protected TestStaff newStaff() throws Exception {
         String email = uniqueEmail("staff");
         new JdbcTemplate(ownerDataSource).update("""
@@ -588,17 +485,12 @@ public abstract class IntegrationTest {
         return new TestStaff(id, email, read(login, "$.response.accessToken"));
     }
 
-    /** Deactivates a staff member as the runbook does: SQL as the owner role. */
     protected void deactivateStaff(UUID staffId) {
         assertThat(new JdbcTemplate(ownerDataSource).update("update platform_users set deactivated_at = now() where id = ?", staffId))
                 .isEqualTo(1);
     }
 
-    /**
-     * A membership as fixture rows (the members API, POST /tenant-members, needs an ADMIN token): the
-     * platform's, and the person's row in the tenant's own data, which the tenant's tables reference
-     * (house-review TEN-17), as {@code MembershipService} writes both.
-     */
+    /** Both rows, as {@code MembershipService} writes them: the tenant's own tables reference the person's member row. */
     protected void addMember(TestTenant tenant, UUID userId, String role) {
         // roles:begin
         assertThat(sql("""
@@ -607,7 +499,6 @@ public abstract class IntegrationTest {
                 """, tenant.id(), userId)).isEqualTo(1);
         TenantScope.runAs(tenant.id(), () -> new TransactionTemplate(transactionManager)
                 .executeWithoutResult(status -> members.save(Member.of(userId))));
-        // The member's role is the tenant's own data (the roles piece), as TenantMemberManager gives it.
         giveBuiltInRole(tenant, userId, role);
         // roles:else
         // assertThat(sql("""
@@ -620,12 +511,10 @@ public abstract class IntegrationTest {
     }
     // roles:begin
 
-    /** A tenant the test didn't create itself, by its id: a member's, or one an upgrade seeded. */
     protected static TestTenant tenant(UUID id) {
         return new TestTenant(id);
     }
 
-    /** The tenant's built-in {@code role}, for good, given to its member by SQL (a fixture, as the operator's runbook does). */
     protected void giveBuiltInRole(TestTenant tenant, UUID userId, String role) {
         // tenancy-row:begin
         assertThat(sqlIn(tenant, """
@@ -640,24 +529,19 @@ public abstract class IntegrationTest {
     }
     // roles:end
 
-    /**
-     * Finishes the approved tenants' provisioning now: with schema per tenant the job runs at once instead
-     * of on its schedule; in row mode the approval already did it. ACTIVE afterwards.
-     */
     protected void provisionApprovedTenants() {
         provisioning.provisionNow();
     }
 
-    /** The signup endpoint alone, without joining the test tenant. */
-    protected ResultActions rawSignup(String email, String password) throws Exception {
+    protected ResultActions signupWithoutATenant(String email, String password) throws Exception {
         return postAs(null, "/api/v1/auth/signup", """
                 {"email": "%s", "fullName": "Test User", "password": "%s"}
                 """.formatted(email, password));
     }
 
-    /** Signs up; a created account also joins the test tenant, as a plain member. */
+    /** A created account also joins the test tenant, as a plain member. */
     protected ResultActions signup(String email, String password) throws Exception {
-        ResultActions result = rawSignup(email, password);
+        ResultActions result = signupWithoutATenant(email, password);
         if (result.andReturn().getResponse().getStatus() == HttpStatus.CREATED.value()) {
             addMember(testTenant(), UUID.fromString(read(result, "$.response.id")), "USER");
         }
@@ -672,7 +556,6 @@ public abstract class IntegrationTest {
         }
     }
 
-    /** Created as staff would, then provisioned at once. */
     private TestTenant createTenant(String ownerEmail) {
         UUID created = tenantService.create(new TenantCreateRequest("Tenant " + UUID.randomUUID(), ownerEmail));
         provisionApprovedTenants();
@@ -683,7 +566,6 @@ public abstract class IntegrationTest {
     private String platformLogin() throws Exception {
         Integer existing = jdbc.queryForObject("select count(*) from platform_users where email = ?", Integer.class, STAFF_EMAIL);
         if (existing == 0) {
-            // As the owner role, as the runbook does: the pool's role only reads staff accounts (0015).
             new JdbcTemplate(ownerDataSource).update("""
                     insert into platform_users (id, email, full_name, password_hash, role, created_at, updated_at, version)
                     values (gen_random_uuid(), ?, 'Test Staff', ?, 'STAFF', now(), now(), 0)
@@ -722,7 +604,6 @@ public abstract class IntegrationTest {
         return mvc.perform(authorized(delete(path), token));
     }
 
-    /** One answer of a raced request: its status and body, so every refusal's body can be checked. */
     public record Answer(int status, String body) {
 
         public String errorCode() {
@@ -735,16 +616,11 @@ public abstract class IntegrationTest {
         return new Answer(response.getStatus(), response.getContentAsString());
     }
 
-    /**
-     * A thread per task, for a test's own concurrent work (a request or a transaction held meanwhile).
-     * Its threads run in the test tenant too, as the test method does.
-     */
     protected ExecutorService newExecutor() {
         UUID tenantId = testTenant().id();
         return Executors.newThreadPerTaskExecutor(task -> Thread.ofVirtual().unstarted(() -> TenantScope.runAs(tenantId, task)));
     }
 
-    /** Fires {@code request} from {@link #RACERS} threads released together; returns every answer. */
     protected static List<Answer> race(Callable<ResultActions> request) throws Exception {
         CountDownLatch start = new CountDownLatch(1);
         List<Future<Answer>> pending = new ArrayList<>();
@@ -759,16 +635,14 @@ public abstract class IntegrationTest {
             start.countDown();
             List<Answer> answers = new ArrayList<>();
             for (Future<Answer> answer : pending) {
-                answers.add(within(answer));
+                answers.add(awaitResult(answer));
             }
             return answers;
         }
     }
 
     /**
-     * Fires {@code create} {@link #HELD_CREATES} times, holds each one at its insert into {@code table}
-     * while {@code meanwhile} runs, then lets them go; returns the creates' answers. The hold is a SHARE
-     * lock on the table, which reads and foreign key checks pass: a parent's delete run as
+     * The hold is a SHARE lock on {@code table}, which reads and foreign key checks pass: a parent's delete run as
      * {@code meanwhile} lands between each create's read of the parent and its insert.
      */
     protected List<Answer> createsHeldAtTheirInsert(String table, Callable<ResultActions> create, Callable<ResultActions> meanwhile)
@@ -794,28 +668,24 @@ public abstract class IntegrationTest {
             } finally {
                 openGate.countDown();
             }
-            within(gate);
+            awaitResult(gate);
         }
         List<Answer> answers = new ArrayList<>();
         for (Future<Answer> answer : pending) {
-            answers.add(within(answer));
+            answers.add(awaitResult(answer));
         }
         return answers;
     }
 
-    /** The answers of {@link #writesHeldWhileTheParentWaits}: each held write's, then the parent's write's. */
     protected record HeldWrites(List<Answer> writes, Answer parentWrite) {
     }
 
     /**
-     * For a write that locks its parent first (a locked facade view, DATA-29): runs each of {@code writes}
-     * at once and holds it at its insert into {@code table} (a SHARE lock on the table, as
-     * {@link #createsHeldAtTheirInsert}), by when it holds the parent's lock. Then submits
-     * {@code parentWrite} (the parent's delete or state change) on its own thread and asserts that it
-     * <b>waits</b> while the gate is shut: that wait is what the parent's lock buys, and without the lock
-     * the parent's write would finish under the gate and fail this assertion (TEST-09). Then opens the gate
-     * and returns every answer. The writes queue on the parent's lock in no fixed order, and the parent's
-     * write may get it between two of them: assert the set of outcomes, never their order.
+     * For a write that locks its parent first: each of {@code writes} is held at its insert into {@code table} (a
+     * SHARE lock, as {@link #createsHeldAtTheirInsert}), by when it holds the parent's lock, so {@code parentWrite}
+     * must wait while the gate is shut; without that lock it would finish under the gate. The writes queue on the
+     * parent's lock in no fixed order, and the parent's write may get it between two of them: assert the set of
+     * outcomes, never their order.
      */
     protected HeldWrites writesHeldWhileTheParentWaits(String table, List<Callable<ResultActions>> writes,
                                                        Callable<ResultActions> parentWrite) throws Exception {
@@ -847,21 +717,19 @@ public abstract class IntegrationTest {
             } finally {
                 openGate.countDown();
             }
-            within(gate);
+            awaitResult(gate);
         }
         List<Answer> answers = new ArrayList<>();
         for (Future<Answer> answer : pending) {
-            answers.add(within(answer));
+            answers.add(awaitResult(answer));
         }
-        return new HeldWrites(answers, within(parent));
+        return new HeldWrites(answers, awaitResult(parent));
     }
 
-    /** A refusal names no constraint (of any kind), SQL or Java internals anywhere in its body. */
     protected static void assertNoInternals(String body) {
         assertThat(body).doesNotContain("uq_", "fk_", "ex_", "ck_", "pk_", "SQL", "Exception", "java.");
     }
 
-    /** Every answer with {@code status} carries {@code errorCode} and no internals: races reach other code paths. */
     protected static void assertRefusalsAre(List<Answer> answers, int status, String errorCode) {
         for (Answer answer : answers) {
             if (answer.status() == status) {
@@ -872,22 +740,19 @@ public abstract class IntegrationTest {
     }
 
     /**
-     * Waits until {@code sessions} sessions of this database wait on a lock, or {@code done} has
-     * finished; fails past {@link #LOCK_WAIT_DEADLINE}. Race tests use it to know a request reached
-     * the lock they gate. It counts every waiting session of the database, which is exact because test
-     * classes run one at a time (no JUnit parallel execution is configured); running them in parallel
-     * would need the count narrowed to the sessions the gate blocks ({@code pg_blocking_pids}).
+     * Counts every waiting session of the database, which is exact only because test classes run one at a time
+     * (no JUnit parallel execution is configured); in parallel the count would need narrowing to the sessions the
+     * gate blocks ({@code pg_blocking_pids}).
      */
     protected void awaitLockWaiters(int sessions, Future<?> done) throws InterruptedException {
         awaitLockWaiters(sessions, done, lockWaitDeadline());
     }
 
-    /** A deadline for {@link #awaitLockWaiters(int, Future, long)}: one for every wait of one gated sequence. */
+    /** A test that waits for several sessions in turn shares one deadline across the waits. */
     protected static long lockWaitDeadline() {
         return System.nanoTime() + LOCK_WAIT_DEADLINE.toNanos();
     }
 
-    /** As {@link #awaitLockWaiters(int, Future)}, against a deadline shared with the test's earlier waits. */
     protected void awaitLockWaiters(int sessions, Future<?> done, long deadline) throws InterruptedException {
         while (lockWaiters() < sessions && (Objects.isNull(done) || !done.isDone())) {
             assertThat(System.nanoTime()).as("sessions waiting on a lock").isLessThan(deadline);
@@ -902,19 +767,17 @@ public abstract class IntegrationTest {
                 """, Integer.class);
     }
 
-    /** Waits for {@code latch}; fails past {@link #WAIT_DEADLINE} instead of hanging the build. */
     protected static void awaitLatch(CountDownLatch latch) throws InterruptedException {
         assertThat(latch.await(WAIT_DEADLINE.toMillis(), TimeUnit.MILLISECONDS)).as("latch released in time").isTrue();
     }
 
-    /** The result of a request the test started; fails past {@link #WAIT_DEADLINE} instead of hanging the build. */
-    protected static <T> T within(Future<T> future) throws Exception {
+    protected static <T> T awaitResult(Future<T> future) throws Exception {
         return future.get(WAIT_DEADLINE.toMillis(), TimeUnit.MILLISECONDS);
     }
 
     /**
-     * For a gate held inside a transaction callback, which can't throw InterruptedException. It gives up
-     * after {@link #WAIT_DEADLINE}, so a test that failed before opening the gate doesn't keep it shut.
+     * For a gate held inside a transaction callback, which can't throw InterruptedException. It gives up after
+     * {@link #WAIT_DEADLINE}, so a test that failed before opening the gate doesn't keep it shut.
      */
     protected static void awaitQuietly(CountDownLatch latch) {
         try {
@@ -929,9 +792,8 @@ public abstract class IntegrationTest {
     }
 
     /**
-     * The caller of {@code accessToken} holding exactly {@code permissions}, whatever their role grants: the
-     * token's claims (its subject, and with tenancy its tenant) stay the request's, only its authorities change.
-     * For a check across every permission ({@code EndpointContractIntegrationTest}): no role holds "all but one".
+     * Only the authorities change; the token's claims (its subject, and with tenancy its tenant) stay. For a check
+     * across every permission: no role holds "all but one".
      */
     protected RequestPostProcessor holding(String accessToken, Collection<Permission> permissions) {
         List<GrantedAuthority> authorities = new ArrayList<>();

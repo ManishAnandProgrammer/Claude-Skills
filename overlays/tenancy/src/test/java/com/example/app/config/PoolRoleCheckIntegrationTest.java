@@ -17,11 +17,6 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * {@link PoolRoleCheck}'s query against the real roles: the test pool's role passes, and the grants that
- * would quietly undo the isolation are caught. Each change runs in a superuser's transaction that is
- * rolled back ({@code GRANT} and {@code SET ROLE} are transactional), so no other test sees it.
- */
 @WithoutTestTenant
 class PoolRoleCheckIntegrationTest extends IntegrationTest {
 
@@ -31,10 +26,7 @@ class PoolRoleCheckIntegrationTest extends IntegrationTest {
     @Value("${app.liquibase.username}")
     private String ownerRole;
 
-    /**
-     * The check's answer for the pool's role after {@code change} ({@code %s} names that role), read as the
-     * role in the same transaction.
-     */
+    /** {@code GRANT} and {@code SET ROLE} are transactional, so the rollback leaves no change for another test to see. */
     private Map<String, Object> poolRoleAfter(String change) throws SQLException {
         String appRole = jdbc.queryForObject("select current_user", String.class);
         String staffSchema = jdbc.queryForObject("""

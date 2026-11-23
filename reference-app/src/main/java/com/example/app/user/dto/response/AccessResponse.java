@@ -7,10 +7,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 
-/**
- * What the caller may do, for a client to show its menus, tabs and buttons by; never which role holds what.
- * The server checks every request itself whatever the client shows.
- */
 @Schema(description = "What the signed-in caller may do: the menu areas and the permissions")
 public record AccessResponse(
         @ArraySchema(arraySchema = @Schema(description = """

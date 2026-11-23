@@ -42,7 +42,7 @@ out-of-reach parent yields an empty page, and nothing leaks. The write the optio
    repository; the cursor's key is then the sort column's (its size in `app.limits.text.cursor`, 4.2,
    when it is text).
 2. **Service:** `CursorWrapper<DropdownItem> dropdown(Permission action, <Filter> filter)` first calls
-   `DropdownFor.check(action, currentUser.permissions(), EnumSet.of(<the reaches it lists>))`, passes the reach's
+   `DropdownFor.requireReach(action, currentUser.permissions(), EnumSet.of(<the reaches it lists>))`, passes the reach's
    condition (the caller's id for `OWN`) to the repository, and builds the wrapper from the repository's
    `CursorBatch`; refuses an inapplicable
    `status`; the batch size from `Paging.cursorSize(filter)`. `cacheable = true` only when the

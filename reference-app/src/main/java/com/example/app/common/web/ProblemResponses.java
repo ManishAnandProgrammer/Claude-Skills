@@ -18,12 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Writes Problem Details from servlet filters (the security chain, admission control), where
- * {@code GlobalExceptionHandler} can't reach: the same members, so a client parses a 401 from the
- * filter chain like a 401 from a controller, and a 503 carries a jittered {@code Retry-After} from its
- * code's range. Written from a map, so it needs no Jackson mix-in.
- */
+/** Written from a map, so it needs no Jackson mix-in. */
 @Component
 @RequiredArgsConstructor
 public class ProblemResponses {

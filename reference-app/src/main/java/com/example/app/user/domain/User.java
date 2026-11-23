@@ -12,13 +12,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/**
- * An account. The email is stored normalised ({@link Emails}), so it is unique as people read it.
- *   <!-- roles:begin -->
- <!-- * Its access is its role assignments and personal grants (the roles piece: {@code RoleAssignment}, -->
- <!-- * {@code PersonalGrant}), never a column of its own; a new account's first role is signup's built-in {@code USER}. -->
- *   <!-- roles:end -->
- */
 @Entity
 @Table(name = "users")
 @Getter
@@ -50,16 +43,14 @@ public class User extends AuditableEntity {
     // tenancy:else
 
     /**
-     * The number every access token of the account carries (claim {@code sv}); a token with another one is
-     * refused. Read-only here: only {@code UserRepository.bumpSessionVersion} writes it, so an entity loaded
-     * before a bump can never write its older copy back, and a new account starts at the column's default.
+     * Read-only: only {@code UserRepository.bumpSessionVersion} writes it, so an entity loaded before a bump can never
+     * write its older number back.
      */
     @Column(name = "session_version", insertable = false, updatable = false)
     private int sessionVersion;
     // tenancy:end
     // session-version:end
 
-    /** A new self-registered account. The caller hashes the password. */
     public static User register(String email, String fullName, String passwordHash) {
         return User.builder()
                 .email(Emails.normalize(email))
@@ -73,12 +64,10 @@ public class User extends AuditableEntity {
                 .build();
     }
 
-    /** The caller hashes the password; the service ends every session in the same transaction. */
     public void changePassword(String newPasswordHash) {
         passwordHash = newPasswordHash;
     }
 
-    /** Suspends or reactivates; the service ends every session in the same transaction on a suspension. */
     public void changeStatus(UserStatus newStatus) {
         status = newStatus;
     }

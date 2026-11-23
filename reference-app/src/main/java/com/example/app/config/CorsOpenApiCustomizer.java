@@ -17,10 +17,6 @@ import java.util.Objects;
 
 import static org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE;
 
-/**
- * Adds {@code CORS_REQUEST_REFUSED} to the 403 of every operation: the CORS filter ({@link ProblemCorsProcessor})
- * can answer it on every path, so it is written here once instead of on each {@code *Api} interface.
- */
 @Component
 class CorsOpenApiCustomizer implements OpenApiCustomizer {
 

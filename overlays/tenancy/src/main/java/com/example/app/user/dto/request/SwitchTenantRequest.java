@@ -7,10 +7,6 @@ import jakarta.validation.constraints.NotNull;
 
 import java.util.UUID;
 
-/**
- * The one request that names a tenant: which of the caller's own memberships the next tokens are
- * for. The tenant is checked against the refresh token's user, so naming another tenant gets 404.
- */
 @Schema(description = "A refresh token and the tenant to switch to")
 public record SwitchTenantRequest(
         @Schema(description = "The refresh token", example = "nT3l0yQ9u0...")

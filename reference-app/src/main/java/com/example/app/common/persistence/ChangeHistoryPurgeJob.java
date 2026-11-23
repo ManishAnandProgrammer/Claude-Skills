@@ -16,12 +16,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 
-/**
- * Deletes change history past its retention, the only rows that ever leave {@code audit_log}: the table only grows
- * otherwise (house-review OPS-03). The cutoff is taken once per run; the rows go in batches, each its own short
- * transaction, until a batch comes back short, and the run logs how many went. Settings:
- * {@code app.jobs.change-history-purge.*}.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -32,7 +26,7 @@ class ChangeHistoryPurgeJob {
     private final Clock clock;
 
     @Scheduled(cron = "${app.jobs.change-history-purge.cron}", zone = "UTC")
-    @MultiInstanceSafe("Each batch locks its rows FOR UPDATE SKIP LOCKED: instances running at once delete disjoint rows")
+    @MultiInstanceSafe(reason = "Each batch locks its rows FOR UPDATE SKIP LOCKED: instances running at once delete disjoint rows")
     void purgeOld() {
         Instant changedBefore = clock.instant().minus(settings.keepFor());
         int total = 0;
@@ -45,12 +39,8 @@ class ChangeHistoryPurgeJob {
     }
 
     /**
-     * {@code app.jobs.change-history-purge.*}.
-     *
-     * @param cron      when it runs, in UTC; {@code "-"} switches it off (the test profile, where tests call it)
-     * @param keepFor   how long a change is kept: at least 90 days, so a slip such as {@code 7d} (or a bare number,
-     *                  read as milliseconds) stops the startup instead of deleting the history the next night
-     * @param batchSize rows deleted per statement, each statement its own transaction
+     * @param keepFor at least 90 days, so a slip such as {@code 7d} (or a bare number, read as milliseconds) stops
+     *                the startup instead of deleting the history the next night
      */
     @Validated
     @ConfigurationProperties(prefix = "app.jobs.change-history-purge")

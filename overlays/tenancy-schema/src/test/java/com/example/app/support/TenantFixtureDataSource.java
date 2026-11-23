@@ -11,11 +11,8 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * The tests' fixture JDBC with schema per tenant. Plain JDBC never passes the application's connection
- * hook (that runs for Hibernate's sessions), so each connection handed out here first gets the test
- * tenant's schema, then the platform's, on its transaction's {@code search_path}. Inside a transaction
- * the test opened it is that transaction's connection (a lock the test holds stays held), outside one
- * a pooled connection of its own, as for a plain {@code JdbcTemplate}. Transaction-local either way: the
+ * Plain JDBC never passes the application's connection hook (that runs for Hibernate's sessions), so each connection
+ * handed out here first gets the test tenant's schema on its transaction's {@code search_path}. Transaction-local: the
  * pool gets its connections back clean.
  */
 class TenantFixtureDataSource extends TransactionAwareDataSourceProxy {

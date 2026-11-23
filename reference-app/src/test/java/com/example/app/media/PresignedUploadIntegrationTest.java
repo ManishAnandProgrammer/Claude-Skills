@@ -25,10 +25,6 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * What the signature enforces, against a real S3-compatible store: the PUT must carry exactly the
- * declared size, type and disposition, or the store refuses it with 403 and stores nothing.
- */
 @ResourceLock(IntegrationTest.UPLOAD_POLICIES_LOCK)
 class PresignedUploadIntegrationTest extends IntegrationTest {
 
@@ -42,7 +38,6 @@ class PresignedUploadIntegrationTest extends IntegrationTest {
 
     private UploadPolicyLimits saved;
 
-    /** The project's first purpose, taking the PNGs these tests upload; skipped while there is none. */
     @BeforeEach
     void setThePolicy() {
         assumeAnUploadPurpose();
@@ -56,7 +51,7 @@ class PresignedUploadIntegrationTest extends IntegrationTest {
     }
 
     private HeadObjectResponse head(String key) {
-        try (S3Client s3 = storage.client()) {
+        try (S3Client s3 = storage.newClient()) {
             return s3.headObject(request -> request.bucket(bucket).key(key));
         }
     }

@@ -16,10 +16,8 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
- * PostgreSQL (and Redis with the sign-in piece, an S3-compatible store with the media piece) in Docker for the integration tests, the same major
- * versions and image family as production (glibc images, not alpine: collation and time-zone
- * behaviour must match).
- * Liquibase builds the schema as in a real deployment. Started once and shared by every test class.
+ * The same major versions and image family as production: glibc images, not alpine, as collation and time-zone
+ * behaviour must match.
  */
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
@@ -45,9 +43,8 @@ public class TestcontainersConfiguration {
     }
 
     /**
-     * Points the application at the container and creates its bucket. The credentials reach the SDK the
-     * way production's do, through its default chain (here the {@code aws.*} system properties; an IAM
-     * role there): the application has no setting for keys.
+     * The credentials reach the SDK the way production's do, through its default chain (here the {@code aws.*}
+     * system properties; an IAM role there): the application has no setting for keys.
      */
     @Bean
     DynamicPropertyRegistrar mediaStorageProperties(MediaStorageContainer mediaStorageContainer, @Value("${app.media.bucket}") String bucket) {

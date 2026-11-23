@@ -84,7 +84,8 @@ Look for `.claude/crud-profile.md` at the project root. If it exists, read it: i
 apply to generated code too. When this skill says "record it in the profiles", a review-profile
 **Conventions** row is only for a departure from a house rule, with the owner's reason (it reads as an
 override); a choice no rule forbids is recorded in the crud profile's *Decisions per entity* (a section per
-entity) and in the javadoc or the changeset comment instead.
+entity), never in the code's comments (SMELL-19: the code carries a decision through its names, its
+permissions and its tests; a comment carries only a why the code can't say).
 
 If it doesn't exist, build it before generating anything:
 1. Copy `~/.claude/skills/crud-gen/profile-template.md`.
@@ -119,7 +120,7 @@ without it (member), or does it have its own lifecycle (root)?". Record the answ
 **Owned or shared** (SEC-01): does each row belong to one user (an owner column: golden `Todo`), or
 is the table **shared** (a catalogue, reference data, staff records: nobody owns a row)? For a shared
 root, ask **who may write** (create, update, actions, delete, its upload purposes) and **who may
-read**, and record both in the crud profile's *Decisions per entity* and the service's javadoc. **Without tenancy**, while signup is public
+read**, and record both in the crud profile's *Decisions per entity*. **Without tenancy**, while signup is public
 (the `sign-in` piece), every internet account is a USER: refuse a shared root whose writes USER may make; they
 carry a permission only the writing roles hold (*Permissions* below). **With
 tenancy** the public signup reaches no tenant data: a tenant token needs a membership that an ADMIN of
@@ -128,20 +129,16 @@ that tenant granted (an account without one can't sign in, `TenantPlanesIntegrat
 decision: record it with that reason; which roles hold the writes is then the owner's call, not a rule. A field that names a
 person (a name, an email, a phone) on a shared root asks the same for reads: list, get, filters and
 the dropdown's `for` need a permission the writers' roles hold unless the owner decides that every account may
-search those people (record it). The role that writes a shared root gets that resource named in its javadoc (`Role`: "ADMIN: desk
-staff: the catalogue, loans, settings") **when its first write is generated**, whether or not the
-convention was decided at bootstrap; when every role writes it, it is named on each. Check first that
-`Role`'s javadoc is true for the pieces the project has (with tenancy the role is the membership's,
-granted through `/tenant-members`; with the session version a change reaches the next request) and
-correct it before adding to it.
+search those people (record it). What a role may do is said once, by its grants (each `Role`'s
+permission lines; the permission names say the resource and the action, `BOOK_WRITE`), with *Decisions per
+entity* recording which roles get each; neither `Role` nor the service repeats it in prose.
 
 **A shared root that other records will reference** asks two more questions before its first child
 exists, while the answer is cheapest:
 - **retired or deleted?** A catalogue entry (a course, a product) that children reference is either
   retired with an active flag (it leaves the dropdown, `activeField`, and old children keep pointing at
   it: the golden `Tag` shape, REST-13) or hard-deleted, and then refused while referenced (409
-  `<ENTITY>_IN_USE`, DATA-34). Record the choice in the crud profile's *Decisions per entity* and the
-  entity's javadoc;
+  `<ENTITY>_IN_USE`, DATA-34). Record the choice in the crud profile's *Decisions per entity*;
 - **how is a person erased?** A root with personal fields (name, email, photo) that children will
   reference can no longer simply be deleted (DATA-07 says personal data is truly deletable; DATA-33's
   `*_IN_USE` refuses it): ask the erasure path (delete the children first, anonymise the person's
@@ -203,7 +200,7 @@ foreign key), never by an entity relation, in `api-facades` mode, and is validat
 module's facade (golden `todo.api.Todos` + `TodoView`, used by `PlanService`). The facade's lookups,
 each scoped like the parent's own reads:
 - **`get<Parent>View(id)`, not locked**, for a child write that checks nothing of the parent: the
-  foreign key refuses a child written after the parent's delete, 404 `<PARENT>_GONE` (DATA-29). The
+  foreign key refuses a child written after the parent's delete, 404 `<PARENT>_DELETED_MEANWHILE` (DATA-29). The
   same shape as the next one without the lock and `MANDATORY` (same-module golden: `TodoService.createTimeEntry`).
 - **`get<Parent>ViewForUpdate(id)`, locked**, `@Transactional(propagation = MANDATORY)` over the
   parent's `findForUpdateBy…`, for a child write that **checks a mutable column of the parent** (lend
@@ -214,7 +211,7 @@ each scoped like the parent's own reads:
   that can trip an exclusion constraint scoped by that parent (a loan's new dates): the constraint
   holds that rule, and its rare simultaneous overlap answers DATA-35's 503 (the write's 503 `@ApiResponse` names it). The parent's
   state change and delete then wait for a locked write: the delete answers 409 `<PARENT>_IN_USE`, and
-  `<PARENT>_GONE` is unreachable on that write (keep its mapping, don't document it there); an
+  `<PARENT>_DELETED_MEANWHILE` is unreachable on that write (keep its mapping, don't document it there); an
   exclusion constraint scoped by the locked parent answers 409 only among locked writes, one scoped
   wider (the owner's plans across todos) may still answer 503 (golden `PlanService.create`'s javadoc).
   Tests: rows 23 (locked outcome) and 23b, both through `writesHeldWhileTheParentWaits`.
@@ -363,8 +360,8 @@ names as such; it joins `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES` with
 | A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually applied by then; the key exists for the child). A reference to a person (an owner, an assignee) is to the tenant's own members, never to `users` or `tenant_memberships` (platform tables): `(owner_id, tenant_id) → members (user_id, tenant_id)` as `fk_<table>_<column>` (golden: the row overlay's `0018-owners-reference-members`); a person the request names (an assignee) is checked through `Members` (Step 1) before the write, since the key also accepts a member who left. A member's row is never deleted (a removal marks it left), so the key never blocks a removal and the record keeps its owner; a project whose records must be reassigned before a removal says so (an open item: the members API has no such check) | TEN-33, TEN-16, TEN-17 |
 | The replica identity: `ALTER TABLE <t> REPLICA IDENTITY USING INDEX <uq_…>` **in the changeset that creates the table**, on a unique key that includes `tenant_id` (the parent key `(id, …, tenant_id)` of its composite references, or `(tenant_id, key)`); a table without one gets `uq_<table>_id_tenant_id (id, tenant_id)` | TEN-38 |
 | A display number (an invoice or order number) is a per-tenant counter (the metadata piece's `Counters`), never an identity column or a sequence: one sequence serves every tenant. `counters` is tenant data, so it is a **fixed** name (`TICKET_NUMBER`), not `perContext` with the tenant id; it needs the TEN-34 seed pair (a listener with `Counters.createIfAbsent(name, 0)` plus a backfill changeset for every tenant whatever its status, after its highest number), and the create calls `createIfAbsent` before `next` too (a tenant activated by an instance without the listener, during a rolling deploy, still numbers from 1). A `uq_<table>_number (tenant_id, number)` backs it up. Golden: `Todo.number`, `0026-todo-numbers.sql`'s row block, `TodoNumberSeed`. Tests: rows 27b–27d, 30 | TEN-18, TEN-34 |
-| A changeset already applied gets no new comment (its checksum changes): a later note (a TEN-36 search warning) goes in the runbook or the entity's javadoc | DATA-13 |
-| No seed rows in the entity's changeset: a new tenant's starting rows come from a `TenantProvisioned` listener in the module (golden `TodoAttachmentPolicySeed`, `TodoListDefaultsSeed`), the existing tenants' from a backfill changeset that lifts `FORCE` for its own transaction (golden `0010`'s and `0014`'s `…-existing-tenants`), its `--rollback` lines too: `NO FORCE`, the `DELETE` of the rows it added, `FORCE` (the rollback runs as the owner with no tenant set; `BackfillRollbacksIntegrationTest` checks it). The backfill also reaches a tenant still PENDING, so **the listener creates its row only when missing** (`Uploads.definePolicy`, `Metadata.createIfAbsent`, `Counters.createIfAbsent`): a plain insert fails the approval on the unique key, on every retry, and the tenant can never be activated. Tests (golden `TodoSeedsBackfillIntegrationTest`): the backfill for a tenant without the row, and a PENDING tenant approved after the backfill (ACTIVE, one row, its owner signs in) | TEN-34 |
+| A changeset already applied gets no new comment (its checksum changes): a later note (a TEN-36 search warning) goes in the runbook | DATA-13 |
+| No seed rows in the entity's changeset: a new tenant's starting rows come from a `TenantProvisioned` listener in the module (golden `TodoAttachmentPolicySeed`, `TodoListDefaultsSeed`), the existing tenants' from a backfill changeset that lifts `FORCE` for its own transaction (golden `0010`'s and `0014`'s `…-existing-tenants`), its `--rollback` lines too: `NO FORCE`, the `DELETE` of the rows it added, `FORCE` (the rollback runs as the owner with no tenant set; `BackfillRollbacksIntegrationTest` checks it). The backfill also reaches a tenant still PENDING, so **the listener creates its row only when missing** (`Uploads.definePolicyIfAbsent`, `Metadata.createIfAbsent`, `Counters.createIfAbsent`): a plain insert fails the approval on the unique key, on every retry, and the tenant can never be activated. Tests (golden `TodoSeedsBackfillIntegrationTest`): the backfill for a tenant without the row, and a PENDING tenant approved after the backfill (ACTIVE, one row, its owner signs in) | TEN-34 |
 | A native query on a tenant table names its tenant: `AND tenant_id = :tenantId` once per tenant table it reads or writes (a subquery's too), a `UUID tenantId` first parameter, the service passing `TenantContext.id()` (a job's batch runs under `TenantScope.runAs`, so it gets the tenant the job runs for); an insert lists `tenant_id`. The policy is the fallback, not the filter (golden: the row overlay's `MediaFileRepository`, guarded by `NativeQueryTenantIntegrationTest`). A search on `jsonb @>`, `LIKE`/`ILIKE` or range `&&` is flagged as a filter over the tenant's rows | TEN-37, TEN-36 |
 | Statuses `text` with a check constraint, never a PostgreSQL enum (its `=` isn't leakproof) | DATA-07, TEN-36 |
 
@@ -382,7 +379,7 @@ at its end.
   methods for the rest (a list reads its batch, and so its cursor, before the root's owner check: bad input
   is 400 before any lookup, the batch holding the owner's rows only; a write checks the owner of the root
   first; the root read without a lock on create: its
-  foreign key refuses an entry after the root's delete, 404 `<ROOT>_GONE`; the root's version
+  foreign key refuses an entry after the root's delete, 404 `<ROOT>_DELETED_MEANWHILE`; the root's version
   untouched).
 - **Variant N: many-to-many between aggregates** (golden `TodoTag`, `Todo.replaceTags`,
   `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql`). Ask:
@@ -392,7 +389,7 @@ at its end.
   - A's mapped-by link set carries `@OptimisticLock(excluded = false)`, or A's version never moves
     when the set changes (DATA-30);
   - B's rows are read through B's service without a lock (`getOwned<B>s`): a link written after B's
-    delete is refused by its foreign key, mapped on the write side to 404 `<B>_GONE` (DATA-29,
+    delete is refused by its foreign key, mapped on the write side to 404 `<B>_DELETED_MEANWHILE` (DATA-29,
     DATA-33).
 
   Schema (composite owner FKs on both sides, DATA-33), API (`PUT /<as>/{id}/<bs>`, A's own PUT
@@ -460,7 +457,7 @@ tests.md row 26b (golden `PlanStatusIntegrationTest.aFinalPlanIsFrozen`, `aFinal
 
 ### Conventions (all generated code)
 House-review's rules, as the golden files apply them: KISS and SRP (SMELL-29: queries written top to
-bottom, plain helpers, no lambda-taking helpers), no tunables in code (SMELL-17), why-only comments
+bottom, plain helpers, no lambda-taking helpers), no tunables in code (SMELL-17), comments only for a why the names can't carry (SMELL-19)
 (SMELL-19), `Objects.isNull`, `Optional` only as a return type (JAVA-08), no `var` and text blocks
 (JAVA-13), streams without side effects (JAVA-14), enums with `==` (JAVA-18), minimal visibility
 (JAVA-03). **Constructors** (JAVA-26): every generated bean (service, mapper, controller, `*RepositoryImpl`)
@@ -648,7 +645,7 @@ parent (an id column and a facade). Three more shapes, golden on `Todo` (tests.m
 - **a same-module parent on the detail** (a `@ManyToOne(fetch = LAZY)`): `todoList {id, name}` read with
   the child in one statement (`TodoRepository.findWithTodoListById`, an `@EntityGraph`, the policy deciding after it), also
   for a write that may hold no row lock (a status change to the status it has); the writes that lock the
-  child read the parent afterwards (`TodoService`'s javadoc says why that is safe). **List rows** carry it
+  child read the parent afterwards (safe: a locked child's parent can't be deleted while the lock is held). **List rows** carry it
   too, through the batch lookup above in the same module: a `dto/internal/<Parent>Name(id, name)` record
   (never on the wire), the parent's repository `find<Parent>NamesByIdIn…` as a JPQL constructor query of the
   two columns, the parent's service `findOwned<Parent>Names(ids, ownerId)` (`List.of()` for no ids), the
@@ -683,9 +680,9 @@ message that says it in words (error-contract ERR-04's names); **a status per co
 entity's; `ErrorCodeContractTest.everyErrorCodeHasAStatus` catches a missing one); a message in every
 `{{messagesFile}}`; the handler's
 `{{constraintCodeMap}}` entries (unique index names → `*_TAKEN`; FKs pointing **to** this table →
-`*_IN_USE` for the parent's delete, and `ERROR_PREFIX_GONE`, a 404 without placeholders, for a
+`*_IN_USE` for the parent's delete, and `ERROR_PREFIX_DELETED_MEANWHILE`, a 404 without placeholders, for a
 child's insert or update after it: `byForeignKeyOnWrite`). Never check-then-insert (DATA-05); every constraint kind maps (ERR-02), except a key that can't trip once the service checked its target first: a person's key to `members` (checked through `Members`, whose row is never deleted) a `CHECK` that the mapper's own normalisation always satisfies (`ck_<table>_email_normalized`) and one the
-request's validation always satisfies (`ck_<table>_dates` behind `is<X>RangeOrdered`) stay unmapped, with that reason in the module's `ConstraintErrorCodes` javadoc. Every later write that names the person calls the same check; one that forgets it answers 500, which its guard proof shows (never map the key to hide a missing check). A state
+request's validation always satisfies (`ck_<table>_dates` behind `is<X>RangeOrdered`) stay unmapped, with that reason in the crud profile's *Decisions per entity*. Every later write that names the person calls the same check; one that forgets it answers 500, which its guard proof shows (never map the key to hide a missing check). A state
 conflict is 409, a wrong value 400 (ERR-05). A child's foreign key adds the parent's `*_IN_USE` to
 **the parent's** delete docs (`@ApiResponse(409)`) in the same change, asserted in **the child's**
 test class (with the parent's `deleteWhileReferencedIs409`): the parent's existing tests stay unchanged
@@ -698,7 +695,7 @@ is added here. Constraint mappings go in the module's own `ConstraintErrorCodes`
 aggregates them): the module **whose changeset declares the constraint** maps it, even to another
 module's code (golden `PlanningConstraintErrorCodes`: `fk_plans_todo_id_owner_id` → `TODO_IN_USE`).
 A child's composite owner FK `(parent_id, owner_id)` maps twice: to the parent's `*_IN_USE` in
-`byConstraintName` (the delete side) and to the parent's `*_GONE` in `byForeignKeyOnWrite` (the
+`byConstraintName` (the delete side) and to the parent's `*_DELETED_MEANWHILE` in `byForeignKeyOnWrite` (the
 insert/update side; a cascading key only there), golden `TodoConstraintErrorCodes` (DATA-33). A
 code answered from a constraint gets a message without `{0}` (the handler has no argument for it);
 an apostrophe is written `''`, and a year or an id passed as a number `{0,number,#}` (ERR-06). No
@@ -745,21 +742,23 @@ Golden: `TodoRepositoryImpl` (cursor), `TodoListRepositoryImpl` (offset + dropdo
   static method of the entity, which the entity and the projection's constructor both call; never
   the formula written twice.
 - Cursor: `Cursor cursor = Cursor.read(filter.getAfter(), sort, CURSOR_KEYS)` (the keys every order
-  writes, its sort keys and the id: a cursor with a key more or less is a 400); `if (cursor.isPresent())` add
+  writes, its sort keys and the id: a cursor with a key more or less is a 400); `if (cursor.hasPosition())` add
   `Seek.after(builder, descending, key1, cursor.text(0), …, id, cursor.uuid(n))` (one row-value
   comparison, never a hand-written seek: DATA-10; each key through its typed reader, `text`, `uuid`,
   `date`, `instant`, `number`, `enumValue`, which refuse what the column can't store: REST-08); **NEWEST is `createdAt` then the id**
   (`Seek.after(builder, true, root.get(X_.createdAt), cursor.instant(0), root.get(X_.id), cursor.uuid(1))`,
-  an offset list's `Sort.by(desc("createdAt"), desc("id"))`, the index `(scope…, created_at, id)`), never
+  an offset list's `builder.desc(root.get(X_.createdAt)), builder.desc(root.get(X_.id))`, the index `(scope…, created_at, id)`), never
   the id alone, whose primary key competes with the scope's index (DATA-10, golden `TodoRepositoryImpl`);
   `query.orderBy(Seek.order(builder, descending, key1, …, id))` on **the same columns, id last**
   (no id after a sort column that is itself unique and not null: DATA-10);
   `setMaxResults(size + 1)`; `CursorBatch.of(rows, size, row -> Cursor.write(sort, row.key1(), …,
   row.id()))`. Keys non-null (a generated sort column for a nullable one). **The service** turns the
   `CursorBatch` into a `CursorWrapper`.
-- Offset: the select query with `QueryUtils.toOrders(pageable.getSort(), root, builder)` and its own
-  count query, then `OffsetPages.page(rows, count, pageable)` (skips the count on a partial page);
-  the service wraps the page in `PaginationWrapper.fromPage`.
+- Offset: the sort enum is plain names (golden `TagSort`); the select query orders by the repository's
+  `orderOf(builder, root, filter.getSort())`, an exhaustive `switch` over the metamodel (golden
+  `TagRepositoryImpl.orderOf`; never `QueryUtils.toOrders` or a property string, REST-08), with its own
+  count query, then `OffsetPages.page(rows, count, pageable)` (skips the count on a partial page); the
+  service passes `paging.offset(filter)` and wraps the page in `PaginationWrapper.fromPage`.
 - Predicates from the `requireXPredicate()` methods; text search with `{{TextSearch}}.contains`.
 - Child data on a list page: an aggregate subquery in the projection, or two steps (a page of ids,
   then one grouped query). Never a collection fetch (DATA-26).
@@ -789,7 +788,7 @@ list page's names returns those found, under its own name (`findOwned<Parent>Vie
 simply absent) and as a constructor projection of the view's columns, never whole entities (DATA-11;
 golden `Todos.getOwnedTodoViews` over `TodoRepository.findViewsByIdInAndOwnerId`); both answer
 `List.of()` for no ids without a statement. These methods change **the parent's generated
-service**: its private `get<Parent>` becomes public (with a javadoc saying who calls it), and the
+service**: its private `get<Parent>` becomes public, and the
 batch lookup is added beside it. Name both in the report's changed shared files, and review that
 service with the child (Step 8). A same-module parent's names on a list page: golden
 `TodoListService.findOwnedTodoListNames` (4.3); a shared root's lookups are the same without the owner
@@ -821,7 +820,7 @@ to every operation; error `@Content` needs no `mediaType`, a customizer publishe
 `application/problem+json`): 200/201/204, 400 (`VALIDATION_FAILED`,
 `REQUEST_UNREADABLE`, `REQUEST_PARAMETER_INVALID` for a bad id, enum, date or cursor; a list's
 `VALIDATION_FAILED` names an empty `sort`, which `@NotNull` refuses), 401, 403
-(roles), 404 (incl. a parent's `*_GONE` on a child's write), 409 (`*_TAKEN`, `OPTIMISTIC_LOCK_CONFLICT`,
+(roles), 404 (incl. a parent's `*_DELETED_MEANWHILE` on a child's write), 409 (`*_TAKEN`, `OPTIMISTIC_LOCK_CONFLICT`,
 `*_IN_USE`), 503. A delete documents
 `OPTIMISTIC_LOCK_CONFLICT` only when it can happen: an unlocked delete can lose a race (golden
 `TodoListApi`, `PlanApi`); a delete that loads its row `findForUpdateBy…`, takes no version and
@@ -862,8 +861,8 @@ Golden: the sign-in piece's `user/service/RefreshTokenPurgeJob` over `TokenServi
 `RefreshTokenPurgeJobIntegrationTest`, `RefreshTokenIndexIntegrationTest`. Rules: house-review OPS-03. One small class
 per table, like the golden one; no shared purge framework.
 - **The job**, `<Entity>PurgeJob` in the module's `service/` package, package-private: `@Scheduled(cron =
-  "${app.jobs.<entity>-purge.cron}", zone = "UTC")` with `@MultiInstanceSafe` (ARCH-12: each batch locks its rows
-  `FOR UPDATE SKIP LOCKED`), the cutoff taken once from the injected `Clock` (now minus the period), the
+  "${app.jobs.<entity>-purge.cron}", zone = "UTC")` with `@MultiInstanceSafe(reason = "...")` (ARCH-12: the reason, each batch
+  locks its rows `FOR UPDATE SKIP LOCKED`), the cutoff taken once from the injected `Clock` (now minus the period), the
   loop over the service's batch until a batch comes back short, one log line with the cutoff and the count. Its
   `Settings` record (typed, CFG-12): `@NotNull Cron cron` (the core piece's `common/scheduling/Cron`: a bad
   expression stops startup; `"-"` is off), the period as a `Duration` named for the column (`keepAfterExpiry`,
@@ -952,9 +951,9 @@ checklist's review item stays open until that reviewer's report is clean.
       `@Public`; an owned entity's `<Entity>Policy` with its list scope and its table test; `RoleTest`,
       `PermissionTest` and `EndpointContractIntegrationTest` green. With `authorization: roles-piece`, the grant
       changeset for the built-in roles the developer named, and `BuiltInRolesIntegrationTest` green.
-- [ ] A convention changed during the run (what a role holds, what a permission means): the class
-      javadoc of the services generated earlier, `Role`'s javadoc and the profiles say the new rule
-      (grep them). A role that now writes a shared root names it in `Role`'s javadoc (Step 1).
+- [ ] A convention changed during the run (what a role holds, what a permission means): the roles'
+      grants and the profiles say the new rule, and no comment generated earlier still says the old one
+      (grep them).
 - [ ] A text key a cursor carries: `app.limits.text.cursor` holds it and its key is in
       `LimitsIntegrationTest.CURSOR_TEXT_KEYS` (4.2).
 - [ ] Asked, and recorded: each picked parent's dropdown and Step 1's *Ask, don't guess* list (Step 1),
@@ -967,7 +966,7 @@ checklist's review item stays open until that reviewer's report is clean.
       the upgraded database (until the first release the upgrade path is inert: record it; tests.md, *Upgrading a
       used database*).
 - [ ] A review-profile Conventions row only for a departure from a house rule, with the owner's reason;
-      a choice no rule forbids goes in the javadoc or the changeset comment.
+      a choice no rule forbids goes in the crud profile's *Decisions per entity*.
 - [ ] With the session version: every generated write that changes access bumps it in its transaction
       and has its 401-then-refresh test (4.8, SEC-07).
 - [ ] Retention asked (Step 1): accumulating rows have their purge job, index, settings and tests (4.12), or the

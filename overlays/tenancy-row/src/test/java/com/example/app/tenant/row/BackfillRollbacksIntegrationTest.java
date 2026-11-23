@@ -30,12 +30,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 /**
- * A backfill lifts {@code FORCE ROW LEVEL SECURITY} for its own transaction, so the owner writes every
- * tenant's rows; its rollback runs as the same owner with no tenant set, where the forced policy hides every
- * row. A rollback that deletes or updates rows of a tenant table without lifting {@code FORCE} itself changes
- * nothing, and the previous release then meets rows it doesn't know (a policy of a purpose it has no constant
- * for answers 500). Every changeset of the project is checked, the project's own backfills included
- * (crud-gen Step 2's backfill row, TEN-34; docs/tenancy-runbook.md, section 4).
+ * A rollback runs as the owner with no tenant set, where the forced policy hides every row: one that deletes or
+ * updates rows of a tenant table without lifting {@code FORCE ROW LEVEL SECURITY} itself changes nothing, and the
+ * previous release then meets rows it doesn't know (a policy of a purpose it has no constant for answers 500).
  */
 @WithoutTestTenant
 class BackfillRollbacksIntegrationTest extends IntegrationTest {
@@ -55,7 +52,6 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
     @Value("${app.liquibase.password}")
     private String ownerPassword;
 
-    /** One changeset of a formatted-SQL changelog: its statements and its rollback's, comments left out. */
     private record Changeset(String id, List<String> statements, List<String> rollback) {
 
         boolean liftsForce() {
@@ -113,7 +109,7 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
                     List<Integer> there = new ArrayList<>();
                     for (String statement : changeset.rollback()) {
                         if (deletes(statement)) {
-                            there.add(rowsThere(asOwner, statement));
+                            there.add(rowsTheDeleteMatches(asOwner, statement));
                         }
                     }
                     List<Integer> deleted = new ArrayList<>();
@@ -140,9 +136,8 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * A later changeset's foreign key into the table the rollback deletes from: a real rollback undoes that
-     * changeset first, so this rollback can't run alone on today's schema (0018's members, which 0025's
-     * requester key references). The static test above still checks it.
+     * A real rollback undoes the later changeset first, so this rollback can't run alone on today's schema. The static
+     * test above still checks it.
      */
     private static boolean referencedLater(List<Changeset> later, Changeset changeset) {
         for (String statement : changeset.rollback()) {
@@ -163,8 +158,7 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
         return statement.toLowerCase(Locale.ROOT).startsWith("delete from");
     }
 
-    /** What {@code delete from <table> <rest>} should delete: {@code select count(*) from <table> <rest>}, the policy lifted for the count. */
-    private static int rowsThere(JdbcTemplate asOwner, String delete) {
+    private static int rowsTheDeleteMatches(JdbcTemplate asOwner, String delete) {
         Matcher table = ROW_WRITE.matcher(delete);
         assertThat(table.find()).isTrue();
         String rest = delete.substring(table.end());
@@ -174,15 +168,12 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
         return there;
     }
 
-    /** Whether the table of {@code delete} is forced. */
     private static boolean forced(JdbcTemplate asOwner, String delete) {
         Matcher table = ROW_WRITE.matcher(delete);
         assertThat(table.find()).isTrue();
         return asOwner.queryForObject("select relforcerowsecurity from pg_class where relname = ?", Boolean.class, table.group(1));
     }
 
-    /** {@code ALTER TABLE <table> NO FORCE …} before the statement at {@code index}, {@code … FORCE …} after it. */
-    /** A table under a forced policy now: a platform table (the memberships' role, restored) has none to lift. */
     private boolean isForced(String table) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
                 select coalesce(bool_or(c.relforcerowsecurity), false)
@@ -204,11 +195,10 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
         return rollback.stream().map(line -> line.toLowerCase(Locale.ROOT)).anyMatch(line -> line.startsWith(drop) || line.startsWith(delete));
     }
 
-    /** Every changeset of the copied changelogs, the pieces' and the project's. */
     private List<Changeset> changesets() throws IOException {
         List<Changeset> changesets = new ArrayList<>();
         List<Resource> files = new ArrayList<>(List.of(resources.getResources("classpath*:db/changelog/changes/*.sql")));
-        // In number order, the order the master runs them in (and a rollback undoes them, the other way).
+        // In number order, the order the master runs them in.
         files.sort(Comparator.comparing(Resource::getFilename));
         for (Resource file : files) {
             changesets.addAll(parse(file.getContentAsString(StandardCharsets.UTF_8)));
@@ -217,7 +207,6 @@ class BackfillRollbacksIntegrationTest extends IntegrationTest {
         return changesets;
     }
 
-    /** Statements split on ';' at the end of a line; a rollback line is one statement. */
     private static List<Changeset> parse(String changelog) {
         List<Changeset> changesets = new ArrayList<>();
         String id = null;

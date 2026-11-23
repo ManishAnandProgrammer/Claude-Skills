@@ -1,6 +1,6 @@
 package com.example.app.user.controller.api;
 
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.user.dto.response.MembershipResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -27,5 +27,5 @@ public interface MembershipApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    ListWrapper<MembershipResponse> mine();
+    BoundedListWrapper<MembershipResponse> mine();
 }

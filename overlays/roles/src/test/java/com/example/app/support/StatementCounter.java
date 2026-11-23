@@ -11,19 +11,16 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Counts the JDBC template's queries the current thread runs while {@link #record} does: the roles piece's
- * per-request read is plain JDBC through Boot's {@link NamedParameterJdbcTemplate}, which Hibernate's statistics
- * don't see, and each query call is one statement. With Hibernate's prepare count beside it, a test counts the
- * statements a request runs through those two (a plain {@code JdbcTemplate} or a raw connection it would not see). A test component (the shared context scans it); outside {@link #record} it only passes
- * the calls on.
+ * The roles piece's per-request read is plain JDBC through Boot's {@link NamedParameterJdbcTemplate}, which
+ * Hibernate's statistics don't see; each query call is one statement. A plain {@code JdbcTemplate} or a raw
+ * connection goes uncounted.
  */
 @Component
 public class StatementCounter implements BeanPostProcessor {
 
     private static final ThreadLocal<AtomicInteger> RECORDED = new ThreadLocal<>();
 
-    /** How many template queries {@code work} ran on this thread. */
-    public static int record(Callable<?> work) throws Exception {
+    public static int countTemplateQueries(Callable<?> work) throws Exception {
         AtomicInteger queries = new AtomicInteger();
         RECORDED.set(queries);
         try {

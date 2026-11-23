@@ -20,7 +20,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Staff read a tenant's support history: every impersonation and direct edit, newest first, in batches. */
 @WithoutTestTenant
 class PlatformAuditIntegrationTest extends IntegrationTest {
 
@@ -79,7 +78,6 @@ class PlatformAuditIntegrationTest extends IntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    /** The audit list's index (crud-gen tests.md row 28): it exists, and a tenant's first batch is planned on it. */
     @Test
     @DisplayName("The audit list has idx_platform_audit_tenant_id_created_at_id and its first batch is planned on it")
     void theFirstBatchIsPlannedOnItsIndex() {

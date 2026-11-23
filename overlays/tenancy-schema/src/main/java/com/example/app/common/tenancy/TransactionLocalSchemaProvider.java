@@ -12,18 +12,10 @@ import java.sql.Statement;
 import java.util.UUID;
 
 /**
- * Hibernate's connection hook in the schema-per-tenant mode: the only code that writes
- * {@code search_path}. Hibernate calls it when a transaction's first statement needs a connection
- * (release-after-transaction mode), so a transaction that runs no SQL borrows nothing.
- *
- * <p>It runs one parameterised statement as the transaction's first: the tenant's schema and, for a
- * read-only transaction, the read-only flag (in this mode Spring no longer sets it). Both are
- * transaction-local, so the commit or rollback clears them and the connection returns to the pool on
- * the role's default {@code search_path} ({@code platform}): no reset step that could be forgotten, and
- * a plain JDBC borrower never sees the previous tenant's tables.</p>
- *
- * <p>{@link TenantContext#NO_TENANT} keeps the default: the platform's tables resolve, a tenant's table
- * doesn't exist.</p>
+ * One statement sets the tenant's schema and, for a read-only transaction, the read-only flag (in this connection
+ * handling mode Spring no longer sets it). Both are transaction-local, so the commit or rollback clears them and the
+ * connection returns to the pool on the role's default {@code search_path} ({@code platform}): no reset step that
+ * could be forgotten.
  */
 @RequiredArgsConstructor
 public class TransactionLocalSchemaProvider implements MultiTenantConnectionProvider<UUID> {
@@ -60,7 +52,6 @@ public class TransactionLocalSchemaProvider implements MultiTenantConnectionProv
         connection.close();
     }
 
-    /** Hibernate's startup work: it validates the entities against the template schema. */
     @Override
     public Connection getAnyConnection() throws SQLException {
         Connection connection = dataSource.getConnection();

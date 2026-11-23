@@ -29,15 +29,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The todo module's per-tenant starting rows (row mode): new tenants get them from their
- * {@code TenantProvisioned} seeds (TodoAttachmentPolicySeed, TodoListDefaultsSeed, TodoNumberSeed), the
- * tenants that exist when a row ships from a backfill changeset; the numbering counter is also created by
- * the create itself, for a tenant activated by an instance without its seed (a rolling deploy). Each backfill is read from its changelog and run as
- * the owner: what the deployment that shipped it did. A backfill also reaches a tenant still PENDING,
- * so that tenant's approval must keep the rows its seeds find. Without the test tenant's scope: each
- * request works in the tenant its token names.
- */
 @WithoutTestTenant
 class TodoSeedsBackfillIntegrationTest extends IntegrationTest {
 
@@ -56,7 +47,6 @@ class TodoSeedsBackfillIntegrationTest extends IntegrationTest {
     @Value("${app.liquibase.password}")
     private String ownerPassword;
 
-    /** A changeset's statements: its lines up to the next changeset, comments left out. */
     private String changesetStatements(String changelog, String changesetId) throws IOException {
         String text = resourceLoader.getResource("classpath:db/changelog/changes/" + changelog).getContentAsString(StandardCharsets.UTF_8);
         List<String> statements = new ArrayList<>();
@@ -76,7 +66,7 @@ class TodoSeedsBackfillIntegrationTest extends IntegrationTest {
         return DriverManager.getConnection(dataSource.unwrap(HikariDataSource.class).getJdbcUrl(), ownerUser, ownerPassword);
     }
 
-    /** The rows of {@code tableAndFilter} in {@code tenantId}, read as the owner told that tenant (the policy is forced on it too). */
+    /** Read as the owner told that tenant: the policy is forced on the owner too. */
     private int rowsOf(UUID tenantId, String tableAndFilter) throws SQLException {
         try (Connection owner = ownerConnection()) {
             JdbcTemplate asOwner = new JdbcTemplate(new SingleConnectionDataSource(owner, true));
@@ -172,9 +162,8 @@ class TodoSeedsBackfillIntegrationTest extends IntegrationTest {
     @DisplayName("A tenant still PENDING when the backfills ran is activated on approval, with one row of each, and signs in")
     void aPendingTenantThroughTheBackfillsIsActivated() throws Exception {
         String ownerEmail = uniqueEmail("pending-owner");
-        rawSignup(ownerEmail, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(ownerEmail, PASSWORD).andExpect(status().isCreated());
         UUID pending = tenants.register("Pending through the backfills " + UUID.randomUUID(), ownerEmail);
-        // The deployment that ships the rows, committed while the registration waits for staff.
         List<String> backfills = new ArrayList<>();
         // media:begin
         backfills.add(changesetStatements("0010-todo-attachments.sql", "0010-todo-attachment-policy-existing-tenants"));
@@ -205,7 +194,6 @@ class TodoSeedsBackfillIntegrationTest extends IntegrationTest {
         assertThat(rowsOf(pending, "counters where key = 'TODO_NUMBER'")).isOne();
         // metadata:end
         // metadata:begin
-        // The owner signs in, and the tenant's first todo is #1.
         String ownerToken = read(login(ownerEmail, PASSWORD).andExpect(status().isOk()), "$.response.accessToken");
         String listId = read(postAs(ownerToken, "/api/v1/todo-lists", """
                 {"name": "First list"}

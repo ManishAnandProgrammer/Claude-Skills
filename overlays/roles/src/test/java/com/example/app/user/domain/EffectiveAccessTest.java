@@ -12,15 +12,12 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
-/** The effective set (house-review AUTHZ-11): what the rows of one person give, computed in memory from one read. */
 class EffectiveAccessTest {
 
     // tenancy:begin
-    /** A permission, and one that needs it: ACCESS_GRANT needs TENANT_MEMBERS_MANAGE. */
     private static final Permission NEEDED = Permission.TENANT_MEMBERS_MANAGE;
     private static final Permission NEEDING = Permission.ACCESS_GRANT;
     // tenancy:else
-    // /** A permission, and one that needs it: ACCOUNT_STATUS_CHANGE needs ACCOUNT_READ. */
     // private static final Permission NEEDED = Permission.ACCOUNT_READ;
     // private static final Permission NEEDING = Permission.ACCOUNT_STATUS_CHANGE;
     // tenancy:end

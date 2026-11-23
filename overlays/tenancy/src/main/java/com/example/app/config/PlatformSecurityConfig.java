@@ -31,14 +31,6 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Tenancy's two worlds: {@code /api/*}{@code /platform/**} has a chain of its own that accepts only
- * platform tokens ({@code aud=platform}), and {@link SecurityConfig}'s main chain accepts only tenant
- * tokens ({@code aud=tenant}, {@link #tenantTokensOnly}). A token of one plane is a 401 in the other,
- * so a staff token can't reach tenant data by mistake, nor a tenant's token the tenant register. A verified
- * platform token passes only while its staff member is active ({@link ActiveStaffFilter}, one read by primary
- * key per platform request): a deactivated member's tokens die at their next request.
- */
 @Configuration
 class PlatformSecurityConfig {
 
@@ -80,7 +72,6 @@ class PlatformSecurityConfig {
         return http.build();
     }
 
-    /** The main chain's validator, narrowed to tenant tokens. */
     static OAuth2TokenValidator<Jwt> tenantTokensOnly(OAuth2TokenValidator<Jwt> validator) {
         return withAudience(validator, TenantContext.TENANT_AUDIENCE);
     }

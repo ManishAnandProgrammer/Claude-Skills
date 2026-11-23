@@ -12,11 +12,10 @@ import java.util.UUID;
 public interface CounterRepository extends JpaRepository<Counter, UUID> {
 
     /**
-     * Increments and returns the counter in one statement. The row lock it takes lasts until the
-     * caller's transaction ends: the next caller waits for that commit (or rollback) and so reads a
-     * number no one else holds. Sets the audit columns and the version itself: a native update
-     * bypasses auditing. Empty when no counter has that key. Row mode: Hibernate's tenant filter never
-     * reaches a native statement, so it names its tenant itself (house-review TEN-37).
+     * The row lock it takes lasts until the caller's transaction ends: the next caller waits for that
+     * commit (or rollback) and so reads a number no one else holds. Sets the audit columns and the version
+     * itself: a native update bypasses auditing. Row mode: Hibernate's tenant filter never reaches a native
+     * statement, so it names its tenant itself.
      */
     @Query(nativeQuery = true, value = """
             UPDATE counters
@@ -30,9 +29,8 @@ public interface CounterRepository extends JpaRepository<Counter, UUID> {
     Optional<Long> increment(UUID tenantId, String key, Instant updatedAt, UUID updatedBy);
 
     /**
-     * Seeds the counter unless it exists, in one statement: a concurrent seed (or a second call) finds
-     * the key taken and inserts nothing, without an error that would doom the caller's transaction.
-     * Names its tenant itself, like every native statement here (house-review TEN-37).
+     * A concurrent seed (or a second call) finds the key taken and inserts nothing, without an error that
+     * would doom the caller's transaction.
      */
     @Modifying
     @Query(nativeQuery = true, value = """

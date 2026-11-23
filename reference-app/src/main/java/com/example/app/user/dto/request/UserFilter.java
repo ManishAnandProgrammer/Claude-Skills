@@ -6,10 +6,6 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
-/**
- * Finding an account before changing it: the status change takes the account's id and the version read
- * here. By the exact address only (no search, no list of every account): the address is unique.
- */
 @Getter
 @Setter
 public class UserFilter {

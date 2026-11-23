@@ -1,6 +1,6 @@
 package com.example.app.media.controller.api;
 
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.media.dto.request.UploadUrlRequest;
 import com.example.app.media.dto.response.UploadUrlResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,11 +31,11 @@ public interface UploadUrlApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (you hold none of the purpose's permissions)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "UPLOAD_POLICY_NOT_FOUND (the purpose has no policy set up)",
+    @ApiResponse(responseCode = "404", description = "UPLOAD_POLICY_NOT_SEEDED (the purpose has no policy set up)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = """
             MEDIA_STORAGE_UNAVAILABLE, DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY; \
             retry after Retry-After""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    ListWrapper<UploadUrlResponse> issue(UploadUrlRequest request);
+    BoundedListWrapper<UploadUrlResponse> issue(UploadUrlRequest request);
 }

@@ -14,19 +14,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Brings every provisioned tenant schema to the tenant changelog, at deploy: once an instance is
- * ready, in the background, on whichever instance takes the migrations lock first (the others skip).
- * Not in every instance's startup: Liquibase's own lock would make N instances wait on each of M
- * schemas in turn.
- *
- * <ul>
- *   <li>A failing schema is recorded ({@code tenant_migrations.status = FAILED}, the error) and skipped;
- *       the others go on. The next run applies only what is missing, so fixing the schema and running
- *       again resumes it.</li>
- *   <li>Changesets are expand-then-contract: schemas are migrated one after another, so old code runs
- *       against new schemas and new code against old ones during the rollout.</li>
- *   <li>Schemas still PROVISIONING are the provisioning job's: a schema's first migration runs only there.</li>
- * </ul>
+ * On whichever instance takes the migrations lock first, not in every instance's startup: Liquibase's own lock would
+ * make N instances wait on each of M schemas in turn.
  */
 @Slf4j
 @Component
@@ -38,7 +27,6 @@ public class TenantMigrations {
     private final TenantSchemaProperties properties;
     private final TaskScheduler taskScheduler;
 
-    /** What one run did; {@code ran} is false when another instance held the lock. */
     public record Run(boolean ran, int migrated, List<UUID> failed) {
 
         public Run {
@@ -63,8 +51,8 @@ public class TenantMigrations {
     }
 
     /**
-     * Every provisioned schema, one after another: Liquibase keeps its run state in one JVM-wide scope,
-     * so two runs in one JVM at once interfere. Failures are collected, never thrown.
+     * One after another: Liquibase keeps its run state in one JVM-wide scope, so two runs in one JVM at once
+     * interfere.
      */
     private void migrateAll(List<UUID> migrated, List<UUID> failed) {
         for (UUID tenantId : migrations.provisionedTenantIds()) {

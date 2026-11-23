@@ -8,9 +8,8 @@ import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 /**
- * Builds the URLs files are read from: a presigned GET today. Moving delivery to CloudFront (public or
- * signed URLs) changes configuration and this class only. No cache: signing is a local HMAC, and a URL
- * signed twice differs anyway (the SDK can't fix the signing time).
+ * No cache: signing is a local HMAC, and a URL signed twice differs anyway (the SDK can't fix the
+ * signing time).
  */
 @Component
 @RequiredArgsConstructor
@@ -19,7 +18,6 @@ class MediaUrls {
     private final S3Presigner presigner;
     private final MediaProperties properties;
 
-    /** Valid for {@code app.media.read-url-expiry}; the download carries the stored {@code Content-Disposition}. */
     String readUrl(String key) {
         try {
             return presigner.presignGetObject(request -> request

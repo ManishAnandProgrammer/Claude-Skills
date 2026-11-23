@@ -27,13 +27,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * A test-only endpoint that takes one value of every type through each channel a client can send one:
- * a JSON body, query parameters, and the keys of a cursor. The application's own binding, validation and
- * error handling answer it, so StrictJsonInputIntegrationTest's matrix holds for whatever endpoints a project
- * declares. Found by component scanning, as any controller under the root package; it answers nothing but
- * 200 or the refusal.
- */
+/** A test-only endpoint, found by component scanning as any controller under the root package. */
 @RestController
 @RequestMapping("/api/{version}/hostile-input-probes")
 class HostileInputProbeController {
@@ -56,7 +50,6 @@ class HostileInputProbeController {
             @NotNull @ConfiguredMaxSize("cursor-page.max-size") List<@NotNull UUID> ids) {
     }
 
-    /** The same values as query parameters: a filter, bound through setters. */
     @Getter
     @Setter
     static class ProbeQuery {
@@ -108,7 +101,6 @@ class HostileInputProbeController {
     void query(@Valid @ParameterObject ProbeQuery query) {
     }
 
-    /** A cursor of sort {@link #SORT} with one key per type a cursor carries, read as a list reads it. */
     @GetMapping(path = "/cursor", version = "v1+")
     @ApiResponse(responseCode = "200", description = "Every key read")
     @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID")

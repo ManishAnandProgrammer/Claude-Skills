@@ -31,12 +31,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** The error contract every client relies on, through the real stack. */
 class ApiContractIntegrationTest extends IntegrationTest {
 
     /** The origin application-test.yml allows. */
     private static final String ALLOWED_ORIGIN = "http://localhost:3000";
-    /** An origin application-test.yml doesn't allow. */
     private static final String REFUSED_ORIGIN = "https://elsewhere.example";
 
     @Autowired
@@ -263,10 +261,6 @@ class ApiContractIntegrationTest extends IntegrationTest {
         return hasVersion(docs, body, 0);
     }
 
-    /**
-     * A GET on the write's own path, on the resource it acts on (the path up to its last id), or on that
-     * resource's collection, whose answer holds a {@code version}.
-     */
     private static boolean aReadAnswersTheVersion(JsonNode docs, String writePath) {
         List<String> candidates = new ArrayList<>();
         candidates.add(writePath);
@@ -288,7 +282,6 @@ class ApiContractIntegrationTest extends IntegrationTest {
         return false;
     }
 
-    /** The schema, its references, properties and items followed a few levels deep (a wrapper around a record). */
     private static boolean hasVersion(JsonNode docs, JsonNode schema, int depth) {
         if (schema.isMissingNode() || depth > 4) {
             return false;

@@ -54,23 +54,17 @@ class TagIntegrationTest extends IntegrationTest {
                 """.formatted(name, colorJson, active, version);
     }
 
-    /** Creates a tag as {@code user} and returns its id; fails the test unless it answers 201. */
     private String createTag(TestUser user, String name) throws Exception {
         return read(postAs(user.accessToken(), TAGS, createPayload(name, null)).andExpect(status().isCreated()), "$.response.id");
     }
 
-    /** Creates a tag and switches it inactive; fails the test unless both answer 2xx. */
     private String createInactiveTag(TestUser user, String name) throws Exception {
         String id = createTag(user, name);
         putAs(user.accessToken(), TAGS + "/" + id, updatePayload(name, null, false, 0)).andExpect(status().isOk());
         return id;
     }
 
-    /**
-     * Follows {@code pageInfo.nextCursor} from {@code firstBatch} (a path with its query string) to
-     * the last batch, which must say {@code hasMore} false with no cursor; returns each batch's labels.
-     */
-    private List<List<String>> walk(TestUser user, String firstBatch) throws Exception {
+    private List<List<String>> labelsOfEveryBatch(TestUser user, String firstBatch) throws Exception {
         List<List<String>> batches = new ArrayList<>();
         String next = firstBatch;
         while (Objects.nonNull(next)) {
@@ -659,7 +653,6 @@ class TagIntegrationTest extends IntegrationTest {
         assertThat(statementsFor(user, TAGS + "?size=5&ids=" + String.join(",", ids))).isEqualTo(2);
     }
 
-    /** Statements run by one request: for a page, plus the count only when the page is full. */
     private long statementsFor(TestUser user, String path) throws Exception {
         statistics().clear();
         getAs(user.accessToken(), path).andExpect(status().isOk());
@@ -713,7 +706,6 @@ class TagIntegrationTest extends IntegrationTest {
         TestUser user = newUser();
         Set<Permission> allButIt = EnumSet.allOf(Permission.class);
         allButIt.remove(Permission.TODO_EDIT_OWN);
-        // Whatever a caller's first request reads once (and later requests don't) is read here, before the count.
         getAs(user.accessToken(), TAGS).andExpect(status().isOk());
 
         statistics().clear();
@@ -825,7 +817,7 @@ class TagIntegrationTest extends IntegrationTest {
             createTag(user, name);
         }
 
-        assertThat(walk(user, DROPDOWN + "&size=2"))
+        assertThat(labelsOfEveryBatch(user, DROPDOWN + "&size=2"))
                 .containsExactly(List.of("Alpha", "Bravo"), List.of("Charlie", "Delta"), List.of("Echo"));
     }
 
@@ -837,7 +829,7 @@ class TagIntegrationTest extends IntegrationTest {
             createTag(user, name);
         }
 
-        assertThat(walk(user, DROPDOWN + "&size=2&sortDirection=DESC"))
+        assertThat(labelsOfEveryBatch(user, DROPDOWN + "&size=2&sortDirection=DESC"))
                 .containsExactly(List.of("Echo", "Delta"), List.of("Charlie", "Bravo"), List.of("Alpha"));
     }
 

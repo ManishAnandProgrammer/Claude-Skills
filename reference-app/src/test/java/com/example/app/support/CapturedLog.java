@@ -12,11 +12,9 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Every log line written while it is open, with its exception chain: for a test that a value never reaches
- * the log (SEC-04). Attached to the root logger itself, so each event arrives on the logging thread, before
- * any async appender. While open, Hibernate's SQL error lines are on (config/db.yml turns them off): they
- * print the driver's message, so the test sees what any logger of a refused statement would print. Open it
- * in a {@code @BeforeEach}, close it in an {@code @AfterEach}.
+ * Attached to the root logger itself, so each event arrives on the logging thread, before any async appender.
+ * While open, Hibernate's SQL error lines are on (config/db.yml turns them off): they print the driver's message,
+ * so the test sees what any logger of a refused statement would print.
  */
 public final class CapturedLog {
 
@@ -38,7 +36,6 @@ public final class CapturedLog {
         hibernateErrors().setLevel(configuredLevel);
     }
 
-    /** Each captured line and every message of its logged exception, its causes included. */
     public String text() {
         List<String> lines = new ArrayList<>();
         for (ILoggingEvent event : appender.list) {

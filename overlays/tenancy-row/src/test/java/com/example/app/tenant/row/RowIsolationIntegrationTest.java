@@ -32,17 +32,10 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * The row mode's two layers, as the application role sees them (experiments E1 and E2 of the design):
- * Hibernate's {@code @TenantId} filters and fills entity work, and row-level security, fed by the
- * transaction-local hook, refuses everything else that crosses tenants. Nothing of a tenant survives
- * its transaction.
- */
 @WithoutTestTenant
 class RowIsolationIntegrationTest extends IntegrationTest {
 
     private static final String COUNT_PROBES = "select count(*) from tenancy_probe";
-    /** Two tenants with 2 and 3 probe rows, shared by the tests of this class. */
     private static TestTenant first;
     private static TestTenant second;
     private static UUID secondsProbe;
@@ -53,7 +46,7 @@ class RowIsolationIntegrationTest extends IntegrationTest {
     @Autowired
     private DataSource dataSource;
 
-    /** The application's own JdbcTemplate, unlike the base's fixture one: it sees only what the hook set. */
+    /** Unlike the base's fixture {@code jdbc}, it sees only what the hook set. */
     @Autowired
     private JdbcTemplate appJdbc;
 
@@ -70,7 +63,6 @@ class RowIsolationIntegrationTest extends IntegrationTest {
         }
     }
 
-    /** Written through the application's own path, as entities in the tenant's scope; the last one's id. */
     private UUID insertProbes(TestTenant tenant, int count) {
         return inTransactionOf(tenant.id(), () -> {
             TenancyProbe last = null;
@@ -93,7 +85,6 @@ class RowIsolationIntegrationTest extends IntegrationTest {
         return TenantScope.callAs(tenant.id(), () -> transaction.execute(status -> appJdbc.queryForObject(COUNT_PROBES, Long.class)));
     }
 
-    /** Every connection the pool holds, borrowed at once, as a plain JDBC user (no Hibernate, no hook) would. */
     private List<String> tenantOfEveryPooledConnection() throws SQLException {
         HikariDataSource pool = dataSource.unwrap(HikariDataSource.class);
         List<Connection> borrowed = new ArrayList<>();

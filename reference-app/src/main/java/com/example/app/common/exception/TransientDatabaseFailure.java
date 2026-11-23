@@ -16,28 +16,17 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * A database failure that says nothing about the request and may not happen again: answered 503
- * with a jittered {@code Retry-After}, not the 500 a bug gets, so clients back off and retry.
- *
- * <p>Recognised by walking the cause chain: the same timeout reaches the handler as Spring's
- * {@code QueryTimeoutException} from a repository but as a bare {@code PersistenceException} from
- * the {@code EntityManager}, with Hibernate's type underneath both. A connection that broke under
- * the request shows up as an {@code SQLException} with no SQLSTATE (the pool or driver refused) or
- * one of class {@code 08}; a constraint failure carries {@code 23xxx} and stays a 500.</p>
- *
- * <p>The {@code Retry-After} range per kind is configured ({@code app.retry-after.*}, by error code).
- * Public for the servlet filters that read the database, outside the handler's reach: they answer the
- * same 503 with {@code ProblemResponses}.</p>
+ * The cause chain is walked: the same timeout reaches the handler as Spring's {@code QueryTimeoutException}
+ * from a repository but as a bare {@code PersistenceException} from the {@code EntityManager}, with
+ * Hibernate's type underneath both. A connection that broke under the request shows up as an
+ * {@code SQLException} with no SQLSTATE (the pool or driver refused) or one of class {@code 08}.
  */
 public enum TransientDatabaseFailure {
 
-    /** Waited past {@code lock_timeout}, or lost a deadlock: another request holds the rows. */
     CONTENTION(ErrorCode.DATABASE_CONTENTION),
 
-    /** Ran past {@code statement_timeout}: overload, or a query too costly for its data. */
     QUERY_TIMEOUT(ErrorCode.QUERY_TIMEOUT),
 
-    /** No connection within {@code connection-timeout}, the database is unreachable, or the connection broke. */
     UNAVAILABLE(ErrorCode.DATABASE_UNAVAILABLE);
 
     private static final String CONNECTION_EXCEPTION_CLASS = "08";
@@ -69,7 +58,6 @@ public enum TransientDatabaseFailure {
                     return Optional.of(UNAVAILABLE);
                 }
                 default -> {
-                    // not this one; look at what it wraps
                 }
             }
         }

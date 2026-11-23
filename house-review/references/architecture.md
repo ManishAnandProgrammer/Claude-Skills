@@ -67,7 +67,7 @@ The rules below say which mode they apply to.
   foreign-key 409 with the wrong code).
 - **The foreign key's mapping belongs to the module that owns the constraint** (whose changeset
   declares it), even when the code it answers is the parent module's (`fk_plans_todo_id_owner_id` →
-  `TODO_IN_USE` for the todo's delete, `TODO_GONE` for a plan's insert after it, in
+  `TODO_IN_USE` for the todo's delete, `TODO_DELETED_MEANWHILE` for a plan's insert after it, in
   `PlanningConstraintErrorCodes`; kept although the plan's create locks the todo and can't trip it,
   so a later unlocked write answers 404, not 500).
 - **Severity:** High for repositories; Medium for entities and helpers.
@@ -146,7 +146,7 @@ The rules below say which mode they apply to.
   annotation, and a build rule demands it. Examples:
   - unscoped or bypassing queries;
   - `@Scheduled` jobs, which must declare a concurrency posture (a lock annotation, or
-    `@MultiInstanceSafe("why")`: safe when every instance runs it at once) when `{{instances}}` is
+    `@MultiInstanceSafe(reason = "why")`: safe when every instance runs it at once) when `{{instances}}` is
     `multiple`. The house rule (`ConventionArchTest.scheduledJobsDeclareTheirConcurrencyPosture`) knows
     `@MultiInstanceSafe`; a project with a lock library adds its annotation there
     (`.orShould().beAnnotatedWith(SchedulerLock.class)`);

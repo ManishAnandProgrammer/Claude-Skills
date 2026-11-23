@@ -28,7 +28,7 @@ public interface PlatformMetadataApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "METADATA_KEY_UNKNOWN, METADATA_NOT_FOUND",
+    @ApiResponse(responseCode = "404", description = "METADATA_KEY_UNKNOWN, METADATA_VALUE_MISSING",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -39,13 +39,13 @@ public interface PlatformMetadataApi {
             The same rules as PUT /metadata/{key} inside the tenant: the whole value and the version you \
             last read.""")
     @ApiResponse(responseCode = "200", description = "Replaced")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (a malformed tenant id)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = "TENANT_NOT_ACTIVE (with tenantStatus)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "METADATA_KEY_UNKNOWN, METADATA_NOT_FOUND",
+    @ApiResponse(responseCode = "404", description = "METADATA_KEY_UNKNOWN, METADATA_VALUE_MISSING",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

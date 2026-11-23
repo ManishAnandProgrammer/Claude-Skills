@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-/** Control plane: a platform token only (SecurityConfig's platform chain). */
 @RestController
 @RequestMapping("/api/{version}/platform/tenants/{tenantId}/metadata")
 @RequiredArgsConstructor

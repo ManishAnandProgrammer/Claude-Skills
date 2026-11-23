@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
-/** {@link PlatformAudit}: rows are only ever inserted. The actor is the platform token's subject. */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -33,10 +32,7 @@ public class PlatformAuditService implements PlatformAudit {
         repository.save(PlatformAuditEntry.of(currentUser.id(), tenantId, action, detail));
     }
 
-    /**
-     * A tenant's support history for staff, newest first. 404 {@code TENANT_NOT_FOUND}. The batch is read first,
-     * so its cursor is checked before the lookup (a tampered one is 400 whatever the tenant).
-     */
+    /** The batch is read before the tenant's check, so a tampered cursor is a 400 whatever the tenant. */
     public CursorWrapper<PlatformAuditResponse> findByTenant(UUID tenantId, PlatformAuditFilter filter) {
         CursorBatch<PlatformAuditResponse> batch = repository.findByTenant(tenantId, filter, paging.cursorSize(filter));
         tenants.getTenant(tenantId);

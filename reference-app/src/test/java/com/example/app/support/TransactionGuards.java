@@ -28,26 +28,16 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Transaction boundaries every integration test checks, so every endpoint and job the tests reach is
- * covered, a project's generated ones included. {@link IntegrationTest} imports it and fails a test that
- * broke one of them:
- * <ul>
- *   <li>a read-only transaction ends with no pending change. Spring never flushes one: a change made in it
- *       (a write method without its {@code @Transactional}, an entity changed inside a read) is dropped at
- *       the commit, without an error;</li>
- *   <li>a GET request opens no write transaction (a read changes nothing, and a read-only transaction
- *       tells PostgreSQL so);</li>
- *   <li>no remote call (the object store, an HTTP API) runs while a transaction is open: the connection
- *       would be held for the call's whole duration, and a slow service would drain the pool.</li>
- * </ul>
- * A project's own remote client (another HTTP API) is added to {@link #isRemoteClient}.
+ * Spring never flushes a read-only transaction: a change made in it (a write method without its
+ * {@code @Transactional}, an entity changed inside a read) is dropped at the commit, without an error. A remote
+ * call inside a transaction holds the connection for the call's whole duration, and a slow service would drain
+ * the pool.
  */
 @TestConfiguration(proxyBeanMethods = false)
 public class TransactionGuards {
 
     private static final List<String> VIOLATIONS = new CopyOnWriteArrayList<>();
 
-    /** The broken checks since the last call, which clears them. */
     public static List<String> takeViolations() {
         List<String> taken = new ArrayList<>(VIOLATIONS);
         VIOLATIONS.removeAll(taken);
@@ -98,7 +88,7 @@ public class TransactionGuards {
         };
     }
 
-    /** The clients that leave the process. Signing an upload URL is local, so the S3 presigner isn't one. */
+    /** Signing an upload URL is local, so the S3 presigner isn't one. */
     private static boolean isRemoteClient(Object bean) {
         boolean remote = false;
         // sign-in:begin
@@ -112,8 +102,8 @@ public class TransactionGuards {
 
     /**
      * Spring opens a read-only transaction's session read-only, and Hibernate then keeps no copy of what it
-     * loaded: a change can't be found later. In tests the copies are kept, so it can. The session still
-     * never flushes on its own, and PostgreSQL still runs the transaction read-only.
+     * loaded: a change can't be found later. The session still never flushes on its own, and PostgreSQL still
+     * runs the transaction read-only.
      */
     private static void keepWhatItLoads(EntityManagerFactory entityManagerFactory) {
         EntityManager entityManager = EntityManagerFactoryUtils.getTransactionalEntityManager(entityManagerFactory);

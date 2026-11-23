@@ -7,19 +7,13 @@ import org.springframework.validation.annotation.Validated;
 import java.time.Duration;
 import java.util.Objects;
 
-/**
- * {@code app.tenancy.impersonation.*}.
- *
- * @param tokenTtl how long an impersonation token works; no refresh token: staff ask again. Between 1s (a token's
- *                 {@code exp} is whole seconds) and 15m: like an access token it is never checked against the
- *                 database, and ending the staff member's access doesn't end it
- */
 @Validated
 @ConfigurationProperties(prefix = "app.tenancy.impersonation")
 public record ImpersonationProperties(@NotNull Duration tokenTtl) {
 
+    // A token's exp is whole seconds.
     private static final Duration SHORTEST = Duration.ofSeconds(1);
-    /** As the access token's: the review profile's {@code tokenRevocation: short-lived(15)}. */
+    /** The access token's bound ({@code short-lived(15)}): ending the staff member's access doesn't end the token. */
     private static final Duration LONGEST = Duration.ofMinutes(15);
 
     public ImpersonationProperties {

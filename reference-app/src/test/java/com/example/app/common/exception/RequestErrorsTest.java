@@ -49,11 +49,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The three shapes of a 400's {@code errors} (RFC 9457): a body value by JSON Pointer, a query or path
- * parameter by name, a rule on the body as a whole at {@code #}. Probe endpoints of this class's own,
- * through the real handler, so every case is here whatever the modules declare.
- */
 class RequestErrorsTest {
 
     private final MockMvc mvc = MockMvcBuilders.standaloneSetup(new ProbeController())
@@ -272,7 +267,6 @@ class RequestErrorsTest {
         LocalDate endsOn();
     }
 
-    /** endsOn not before startsOn, reported on the field {@code reportOn} names, or on the object itself. */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.RUNTIME)
     @Constraint(validatedBy = OrderedDatesValidator.class)

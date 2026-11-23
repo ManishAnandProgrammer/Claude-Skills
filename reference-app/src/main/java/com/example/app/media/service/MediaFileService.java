@@ -6,7 +6,7 @@ import com.example.app.common.security.CurrentUser;
 // tenancy-row:begin
 // import com.example.app.common.tenancy.TenantContext;
 // tenancy-row:end
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.media.api.FileCountRange;
 // tenancy-row:begin
 // import com.example.app.media.api.UploadLimits;
@@ -37,10 +37,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Uploaded files: issuing upload URLs, {@link Uploads} for the modules that attach them, and the jobs'
- * short transactions. Nothing here calls the store inside a transaction.
- */
+/** Nothing here calls the store inside a transaction. */
 @Service
 @RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 @Transactional(readOnly = true)
@@ -55,13 +52,11 @@ public class MediaFileService implements Uploads {
     private final MediaProperties properties;
 
     /**
-     * Checks who may upload for the purpose (it comes in the body, so no annotation can check its
-     * permissions) and the policy, signs each file, then records them PENDING in one short transaction
-     * ({@code saveAll}'s own). Signing first gives each row its URL's exact expiry; if the write fails,
-     * the URLs never reach the client.
+     * Signs each file, then records them UNCLAIMED in one short transaction ({@code saveAll}'s own). Signing
+     * first gives each row its URL's exact expiry; if the write fails, the URLs never reach the client.
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public ListWrapper<UploadUrlResponse> issue(UploadUrlRequest request) {
+    public BoundedListWrapper<UploadUrlResponse> issue(UploadUrlRequest request) {
         UploadPurpose purpose = request.purpose();
         if (!purpose.mayUpload(currentUser::holds)) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
@@ -77,11 +72,11 @@ public class MediaFileService implements Uploads {
         for (UploadFileRequest file : request.files()) {
             String key = mapper.newKey(purpose);
             PresignedUpload upload = storage.presignUpload(key, file);
-            files.add(mapper.toEntity(key, purpose, file, uploadedBy, upload, properties.pendingLifetime()));
+            files.add(mapper.toEntity(key, purpose, file, uploadedBy, upload, properties.claimGracePeriod()));
             responses.add(mapper.toUploadUrlResponse(key, upload));
         }
         repository.saveAll(files);
-        return ListWrapper.fromList(responses);
+        return BoundedListWrapper.fromList(responses);
     }
 
     @Override
@@ -135,20 +130,19 @@ public class MediaFileService implements Uploads {
     }
 
     @Override
-    public boolean allUploaded(Collection<UUID> mediaFileIds) {
+    public boolean allVerified(Collection<UUID> mediaFileIds) {
         Set<UUID> ids = Set.copyOf(mediaFileIds);
-        return ids.isEmpty() || repository.countByIdInAndStatus(ids, MediaFileStatus.UPLOADED) == ids.size();
+        return ids.isEmpty() || repository.countByIdInAndStatus(ids, MediaFileStatus.VERIFIED) == ids.size();
     }
     // tenancy-row:begin
 
     // @Override
     // @Transactional
-    // public void definePolicy(UploadPurpose purpose, UploadLimits limits) {
-    //     policyService.define(purpose, limits);
+    // public void definePolicyIfAbsent(UploadPurpose purpose, UploadLimits limits) {
+    //     policyService.defineIfAbsent(purpose, limits);
     // }
     // tenancy-row:end
 
-    /** The verification job's batch: leased in one short transaction, so no other instance takes it. */
     @Transactional
     public List<MediaFileKey> leaseForVerification(int batchSize, Duration lease) {
         // tenancy-row:begin
@@ -158,32 +152,30 @@ public class MediaFileService implements Uploads {
         // tenancy-row:end
     }
 
-    /**
-     * The batch's results in one short transaction: present files UPLOADED, absent ones MISSING. A file
-     * removed meanwhile stays RELEASED.
-     *
-     * @return how many files became MISSING
-     */
     @Transactional
-    public int recordVerification(Collection<UUID> present, Collection<UUID> absent) {
-        if (!present.isEmpty()) {
-            // tenancy-row:begin
-            // repository.recordVerification(TenantContext.id(), present, MediaFileStatus.UPLOADED.name());
-            // tenancy-row:else
-            repository.recordVerification(present, MediaFileStatus.UPLOADED.name());
-            // tenancy-row:end
-        }
-        if (absent.isEmpty()) {
+    public int markVerified(Collection<UUID> mediaFileIds) {
+        if (mediaFileIds.isEmpty()) {
             return 0;
         }
         // tenancy-row:begin
-        // return repository.recordVerification(TenantContext.id(), absent, MediaFileStatus.MISSING.name());
+        // return repository.markVerified(TenantContext.id(), mediaFileIds);
         // tenancy-row:else
-        return repository.recordVerification(absent, MediaFileStatus.MISSING.name());
+        return repository.markVerified(mediaFileIds);
         // tenancy-row:end
     }
 
-    /** The cleanup job's batch of removed files. */
+    @Transactional
+    public int markMissing(Collection<UUID> mediaFileIds) {
+        if (mediaFileIds.isEmpty()) {
+            return 0;
+        }
+        // tenancy-row:begin
+        // return repository.markMissing(TenantContext.id(), mediaFileIds);
+        // tenancy-row:else
+        return repository.markMissing(mediaFileIds);
+        // tenancy-row:end
+    }
+
     @Transactional
     public List<MediaFileKey> leaseReleased(int batchSize, Duration lease) {
         // tenancy-row:begin
@@ -193,17 +185,15 @@ public class MediaFileService implements Uploads {
         // tenancy-row:end
     }
 
-    /** The cleanup job's batch of files never attached in time. */
     @Transactional
-    public List<MediaFileKey> leaseExpiredPending(int batchSize, Duration lease) {
+    public List<MediaFileKey> leaseExpiredUnclaimed(int batchSize, Duration lease) {
         // tenancy-row:begin
-        // return keysOf(repository.leaseExpiredPending(TenantContext.id(), batchSize, lease.toSeconds()));
+        // return keysOf(repository.leaseExpiredUnclaimed(TenantContext.id(), batchSize, lease.toSeconds()));
         // tenancy-row:else
-        return keysOf(repository.leaseExpiredPending(batchSize, lease.toSeconds()));
+        return keysOf(repository.leaseExpiredUnclaimed(batchSize, lease.toSeconds()));
         // tenancy-row:end
     }
 
-    /** The rows of files deleted from the store; anything attached meanwhile is never among them. */
     @Transactional
     public int deleteRemoved(Collection<UUID> mediaFileIds) {
         if (mediaFileIds.isEmpty()) {
@@ -223,7 +213,6 @@ public class MediaFileService implements Uploads {
         return repository.findKeys(ids);
     }
 
-    /** A MISSING file has no object to read. */
     private MediaFileView toView(MediaFile file) {
         String url = file.getStatus() == MediaFileStatus.MISSING ? null : urls.readUrl(file.getKey());
         return mapper.toView(file, url);

@@ -15,11 +15,6 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Each job's lease statement (MediaFileRepository's own constant, what the job runs) has its partial index and
- * is planned on it (crud-gen tests.md row 28). MediaJobsIntegrationTest proves that a lease takes exactly its
- * batch.
- */
 class MediaFileIndexIntegrationTest extends IntegrationTest {
 
     private static final int BATCH = 20;
@@ -29,16 +24,11 @@ class MediaFileIndexIntegrationTest extends IntegrationTest {
 
     static Stream<Arguments> jobQueries() {
         return Stream.of(
-                Arguments.of("verification", "idx_media_files_in_review_upload_expires_at_id", MediaFileRepository.LEASE_FOR_VERIFICATION),
+                Arguments.of("verification", "idx_media_files_attached_upload_expires_at_id", MediaFileRepository.LEASE_FOR_VERIFICATION),
                 Arguments.of("cleanup, released", "idx_media_files_released_upload_expires_at_id", MediaFileRepository.LEASE_RELEASED),
-                Arguments.of("cleanup, expired pending", "idx_media_files_pending_expires_at_id", MediaFileRepository.LEASE_EXPIRED_PENDING));
+                Arguments.of("cleanup, expired unclaimed", "idx_media_files_unclaimed_claimable_until_id", MediaFileRepository.LEASE_EXPIRED_UNCLAIMED));
     }
 
-    /**
-     * The batch is {@code = ANY (ARRAY(...))}, an init plan computed once whatever the planner picks: as
-     * {@code IN (...)} it may become the inner side of a semi-join that runs again and leases more than the
-     * batch (house-review DATA-29). That is the statement's own text, so it is checked as text.
-     */
     @ParameterizedTest(name = "{0} ({1})")
     @MethodSource("jobQueries")
     @DisplayName("Every job's lease is an init plan, has its partial index and is planned on it")

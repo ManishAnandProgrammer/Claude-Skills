@@ -1,7 +1,7 @@
 package com.example.app.media.controller;
 
 import com.example.app.common.security.SignedIn;
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.media.controller.api.UploadUrlApi;
 import com.example.app.media.dto.request.UploadUrlRequest;
 import com.example.app.media.dto.response.UploadUrlResponse;
@@ -27,7 +27,7 @@ class UploadUrlController implements UploadUrlApi {
     @PostMapping(version = "v1+")
     @ResponseStatus(HttpStatus.CREATED)
     @SignedIn
-    public ListWrapper<UploadUrlResponse> issue(@RequestBody @Valid UploadUrlRequest request) {
+    public BoundedListWrapper<UploadUrlResponse> issue(@RequestBody @Valid UploadUrlRequest request) {
         return service.issue(request);
     }
 }

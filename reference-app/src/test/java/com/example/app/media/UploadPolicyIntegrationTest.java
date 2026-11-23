@@ -20,7 +20,6 @@ import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** The policies through the API: everyone signed in reads them, an admin replaces them, without a restart. */
 @ResourceLock(IntegrationTest.UPLOAD_POLICIES_LOCK)
 class UploadPolicyIntegrationTest extends IntegrationTest {
 
@@ -30,7 +29,6 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
 
     private UploadPolicyLimits saved;
 
-    /** The project's first purpose with known limits; skipped while there is none. */
     @BeforeEach
     void setThePolicy() {
         assumeAnUploadPurpose();
@@ -180,7 +178,7 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("An unknown purpose in the path is 400 REQUEST_PARAMETER_INVALID; a purpose without its row is 404 UPLOAD_POLICY_NOT_FOUND")
+    @DisplayName("An unknown purpose in the path is 400 REQUEST_PARAMETER_INVALID; a purpose without its row is 404 UPLOAD_POLICY_NOT_SEEDED")
     void unknownOrUnseededPurpose() throws Exception {
         TestUser admin = newAdmin();
         String body = limits(1, 1000, 0, 5, "[\"application/pdf\"]", currentVersion(admin));
@@ -192,7 +190,7 @@ class UploadPolicyIntegrationTest extends IntegrationTest {
         try {
             replace(admin, body)
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.errorCode").value("UPLOAD_POLICY_NOT_FOUND"));
+                    .andExpect(jsonPath("$.errorCode").value("UPLOAD_POLICY_NOT_SEEDED"));
         } finally {
             sql("update upload_policies set purpose = ? where purpose = 'HIDDEN_FOR_TEST'", TESTED_PURPOSE);
         }

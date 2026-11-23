@@ -584,7 +584,7 @@ registrations; parallel tenant migrations; impersonating a suspended tenant; bre
     approving transaction): ACTIVE with the activation's version, or PENDING when provisioning failed.
   - **Upload policies are per tenant** in both modes. A changeset can't seed them in row mode, so the
     owning module seeds a new tenant's on `TenantProvisioned` (`TodoAttachmentPolicySeed` through
-    `Uploads.definePolicy`).
+    `Uploads.definePolicyIfAbsent`).
 
 **Row-mode gaps:** tenant export and deletion; the `BYPASSRLS`
 system pool (decision 10); per-tenant reads of `tenant_memberships` are the services' predicates, not

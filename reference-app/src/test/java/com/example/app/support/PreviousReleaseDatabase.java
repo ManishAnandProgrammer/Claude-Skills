@@ -21,21 +21,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * The database the application meets when it upgrades a live one, for the whole test run: when
- * {@code app.test.upgrade.previous-release} names the release in production (the highest changeset numbers
- * it shipped, {@code <pieces>[,<project>]}; verify.sh passes it), Liquibase first applies that release's changesets alone, then
- * {@code db/upgrade/previous-release-seed.sql} fills the tables the way a used database holds them, and only
- * then does the application's own Liquibase run apply the changesets that came after, over that data.
- * Every test of the run then works on the upgraded database, and {@code UpgradeFromPreviousReleaseIntegrationTest}
- * checks what the new changesets did to the seeded rows (crud-gen tests.md, *Upgrading a used database*).
- *
- * <p>Changeset numbers come in two ranges: the house pieces' 0001 to 0099, a project's own from 0100. A piece
- * changed after a project's release appends its next number (0027) after the project's (0105), so one highest
- * number can't tell what shipped: the release names both, {@code 26,105} (the pieces' alone, {@code 23}, while
- * the project has none of its own). A changeset belongs to the new release when its file's number is above the
- * release's in its range: the run stops before the first such changeset, so a master lists every release's
- * changesets before the next one's (number order within each range; row mode's tenancy base first, which
- * bootstrap-copy.sh writes so). Without the property nothing happens.</p>
+ * The run stops before the first changeset the previous release didn't ship, so a master lists every release's
+ * changesets before the next one's (number order within each range; row mode's tenancy base first).
  */
 public class PreviousReleaseDatabase implements BeanPostProcessor {
 
@@ -73,7 +60,7 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
         }
     }
 
-    /** On a connection of its own, committed statement by statement, as the role that migrates. */
+    /** Committed statement by statement, as the role that migrates. */
     private static void seed(DataSource dataSource) {
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(true);
@@ -83,7 +70,6 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
         }
     }
 
-    /** How many changesets come before the first one of a file {@code previousRelease} didn't ship. */
     static int changesetsOf(Liquibase liquibase, Release previousRelease) throws LiquibaseException {
         int count = 0;
         for (ChangeSet changeSet : liquibase.getDatabaseChangeLog().getChangeSets()) {
@@ -95,7 +81,6 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
         return count;
     }
 
-    /** The changeset file's leading number (0024-tags-status-newest.sql: 24); 0 for a file without one. */
     private static int numberOf(String filePath) {
         String fileName = Path.of(filePath).getFileName().toString();
         int digits = 0;
@@ -106,14 +91,13 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
     }
 
     /**
-     * The highest changeset numbers a release shipped: the pieces' (below {@link #FIRST_PROJECT_NUMBER}) and
-     * the project's own ({@link #FIRST_PROJECT_NUMBER} and up; one below it while the project has none).
+     * A piece changed after a project's release appends its next number (0027) after the project's (0105), so one
+     * highest number can't tell what shipped: a release names the pieces' and the project's own.
      */
     record Release(int pieces, int project) {
 
         static final int FIRST_PROJECT_NUMBER = 100;
 
-        /** {@code 26,105}, or {@code 23} for a release with no changeset of the project's own. */
         static Release parse(String release) {
             String[] numbers = release.split(",");
             int pieces = Integer.parseInt(numbers[0].strip());
@@ -125,15 +109,14 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
             return new Release(pieces, project);
         }
 
-        /** Whether the file numbered {@code number} was in this release; a file without a number always is. */
         boolean shipped(int number) {
             return number < FIRST_PROJECT_NUMBER ? number <= pieces : number <= project;
         }
     }
 
     /**
-     * The application's own Liquibase settings (changelog, resource loader, parameters, schemas), so the
-     * changesets it applies are recorded under the same file paths and the application's run skips them.
+     * The application's own settings, so the changesets it applies are recorded under the same file paths and the
+     * application's run skips them.
      */
     private static final class PreviousReleaseLiquibase extends SpringLiquibase {
 

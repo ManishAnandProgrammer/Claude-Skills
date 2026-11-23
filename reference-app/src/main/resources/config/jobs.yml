@@ -25,7 +25,7 @@ app:
       batch-size: 1000
     # change-history:end
     # media:begin
-    # Confirms attached files whose upload URL has expired: present -> UPLOADED, absent -> MISSING.
+    # Confirms attached files whose upload URL has expired: present -> VERIFIED, absent -> MISSING.
     media-verification:
       cron: "0 */5 * * * *"
       batch-size: 200

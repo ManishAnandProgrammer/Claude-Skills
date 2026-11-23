@@ -18,14 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Platform staff's login (control plane): an access token with audience {@code platform}, accepted
- * only under {@code /api/v1/platform/**}. No refresh token: staff sign in again after the access
- * token's lifetime. Rate limited like the tenant login, and as slow for an unknown email. A deactivated
- * staff member is refused like an unknown email (staff are told by the operator, never by the login), and
- * every platform request re-reads the row ({@link #isActive}, ActiveStaffFilter), so the tokens they hold
- * die at their next request.
- */
 @Service
 @Slf4j
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -37,8 +29,7 @@ public class PlatformAuthService implements StaffAccounts {
     private final AuthRateLimits rateLimits;
     private final String unknownUserHash;
 
-    // Hand-written (JAVA-26): the decoy hash costs one bcrypt run, paid once at startup. Package-private: its
-    // collaborators are (JAVA-27).
+    // Hand-written: the decoy hash costs one bcrypt run, paid once at startup.
     PlatformAuthService(PlatformUserRepository repository, TokenService tokenService, PasswordEncoder passwordEncoder,
                         AuthRateLimits rateLimits) {
         this.repository = repository;
@@ -55,6 +46,7 @@ public class PlatformAuthService implements StaffAccounts {
                 found.map(PlatformUser::getPasswordHash).orElse(unknownUserHash));
         PlatformUser staff = found.filter(account -> passwordMatches).orElseThrow(this::invalidCredentials);
         if (!staff.isActive()) {
+            // Like an unknown email: staff are told by the operator, never by the login.
             log.info("Platform login refused, the staff member is deactivated: platformUserId={}", staff.getId());
             throw AppException.of(ErrorCode.AUTH_INVALID_CREDENTIALS);
         }
@@ -62,7 +54,6 @@ public class PlatformAuthService implements StaffAccounts {
         return ObjectWrapper.withObject(tokenService.issuePlatform(staff));
     }
 
-    /** One read by primary key, so a deactivation reaches the next request. */
     @Override
     public boolean isActive(UUID staffId) {
         return repository.findById(staffId).filter(PlatformUser::isActive).isPresent();

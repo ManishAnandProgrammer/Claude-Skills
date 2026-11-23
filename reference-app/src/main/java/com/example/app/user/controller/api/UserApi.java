@@ -2,7 +2,7 @@ package com.example.app.user.controller.api;
 
 // tenancy:begin
 // tenancy:else
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 // tenancy:end
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.dto.request.PasswordChangeRequest;
@@ -32,10 +32,8 @@ import java.util.UUID;
 public interface UserApi {
 
     // session-version:begin
-    /** What a password change or a suspension does to the access tokens already issued. */
     String ACCESS_TOKENS_END = "every access token is refused from its next request on";
     // session-version:else
-    // /** What a password change or a suspension does to the access tokens already issued. */
     // String ACCESS_TOKENS_END = "every access token already issued expires within its 15 minutes";
     // session-version:end
 
@@ -50,7 +48,8 @@ public interface UserApi {
     ObjectWrapper<UserResponse> me();
 
     @Operation(summary = "What you may do: your menu areas and your permissions", description = """
-            Read from your access token, so a change of your role shows with your next token. A client shows a menu \
+            What the server grants you now: call it again after a token refresh, or when a request is refused \
+            with 403. A client shows a menu \
             item by its area, a tab or a button by its permission (or by a record's allowedActions), and never \
             decides which permissions make an area. Every request is checked by the server whatever the client \
             shows; which role holds which permission is never published.""")
@@ -62,9 +61,7 @@ public interface UserApi {
     ObjectWrapper<AccessResponse> access();
 
     @Operation(summary = "Change your password", description = """
-            Needs the current password. The new one follows signup's rules (at least 8 characters and at most \
-            72 bytes, an upper-case letter, a lower-case letter, a digit and another character, not from a \
-            known breach). Every session of the account ends: every refresh token is revoked, on every device, \
+            Needs the current password. The new one follows its field's rules. Every session of the account ends: every refresh token is revoked, on every device, \
             and\s""" + ACCESS_TOKENS_END + """
             . The answer is new tokens for this device. A wrong current password counts as a failed login of \
             the account: the same per-account limit applies (5 a minute).""")
@@ -75,8 +72,15 @@ public interface UserApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no or invalid token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // tenancy:begin
+    // @ApiResponse(responseCode = "403", description = """
+    //         AUTH_ACCOUNT_SUSPENDED (the account was suspended meanwhile); ACCESS_DENIED (an impersonation \
+    //         never changes the member's password)""",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // tenancy:else
     @ApiResponse(responseCode = "403", description = "AUTH_ACCOUNT_SUSPENDED (the account was suspended meanwhile)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // tenancy:end
     @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND (the account no longer exists)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT (the account changed meanwhile: try again)",
@@ -112,7 +116,7 @@ public interface UserApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    ListWrapper<UserResponse> lookUp(UserFilter filter);
+    BoundedListWrapper<UserResponse> lookUp(UserFilter filter);
 
     // roles:begin
     // @Operation(summary = "Suspend or reactivate an account (ACCOUNT_STATUS_CHANGE)", description = """

@@ -61,58 +61,17 @@ import java.util.List;
 // import java.util.Set;
 // roles:end
 
-/**
- * Stateless JWT security.
- *
- * <ul>
- *   <li>Access tokens are HS256 JWTs signed and verified with {@code app.jwt.secret} by Spring
- *       Security's resource server: checked by signature, expiry and issuer, with no database
- *   <!-- roles:begin -->
- <!-- *       lookup per request for the token itself. The {@code sub} claim is the user id.</li> -->
- *   <!-- roles:else -->
- *       lookup per request. The {@code sub} claim is the user id, {@code roles} the roles.</li>
- *   <!-- roles:end -->
- *   <!-- roles:begin -->
- <!-- *   <li>A token's authorities are the permissions its bearer holds now ({@link TokenPermissions}: with the roles -->
- <!-- *       piece read from PostgreSQL on every request, one statement), one authority per {@link Permission} name and -->
- <!-- *       nothing else; a handler names the one it needs ({@code @Requires}, method security), or is -->
- <!-- *       {@code @SignedIn} or {@code @Public}. A database outage during that read is its 503 (the entry point -->
- <!-- *       writes it, {@link PermissionsUnreadable}), never a 401 that would sign the client out.</li> -->
- *   <!-- roles:else -->
- *   <li>A token's authorities are the permissions its bearer holds ({@link TokenPermissions}: the role's), one
- *       authority per {@link Permission} name and nothing else; a handler names the one it needs
- *       ({@code @Requires}, method security), or is {@code @SignedIn} or {@code @Public}.</li>
- *   <!-- roles:end -->
- *   <li>Public: the sign-in endpoints, health, the prometheus scrape (management port only), and
- *       the API docs (disabled in prod). Everything else needs a token.</li>
- *   <li>{@code DispatcherType.ERROR} is permitted, so an exception that escapes to the container's
- *       error page isn't re-answered as a 401.</li>
- *   <li>Security errors are Problem Details with an {@code errorCode}, like every other error, the
- *       firewall's refusals included (an empty segment {@code //}, a {@code ;}, an encoded {@code .}).</li>
- *   <li>CORS is a servlet filter ahead of admission control and this chain ({@link #corsFilter}), not the
- *       chain's {@code .cors()}: every answer written before the chain (503 {@code SERVER_BUSY}, the
- *       firewall's 400) carries the headers a browser needs to read it. It answers every preflight, so the
- *       chain permits no {@code OPTIONS}: a plain one needs a token like any other request. An origin it
- *       doesn't allow is 403 {@code CORS_REQUEST_REFUSED} ({@link ProblemCorsProcessor}).</li>
- *   <!-- session-version:begin -->
- *   <li>The session version (the session-version piece): a verified token is accepted only while its
- *       {@code sv} claim is current ({@link SessionVersionFilter}), one Redis read per request.</li>
- *   <!-- session-version:end -->
- * </ul>
- */
 @Configuration
 @EnableMethodSecurity
 class SecurityConfig {
 
     private static final String[] PUBLIC_PATHS = {
-            // Every API version's sign-in, so a new version needs no change here. One segment only
-            // (never **): an unknown version is refused 400 by MVC before any handler runs, and a
-            // version grants no access by itself, since every other path needs a token.
+            // One segment, never **: an unknown version is refused 400 by MVC before any handler runs, and a
+            // version grants no access by itself.
             "/api/*/auth/**",
             "/actuator/health",
             "/actuator/health/**",
-            // No token (metricsAuth: network-only): served only on the management port, which is
-            // never published publicly; StartupChecks refuses a missing or shared one.
+            // No token: served only on the management port, which StartupChecks refuses to share.
             "/actuator/prometheus",
             "/v3/api-docs/**",
             "/swagger-ui/**",
@@ -136,6 +95,7 @@ class SecurityConfig {
                 .cors(cors -> cors.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
+                        // An exception that escapes to the container's error page isn't re-answered as a 401.
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(PUBLIC_PATHS).permitAll()
                         .anyRequest().authenticated())
@@ -176,7 +136,6 @@ class SecurityConfig {
         return (request, response, rejected) -> problemResponses.write(request, response, ErrorCode.REQUEST_INVALID);
     }
 
-    /** The token's permissions as its authorities, one per permission's name: no role, no scope, nothing else. */
     @Bean
     JwtAuthenticationConverter jwtAuthenticationConverter(TokenPermissions tokenPermissions) {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
@@ -190,9 +149,8 @@ class SecurityConfig {
     // roles:begin
 
     // /**
-    //  * The roles piece reads the permissions from PostgreSQL on every request: a lock wait, a timeout or no connection
-    //  * there is the request's 503 with its code and a Retry-After, written by the entry point, never a 401 (the client
-    //  * would sign the person out) nor a 500. Anything else propagates.
+    //  * A lock wait, a timeout or no connection reading the permissions is the request's 503, written by the entry
+    //  * point, never a 401 (the client would sign the person out) nor a 500.
     //  */
     // private static Set<Permission> readPermissions(TokenPermissions tokenPermissions, Jwt token) {
     //     try {
@@ -206,7 +164,6 @@ class SecurityConfig {
     //     }
     // }
 
-    // /** The permissions couldn't be read: an authentication failure the entry point answers with its 503 code. */
     // static final class PermissionsUnreadable extends AuthenticationException {
 
     //     private static final long serialVersionUID = 1L;
@@ -262,6 +219,7 @@ class SecurityConfig {
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept-Language", "X-Request-ID"));
         configuration.setExposedHeaders(List.of("X-Request-ID", "Retry-After", "Location"));
+        // Credentials are never allowed: auth is a header, not a cookie.
         configuration.setAllowCredentials(false);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
@@ -270,8 +228,7 @@ class SecurityConfig {
 
     /**
      * Ahead of admission control ({@code DEFAULT_FILTER_ORDER - 10}) and the security chain: a 503 refused at the
-     * door carries {@code Access-Control-Allow-Origin} and the exposed {@code Retry-After}, and a preflight is
-     * answered here without taking an admission permit.
+     * door carries {@code Access-Control-Allow-Origin}, and a preflight takes no admission permit.
      */
     @Bean
     FilterRegistrationBean<CorsFilter> corsFilter(CorsConfigurationSource corsConfigurationSource,

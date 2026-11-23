@@ -9,11 +9,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
-/**
- * Documents {@code SESSION_VERSION_STALE} (the session-version piece) on every endpoint that takes an
- * access token, the ones whose 401 names {@code AUTHENTICATION_REQUIRED}: every one of them can answer
- * it, so it is added here rather than repeated on every {@code *Api}.
- */
 @Component
 class SessionVersionOpenApiCustomizer implements OpenApiCustomizer {
 

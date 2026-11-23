@@ -12,18 +12,8 @@ import org.springframework.security.authentication.password.CompromisedPasswordD
 import org.springframework.stereotype.Component;
 
 /**
- * Refuses passwords known from breaches. Only the first five hex characters of the password's SHA-1
- * leave the server (the range API's k-anonymity).
- *
- * <p>Fail-open by the owner's decision: while the service is unreachable, signup proceeds with the
- * composition rules alone. Spring's checker answers "not compromised" on a failed request (counted
- * by {@link FailureCountingInterceptor}); the catch below covers anything else it throws.</p>
- *
- * <p>A semaphore bulkhead ({@code resilience4j.bulkhead.instances.breached-passwords}) bounds the
- * lookups in flight: a slow service would otherwise hold an admission permit per signup for up to
- * the read timeout and fill the API's cap. When it is full the check is skipped, counted like an
- * outage. The instance is the Resilience4j starter's; one missing from the configuration stops startup
- * rather than run on the library's defaults.</p>
+ * The bulkhead bounds the lookups in flight: a slow service would otherwise hold an admission permit per signup
+ * for up to the read timeout and fill the API's cap.
  */
 @Slf4j
 @Component
@@ -37,8 +27,8 @@ class BreachedPasswordCheck {
     private final Bulkhead bulkhead;
     private final Counter unavailable;
 
-    // Hand-written (JAVA-26): the bulkhead is looked up once (a missing instance stops the startup) and the
-    // counter registered, so its series reads 0 before the first failed lookup.
+    // Hand-written: the bulkhead is looked up once (a missing instance stops the startup rather than run on the
+    // library's defaults) and the counter registered, so its series reads 0 before the first failed lookup.
     BreachedPasswordCheck(CompromisedPasswordChecker checker, BreachedPasswordProperties properties,
                           BulkheadRegistry bulkheads, MeterRegistry meterRegistry) {
         this.checker = checker;

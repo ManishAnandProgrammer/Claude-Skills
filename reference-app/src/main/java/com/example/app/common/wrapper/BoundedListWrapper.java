@@ -12,16 +12,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * An unpaged list: only one the code bounds (an enum's values, a configured maximum enforced on create, a
- * fixed relation such as a student's subjects this session), or one the review profile's
- * {@code unpagedLists} names with the developer's statement. Paged lists use {@link PaginationWrapper} or
- * {@link CursorWrapper}, never this.
- */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 @Schema(description = "A whole list, without pages")
-public class ListWrapper<T> {
+public class BoundedListWrapper<T> {
 
     @Schema(description = "The items")
     private List<T> response;
@@ -30,8 +24,8 @@ public class ListWrapper<T> {
     @Schema(description = "Optional extra data about the list")
     private Map<String, Object> extraDetails;
 
-    public static <T> ListWrapper<T> fromList(@NonNull List<T> list) {
-        ListWrapper<T> wrapper = new ListWrapper<>();
+    public static <T> BoundedListWrapper<T> fromList(@NonNull List<T> list) {
+        BoundedListWrapper<T> wrapper = new BoundedListWrapper<>();
         wrapper.response = List.copyOf(list);
         return wrapper;
     }

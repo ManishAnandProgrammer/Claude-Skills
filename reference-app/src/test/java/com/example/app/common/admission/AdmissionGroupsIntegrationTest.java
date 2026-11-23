@@ -16,12 +16,6 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Every operation that takes a password (bcrypt work: a verify, a hash) takes its permit from the
- * {@code sign-in} group, so a storm of them queues there and never uses up the permits the refreshes of
- * signed-in users need (limits.yml). Read from the published API, so a new password endpoint is checked
- * without an edit here.
- */
 class AdmissionGroupsIntegrationTest extends IntegrationTest {
 
     @Autowired
@@ -52,7 +46,6 @@ class AdmissionGroupsIntegrationTest extends IntegrationTest {
         assertThat(outside).as("password operations outside the sign-in group").isEmpty();
     }
 
-    /** A property whose name holds "password", in the body's schema itself (password, currentPassword, newPassword). */
     private static boolean takesAPassword(JsonNode docs, JsonNode schema) {
         JsonNode resolved = schema;
         if (schema.has("$ref")) {

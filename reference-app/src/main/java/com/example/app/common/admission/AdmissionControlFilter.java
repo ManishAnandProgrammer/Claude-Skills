@@ -11,6 +11,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.actuate.autoconfigure.endpoint.web.WebEndpointProperties;
 import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
 import org.springframework.core.Ordered;
@@ -27,28 +28,13 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Caps the API requests in flight and refuses the excess at once with 503 {@code SERVER_BUSY} and a
- * jittered {@code Retry-After}.
+ * Tomcat's {@code threads.max} bounds the total, but the excess waits unseen in the accept queue and one slow
+ * route group takes the threads every other group needs; a <em>semaphore</em> bulkhead per group refuses at the
+ * door instead (never the thread-pool bulkhead: a second pool and a hand-off in front of Tomcat's).
  *
- * <p><b>Why here:</b> with virtual threads every connection gets its own thread, so
- * {@code server.tomcat.threads.max} bounds nothing; overload would queue on the connection pool for
- * its whole {@code connection-timeout}, and p99 would become that timeout for everyone. A
- * Resilience4j <em>semaphore</em> bulkhead decides at the door instead (never the thread-pool
- * bulkhead, which would undo virtual threads). The permit is released in {@code finally}.</p>
- *
- * <p><b>Groups:</b> a request matching one of a group's {@link AdmissionGroups#paths()} takes its
- * permit from that group's bulkhead, any other from {@value #DEFAULT_GROUP}'s. The bulkheads are the Resilience4j
- * starter's, configured under {@code resilience4j.bulkhead.instances}; a group missing there stops
- * startup rather than run on the library's defaults.</p>
- *
- * <p>Runs before the security chain, so refused requests cost nothing more, and after the
- * log-context filters and CORS ({@code SecurityConfig.corsFilter}), so a refusal is still one line in
- * the log and a browser can read it (a preflight never gets here). The actuator (its base path, or a
- * path below it) is never capped: health must answer under overload.</p>
- *
- * <p><b>Signals:</b> {@value #REJECTED_METRIC} tagged by group (registered at zero), Resilience4j's
- * {@code resilience4j_bulkhead_available_concurrent_calls}, and one WARN per group per
- * {@code warn-interval} at most.</p>
+ * <p>Runs before the security chain, so refused requests cost nothing more, and after the log-context
+ * filters and CORS ({@code SecurityConfig.corsFilter}), so a refusal is still one line in the log and a
+ * browser can read it. The actuator is never capped: health must answer under overload.</p>
  */
 @Slf4j
 @Component
@@ -73,16 +59,27 @@ class AdmissionControlFilter extends OncePerRequestFilter implements Ordered {
         }
     }
 
-    // Hand-written (JAVA-26): each group's bulkhead is looked up once (a group without one stops the startup)
-    // and its rejection counter registered, so the series reads 0 before the first refusal.
+    // Hand-written: each group's bulkhead is looked up once (a group without one stops the startup) and its
+    // rejection counter registered, so the series reads 0 before the first refusal.
     AdmissionControlFilter(AdmissionGroups groups, BulkheadRegistry bulkheads, MeterRegistry meterRegistry,
-                           ProblemResponses problemResponses, WebEndpointProperties actuator) {
+                           ProblemResponses problemResponses, WebEndpointProperties actuator,
+                           @Value("${server.tomcat.threads.max}") int requestThreads) {
         this.problemResponses = problemResponses;
         this.actuatorBasePath = actuator.getBasePath();
         this.warnEveryNanos = groups.warnInterval().toNanos();
         this.defaultGroup = group(DEFAULT_GROUP, List.of(MATCH_ALL), bulkheads, meterRegistry);
         for (Map.Entry<String, List<String>> entry : groups.paths().entrySet()) {
             prefixGroups.add(group(entry.getKey(), entry.getValue(), bulkheads, meterRegistry));
+        }
+        requireThreadsBeyondTheCaps(requestThreads);
+    }
+
+    private void requireThreadsBeyondTheCaps(int requestThreads) {
+        int caps = defaultGroup.bulkhead().getBulkheadConfig().getMaxConcurrentCalls() + prefixGroups.stream()
+                .mapToInt(group -> group.bulkhead().getBulkheadConfig().getMaxConcurrentCalls()).sum();
+        if (requestThreads <= caps) {
+            throw new IllegalStateException(("server.tomcat.threads.max (%d) must exceed the admission caps together (%d): "
+                    + "a refusal needs a thread too").formatted(requestThreads, caps));
         }
     }
 

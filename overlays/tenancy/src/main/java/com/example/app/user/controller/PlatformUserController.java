@@ -1,7 +1,7 @@
 package com.example.app.user.controller;
 
 import com.example.app.common.security.SignedIn;
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.controller.api.PlatformUserApi;
 import com.example.app.user.dto.request.UserFilter;
@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-/** Control plane: only platform tokens reach {@code /platform/**} (PlatformSecurityConfig's chain). */
 @RestController
 @RequestMapping("/api/{version}/platform/users")
 @RequiredArgsConstructor
@@ -31,7 +30,7 @@ class PlatformUserController implements PlatformUserApi {
     @Override
     @GetMapping(version = "v1+")
     @SignedIn
-    public ListWrapper<UserResponse> lookUp(@Valid @ParameterObject UserFilter filter) {
+    public BoundedListWrapper<UserResponse> lookUp(@Valid @ParameterObject UserFilter filter) {
         return accountStatus.lookUp(filter);
     }
 

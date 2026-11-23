@@ -19,18 +19,16 @@ public interface TagRepository extends JpaRepository<Tag, UUID>, CustomTagReposi
     List<Tag> findByIdInAndOwnerId(Collection<UUID> ids, UUID ownerId);
 
     /**
-     * A merge's target, locked {@code FOR NO KEY UPDATE} until the merge commits: another merge or a delete of
-     * it waits, while todos may still be tagged with it (a link's foreign key check takes {@code FOR KEY SHARE},
-     * which this lock lets through).
+     * {@code FOR NO KEY UPDATE}: another merge or a delete of the target waits, while a link's foreign key check
+     * ({@code FOR KEY SHARE}) goes through, so todos may still be tagged with it.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Tag> findForUpdateByIdAndOwnerId(UUID id, UUID ownerId);
 
     /**
-     * A merge's source, locked {@code FOR UPDATE}, the key lock JPA can't ask for: a todo tagged with it
-     * meanwhile waits at its link's foreign key check until the merge has moved the source's links and
-     * deleted it, then fails on the key (404 {@code TAG_GONE}), instead of adding a link the delete would take
-     * away unmoved.
+     * {@code FOR UPDATE}, the key lock JPA can't ask for: a todo tagged with the source meanwhile waits at its
+     * link's foreign key check until the merge has deleted it, then fails on the key (404 {@code TAG_DELETED_MEANWHILE}),
+     * instead of adding a link the delete would take away unmoved.
      */
     // tenancy-row:begin
     // @Query(nativeQuery = true, value = """

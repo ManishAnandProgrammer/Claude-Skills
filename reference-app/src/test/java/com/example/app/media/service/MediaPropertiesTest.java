@@ -17,7 +17,6 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** {@code app.media.*} as Boot binds it: the region through the SDK's {@code Region.of}, the endpoint as a URI. */
 class MediaPropertiesTest {
 
     private static MediaProperties bind(Map<String, String> values) {

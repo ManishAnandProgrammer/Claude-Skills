@@ -19,14 +19,7 @@ import lombok.experimental.SuperBuilder;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * A person holding a role (the roles piece), for good or until {@link #getValidUntil()}: past it the assignment
- * grants nothing, and it stays until someone removes it. Together with the person's {@link PersonalGrant}s it is
- * one aggregate, a person's access, written by {@code PersonAccessService} under the lock of the person's row.
- *   <!-- tenancy:begin -->
- * With tenancy the person is a member of the tenant ({@code members.user_id}): the roles are the tenant's.
- *   <!-- tenancy:end -->
- */
+/** With the person's {@link PersonalGrant}s, written only by {@code PersonAccessService}, under its access-change lock. */
 @Entity
 @Table(name = "user_roles")
 @Getter
@@ -52,7 +45,6 @@ public class RoleAssignment extends TenantOwnedEntity {
         return RoleAssignment.builder().userId(userId).role(role).validUntil(validUntil).build();
     }
 
-    /** Another end, or none; the same one again changes nothing (no version move), so the request is idempotent. */
     public void changeValidUntil(Instant newValidUntil) {
         validUntil = newValidUntil;
     }

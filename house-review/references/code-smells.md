@@ -156,20 +156,32 @@ Lines are counted without blank or comment lines.
   something.
 
 ### SMELL-19: Comments
-- **Check:** comments are for *why*, on logic the code can't explain (a lock, a security choice, a
-  database or framework behaviour, a non-obvious contract). A finding is:
+- **Check (owner rule):** a comment is allowed only on genuinely complex code that can't express
+  itself through expressive names of variables, methods, classes or packages; expect very few. The
+  rule covers every piece of code: class, method and field Javadoc, inline comments, enum
+  constants, `package-info.java`, tests. What may stay is a *why* the code can't say: a lock order,
+  a transaction or concurrency subtlety, a security choice a reader could undo by accident, a
+  database or framework behaviour that would surprise a reader, a number's origin. A finding is:
+  - a comment that makes up for a weak name or an overloaded concept (an enum constant whose
+    Javadoc explains what the state really means, a method whose Javadoc explains what it also
+    does): the fix is a rename or a split, not a better comment;
   - a comment that restates the code, **including class and method Javadoc that repeats the name**
-    (`/** Accounts. */` on `UserService`, `@param` lists that repeat `@Schema` text). A *why* is
-    fine in Javadoc form on a class or method when it explains a contract the signature can't
-    (a lock order, a transaction rule, a security choice);
+    (`/** Accounts. */` on `UserService`, `@param` lists that repeat `@Schema` text);
+  - a decision record or design note in code (why this entity has no search, who may write it):
+    it belongs in the crud profile's *Decisions per entity* or the project's docs;
+  - a why written in several places: keep it once, where it is needed;
+  - in tests, a comment that repeats the `@DisplayName` or the method name, or a given/when/then
+    label;
   - a historical "no longer …" note;
   - a stale or misleading comment;
   - a `TODO` without an owner or ticket;
   - a journal or closing-brace comment;
   - a manual or runbook in code.
-- **Also:** enum constants in a module's `api/` package (a published contract) carry Javadoc.
-  Remove stale Javadoc, and fix broken `{@link}`s.
-- **Severity:** Low; Medium when the comment says what the code doesn't do.
+- **Not a finding:** `// DEVIATION(...)` markers, bootstrap marker blocks, SpotBugs and
+  `@SuppressWarnings` justifications. `@Schema`, `@Operation` and `@DisplayName` texts are
+  documentation, not comments (REST-20 covers their drift).
+- **Severity:** Low; Medium when the comment says what the code doesn't do, or stands in for a
+  rename of a published name (an error code, an enum value, a JSON field).
 
 ### SMELL-20: Names
 - **Check:** names are descriptive, pronounceable and searchable, with no encodings or

@@ -46,12 +46,10 @@ public class TodoMapper {
         return todo;
     }
 
-    /** The todo as other modules see it (the todo.api facade). */
     public TodoView toView(Todo todo) {
         return new TodoView(todo.getId(), todo.getTitle(), todo.getStatus() == TodoStatus.OPEN);
     }
 
-    /** One option of the plain todo dropdown: {@code {value, label}}. */
     public DropdownItem toDropdownItem(TodoView view) {
         return new DropdownItem(view.id(), view.title());
     }
@@ -65,7 +63,6 @@ public class TodoMapper {
         todo.setRequesterId(request.requesterId());
     }
 
-    /** The todo's list must be loaded: TodoService reads it with the todo, or under the todo's lock. */
     public TodoResponse toResponse(Todo todo, TodoResponseParts parts) {
         return new TodoResponse(
                 todo.getId(),
@@ -105,10 +102,7 @@ public class TodoMapper {
     }
 
     // media:end
-    /**
-     * Each row gets its list's name; a row whose list {@code names} misses (deleted with its todos between
-     * the batch's statement and this one) is left out, never shown without its list.
-     */
+    /** A row whose list {@code names} misses was deleted with its list between the two statements, so it is left out. */
     public List<TodoSummaryResponse> withTodoLists(List<TodoSummaryResponse> rows, List<TodoListName> names) {
         Map<UUID, TodoListName> byId = names.stream().collect(Collectors.toMap(TodoListName::id, name -> name));
         return rows.stream()
@@ -121,7 +115,6 @@ public class TodoMapper {
         return new TodoTodoListResponse(name.id(), name.name());
     }
 
-    /** Each row gets its todo's tags, in the order of {@code tagRows} (tag id order). */
     public List<TodoSummaryResponse> withTags(List<TodoSummaryResponse> rows, List<TodoTagRow> tagRows) {
         Map<UUID, List<TodoTagResponse>> tagsByTodo = tagRows.stream().collect(Collectors.groupingBy(TodoTagRow::todoId,
                 Collectors.mapping(TodoMapper::toTagResponse, Collectors.toList())));
@@ -132,7 +125,6 @@ public class TodoMapper {
         return new TodoTagResponse(row.tagId(), row.name());
     }
 
-    /** One representation of "no notes": blank is stored as null. */
     private static String notesOrNone(String notes) {
         return StringUtils.hasText(notes) ? notes : null;
     }

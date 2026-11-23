@@ -10,30 +10,15 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Refuses to start in a configuration that is unsafe or inert, naming the setting:
- * <ul>
- *   <li>an active profile outside {@code app.allowed-profiles}, or none: a forgotten
- *       {@code SPRING_PROFILES_ACTIVE} must not run production on development defaults;</li>
- *   <li>{@code app.admission.max-concurrent} below twice the pool: readiness only trips when a pool's
- *       worth of requests waits for a connection, which admission must leave room for;</li>
- *   <li>a management port that is missing or equal to the application port: the prometheus scrape
- *       has no token, so on the application port it would be public. Only the {@code test}
- *       profile alone may share the port (MockMvc reaches the actuator through the application);
- *       there is deliberately no property to allow it, so no deployment can switch it on.</li>
- *   <li>{@code app.security.password-hash-strength} other than 12: bcrypt's cost is a security decision
- *       taken with a load test (it sets sign-in CPU and the {@code sign-in} admission cap), not a
- *       per-deployment setting. Only the {@code test} profile alone may lower it (its accounts are
- *       throwaway, and each costs two hashes); no property allows it elsewhere.</li>
- * </ul>
- */
 @Component
 @RequiredArgsConstructor
 class StartupChecks implements InitializingBean {
 
-    /** The test profile alone: the only one allowed the shortcuts below. */
     private static final List<String> TEST_ONLY_PROFILES = List.of("test");
-    /** A security decision, not a tunable: lower, a stolen hash is cheap to crack; higher, sign-in outgrows its CPU. */
+    /**
+     * A security decision taken with a load test, not a tunable: lower, a stolen hash is cheap to crack; higher,
+     * sign-in outgrows its CPU and its admission cap.
+     */
     private static final int PASSWORD_HASH_STRENGTH = 12;
 
     private final Environment environment;
@@ -52,6 +37,7 @@ class StartupChecks implements InitializingBean {
         return Arrays.asList(environment.getActiveProfiles()).equals(TEST_ONLY_PROFILES);
     }
 
+    /** A forgotten {@code SPRING_PROFILES_ACTIVE} must not run production on development defaults. */
     private static void checkProfiles(Environment environment) {
         List<String> allowed = List.of(environment.getRequiredProperty("app.allowed-profiles", String[].class));
         List<String> active = Arrays.asList(environment.getActiveProfiles());
@@ -68,6 +54,10 @@ class StartupChecks implements InitializingBean {
         }
     }
 
+    /**
+     * The prometheus scrape has no token, so on the application port it would be public. No property allows sharing
+     * the port, so no deployment can switch it on.
+     */
     private static void checkManagementPortIsSeparate(Environment environment) {
         if (isTestProfileAlone(environment)) {
             return;

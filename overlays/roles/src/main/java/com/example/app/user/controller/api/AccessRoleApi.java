@@ -112,7 +112,7 @@ public interface AccessRoleApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "ACCESS_NOT_HELD (a permission you don't hold)",
+    @ApiResponse(responseCode = "403", description = "ACCESS_NOT_HELD (a permission you don't hold); ACCESS_OWN_CHANGE (adding to a role you hold)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "ROLE_NOT_FOUND",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

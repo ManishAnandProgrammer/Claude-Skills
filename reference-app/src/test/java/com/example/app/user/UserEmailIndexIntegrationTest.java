@@ -10,7 +10,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Every login and signup looks an account up by email, through the unique key (crud-gen tests.md row 28). */
 class UserEmailIndexIntegrationTest extends IntegrationTest {
 
     @Autowired

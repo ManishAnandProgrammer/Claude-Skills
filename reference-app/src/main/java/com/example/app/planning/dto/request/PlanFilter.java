@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Plans pile up over the years, so this list is cursor-paged. */
 @Getter
 @Setter
 public class PlanFilter extends CursorFilter {
@@ -56,18 +55,12 @@ public class PlanFilter extends CursorFilter {
         return Objects.nonNull(todoId);
     }
 
-    /** An inverted range is a mistake the client should hear about, not an empty list. */
     @CrossField(reportedOn = "plannedTo", message = "{plan.planned-range}")
     public boolean isPlannedRangeOrdered() {
         return DateRanges.isOrdered(plannedFrom, plannedTo);
     }
 
-    /**
-     * A range filter comes with the order of its own column, the overlap's ends included: under STARTS_ON
-     * the planned days are a range of the start's index, read until a page is full; under NEWEST every end,
-     * alone or with the other, leaves the walk unbounded (newest first, filtered by days in the past, reads
-     * the owner's whole history; both ends, a range as wide as the dates allow). Reported on each end sent.
-     */
+    /** Under NEWEST no index serves the planned days: the walk would read the owner's whole history. */
     @CrossField(reportedOn = "plannedFrom", message = "{plan.planned-filter-order}")
     public boolean isPlannedFromSortedByStartsOn() {
         return Objects.isNull(plannedFrom) || sort == PlanSort.STARTS_ON;

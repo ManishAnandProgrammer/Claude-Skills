@@ -12,10 +12,6 @@ import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactor
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The Redis client the rate limiter uses is bounded: commands refused while disconnected, a bounded
- * queue, Boot's connect timeout kept, and a command timeout just above the limiter's own (REL-04/09).
- */
 class RedisClientIntegrationTest extends IntegrationTest {
 
     @Autowired

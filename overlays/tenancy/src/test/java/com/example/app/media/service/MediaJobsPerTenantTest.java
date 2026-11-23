@@ -19,10 +19,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * The jobs' loop over the tenants: one tenant's failure never stops the tenants after it. The work per
- * tenant is MediaJobsIntegrationTest's; here the service is a mock whose first call fails.
- */
 class MediaJobsPerTenantTest {
 
     private static final Duration LEASE = Duration.ofMinutes(5);
@@ -54,11 +50,11 @@ class MediaJobsPerTenantTest {
         when(mediaFiles.leaseReleased(anyInt(), any()))
                 .thenThrow(new QueryTimeoutException("statement timeout"))
                 .thenReturn(List.of());
-        when(mediaFiles.leaseExpiredPending(anyInt(), any())).thenReturn(List.of());
+        when(mediaFiles.leaseExpiredUnclaimed(anyInt(), any())).thenReturn(List.of());
         MediaCleanupJob job = new MediaCleanupJob(mediaFiles, storage, new MediaCleanupJob.Settings(new Cron("-"), 10, LEASE), tenants);
 
         assertThatCode(job::cleanUp).doesNotThrowAnyException();
         verify(mediaFiles, times(2)).leaseReleased(10, LEASE);
-        verify(mediaFiles, times(1)).leaseExpiredPending(10, LEASE);
+        verify(mediaFiles, times(1)).leaseExpiredUnclaimed(10, LEASE);
     }
 }

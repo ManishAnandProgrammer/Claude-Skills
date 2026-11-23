@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-/** The {@code tenant_migrations} records: what provisioning and the deploy-time migrations read and write. */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -31,7 +30,7 @@ public class TenantMigrationService {
     private final TenantService tenantService;
     private final Clock clock;
 
-    /** In the approving transaction, so the approval and its provisioning record commit together; once per tenant. */
+    /** In the approving transaction, so the approval and its provisioning record commit together. */
     @EventListener
     @Transactional
     public void queueProvisioning(TenantApproved approved) {
@@ -44,17 +43,13 @@ public class TenantMigrationService {
         return repository.findTenantIdsByStatus(TenantMigrationStatus.PROVISIONING, Limit.of(limit));
     }
 
-    /** Every schema provisioning finished, whether its last deploy-time run failed or not. */
     public List<UUID> provisionedTenantIds() {
         return repository.findTenantIdsByStatusIn(PROVISIONED);
     }
 
-    /**
-     * Asked right before the schema is created: false, and the record CANCELLED, when the tenant is no
-     * longer PENDING (staff rejected it after approving), so a rejected tenant never gets a schema.
-     */
+    /** Staff may reject a tenant after approving it: a rejected tenant never gets a schema. */
     @Transactional
-    public boolean stillToProvision(UUID tenantId) {
+    public boolean provisionOrCancel(UUID tenantId) {
         if (tenantService.getTenant(tenantId).getStatus() == TenantStatus.PENDING) {
             return true;
         }
@@ -62,10 +57,7 @@ public class TenantMigrationService {
         return false;
     }
 
-    /**
-     * Run under {@code TenantScope.runAs(tenantId, ...)}, once the schema has its tables: the record and
-     * the tenant's activation (its modules' defaults seeded first) commit together.
-     */
+    /** Run under {@code TenantScope.runAs(tenantId, ...)}: the activation seeds the tenant's own tables. */
     @Transactional
     public void completeProvisioning(UUID tenantId, String lastChangeset) {
         getMigration(tenantId).migrated(lastChangeset, clock.instant());

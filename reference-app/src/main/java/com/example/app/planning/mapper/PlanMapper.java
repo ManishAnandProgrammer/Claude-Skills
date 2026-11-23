@@ -21,7 +21,6 @@ import java.util.UUID;
 @Component
 public class PlanMapper {
 
-    /** The plan takes the caller as its owner, which the composite foreign key requires of its todo too. */
     public Plan toEntity(PlanCreateRequest request, UUID ownerId) {
         return Plan.builder()
                 .todoId(request.todoId())
@@ -48,16 +47,12 @@ public class PlanMapper {
                 plan.getVersion());
     }
 
-    /** A list row, with its todo from the batch's one lookup. */
     public PlanResponse toResponse(PlanRow row, TodoView todo, PlanAllowedActionsResponse allowedActions) {
         return new PlanResponse(row.id(), toTodoResponse(todo), row.ownerId(), row.startsOn(), row.endsOn(), row.status(),
                 row.doneOn(), allowedActions, row.createdAt(), row.updatedAt(), row.createdBy(), row.updatedBy(), row.version());
     }
 
-    /**
-     * Every day from {@code from} to {@code to} in one span: the taken ones (disjoint and in calendar order, as
-     * {@code findLiveDays} reads them) cut to the range, and the gaps between them free.
-     */
+    /** {@code taken} must be disjoint and in calendar order, as {@code findLiveDays} reads them. */
     public PlanAvailabilityResponse toAvailability(LocalDate from, LocalDate to, List<PlanDays> taken,
                                                    AllowedAction free, AllowedAction busy) {
         List<PlanAvailabilitySpan> spans = new ArrayList<>();
@@ -77,7 +72,6 @@ public class PlanMapper {
         return new PlanAvailabilityResponse(from, to, spans);
     }
 
-    /** The todo module's view, in this API's own shape (ARCH-06: no other module's type on the wire). */
     private static PlanTodoResponse toTodoResponse(TodoView todo) {
         return new PlanTodoResponse(todo.id(), todo.title());
     }

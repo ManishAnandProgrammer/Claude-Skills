@@ -12,13 +12,8 @@ import java.sql.SQLException;
 import java.util.Objects;
 
 /**
- * Readiness judged by the connection pool's queue, read from memory without borrowing a
- * connection (the {@code connectionPool} contributor of {@code /actuator/health/readiness}).
- *
- * <p>Not Boot's {@code db} indicator: it borrows a connection and waits in the same queue as the
- * requests, so under a saturated pool it answers UP late, or DOWN only after the connection
- * timeout. This answers OUT_OF_SERVICE as soon as a full pool's worth of requests is waiting, and
- * the load balancer sends new traffic elsewhere until the queue drains.</p>
+ * Not Boot's {@code db} indicator: it borrows a connection and waits in the requests' queue, so under a saturated
+ * pool it answers UP late, or DOWN only after the connection timeout. This reads the queue from memory.
  */
 @Component("connectionPool")
 @RequiredArgsConstructor

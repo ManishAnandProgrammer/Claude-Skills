@@ -26,7 +26,7 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
    writes the record (Step 1, SEC-01). Its
    starting limits (min/max size, min/max files, content types from `AllowedContentTypes` only,
    MEDIA-09) reach **every** tenant, the existing ones included: the owner's write reads the count
-   range, so a tenant without the row answers every create 404 `UPLOAD_POLICY_NOT_FOUND`. Per mode:
+   range, so a tenant without the row answers every create 404 `UPLOAD_POLICY_NOT_SEEDED`. Per mode:
    - no tenancy: a changeset (the project's next number, from 0100) seeds the `upload_policies` row
      (golden `0010`);
    - `schema`: the same changeset, in the tenant changelog: the deploy-time migrations run it in every
@@ -36,7 +36,7 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
      that exist when the purpose ships from a backfill changeset that lifts `FORCE` for its own
      transaction, with the listener's numbers (golden: `0010`'s `…-existing-tenants` changeset). The
      backfill also reaches a tenant still PENDING, so the listener **creates its row only when missing**
-     (`Uploads.definePolicy` does; a seed that inserts again fails the approval on the unique key, on
+     (`Uploads.definePolicyIfAbsent` does; a seed that inserts again fails the approval on the unique key, on
      every retry: a tenant that can never be activated). Golden tests in `TodoSeedsBackfillIntegrationTest`:
      `existingTenantsGetThePolicy` (the changeset for a tenant without the row) and
      `aPendingTenantThroughTheBackfillsIsActivated` (the backfill, then the approval: ACTIVE, one row).
@@ -93,7 +93,7 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
       its files.
 
    If the entity has a step that needs complete files (submit, approve), that transition checks,
-   under the record's lock, that every file is UPLOADED (`Uploads.allUploaded`) and answers 409
+   under the record's lock, that every file is VERIFIED (`Uploads.allVerified`) and answers 409
    `<ENTITY>_<X>S_INCOMPLETE`; saving a draft doesn't. Its API text says files are checked only
    after their upload URL expired (`app.media.upload-url-expiry`), so the step is refused for at
    least that long after the last upload (MEDIA-06).
@@ -107,7 +107,7 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
 6. **ErrorCodes and messages:** `<ENTITY>_<X>_NOT_FOUND`, plus the record's own count rule and gate
    codes when it has them; the media piece owns `UPLOAD_*` and `MEDIA_STORAGE_UNAVAILABLE`. The API
    interface documents 400, 404, 409 and 503 on create and update; their 404 names
-   `UPLOAD_POLICY_NOT_FOUND` (the tenant or deployment without the purpose's policy row: step 1),
+   `UPLOAD_POLICY_NOT_SEEDED` (the tenant or deployment without the purpose's policy row: step 1),
    on create and on update (golden `TodoApi`, asserted by the attachments docs test; REST-20).
 
 ## Tests (a class of their own)
@@ -148,7 +148,7 @@ its `errorCode` (TEST-08):
 - update with a stale version is 409 and attaches nothing; concurrent removals with one version
   apply once (the RELEASED count exact); **concurrent replacements** (remove the same file, add each
   its own) with one version: one 200, the rest 409 and never 503, the version moved once, the
-  winner's key IN_REVIEW and the losers' still PENDING (TEST-05). When the owner has a **unique
+  winner's key ATTACHED and the losers' still UNCLAIMED (TEST-05). When the owner has a **unique
   column** (an email, a code), each racer also changes it to its own new value: that is the shape
   that deadlocks without the owner lock (MEDIA-07), so the race guards the lock too; keeping the
   column, it passes without it;
@@ -157,11 +157,11 @@ its `errorCode` (TEST-08):
   the lock turns it red, which the race alone may not (TEST-09);
 - the response's statement count is the same with 1 and many files (TEST-06);
 - a rule of the record on its files: both sides of its threshold, its inputs changing alone;
-  an approval gate: IN_REVIEW refused, MISSING refused, all UPLOADED accepted, no files passes;
-- the API docs list the attachment fields and their codes, `UPLOAD_POLICY_NOT_FOUND` on create and
+  an approval gate: ATTACHED refused, MISSING refused, all VERIFIED accepted, no files passes;
+- the API docs list the attachment fields and their codes, `UPLOAD_POLICY_NOT_SEEDED` on create and
   update included; and the code itself: with the purpose's policy row deleted (in the test's own
   transaction, or deleted and restored under the class's lock), the create and an update that adds a file
-  answer 404 `UPLOAD_POLICY_NOT_FOUND`, nothing stored;
+  answer 404 `UPLOAD_POLICY_NOT_SEEDED`, nothing stored;
 - **a single-file purpose** (`maxFiles` 1: a profile photo, a signed form): a second file on create or
   update is 400 `UPLOAD_FILE_COUNT_OUT_OF_RANGE`; a replacement is a remove and an add in one update
   (`remove<X>Ids` with the old id, `add<X>Keys` with the new key), the old file RELEASED. The golden claim

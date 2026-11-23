@@ -40,16 +40,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * Safety rule 7's lock (house-review AUTHZ-12): every change of someone's access takes it before it reads anyone's
- * access, and what a change counts can't move once it holds the lock.
- *   <!-- tenancy:begin -->
- * With tenancy that is the tenant's row, one row every access change in the tenant locks first.
- *   <!-- tenancy:else -->
- <!-- * Without tenancy the holders for good are read before their rows are locked: they are read again under the lock, -->
- <!-- * and a holder who appeared meanwhile is locked too, before anything is counted. -->
- *   <!-- tenancy:end -->
- */
 class PersonAccessLockTest {
 
     private final RoleAssignmentRepository assignments = mock(RoleAssignmentRepository.class);
@@ -65,7 +55,6 @@ class PersonAccessLockTest {
     //         mock(AccessRoleService.class), users, mock(PersonAccessMapper.class), Clock.systemUTC());
     // tenancy:end
 
-    /** The caller holds nothing: each entry point is refused, ACCESS_DENIED, once it holds the lock. */
     private void assertDeniedUnderTheLock(Runnable change) {
         when(assignments.findAccessRows(anyCollection(), any())).thenReturn(List.of());
         // tenancy:begin

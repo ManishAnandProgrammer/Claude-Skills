@@ -15,7 +15,7 @@ that hasn't adopted it yet gets one finding per missing piece, not one per endpo
 
 | Piece | Shape |
 |---|---|
-| `ErrorCode` | One protocol-agnostic enum, grouped by module (`AUTH_…`, `ORDER_…`). Each constant is one well-defined failure mode. Constants in a module's `api/` package carry Javadoc. |
+| `ErrorCode` | One protocol-agnostic enum, grouped by module (`AUTH_…`, `ORDER_…`). Each constant is one well-defined failure mode, named so it needs no comment (`BOOK_DELETED_MEANWHILE`, not a vaguer name with a Javadoc explaining the race). |
 | `ErrorCodeHttpStatusMapper` | `final` utility class with a private constructor, holding a static `EnumMap<ErrorCode, HttpStatus>`. It is the **only** place an ErrorCode meets an HttpStatus. `resolve()` throws `IllegalStateException` for an unmapped code, so a new code can't reach production silently. Other protocols (gRPC) would get their own mapper. |
 | `AppException` | One `RuntimeException` carrying `ErrorCode`, `Object[] args`, optional `errors` (`RequestError`s, ERR-07) and response `extensions`. Private constructor, with static factories: `of(code, args…)`, `withCause(code, cause, args…)`, `withErrors(code, errors)`, `supply(code, args…)` (for `orElseThrow`). Also `withExtension(name, value)`, which rejects the reserved names `type`, `title`, `status`, `detail`, `instance`, `errorCode` and `errors`. |
 | `RequestError` | A record `(pointer, parameter, detail)`, `@JsonInclude(NON_NULL)`, with the factories `atPointer(pointer, detail)` and `atParameter(name, detail)`: exactly one of the two locations is set. `JsonPointers` builds the pointer from a property path (`items[0].name`) or Jackson's path; `MvcRequestErrors` gives the entries of the exceptions Spring MVC answers itself. The OpenAPI document describes `errorCode` and `errors` on the `ProblemDetail` schema (a customizer: springdoc can't see extension members). |
@@ -56,7 +56,7 @@ the generic text.
 | `AccessDeniedException` | 403 | `ACCESS_DENIED` | WARN |
 | `AuthenticationException` | 401 | `AUTHENTICATION_REQUIRED` | WARN |
 | `DataIntegrityViolationException`, unique violation | 409 | `DUPLICATE_RECORD`, or **the domain code** when the constraint name maps to one | DEBUG; Hibernate's own two WARN lines per refused statement are off (`org.hibernate.orm.jdbc.error: ERROR`, CFG-07), and no message carries the row's values (`logServerErrorDetail: false`, CFG-01) |
-| `DataIntegrityViolationException`, foreign key (23503), told apart by the statement that tripped it (`JDBCException.getSQL()`: the server's error names the child table on both sides) | a **delete**: 409; an **insert or update**: 404; unmapped: 500 | the delete: the module's `byConstraintName` code (`<PARENT>_IN_USE`); the insert or update: its `byForeignKeyOnWrite` code (`<PARENT>_GONE`, the parent deleted after the service read it, DATA-33) | DEBUG (500: ERROR) |
+| `DataIntegrityViolationException`, foreign key (23503), told apart by the statement that tripped it (`JDBCException.getSQL()`: the server's error names the child table on both sides) | a **delete**: 409; an **insert or update**: 404; unmapped: 500 | the delete: the module's `byConstraintName` code (`<PARENT>_IN_USE`); the insert or update: its `byForeignKeyOnWrite` code (`<PARENT>_DELETED_MEANWHILE`, the parent deleted after the service read it, DATA-33) | DEBUG (500: ERROR) |
 | `DataIntegrityViolationException`, other | 500 | `DATA_INTEGRITY_ERROR` | ERROR |
 | `ObjectOptimisticLockingFailureException` (or a known version constraint) | 409 | `OPTIMISTIC_LOCK_CONFLICT` | DEBUG |
 | Transient database failure (ERR-03) | 503 + `Retry-After` | per kind | WARN with the cause's class and SQL state, never its message (ERROR + stack for query timeout) |
@@ -125,10 +125,10 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
   patterns: `<X>_NOT_FOUND`; `<X>_<FIELD>_TAKEN` (one unique field); `<X>_EXISTS` (a unique pair or
   tuple over every row: `TENANT_MEMBER_EXISTS`); `<X>_ALREADY_<STATUS>` (a unique rule partial on a
   live status: `ENROLLMENT_ALREADY_ACTIVE`); `<X>_IN_USE` (a parent's delete while referenced);
-  `<PARENT>_GONE` (a child's write after its parent's delete, DATA-33); `<X>_OVERLAPS`;
+  `<PARENT>_DELETED_MEANWHILE` (a child's write after its parent's delete, DATA-33); `<X>_OVERLAPS`;
   `<X>_STATUS_CHANGE_INVALID`; `<X>_<STATUS>` (a write refused because the record is in a final
   status: `ENROLLMENT_WITHDRAWN`). Each message explains the failure in words a user understands
-  without the code (`STUDENT_GONE`: "This student no longer exists."), without placeholders when a
+  without the code (`STUDENT_DELETED_MEANWHILE`: "This student no longer exists."), without placeholders when a
   constraint answers it (ERR-06).
 - A new `ErrorCode` needs, in the same change:
   - a mapper entry;
@@ -158,7 +158,7 @@ don't arrive as one wave. The ranges are configuration (`app.retry-after.*`), no
   - a number that names something rather than counts it (a year, an id, a code, a version) is
     `{0,number,#}`, or the caller passes it as a String: a plain `{0}` formats a `Number` by locale,
     so 2026 reads "2,026". A quantity may keep the grouping ("48,213 bytes");
-  - a code answered from a constraint name (`*_TAKEN`, `*_IN_USE`, `*_GONE`, an exclusion's `*_OVERLAPS`) has a
+  - a code answered from a constraint name (`*_TAKEN`, `*_IN_USE`, `*_DELETED_MEANWHILE`, an exclusion's `*_OVERLAPS`) has a
     message without placeholders: the handler has no argument to give it, and `{0}` would reach the
     client as is.
 

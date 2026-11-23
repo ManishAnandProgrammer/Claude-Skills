@@ -18,13 +18,9 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
- * Opens a request's log context and closes it ({@link LogContext}): the request id, echoed in
- * {@code X-Request-ID} so a caller can quote it; the endpoint (method and path, never the query
- * string, which can carry a token); and the client address in the configured {@link ClientIpMode}.
- *
- * <p>The address is {@code getRemoteAddr()}: with {@code server.forward-headers-strategy: native}
- * that is the client behind the trusted proxy. {@code X-Forwarded-For} is never read here, since
- * any client can write anything into it.</p>
+ * The endpoint is the method and path, never the query string, which can carry a token. The address is
+ * {@code getRemoteAddr()}: with {@code server.forward-headers-strategy: native} that is the client behind the
+ * trusted proxy. {@code X-Forwarded-For} is never read here, since any client can write anything into it.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 1)
@@ -53,7 +49,6 @@ class RequestLogContextFilter extends OncePerRequestFilter {
         }
     }
 
-    /** The caller's id when it is safe to echo, else a new one. */
     private static String requestIdFrom(HttpServletRequest request) {
         String requestId = request.getHeader(HEADER_NAME);
         boolean safe = Objects.nonNull(requestId) && SAFE_REQUEST_ID.matcher(requestId).matches();

@@ -13,12 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
-/**
- * A direct cross-tenant edit by platform staff (owner decision O6), the pattern for any other: the
- * tenant is named in the platform path, the edit is audited, and the tenant's own service runs inside
- * that tenant's scope, so it reads and writes that tenant's tables only, with its usual rules. No
- * transaction here: the scope must be set before the service's transaction opens.
- */
+/** No transaction here: the tenant's scope must be set before the tenant service's transaction opens. */
 @Service
 @RequiredArgsConstructor
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -30,16 +25,12 @@ public class PlatformMetadataService {
     private final Tenants tenants;
     private final PlatformAudit audit;
 
-    /**
-     * The key as the tenant's admin reads it, with the version an edit takes. Not recorded: the audit trail
-     * is of what staff changed, and this changes nothing.
-     */
     public ObjectWrapper<MetadataResponse> findByName(UUID tenantId, String name) {
         tenants.requireActive(tenantId);
         return TenantScope.callAs(tenantId, () -> metadata.findByName(name));
     }
 
-    /** As the tenant's admin would, through {@link MetadataService#updateByName}; recorded first, so a refused edit is on record too. */
+    /** Recorded first, so a refused edit is on record too. */
     public ObjectWrapper<MetadataResponse> updateByName(UUID tenantId, String name, MetadataUpdateRequest request) {
         tenants.requireActive(tenantId);
         audit.record(tenantId, AUDIT_ACTION, name);

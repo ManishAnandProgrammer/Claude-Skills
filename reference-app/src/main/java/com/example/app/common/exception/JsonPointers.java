@@ -8,11 +8,6 @@ import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * JSON Pointers (RFC 6901) in their URI fragment form, the form RFC 9457's {@code errors} use: {@code #}
- * is the whole body, {@code #/items/0/name} a value in it. A token's {@code ~} is written {@code ~0} and
- * its {@code /} {@code ~1}, so a map key holding either still names one member.
- */
 public final class JsonPointers {
 
     public static final String WHOLE_BODY = "#";
@@ -24,9 +19,8 @@ public final class JsonPointers {
     }
 
     /**
-     * From the path Spring and Bean Validation give a field ({@code items[0].name}, {@code labels[key]}).
-     * A JSON property is named like its Java property: the application maps no other names. An element
-     * of a set has no position ({@code tagIds[]}), so its pointer names the set.
+     * A JSON property is named like its Java property: the application maps no other names. An element of a
+     * set has no position ({@code ids[]}), so its pointer names the set.
      */
     public static String fromPropertyPath(String propertyPath) {
         List<String> tokens = new ArrayList<>();
@@ -41,7 +35,6 @@ public final class JsonPointers {
         return of(tokens);
     }
 
-    /** The tokens of the location Jackson reports for a value it couldn't read, outermost first. */
     public static List<String> tokensOf(JacksonException exception) {
         List<String> tokens = new ArrayList<>();
         for (JacksonException.Reference reference : exception.getPath()) {

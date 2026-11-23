@@ -16,7 +16,6 @@ import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-/** One configuration: its key and its value as JSON. */
 @Entity
 @Table(name = "configuration_metadata")
 @Getter
@@ -34,7 +33,7 @@ public class ConfigurationMetadata extends AuditableEntity {
     /**
      * A {@code String}: Hibernate passes it through to {@code jsonb} untouched and never calls a JSON
      * format mapper of its own, so the application's {@code JsonMapper} (in {@code MetadataMapper})
-     * is the only one that reads and writes the document (DATA-27).
+     * is the only one that reads and writes the document.
      */
     @Setter
     @JdbcTypeCode(SqlTypes.JSON)

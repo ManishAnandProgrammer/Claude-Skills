@@ -8,11 +8,6 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.util.StringUtils;
 
-/**
- * The parameters every dropdown accepts: a batch ({@code size}, {@code after}) of a cursor-paged
- * list, so a large set (thousands of cities) is browsed in batches or narrowed with {@code query}.
- * Entities with mandatory or optional filters subclass it.
- */
 @Getter
 @Setter
 public class DropdownFilter extends CursorFilter implements QueryFilter {

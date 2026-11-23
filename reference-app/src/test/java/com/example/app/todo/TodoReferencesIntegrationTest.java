@@ -20,14 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * What a todo shows of other records, added to the todo in update mode (crud-gen *Updating an entity*):
- * its list by name, read with the todo in one statement for the detail and in a second statement for a list
- * page (tests.md row 28f); who asked for it, a person of another module, checked when a write names someone
- * new (row 28g; with tenancy, the members' side is
- * TodoRequesterTenancyIntegrationTest); its display number from the counter (rows 27b-27d; per tenant
- * with tenancy, CounterTenantIntegrationTest and TodoSeedsBackfillIntegrationTest).
- */
 class TodoReferencesIntegrationTest extends IntegrationTest {
 
     private static final String LISTS = "/api/v1/todo-lists";
@@ -151,10 +143,9 @@ class TodoReferencesIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * Runs {@code read} while the todo and its list are deleted. A transaction deletes both and holds the
-     * lists' table ACCESS EXCLUSIVE: a read of the todo alone still sees it, a read of the list waits for
-     * that lock. Once {@code read} waits there, the deletion commits. Read in one statement, the todo and
-     * its list go together (404); read lazily, the todo is found and its list is not (a 500).
+     * With the lists' table held ACCESS EXCLUSIVE by the deleting transaction, a read of the todo alone still
+     * sees it and a read of the list waits. Read in one statement, the todo and its list go together (404);
+     * read lazily, the todo is found and its list is not (a 500).
      */
     private Answer whileTheTodoAndItsListGo(String todoId, String listId, Callable<ResultActions> read) throws Exception {
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
@@ -178,8 +169,8 @@ class TodoReferencesIntegrationTest extends IntegrationTest {
             } finally {
                 commit.countDown();
             }
-            within(deletion);
-            return within(reading);
+            awaitResult(deletion);
+            return awaitResult(reading);
         }
     }
     // tenancy:begin

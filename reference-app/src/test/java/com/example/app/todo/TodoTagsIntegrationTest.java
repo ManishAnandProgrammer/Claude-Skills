@@ -28,11 +28,6 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * A todo's tags (TodoTag rows in todo_tags): set on create, replaced as a whole through
- * PUT /todos/{id}/tags, shown in the detail and the list rows, filtered by tagId, and taken off every
- * todo when the tag is deleted. Todo's other behaviour is TodoIntegrationTest's.
- */
 class TodoTagsIntegrationTest extends IntegrationTest {
 
     private static final String TODOS = "/api/v1/todos";
@@ -50,7 +45,6 @@ class TodoTagsIntegrationTest extends IntegrationTest {
                 """.formatted(name)).andExpect(status().isCreated()), "$.response.id");
     }
 
-    /** Creates a tag as {@code user}; fails the test unless it answers 201. */
     private String createTag(TestUser user, String name) throws Exception {
         return read(postAs(user.accessToken(), TAGS, """
                 {"name": "%s", "color": null}
@@ -81,7 +75,6 @@ class TodoTagsIntegrationTest extends IntegrationTest {
                 """.formatted(idsJson(tagIds), version);
     }
 
-    /** Creates a todo carrying {@code tagIds}; fails the test unless it answers 201. */
     private String createTodo(TestUser user, String listId, String title, List<String> tagIds) throws Exception {
         return read(postAs(user.accessToken(), TODOS, createPayload(listId, title, tagIds))
                 .andExpect(status().isCreated()), "$.response.id");
@@ -429,8 +422,7 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         TestUser user = newUser();
         String tag = createTag(user, "Walked");
         String listId = createList(user, "Walk");
-        // Due dates out of creation order, three on one day: batches of 2 split that group, so the id
-        // tie-breaker carries the walk across the boundary.
+        // Three on one day: batches of 2 split that group, so the id tie-breaker carries the walk across the boundary.
         String[] dueDates = {"2026-12-03", "2026-12-01", "2026-12-01", "2026-12-01", "2026-12-05"};
         List<String> titles = new ArrayList<>();
         for (int index = 0; index < dueDates.length; index++) {
@@ -442,13 +434,12 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         }
         createTodo(user, listId, "Untagged", List.of());
 
-        assertThat(walkTitles(user, TODOS + "?size=2&tagId=" + tag)).containsExactly("T1", "T2", "T3", "T0", "T4");
-        assertThat(walkTitles(user, TODOS + "?size=2&sort=NEWEST&tagId=" + tag))
+        assertThat(titlesAcrossBatches(user, TODOS + "?size=2&tagId=" + tag)).containsExactly("T1", "T2", "T3", "T0", "T4");
+        assertThat(titlesAcrossBatches(user, TODOS + "?size=2&sort=NEWEST&tagId=" + tag))
                 .containsExactlyElementsOf(titles.reversed());
     }
 
-    /** Follows nextCursor to the last batch (hasMore false, no cursor); returns every title in order. */
-    private List<String> walkTitles(TestUser user, String firstBatch) throws Exception {
+    private List<String> titlesAcrossBatches(TestUser user, String firstBatch) throws Exception {
         List<String> titles = new ArrayList<>();
         String next = firstBatch;
         int batches = 0;
@@ -467,10 +458,6 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         return titles;
     }
 
-    /**
-     * Two statements whatever the batch holds: the batch, then one query for the tags of all its rows
-     * (two steps instead of a collection fetch, DATA-26). The tagId filter is an exists inside the first.
-     */
     @Test
     @DisplayName("A batch of tagged todos is three statements (the batch, its lists, its tags), for 1 row and for a full batch, filtered by tag or not")
     void listWithTagsRunsAConstantNumberOfQueries() throws Exception {
@@ -535,20 +522,20 @@ class TodoTagsIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Todos tagged while the tag is deleted: the delete is 204, every create 404 TAG_GONE, and no todo or link is stored")
+    @DisplayName("Todos tagged while the tag is deleted: the delete is 204, every create 404 TAG_DELETED_MEANWHILE, and no todo or link is stored")
     void tagWritesRacingATagDeleteKeepTheInvariant() throws Exception {
         TestUser user = newUser();
         String tag = createTag(user, "Contested");
         String listId = createList(user, "Race");
 
-        // Held at the todo's insert, before its link: nothing locks the tag for a create, so the delete
-        // goes through, and the link's foreign key refuses each create after it, todo and all.
+        // Nothing locks the tag for a create, so the delete goes through, and the link's foreign key
+        // refuses each held create, todo and all.
         List<Answer> creates = createsHeldAtTheirInsert("todos",
                 () -> postAs(user.accessToken(), TODOS, createPayload(listId, "Racer", List.of(tag))),
                 () -> deleteAs(user.accessToken(), TAGS + "/" + tag).andExpect(status().isNoContent()));
 
         assertThat(creates).extracting(Answer::status).containsOnly(404);
-        assertRefusalsAre(creates, 404, "TAG_GONE");
+        assertRefusalsAre(creates, 404, "TAG_DELETED_MEANWHILE");
         assertThat(tagRows("tag_id", tag)).isZero();
         Integer todos = jdbc.queryForObject("select count(*) from todos where todo_list_id = ?::uuid", Integer.class, listId);
         assertThat(todos).isZero();
@@ -569,10 +556,6 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         assertThat(tagRows("todo_id", id)).isEqualTo(3);
     }
 
-    /**
-     * Runs {@code request} while a delete of {@code tagId}, cascading to its todo_tags rows, is held
-     * uncommitted in the test's own transaction, then commits the delete once the request waits on it.
-     */
     private Answer whileATagDeleteIsInFlight(String tagId, Callable<Answer> request) throws Exception {
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
         CountDownLatch deleted = new CountDownLatch(1);
@@ -590,8 +573,8 @@ class TodoTagsIntegrationTest extends IntegrationTest {
             } finally {
                 commit.countDown();
             }
-            within(tagDelete);
-            return within(answer);
+            awaitResult(tagDelete);
+            return awaitResult(answer);
         }
     }
 
@@ -634,7 +617,6 @@ class TodoTagsIntegrationTest extends IntegrationTest {
         TestUser stranger = newUser();
         String foreignTag = createTag(stranger, "Foreign");
         // tenancy-row:begin
-        // // Row mode: every insert names its tenant (tenant_id has no default).
         // UUID tenantId = testTenant().id();
         // String insert = """
         //         insert into todo_tags (id, tenant_id, todo_id, tag_id, owner_id, created_at, updated_at, version)

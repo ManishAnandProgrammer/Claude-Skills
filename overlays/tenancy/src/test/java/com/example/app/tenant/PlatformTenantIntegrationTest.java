@@ -16,7 +16,6 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** The tenant register for platform staff: creation with its owner, the lifecycle, the audit trail. */
 @WithoutTestTenant
 class PlatformTenantIntegrationTest extends IntegrationTest {
 
@@ -51,7 +50,7 @@ class PlatformTenantIntegrationTest extends IntegrationTest {
     void createIsApprovedWithTheOwnerAsAdmin() throws Exception {
         String staff = platformToken();
         String ownerEmail = uniqueEmail("owner");
-        String ownerId = read(rawSignup(ownerEmail, PASSWORD).andExpect(status().isCreated()), "$.response.id");
+        String ownerId = read(signupWithoutATenant(ownerEmail, PASSWORD).andExpect(status().isCreated()), "$.response.id");
 
         ResultActions created = postAs(staff, TENANTS, createPayload("  Acme Ltd ", ownerEmail))
                 .andExpect(status().isCreated())
@@ -67,11 +66,10 @@ class PlatformTenantIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.createdBy").isNotEmpty());
         UUID tenantId = UUID.fromString(read(created, "$.response.id"));
         Integer answeredVersion = read(created, "$.response.version");
-        // The version a client sends back on its next change is the current one.
         getAs(staff, TENANTS + "/" + tenantId).andExpect(jsonPath("$.response.version").value(answeredVersion));
 
         // roles:begin
-        // The owner's membership; their ADMIN role is the tenant's own data, given at its provisioning.
+        // The owner's ADMIN role is the tenant's own data, given at its provisioning.
         assertThat(jdbc.queryForObject("select count(*) from tenant_memberships where tenant_id = ? and user_id = ?::uuid",
                 Integer.class, tenantId, ownerId)).isOne();
         // roles:else
@@ -106,7 +104,6 @@ class PlatformTenantIntegrationTest extends IntegrationTest {
         changeStatus(staff, tenantId, "CLOSED", version(staff, tenantId))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_STATUS_CHANGE_INVALID"));
-        // A target no state may move to is the same refusal, not a 400 (error-contract ERR-05).
         changeStatus(staff, tenantId, "PENDING", version(staff, tenantId))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("TENANT_STATUS_CHANGE_INVALID"));
@@ -131,8 +128,8 @@ class PlatformTenantIntegrationTest extends IntegrationTest {
     void pendingCanBeRejectedNotActivated() throws Exception {
         String staff = platformToken();
         String ownerEmail = uniqueEmail("owner");
-        rawSignup(ownerEmail, PASSWORD).andExpect(status().isCreated());
-        // Registered, so not yet approved: a staff-created tenant may already be provisioned (row mode does it at once).
+        signupWithoutATenant(ownerEmail, PASSWORD).andExpect(status().isCreated());
+        // Registered, not staff-created: row mode provisions a staff-created tenant at once.
         UUID tenantId = tenants.register("Pending Ltd", ownerEmail);
 
         changeStatus(staff, tenantId, "ACTIVE", 0)

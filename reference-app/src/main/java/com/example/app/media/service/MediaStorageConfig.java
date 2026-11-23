@@ -11,11 +11,6 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.util.Objects;
 
-/**
- * The S3 client (the jobs' HEAD and DELETE) and the presigner (upload and read URLs), from
- * {@code app.media.*}. Credentials: the SDK's default provider chain (an IAM role in production,
- * environment or system properties elsewhere), never keys in configuration.
- */
 @Configuration(proxyBeanMethods = false)
 class MediaStorageConfig {
 

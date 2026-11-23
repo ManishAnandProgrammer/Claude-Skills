@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-/** Signup races past the service's existence check end on the unique email: answered as a taken email. */
 @Component
 class UserConstraintErrorCodes implements ConstraintErrorCodes {
 

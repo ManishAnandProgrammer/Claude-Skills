@@ -5,17 +5,18 @@ import com.example.app.common.pagination.TextSearch;
 import com.example.app.tenant.domain.Tenant;
 import com.example.app.tenant.domain.Tenant_;
 import com.example.app.tenant.dto.request.TenantFilter;
+import com.example.app.tenant.dto.request.TenantSort;
 import com.example.app.tenant.dto.response.TenantResponse;
 import com.example.app.tenant.repository.custom.CustomTenantRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.query.QueryUtils;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -37,7 +38,7 @@ class TenantRepositoryImpl implements CustomTenantRepository {
                 root.get(Tenant_.createdAt), root.get(Tenant_.updatedAt),
                 root.get(Tenant_.createdBy), root.get(Tenant_.updatedBy), root.get(Tenant_.version)));
         query.where(matching(builder, root, filter).toArray(new Predicate[0]));
-        query.orderBy(QueryUtils.toOrders(pageable.getSort(), root, builder));
+        query.orderBy(orderOf(builder, root, filter.getSort()));
 
         CriteriaQuery<Long> countQuery = builder.createQuery(Long.class);
         Root<Tenant> countRoot = countQuery.from(Tenant.class);
@@ -45,6 +46,15 @@ class TenantRepositoryImpl implements CustomTenantRepository {
         countQuery.where(matching(builder, countRoot, filter).toArray(new Predicate[0]));
 
         return OffsetPages.page(entityManager.createQuery(query), entityManager.createQuery(countQuery), pageable);
+    }
+
+    // NEWEST is never the id alone: the planner would walk the UUIDv7 primary key backward through every
+    // scope's rows instead of the scope's index.
+    private static List<Order> orderOf(CriteriaBuilder builder, Root<Tenant> root, TenantSort sort) {
+        return switch (sort) {
+            case NAME -> List.of(builder.asc(root.get(Tenant_.name)), builder.asc(root.get(Tenant_.id)));
+            case NEWEST -> List.of(builder.desc(root.get(Tenant_.createdAt)), builder.desc(root.get(Tenant_.id)));
+        };
     }
 
     private static List<Predicate> matching(CriteriaBuilder builder, Root<Tenant> root, TenantFilter filter) {

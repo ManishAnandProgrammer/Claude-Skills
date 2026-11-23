@@ -24,17 +24,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** A tenant ADMIN manages who belongs to their tenant; every tenant keeps an ADMIN. */
 @WithoutTestTenant
 class TenantMemberIntegrationTest extends IntegrationTest {
 
     private static final String MEMBERS = "/api/v1/tenant-members";
 
-    @Value("${app.rate-limit.members.add-per-account.requests}")
+    @Value("${app.rate-limit.members.add-per-account.capacity}")
     private int addsPerAccount;
     // session-version:begin
-    // An older token of a demoted or removed ADMIN: refused by the session version before the write's own
-    // check of the caller's current role (which stays, and is what refuses it without the session version).
+    // The session version refuses an older token before the write's own check of the caller's current role,
+    // which is what refuses it without the session version.
     private static final int OLDER_TOKEN_STATUS = 401;
     private static final String OLDER_TOKEN_REFUSAL = "SESSION_VERSION_STALE";
     // session-version:else
@@ -54,7 +53,6 @@ class TenantMemberIntegrationTest extends IntegrationTest {
                 """.formatted(role, version);
     }
 
-    /** A new account that is the tenant's only ADMIN (its owner is made a USER). */
     private TestUser soleAdminOf(TestTenant tenant) throws Exception {
         TestUser admin = newUserIn(tenant, "ADMIN");
         sql("update tenant_memberships set role = 'USER' where tenant_id = ? and user_id <> ?", tenant.id(), admin.id());
@@ -71,7 +69,6 @@ class TenantMemberIntegrationTest extends IntegrationTest {
                 Long.class, tenant.id(), userId);
     }
 
-    /** The person's one row in the tenant's own members (TEN-17), read in that tenant. */
     private Map<String, Object> memberRowOf(TestTenant tenant, UUID userId) {
         List<Map<String, Object>> rows = queryIn(tenant, "select * from members where user_id = ?", userId);
         assertThat(rows).hasSize(1);
@@ -89,7 +86,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
         String email = uniqueEmail("colleague");
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
 
         postAs(owner.accessToken(), MEMBERS, addPayload(email.toUpperCase(), "USER"))
                 .andExpect(status().isCreated())
@@ -131,7 +128,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
         TestUser admin = soleAdminOf(tenant);
         TestUser otherAdmin = newUserIn(tenant, "ADMIN");
         String email = uniqueEmail("colleague");
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
 
         for (int lookup = 0; lookup < addsPerAccount; lookup++) {
             postAs(admin.accessToken(), MEMBERS, addPayload(uniqueEmail("nobody"), "USER")).andExpect(status().isNotFound());
@@ -184,7 +181,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
         String email = uniqueEmail("colleague");
-        UUID colleague = UUID.fromString(read(rawSignup(email, PASSWORD).andExpect(status().isCreated()), "$.response.id"));
+        UUID colleague = UUID.fromString(read(signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated()), "$.response.id"));
 
         postAs(owner.accessToken(), MEMBERS, addPayload(email, "USER")).andExpect(status().isCreated());
         Map<String, Object> added = memberRowOf(tenant, colleague);
@@ -269,10 +266,10 @@ class TenantMemberIntegrationTest extends IntegrationTest {
         TestUser second = newUserIn(tenant, "ADMIN");
         TestUser member = newUserIn(tenant, "USER");
         String email = uniqueEmail("sock-puppet");
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
         putAs(second.accessToken(), MEMBERS + "/" + owner.id(), rolePayload("USER", versionOf(tenant, owner.id()))).andExpect(status().isOk());
 
-        // The owner's token still says ADMIN until it expires; second is now the only ADMIN.
+        // The owner's token still says ADMIN until it expires.
         putAs(owner.accessToken(), MEMBERS + "/" + second.id(), rolePayload("USER", versionOf(tenant, second.id())))
                 .andExpect(status().is(OLDER_TOKEN_STATUS))
                 .andExpect(jsonPath("$.errorCode").value(OLDER_TOKEN_REFUSAL));
@@ -321,7 +318,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
         TestTenant tenant = newTenant();
         TestUser owner = soleAdminOf(tenant);
         String email = uniqueEmail("colleague");
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
         ResultActions added = postAs(owner.accessToken(), MEMBERS, addPayload(email, "USER")).andExpect(status().isCreated());
         UUID userId = UUID.fromString(read(added, "$.response.userId"));
         Integer addedVersion = read(added, "$.response.version");
@@ -369,7 +366,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
             start.countDown();
             List<Answer> answers = new ArrayList<>();
             for (Future<Answer> answer : pending) {
-                answers.add(within(answer));
+                answers.add(awaitResult(answer));
             }
             // The second to take the tenant's lock is no ADMIN any more.
             // session-version:begin
@@ -451,7 +448,7 @@ class TenantMemberIntegrationTest extends IntegrationTest {
         TestUser owner = soleAdminOf(tenant);
         TestUser member = newUserIn(tenant, "USER");
         String email = uniqueEmail("candidate");
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
 
         postAs(member.accessToken(), MEMBERS, addPayload(email, "USER"))
                 .andExpect(status().isForbidden())

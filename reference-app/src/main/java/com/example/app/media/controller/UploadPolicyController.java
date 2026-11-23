@@ -3,7 +3,7 @@ package com.example.app.media.controller;
 import com.example.app.common.security.Permission;
 import com.example.app.common.security.Requires;
 import com.example.app.common.security.SignedIn;
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.media.api.UploadPurpose;
 import com.example.app.media.controller.api.UploadPolicyApi;
@@ -29,7 +29,7 @@ class UploadPolicyController implements UploadPolicyApi {
     @Override
     @GetMapping(version = "v1+")
     @SignedIn
-    public ListWrapper<UploadPolicyResponse> all() {
+    public BoundedListWrapper<UploadPolicyResponse> all() {
         return service.findAll();
     }
 

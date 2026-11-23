@@ -9,7 +9,6 @@ import org.springframework.core.env.Environment;
 import java.time.LocalDate;
 import java.util.Objects;
 
-/** Like {@link LatestDateValidator}: the date comes from configuration, read from the environment. */
 @RequiredArgsConstructor
 class EarliestDateValidator implements ConstraintValidator<EarliestDate, LocalDate> {
 

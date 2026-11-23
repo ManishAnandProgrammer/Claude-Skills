@@ -4,10 +4,9 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Every content type any purpose may accept, compared exactly: a substring or family match
- * ({@code image/*}) lets {@code image/svg+xml} through, which a browser runs as a document. SVG, HTML
- * and XML are never here. Code, not configuration: widening it is a security decision. A policy picks
- * from these ({@code PUT /upload-policies/{purpose}}).
+ * Compared exactly: a substring or family match ({@code image/*}) lets {@code image/svg+xml} through,
+ * which a browser runs as a document. SVG, HTML and XML are never here. Code, not configuration:
+ * widening it is a security decision.
  */
 public final class AllowedContentTypes {
 
@@ -25,7 +24,6 @@ public final class AllowedContentTypes {
     private AllowedContentTypes() {
     }
 
-    /** Exactly one of the allowed types: no parameters ({@code ;charset=}), no other case, no wildcard. */
     public static boolean isAllowed(String contentType) {
         return Objects.nonNull(contentType) && ALLOWED.contains(contentType);
     }

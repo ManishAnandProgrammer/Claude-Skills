@@ -19,7 +19,6 @@ import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Every 503 tells the client when to come back, whichever path produced it (ERR-02). */
 class GlobalExceptionHandlerRetryAfterTest {
 
     private static final RetryAfterProperties.Range BUSY = range(1, 3);

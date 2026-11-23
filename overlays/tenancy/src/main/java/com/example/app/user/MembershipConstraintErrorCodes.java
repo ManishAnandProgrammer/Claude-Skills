@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-/** Adding someone who is already a member ends on the unique pair, also when two admins add them at once. */
 @Component
 class MembershipConstraintErrorCodes implements ConstraintErrorCodes {
 

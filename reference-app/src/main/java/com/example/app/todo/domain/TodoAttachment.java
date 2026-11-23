@@ -18,11 +18,6 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.UUID;
 
-/**
- * One file on one todo, a member of the todo's aggregate: written only through {@link Todo#attach} and
- * {@link Todo#detach}. The file itself is the media module's, so it is an id here (its foreign key is
- * the database's, changeset 0010); a row is inserted and deleted, never updated.
- */
 @Entity
 @Table(name = "todo_attachments")
 @Getter

@@ -11,12 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
-/**
- * Runs each test method, with its {@code @BeforeEach} and {@code @AfterEach}, under
- * {@code TenantScope.runAs(testTenant)}: a test that calls a service or a job directly runs it in the
- * test tenant, as a request with the tenant's token would. A class marked {@link WithoutTestTenant} runs
- * without it.
- */
+/** A test that calls a service or a job directly runs it in the test tenant, as a request with the tenant's token would. */
 class TestTenantScope implements InvocationInterceptor {
 
     private final Supplier<UUID> testTenant;

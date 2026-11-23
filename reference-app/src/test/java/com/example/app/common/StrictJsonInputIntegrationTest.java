@@ -29,20 +29,6 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
-/**
- * A value is read only in its documented form: the settings are config/server.yml's {@code spring.jackson.*},
- * and a failed read is the handler's 400 {@code REQUEST_UNREADABLE}. Checked on the application's own mapper
- * with one field per type, so it holds whatever requests the modules declare.
- *
- * <p>The hostile-input matrix: one table per value type, each row a channel (a JSON body, a query
- * parameter, a cursor key), a hostile form and the 400 code it must get, sent to the test-only
- * {@code support/HostileInputProbeController} through the real stack. The forms: another JSON kind or
- * text (wrong type), past the field's bound (out of range), the right kind written another way
- * (non-canonical), empty, a NUL inside, a lone surrogate inside, the value left out (missing), and one more
- * than asked: a wrapping array in a body, a key more in a cursor (extra). A form no
- * plain setting refuses (house-review REST-22's "not a finding" list) has no row; a form that doesn't
- * apply to a type or channel (a cursor carries no enum, boolean or collection key) neither.</p>
- */
 class StrictJsonInputIntegrationTest extends IntegrationTest {
 
     private enum Level {
@@ -101,7 +87,6 @@ class StrictJsonInputIntegrationTest extends IntegrationTest {
     private static final String NUL = "<NUL>";
     private static final String SURROGATE = "<SURROGATE>";
 
-    /** Every probe field with a valid value, as JSON; a body row replaces one of them. */
     private static Map<String, String> validBody() {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("text", "\"probe\"");
@@ -115,7 +100,6 @@ class StrictJsonInputIntegrationTest extends IntegrationTest {
         return fields;
     }
 
-    /** Every probe parameter with a valid value; a query row replaces one of them. */
     private static Map<String, String> validQuery() {
         Map<String, String> parameters = new LinkedHashMap<>();
         parameters.put("text", "probe");
@@ -129,7 +113,6 @@ class StrictJsonInputIntegrationTest extends IntegrationTest {
         return parameters;
     }
 
-    /** The cursor keys in the probe's order (text, date, instant, uuid, number), as JSON; a cursor row replaces one. */
     private static List<String> validCursorKeys() {
         return new ArrayList<>(List.of("\"probe\"", "\"2026-01-10\"", "\"2026-01-10T10:00:00Z\"", "\"" + VALID_ID + "\"", "\"5\""));
     }
@@ -332,7 +315,6 @@ class StrictJsonInputIntegrationTest extends IntegrationTest {
         return "[" + String.join(",", ids) + "]";
     }
 
-    /** Sends {@code value} for {@code field} through {@code channel}, every other value valid; 400 with the code. */
     private void assertRefused(String channel, String field, String value, String errorCode) throws Exception {
         String token = newUser().accessToken();
         String raw = Objects.requireNonNullElse(value, "");

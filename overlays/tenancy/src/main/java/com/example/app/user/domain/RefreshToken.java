@@ -19,11 +19,6 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * A refresh token, stored only as its SHA-256 hash (the token itself is 256 random bits, so a fast
- * deterministic hash is enough and allows lookup). Single use: refreshing revokes it and issues a
- * new one.
- */
 @Entity
 @Table(name = "refresh_tokens")
 @Getter
@@ -35,7 +30,6 @@ public class RefreshToken extends AuditableEntity {
     @JoinColumn(name = "user_id", nullable = false, updatable = false)
     private User user;
 
-    /** The tenant its tokens are for: a refresh issues tokens for the same tenant. */
     @Column(name = "tenant_id", nullable = false, updatable = false)
     private UUID tenantId;
 
@@ -69,7 +63,6 @@ public class RefreshToken extends AuditableEntity {
         return !expiresAt.isAfter(now);
     }
 
-    /** Stops the token working; a token already revoked keeps its first time and reason. */
     public void revoke(RevocationReason reason, Instant now) {
         if (!isRevoked()) {
             revokedAt = now;
@@ -77,10 +70,6 @@ public class RefreshToken extends AuditableEntity {
         }
     }
 
-    /**
-     * Rotated less than {@code grace} ago: a second refresh with it is most likely a client
-     * duplicate (two tabs, a retry after a timeout), not a stolen token.
-     */
     public boolean wasRotatedWithin(Duration grace, Instant now) {
         return revocationReason == RevocationReason.ROTATED && revokedAt.plus(grace).isAfter(now);
     }

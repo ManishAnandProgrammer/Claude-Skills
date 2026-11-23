@@ -14,7 +14,6 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.UUID;
 
-/** The roles' management page is an admin's screen with page numbers and a total, so it is offset-paged. */
 @Getter
 @Setter
 public class AccessRoleFilter extends PageFilter implements QueryFilter {

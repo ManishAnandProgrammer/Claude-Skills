@@ -43,23 +43,20 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class TodoRepositoryImpl implements CustomTodoRepository {
 
-    /** The same value as the {@code due_sort} expression in changeset 0003. */
+    /** Must equal the {@code due_sort} expression's value in changeset 0003. */
     private static final LocalDate UNDATED_SORTS_LAST = LocalDate.of(9999, 12, 31);
 
-    /** Every order's keyset: its sort key, then the id. */
     private static final int CURSOR_KEYS = 2;
 
-    /** The dropdown's cursor names the direction it was taken in, so it is refused in the other. */
     private static final String TITLE_ASC = "TITLE_ASC";
     private static final String TITLE_DESC = "TITLE_DESC";
 
     private final EntityManager entityManager;
 
     /**
-     * DUE_DATE sorts by the generated {@code due_sort} column (the due date, or 9999-12-31): a seek
-     * key must never be null. NEWEST sorts by the creation time, newest first, the id last: never the id
-     * alone, or the primary key (which leads with the id) competes with the owner's index, and with UUIDv7
-     * ids in heap order the planner walks it backward through every newer row of every owner (DATA-10).
+     * DUE_DATE sorts by {@code due_sort}, not {@code due_date}: a seek key must never be null. NEWEST is never the
+     * id alone: the primary key, which leads with the id, would then compete with the owner's index, and with UUIDv7
+     * ids in heap order the planner walks it backward through every newer row of every owner.
      */
     @Override
     public CursorBatch<TodoSummaryResponse> findByFilter(TodoFilter filter, PredicateSpecification<Todo> scope, int size) {
@@ -72,7 +69,7 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         query.select(summaryOf(builder, root));
         List<Predicate> predicates = filterPredicates(builder, query, root, filter);
         predicates.add(scope.toPredicate(root, builder));
-        if (cursor.isPresent()) {
+        if (cursor.hasPosition()) {
             predicates.add(seekAfter(builder, root, filter.getSort(), cursor));
         }
         query.where(predicates.toArray(new Predicate[0]));
@@ -96,9 +93,8 @@ class TodoRepositoryImpl implements CustomTodoRepository {
     }
 
     /**
-     * Scrolls by title, then id (titles repeat: the id breaks the tie). The list is a plain condition next to the
-     * reach, so a list outside it yields an empty batch from this same statement; index
-     * {@code idx_todos_todo_list_id_owner_id_title_id} (changeset 0034) serves the list, the owner and the order.
+     * The list is a condition of this statement, never looked up first: a missing or another user's list answers
+     * like an empty one of the caller's, so nothing tells ids apart.
      */
     @Override
     public CursorBatch<TodoView> findDropdownViews(TodoDropdownFilter filter, PredicateSpecification<Todo> scope, int size) {
@@ -119,7 +115,7 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         if (filter.requireQueryPredicate()) {
             predicates.add(TextSearch.contains(builder, root.get(Todo_.title), filter.getQuery()));
         }
-        if (cursor.isPresent()) {
+        if (cursor.hasPosition()) {
             predicates.add(Seek.after(builder, descending,
                     root.get(Todo_.title), cursor.text(0),
                     root.get(Todo_.id), cursor.uuid(1)));
@@ -131,7 +127,6 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         return CursorBatch.of(rows, size, view -> Cursor.write(sort, view.title(), view.id()));
     }
 
-    /** The rows after the cursor's, in the sort's keyset (id last). */
     private static Predicate seekAfter(CriteriaBuilder builder, Root<Todo> root, TodoSort sort, Cursor cursor) {
         return switch (sort) {
             case DUE_DATE -> Seek.after(builder, false,
@@ -141,7 +136,6 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         };
     }
 
-    /** On the same columns as {@link #seekAfter}, in the same order. */
     private static List<Order> orderOf(CriteriaBuilder builder, Root<Todo> root, TodoSort sort) {
         return switch (sort) {
             case DUE_DATE -> Seek.order(builder, false, root.get(Todo_.dueSort), root.get(Todo_.id));
@@ -161,7 +155,6 @@ class TodoRepositoryImpl implements CustomTodoRepository {
                 root.get(Todo_.version));
     }
 
-    /** The predicates of the filters the request sets, in a list the caller adds the owner scope and the seek to. */
     private static List<Predicate> filterPredicates(CriteriaBuilder builder, CriteriaQuery<?> query, Root<Todo> root,
                                                     TodoFilter filter) {
         List<Predicate> predicates = new ArrayList<>();
@@ -192,7 +185,6 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         return predicates;
     }
 
-    /** An exists on the join table alone: a join would repeat rows, and the tag's own row isn't needed. */
     private static Predicate taggedWith(CriteriaBuilder builder, CriteriaQuery<?> query, Root<Todo> root, UUID tagId) {
         Subquery<Integer> tagged = query.subquery(Integer.class);
         Root<TodoTag> link = tagged.from(TodoTag.class);
@@ -202,7 +194,6 @@ class TodoRepositoryImpl implements CustomTodoRepository {
         return builder.exists(tagged);
     }
 
-    /** The row carries the real due date, so its sort key is derived the way {@code due_sort} is. */
     private static LocalDate dueSortOf(TodoSummaryResponse row) {
         return Objects.requireNonNullElse(row.dueDate(), UNDATED_SORTS_LAST);
     }

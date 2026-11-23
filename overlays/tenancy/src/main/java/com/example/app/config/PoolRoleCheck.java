@@ -20,8 +20,6 @@ import java.util.Map;
  *   <li>unable to write {@code platform_users} (0015): with that right, one SQL injection creates a staff
  *       account that may impersonate every tenant.</li>
  * </ul>
- * Checked once at startup, after the migrations; a violation stops the application, since nothing else
- * would notice.
  */
 @Component
 @DependsOn("liquibase")

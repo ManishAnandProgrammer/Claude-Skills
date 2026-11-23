@@ -16,10 +16,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/**
- * One permission of one role, a member of the role's aggregate: written only through {@link AccessRole}. The code
- * is text the application checks ({@link PermissionCodes}); a row is inserted and deleted, never updated.
- */
 @Entity
 @Table(name = "role_permissions")
 @Getter

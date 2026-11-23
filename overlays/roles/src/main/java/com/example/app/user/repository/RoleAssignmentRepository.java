@@ -13,7 +13,6 @@ public interface RoleAssignmentRepository extends JpaRepository<RoleAssignment, 
 
     Optional<RoleAssignment> findByUserIdAndRoleId(UUID userId, UUID roleId);
 
-    /** A person's assignments with their roles' codes and names, in one statement (uq_user_roles_user_id_role_id). */
     @EntityGraph(attributePaths = "role")
     List<RoleAssignment> findByUserId(UUID userId);
 }

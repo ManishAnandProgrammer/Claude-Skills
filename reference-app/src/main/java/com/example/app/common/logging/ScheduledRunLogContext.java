@@ -9,14 +9,9 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Gives every run of a {@code @Scheduled} job the log context a request gets: {@code requestId} is a
- * fresh id for this run, so one run's lines can be found together, and {@code endpoint} names the job
- * ({@code JOB RefreshTokenPurgeJob.purgeExpired}). Micrometer Tracing starts a trace per run on the
- * same observation, so {@code traceId} is set too.
- *
- * <p>Spring observes each run ({@code tasks.scheduled.execution}) on the thread that runs it, from
- * just before the method to just after it, so this is the one hook that knows which job is running.
- * Its {@code .active} long-task timer is the signal for a job that runs too long or hangs.</p>
+ * Spring observes each run of a {@code @Scheduled} job ({@code tasks.scheduled.execution}) on the thread that
+ * runs it, from just before the method to just after it, so this is the one hook that knows which job is
+ * running.
  */
 @Component
 class ScheduledRunLogContext implements ObservationHandler<ScheduledTaskObservationContext> {

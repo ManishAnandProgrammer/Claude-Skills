@@ -9,10 +9,6 @@ import org.springframework.core.env.Environment;
 import java.time.LocalDate;
 import java.util.Objects;
 
-/**
- * Reads the date from the environment itself: {@link Limits} serves numbers only. A Spring bean
- * (created through the validator factory), so the date comes from configuration.
- */
 @RequiredArgsConstructor
 class LatestDateValidator implements ConstraintValidator<LatestDate, LocalDate> {
 

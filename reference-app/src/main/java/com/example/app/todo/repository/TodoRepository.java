@@ -17,18 +17,12 @@ import java.util.UUID;
 public interface TodoRepository extends JpaRepository<Todo, UUID>, CustomTodoRepository {
 
     /**
-     * The todo with its list, in one statement (a join): what a response that shows the list's name reads when
-     * the todo isn't locked. A lazy list read afterwards would be a second statement, and a todo deleted with
-     * its list between the two would surface as an {@code EntityNotFoundException}, a 500, instead of the
-     * todo's 404 (house-review DATA-21; TodoReferencesIntegrationTest). Who may see it is TodoPolicy's.
+     * The list in the same statement: read lazily afterwards, a todo deleted with its list in between would surface
+     * as an {@code EntityNotFoundException}, a 500, instead of the todo's 404.
      */
     @EntityGraph(attributePaths = "todoList")
     Optional<Todo> findWithTodoListById(UUID id);
 
-    /**
-     * The views of a page's todos (another module's names for its rows), the view's columns only: a page's
-     * lookup never loads whole rows for a name (house-review DATA-11).
-     */
     @Query("""
             select new com.example.app.todo.api.TodoView(todo.id, todo.title,
                        case when todo.status = com.example.app.todo.domain.TodoStatus.OPEN then true else false end)
@@ -37,10 +31,8 @@ public interface TodoRepository extends JpaRepository<Todo, UUID>, CustomTodoRep
     List<TodoView> findViewsByIdInAndOwnerId(Collection<UUID> ids, UUID ownerId);
 
     /**
-     * A tag merge's lock on every todo carrying the tag, the write lock {@link CustomTodoRepository#findForUpdate}
-     * takes, in id order: two merges whose tags share todos lock them in the same order and queue instead of
-     * deadlocking, and each todo's own writes wait for the merge. One statement whatever their number; the
-     * rows stay in the database (only their count comes back).
+     * The write lock {@link CustomTodoRepository#findForUpdate} takes, in id order: two merges whose tags share
+     * todos lock them in the same order and queue instead of deadlocking.
      */
     // tenancy-row:begin
     // @Query(nativeQuery = true, value = """
@@ -65,9 +57,8 @@ public interface TodoRepository extends JpaRepository<Todo, UUID>, CustomTodoRep
     // tenancy-row:end
 
     /**
-     * A tag merge changes which tags these todos carry, so their versions move, as a tag replace moves one: a
-     * client holding an older copy is refused 409. A bulk update, so it sets {@code version} and the audit
-     * columns itself; the merge loaded none of these todos, so no managed copy goes stale.
+     * A bulk update bypasses Hibernate's versioning and auditing, so it sets them itself; the merge loaded none of
+     * these todos, so no managed copy goes stale.
      */
     @Modifying
     @Query("""

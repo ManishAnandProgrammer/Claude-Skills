@@ -7,7 +7,6 @@ import org.hibernate.validator.constraintvalidation.HibernateConstraintValidator
 
 import java.util.Objects;
 
-/** {@link ConfiguredMax} on a {@code Long} (sizes in bytes), whose limit may exceed an int. */
 @RequiredArgsConstructor
 class ConfiguredMaxLongValidator implements ConstraintValidator<ConfiguredMax, Long> {
 

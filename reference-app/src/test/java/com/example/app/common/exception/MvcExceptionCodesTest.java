@@ -9,7 +9,6 @@ import org.springframework.web.accept.NotAcceptableApiVersionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Spring's API version refusals, whatever the transport: one code, so clients handle them one way. */
 class MvcExceptionCodesTest {
 
     @Test

@@ -12,15 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
 /**
- * A use case that writes two aggregates, the tags and the todos (house-review ARCH-15's Manager): it owns the
- * one transaction, and each aggregate's service does its own part in it ({@code MANDATORY} halves), so a
- * failure in any part rolls back every part. It uses no repository.
- *
- * <p>The lock order, the same for every path that takes these locks: both tags (TagService.lockForMerge, the
- * lower id first), then the todos carrying the source, in id order (TodoService.moveTagLinks). No path takes
- * them the other way round: a todo's own writes lock the todo and reach a tag only through a link's foreign
- * key check, which waits for the source's key lock only when it adds the source, and then the merge doesn't
- * need that todo (it doesn't carry the source).</p>
+ * Lock order: both tags, then the todos carrying the source. No path takes them the other way round: a todo's own
+ * write locks the todo and reaches a tag only through a link's foreign key check, which waits for the source's key
+ * lock only when it adds the source, to a todo the merge doesn't lock (it doesn't carry the source).
  */
 @Service
 @RequiredArgsConstructor
@@ -30,10 +24,6 @@ public class TagMergeManager {
     private final TodoService todoService;
     private final CurrentUser currentUser;
 
-    /**
-     * Merges the request's tag into {@code targetId}: its todos carry the target instead, and it is deleted.
-     * Answers with the target.
-     */
     @Transactional
     public ObjectWrapper<TagResponse> merge(UUID targetId, TagMergeRequest request) {
         UUID ownerId = currentUser.id();

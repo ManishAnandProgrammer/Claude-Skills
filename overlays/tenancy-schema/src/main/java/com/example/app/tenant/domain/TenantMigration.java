@@ -14,11 +14,6 @@ import lombok.experimental.SuperBuilder;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * One tenant schema's migration record (schema-per-tenant mode): which changeset it reached and
- * whether its last run failed. Hibernate validates the template schema only; these rows are how every
- * other schema is known to be current.
- */
 @Entity
 @Table(name = "tenant_migrations")
 @Getter

@@ -16,13 +16,8 @@ import org.springframework.validation.annotation.Validated;
 import java.util.UUID;
 
 /**
- * Provisions the approved tenants: creates the schema, runs its first migration (the only place that
- * does: two migrators racing on a new schema fail), then seeds and activates the tenant under its own
- * scope. A tenant rejected after its approval gets no schema. Each step is idempotent, so a failed
- * tenant is retried from the start by the next run; every failure is logged at WARN, recorded on its
- * {@code tenant_migrations} row and counted on {@value #FAILED_METRIC} (an alert's signal: a tenant
- * that fails on every run stays PENDING).
- * Settings: {@code app.jobs.tenant-provisioning.*}.
+ * The only place a schema's first migration runs: two migrators racing on a new schema fail. Each step is idempotent,
+ * so a failed tenant is retried from the start by the next run.
  */
 @Slf4j
 @Component
@@ -35,7 +30,7 @@ public class TenantProvisioningJob {
     private final Settings settings;
     private final Counter failures;
 
-    // Hand-written (JAVA-26): the counter is registered at startup, so its series reads 0 before the first failure.
+    // Hand-written: the counter is registered at startup, so its series reads 0 before the first failure.
     TenantProvisioningJob(TenantSchemaMigrator migrator, TenantMigrationService migrations, Settings settings,
                           MeterRegistry meterRegistry) {
         this.migrator = migrator;
@@ -47,7 +42,7 @@ public class TenantProvisioningJob {
     }
 
     @Scheduled(cron = "${app.jobs.tenant-provisioning.cron}")
-    @MultiInstanceSafe("""
+    @MultiInstanceSafe(reason = """
             Runs under the tenant-schema advisory lock (TenantSchemaMigrator.runLocked): while one instance \
             provisions, another's run is skipped, so two migrators never meet on a new schema""")
     public void provisionPending() {
@@ -65,7 +60,7 @@ public class TenantProvisioningJob {
 
     private void provision(UUID tenantId) {
         try {
-            if (!migrations.stillToProvision(tenantId)) {
+            if (!migrations.provisionOrCancel(tenantId)) {
                 log.info("Tenant provisioning cancelled, the tenant is no longer pending: tenantId={}", tenantId);
                 return;
             }
@@ -80,11 +75,6 @@ public class TenantProvisioningJob {
         }
     }
 
-    /**
-     * {@code app.jobs.tenant-provisioning.*}.
-     *
-     * @param batchSize tenants provisioned per run
-     */
     @Validated
     @ConfigurationProperties(prefix = "app.jobs.tenant-provisioning")
     record Settings(@NotNull Cron cron, @Positive int batchSize) {

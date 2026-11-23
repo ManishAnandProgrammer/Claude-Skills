@@ -15,22 +15,13 @@ import java.util.Optional;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 
-/**
- * A repository belongs to the service of its aggregate (ARCH-15): the aggregate root's service uses
- * the repositories of the root and of the entities inside the aggregate, and enforces their rules;
- * everything else, other services and Manager services included, goes through that service. Going
- * around it would skip its validation, ownership checks, locks and (later) its cache.
- */
 @AnalyzeClasses(packages = "com.example.app", importOptions = ImportOption.DoNotIncludeTests.class)
 class AggregateArchTest {
 
-    // The review profile's `aggregates`. crud-gen adds a row for every new aggregate root, and puts an
-    // entity inside an aggregate into its root's `members` (that entity gets no service of its own).
     private static final List<Aggregate> AGGREGATES = List.of(
             new Aggregate("User", "UserService", List.of()),
             // roles:begin
             // new Aggregate("AccessRole", "AccessRoleService", List.of("RolePermission")),
-            // // A person's access: their assignments and personal grants, under the lock of their row.
             // new Aggregate("RoleAssignment", "PersonAccessService", List.of("PersonalGrant")),
             // roles:end
             // tenancy:begin
@@ -116,7 +107,6 @@ class AggregateArchTest {
         }
     }
 
-    /** The repository's own package and its fragments' ({@code impl}, {@code custom}): not another module's. */
     private static boolean isOwnRepositoryPackage(String userPackage, String repositoryPackage) {
         if (!userPackage.startsWith(repositoryPackage)) {
             return false;

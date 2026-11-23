@@ -14,16 +14,12 @@ import java.net.http.HttpClient;
 @Configuration
 class BreachedPasswordConfig {
 
-    // Asks the range API to pad its answer with fake suffixes, so the response size doesn't reveal
-    // how many breached passwords share the prefix (and so hint at the password).
+    // Fake suffixes in the answer: its size doesn't reveal how many breached passwords share the prefix.
     private static final String ADD_PADDING = "Add-Padding";
 
-    // A RestClient replacing the checker's own needs the API's base URL: the checker requests only
-    // the hash prefix. Ours adds timeouts (the default has none, so a hanging service would hold
-    // every signup), counts failures, which the checker itself swallows, and observes each call
-    // (http.client.requests, traceparent) through the registry, under one URI tag (see
-    // RangeLookupObservationConvention): Boot's RestClient.Builder lives in a module this application
-    // doesn't otherwise need.
+    // The checker's own RestClient has no timeouts: a hanging service would hold every signup. A replacement
+    // needs the API's base URL (the checker requests only the hash prefix), and is built here because Boot's
+    // RestClient.Builder lives in a module this application doesn't otherwise need.
     @Bean
     CompromisedPasswordChecker compromisedPasswordChecker(BreachedPasswordProperties properties,
                                                           MeterRegistry meterRegistry,

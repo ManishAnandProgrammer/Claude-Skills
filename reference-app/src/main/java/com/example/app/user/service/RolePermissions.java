@@ -15,17 +15,10 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
-/**
- * A token's permissions are its role's ({@link Role#permissions()}): the role is the one {@link TokenService}
- * wrote into the {@code roles} claim. A name that is no {@link Role} (a platform token's staff role, a role
- * removed since the token was issued) grants nothing. At startup each role's permissions are logged once, one DEBUG
- * line a role, on the authorization logger ({@code com.example.app.authorization}, off unless its level is set).
- */
 @Slf4j(topic = "com.example.app.authorization")
 @Component
 class RolePermissions implements TokenPermissions {
 
-    /** The claim TokenService writes the account's (with tenancy, the membership's) one role into. */
     static final String ROLES_CLAIM = "roles";
 
     @Override

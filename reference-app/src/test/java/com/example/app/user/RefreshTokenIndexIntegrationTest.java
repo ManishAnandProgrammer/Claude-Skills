@@ -14,21 +14,11 @@ import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The purge's batch (RefreshTokenRepository's own constant, what the job runs) reads the expiry index, never the whole
- * table, and is computed once (crud-gen tests.md row 28; house-review DATA-10, DATA-29). RefreshTokenPurgeJobIntegrationTest
- * proves which rows go.
- */
 class RefreshTokenIndexIntegrationTest extends IntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    /**
-     * The batch is {@code = ANY (ARRAY(...))}, an init plan computed once whatever the planner picks: as
-     * {@code IN (...)} it may run again per outer row and delete more than one batch. That is the statement's own
-     * text, so it is checked as text.
-     */
     @Test
     @DisplayName("The purge's batch is an init plan over idx_refresh_tokens_expires_at")
     void purgeBatchIsPlannedOnTheExpiryIndex() {

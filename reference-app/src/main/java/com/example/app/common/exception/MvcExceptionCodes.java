@@ -17,11 +17,6 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Optional;
 
-/**
- * The {@link ErrorCode} of an exception Spring MVC answers itself (a malformed body, a missing
- * parameter, a wrong method, an unsupported API version, an async timeout): a specific code where one exists, else one by status
- * class.
- */
 final class MvcExceptionCodes {
 
     private MvcExceptionCodes() {

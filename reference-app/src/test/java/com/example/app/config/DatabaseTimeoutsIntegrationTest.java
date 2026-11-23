@@ -13,12 +13,6 @@ import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The server-side limits are set on the app's connections, and in the right order: the statement
- * timeout fires before the socket timeout, so PostgreSQL cancels the query and the connection
- * survives, instead of the driver dropping it mid-query. Liquibase's own connection gets only the
- * lock timeout.
- */
 class DatabaseTimeoutsIntegrationTest extends IntegrationTest {
 
     @Autowired

@@ -13,13 +13,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.UUID;
 
-// tenancy:begin
-// /** An account. No role: with tenancy a role is per tenant, the membership's (GET /users/me/tenants lists them). */
-// tenancy:else
-// roles:begin
-// /** An account. No role: with the roles piece a person's roles and grants are their access (GET /users/{id}/access). */
-// roles:end
-// tenancy:end
 @Schema(description = "An account")
 public record UserResponse(
         @Schema(description = "Account id", example = "0190a9c2-6c43-7cc1-9f2a-1d1e5a6b7c8d") UUID id,

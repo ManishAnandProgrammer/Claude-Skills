@@ -9,10 +9,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 /**
- * A Spring bean (created through the validator factory), so the limit comes from configuration. It also
- * refuses what PostgreSQL can't store as sent, since every String with {@link MaxLength} passes here: the
- * NUL character (U+0000 in text is a 500 at the insert instead of a 400) and a lone surrogate, half of a
- * character, which UTF-8 can't carry (the driver would store a '?' in its place, behind a 201).
+ * Also refuses what PostgreSQL can't store as sent: the NUL character (U+0000 in text is a 500 at the insert
+ * instead of a 400) and a lone surrogate, half of a character, which UTF-8 can't carry (the driver would store
+ * a '?' in its place, behind a 201).
  */
 @RequiredArgsConstructor
 class MaxLengthValidator implements ConstraintValidator<MaxLength, String> {

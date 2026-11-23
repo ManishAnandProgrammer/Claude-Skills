@@ -16,9 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 /**
- * A signup that loses the race for its address (the existence check passed, {@code uq_users_email} refuses
- * the insert: the path a racing signup takes) logs neither the address, the name nor the password hash it
- * carried (SEC-04; {@code logServerErrorDetail: false} in {@code config/db.yml}).
+ * The insert skips signup's existence check, the path a racing signup takes; what keeps the values out is
+ * {@code logServerErrorDetail: false} in {@code config/db.yml}.
  */
 class AccountWriteLoggingIntegrationTest extends IntegrationTest {
 

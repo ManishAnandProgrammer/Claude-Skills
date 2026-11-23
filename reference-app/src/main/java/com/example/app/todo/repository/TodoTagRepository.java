@@ -12,27 +12,17 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Read models, the todo's delete and a tag merge's move: a todo's tag rows are otherwise written through
- * {@code Todo.replaceTags}.
- */
 public interface TodoTagRepository extends JpaRepository<TodoTag, UUID> {
 
     /**
-     * Every tag row of the todo, in one statement whatever is left of them: a tag's delete may have just
-     * removed some by cascade. Before the todo's own delete, whose cascade then finds none. A bulk
-     * delete skips auditing and versions, which is right for rows that are going away.
+     * Before the todo's own delete, in one statement that doesn't count the rows: a tag's delete may have just
+     * removed some by cascade, which the todo's versioned cascade, row by row, would answer with a conflict.
      */
     @Modifying(flushAutomatically = true)
     @Query("delete from TodoTag link where link.todo.id = :todoId")
     int deleteAllOfTodo(UUID todoId);
 
-    /**
-     * A tag merge's move: the target on every todo carrying the source and not the target yet, one statement
-     * whatever their number. Rows written outside Hibernate, so the statement names what it would fill: a
-     * UUIDv7 id, the audit columns, version 0. The merge holds every such todo's lock, so no other writer adds
-     * the target to one of them meanwhile (the unique key never trips).
-     */
+    /** The merge holds every such todo's lock, so no other writer adds the target to one of them meanwhile. */
     // tenancy-row:begin
     // @Modifying
     // @Query(nativeQuery = true, value = """
@@ -56,12 +46,10 @@ public interface TodoTagRepository extends JpaRepository<TodoTag, UUID> {
     int addTargetWhereSourceIs(UUID sourceTagId, UUID targetTagId, UUID ownerId, Instant now, UUID userId);
     // tenancy-row:end
 
-    /** A tag merge's last step on the todos: the source's rows go, its todos now carry the target. */
     @Modifying
     @Query("delete from TodoTag link where link.tag.id = :tagId and link.ownerId = :ownerId")
     int deleteAllOfTag(UUID tagId, UUID ownerId);
 
-    /** In tag id order (creation order), the order of {@link #findTagRowsOfTodos}. */
     @Query("""
             select new com.example.app.todo.dto.response.TodoTagResponse(tag.id, tag.name)
               from TodoTag link join link.tag tag

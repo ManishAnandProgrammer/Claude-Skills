@@ -11,11 +11,8 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * The TODO_ATTACHMENT purpose's starting limits in every new tenant (row mode). A changeset can't seed
- * a tenant's rows: there is no tenant when it runs, and row-level security refuses the owner too. So
- * the module that attaches the files seeds them when a tenant is provisioned, under its scope and in
- * its activating transaction, only when missing: the backfill in 0010 also reached the tenants still
- * PENDING when it ran.
+ * A changeset can't seed a new tenant's rows: there is no tenant when it runs, and row-level security refuses the
+ * owner too. Only when missing: the backfill in 0010 also reached the tenants still PENDING when it ran.
  */
 @Component
 @RequiredArgsConstructor
@@ -28,6 +25,6 @@ class TodoAttachmentPolicySeed {
 
     @EventListener
     void seed(TenantProvisioned provisioned) {
-        uploads.definePolicy(UploadPurpose.TODO_ATTACHMENT, STARTING_LIMITS);
+        uploads.definePolicyIfAbsent(UploadPurpose.TODO_ATTACHMENT, STARTING_LIMITS);
     }
 }

@@ -16,10 +16,6 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The tag list's and dropdown's indexes (crud-gen tests.md row 28): every offered filter and order has its
- * index, and each list's first page is planned on its order's index.
- */
 class TagIndexIntegrationTest extends IntegrationTest {
 
     private static final String TAG_ROW = """
@@ -27,8 +23,6 @@ class TagIndexIntegrationTest extends IntegrationTest {
               from tags""";
     private static final String DROPDOWN_ITEM = "select id, name from tags";
     // tenancy-row:begin
-    // // The repository's query names the tenant (Hibernate's @TenantId adds it), so the statement written as
-    // // the repository issues it does too.
     // private static final String AND_TENANT = " and tenant_id = :tenantId";
     // tenancy-row:else
     private static final String AND_TENANT = "";
@@ -37,7 +31,6 @@ class TagIndexIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    /** Each offered filter and order with the index that serves it. */
     static Stream<Arguments> offeredFiltersAndOrders() {
         return Stream.of(
                 Arguments.of("tags, NAME (and the dropdown's ALL, both directions)", "idx_tags_owner_id_name_id"),
@@ -55,8 +48,8 @@ class TagIndexIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * The list's and the dropdown's first page in their default order. The dropdown defaults to ACTIVE: walking
-     * the name index and skipping the inactive tags is an equally good plan as the status index, so either passes.
+     * The dropdown defaults to ACTIVE: walking the name index and skipping the inactive tags is an equally good
+     * plan as the status index, so either passes.
      */
     static Stream<Arguments> firstPages() {
         return Stream.of(

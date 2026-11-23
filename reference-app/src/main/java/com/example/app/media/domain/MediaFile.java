@@ -22,9 +22,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * One file someone was given an upload URL for. Mapped for its creation and for reads: every status
- * change is one conditional UPDATE in {@code MediaFileRepository}, so two writers (a claim, a job)
- * can't both act on the same state.
+ * Mapped for its creation and for reads: every status change is one conditional UPDATE in
+ * {@code MediaFileRepository}, so two writers (a claim, a job) can't both act on the same state.
  */
 @Entity
 @Table(name = "media_files")
@@ -37,7 +36,6 @@ import java.util.UUID;
 public class MediaFile extends AuditableEntity {
 // tenancy-row:end
 
-    /** {@code PURPOSE/uuid}: the object's key in the bucket, and the upload key clients send back. */
     @Column(nullable = false, updatable = false)
     private String key;
 
@@ -57,16 +55,14 @@ public class MediaFile extends AuditableEntity {
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private MediaFileStatus status = MediaFileStatus.PENDING;
+    private MediaFileStatus status = MediaFileStatus.UNCLAIMED;
 
     @Column(name = "uploaded_by", nullable = false, updatable = false)
     private UUID uploadedBy;
 
-    /** When the signed PUT stops being accepted. */
     @Column(name = "upload_expires_at", nullable = false, updatable = false)
     private Instant uploadExpiresAt;
 
-    /** When a file that was never attached stops being claimable. */
-    @Column(name = "expires_at", nullable = false, updatable = false)
-    private Instant expiresAt;
+    @Column(name = "claimable_until", nullable = false, updatable = false)
+    private Instant claimableUntil;
 }

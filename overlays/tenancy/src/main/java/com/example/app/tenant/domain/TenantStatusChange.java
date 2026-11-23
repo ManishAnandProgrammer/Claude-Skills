@@ -16,10 +16,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/**
- * One change of a tenant's status: the audit trail of the lifecycle, a member of the tenant's
- * aggregate. {@code created_by} names the staff member; it is null for a job.
- */
 @Entity
 @Table(name = "tenant_status_changes")
 @Getter
@@ -31,7 +27,6 @@ public class TenantStatusChange extends AuditableEntity {
     @JoinColumn(name = "tenant_id", nullable = false, updatable = false)
     private Tenant tenant;
 
-    /** Null for the creation. */
     @Enumerated(EnumType.STRING)
     @Column(name = "from_status", updatable = false)
     private TenantStatus fromStatus;

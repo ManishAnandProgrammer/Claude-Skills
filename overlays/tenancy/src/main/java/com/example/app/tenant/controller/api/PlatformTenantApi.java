@@ -38,6 +38,8 @@ public interface PlatformTenantApi {
 
     @Operation(summary = "One tenant")
     @ApiResponse(responseCode = "200", description = "The tenant")
+    @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TENANT_NOT_FOUND",
@@ -70,6 +72,8 @@ public interface PlatformTenantApi {
             seconds. Approving a tenant that is no longer PENDING is 409. A billing module's payment webhook \
             would approve the same way.""")
     @ApiResponse(responseCode = "202", description = "Approved: ACTIVE when already provisioned, else PENDING until provisioning follows")
+    @ApiResponse(responseCode = "400", description = "REQUEST_PARAMETER_INVALID (the id is not a UUID)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = "TENANT_NOT_FOUND",
@@ -84,7 +88,7 @@ public interface PlatformTenantApi {
             Takes effect at its members' next login, refresh or switch: within one access-token lifetime \
             (15 minutes). Every change is recorded with the staff member who made it.""")
     @ApiResponse(responseCode = "200", description = "Changed")
-    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
+    @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (a malformed id)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED (no platform token)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

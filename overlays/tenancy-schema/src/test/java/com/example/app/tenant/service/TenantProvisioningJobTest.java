@@ -19,7 +19,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** Every failed provisioning attempt is recorded on the tenant's row and counted, so an alert can see it. */
 class TenantProvisioningJobTest {
 
     private final TenantSchemaMigrator migrator = mock(TenantSchemaMigrator.class);
@@ -37,7 +36,7 @@ class TenantProvisioningJobTest {
             return true;
         });
         when(migrations.awaitingProvisioning(10)).thenReturn(List.of(failing, next));
-        when(migrations.stillToProvision(any())).thenReturn(true);
+        when(migrations.provisionOrCancel(any())).thenReturn(true);
     }
 
     @Test

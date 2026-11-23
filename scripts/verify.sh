@@ -100,7 +100,7 @@ wants() {
 
 # What the session-version piece leaves in a copy; a copy without it has none of it, its prose included (an API
 # text or javadoc describing the mechanism to a deployment that doesn't have it).
-SESSION_VERSION_TRACES='session-version|SessionVersion|session_version|SESSION_VERSION|"sv"|membership_id|TenantDeactivated|users/me/sessions|endAllSessions|logoutEverywhere|[Ss]ession versions?'
+SESSION_VERSION_TRACES='session-version|SessionVersion|session_version|SESSION_VERSION|"sv"|membership_id|TenantDeactivated|users/me/sessions|endAllSessions|[Ss]ession versions?'
 no_session_version() {
     if grep -rqE "$SESSION_VERSION_TRACES" "$@"; then
         echo "FAILED: session-version entries in a copy without the session-version piece:" >&2
@@ -327,7 +327,7 @@ if wants 2b; then
     sed -e 's/package com.acme.smoke;/package com.acme.example;/' -e 's/SmokeApplication/ExampleApplication/g' \
         "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$example/src/main/java/com/acme/example/ExampleApplication.java"
     "$REPO/scripts/bootstrap-copy.sh" --target "$example" --package com.acme.example --with core,sign-in,example,metadata > "$WORK/copy-example.log"
-    grep -rqE "(example|metadata|admin|media|tenancy-row):(begin|else|end)|TenantOwnedEntity|app\.tenant_id|ROW LEVEL SECURITY|definePolicy" "$example/src" && { echo "FAILED: piece markers or row-mode tenancy left in the copy" >&2; exit 1; }
+    grep -rqE "(example|metadata|admin|media|tenancy-row):(begin|else|end)|TenantOwnedEntity|app\.tenant_id|ROW LEVEL SECURITY|definePolicyIfAbsent" "$example/src" && { echo "FAILED: piece markers or row-mode tenancy left in the copy" >&2; exit 1; }
     grep -rqE "Attachment|UploadPurpose|MEDIA_(BUCKET|STORAGE)|UPLOAD_|media_files|awssdk" "$example/src" && { echo "FAILED: media entries left in an example copy without the media piece" >&2; exit 1; }
     [ -f "$example/src/test/java/com/acme/example/metadata/MetadataIntegrationTest.java" ] || { echo "FAILED: the metadata samples' tests are missing from the copy with both pieces" >&2; exit 1; }
     no_session_version "$example/src" "$example/docs"
@@ -402,8 +402,6 @@ if wants 2f; then
         && grep -q "session_version" "$files/src/main/java/com/acme/files/user/domain/User.java" \
         || { echo "FAILED: the session version per account is incomplete in the copy with the session-version piece" >&2; exit 1; }
     grep -rqE "membership_id|MEMBERSHIP_CLAIM|TenantDeactivated|MembershipService" "$files/src" && { echo "FAILED: the session version's tenancy parts in a copy without tenancy" >&2; exit 1; }
-    grep -q "SESSION_VERSION_STALE" "$files/src/main/java/com/acme/files/user/domain/Role.java" \
-        || { echo "FAILED: the Role javadoc doesn't say a role change reaches the next request with the session version" >&2; exit 1; }
     no_change_history "$files/src" "$files/docs"
     no_roles "$files/src" "$files/docs" "$files/spotbugs-exclude.xml"
     # The display number comes with the metadata piece (Counters): not in this copy.
@@ -437,9 +435,6 @@ if wants 2g; then
     grep -rqE "(example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration):(begin|else|end)|TODO_LIST|todo_lists|METADATA_|media_files|UploadPurpose|TenantOwnedEntity|app\.tenant_id" "$tenancy/src" \
         && { echo "FAILED: markers or other pieces' entries left in the tenancy copy" >&2; exit 1; }
     [ -f "$tenancy/src/main/java/com/acme/tenancy/config/LazyConnectionConfig.java" ] && { echo "FAILED: the lazy proxy in a tenancy copy (the hook borrows lazily)" >&2; exit 1; }
-    # The token's role is the membership's: no operator statement on users.role in the Role javadoc.
-    grep -q "UPDATE users" "$tenancy/src/main/java/com/acme/tenancy/user/domain/Role.java" \
-        && { echo "FAILED: the Role javadoc of a tenancy copy names the users.role statement (the role is the membership's)" >&2; exit 1; }
     no_session_version "$tenancy/src" "$tenancy/docs"
     no_change_history "$tenancy/src" "$tenancy/docs"
     no_roles "$tenancy/src" "$tenancy/docs" "$tenancy/spotbugs-exclude.xml"

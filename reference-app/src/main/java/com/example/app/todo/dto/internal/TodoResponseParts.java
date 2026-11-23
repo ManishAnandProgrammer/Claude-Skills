@@ -11,7 +11,6 @@ import com.example.app.todo.dto.response.TodoTagResponse;
 
 import java.util.List;
 
-/** What a todo's response shows beside the todo's own columns, read by TodoService for its mapper. */
 public record TodoResponseParts(
         // media:begin
         List<MediaFileView> attachments,

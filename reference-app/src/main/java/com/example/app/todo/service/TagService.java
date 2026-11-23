@@ -35,7 +35,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/** Every read and write is scoped to the caller: another user's tag answers 404, like a missing one. */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -46,7 +45,6 @@ public class TagService {
     private final CurrentUser currentUser;
     private final Paging paging;
 
-    /** A taken name is refused at the flush by {@code uq_tags_owner_id_name}: 409 {@code TAG_NAME_TAKEN}. */
     @Transactional
     public ObjectWrapper<TagResponse> create(TagCreateRequest request) {
         Tag saved = repository.saveAndFlush(mapper.toEntity(request, currentUser.id()));
@@ -59,7 +57,7 @@ public class TagService {
 
     public PaginationWrapper<TagResponse> findByFilter(TagFilter filter) {
         return PaginationWrapper.fromPage(
-                repository.findByFilter(filter, currentUser.id(), paging.offset(filter, filter.getSort().toSort())));
+                repository.findByFilter(filter, currentUser.id(), paging.offset(filter)));
     }
 
     @Transactional
@@ -71,31 +69,18 @@ public class TagService {
         return ObjectWrapper.withObject(mapper.toResponse(tag));
     }
 
-    /**
-     * Never blocked by the todos carrying the tag: the database removes it from them (changeset 0006),
-     * and their versions don't change.
-     */
     @Transactional
     public void delete(UUID id) {
         repository.delete(getOwnedTag(id, currentUser.id()));
         repository.flush();
     }
 
-    /**
-     * The tags the action {@code action} may use ({@link DropdownFor}): the caller's own, the one reach this
-     * dropdown lists. Tags have an active flag, so every {@code status} applies: ACTIVE, INACTIVE or ALL.
-     */
     public CursorWrapper<DropdownItem> dropdown(Permission action, DropdownFilter filter) {
-        DropdownFor.check(action, currentUser.permissions(), EnumSet.of(Reach.OWN));
+        DropdownFor.requireReach(action, currentUser.permissions(), EnumSet.of(Reach.OWN));
         CursorBatch<DropdownItem> batch = repository.findDropdownItems(filter, currentUser.id(), paging.cursorSize(filter));
         return CursorWrapper.of(batch.items(), batch.nextCursor());
     }
 
-    /**
-     * The owner's tags with these ids. An id that isn't one of the owner's tags is
-     * {@code TAG_NOT_FOUND}, naming the lowest of them, so the answer is repeatable. Not locked: a tag
-     * deleted before its link is written is refused by the link's foreign key, 404 {@code TAG_GONE}.
-     */
     public List<Tag> getOwnedTags(Set<UUID> ids, UUID ownerId) {
         if (ids.isEmpty()) {
             return List.of();
@@ -107,14 +92,7 @@ public class TagService {
         return tags;
     }
 
-    /**
-     * A merge's first half (TagMergeManager): both tags, the caller's own, locked in one order for every merge,
-     * the lower id first ({@link UUID#compareTo}) whichever side it is, so two merges of one pair, either way
-     * round, queue instead of deadlocking. The source takes the key lock (its links can't grow until it is
-     * deleted), the target the write lock (it stays, and todos may still be tagged with it). 400
-     * {@code TAG_MERGE_INTO_ITSELF} for one tag on both sides, before any lock; 404 {@code TAG_NOT_FOUND} for
-     * either side, naming it.
-     */
+    /** The lower id first, whichever side it is, so two merges of one pair, either way round, queue instead of deadlocking. */
     @Transactional(propagation = Propagation.MANDATORY)
     public TagMerge lockForMerge(UUID sourceId, UUID targetId, UUID ownerId) {
         if (sourceId.equals(targetId)) {
@@ -128,10 +106,6 @@ public class TagService {
         return new TagMerge(lockSource(sourceId, ownerId), target);
     }
 
-    /**
-     * A merge's last half, once the todos carry the target instead: deletes the source, which no link names
-     * any more, and answers with the target, whose own row the merge leaves as it was (its version too).
-     */
     @Transactional(propagation = Propagation.MANDATORY)
     public ObjectWrapper<TagResponse> finishMerge(TagMerge merge) {
         repository.delete(merge.source());

@@ -8,10 +8,9 @@ import org.springframework.http.client.observation.ClientHttpObservationDocument
 import org.springframework.http.client.observation.DefaultClientRequestObservationConvention;
 
 /**
- * Names every breached-password lookup by one URI. The checker requests {@code <base>/<prefix>} as a
- * literal string, so the default convention would tag each of the 16^5 SHA-1 prefixes as its own
- * {@code uri}: a timer per prefix, never removed, and password-derived values in the metrics and
- * trace backends.
+ * The checker requests {@code <base>/<prefix>} as a literal string, so the default convention would tag each of the
+ * 16^5 SHA-1 prefixes as its own {@code uri}: a timer per prefix, never removed, and password-derived values in the
+ * metrics and trace backends.
  */
 class RangeLookupObservationConvention extends DefaultClientRequestObservationConvention {
 

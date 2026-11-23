@@ -41,14 +41,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The account lifecycle of the sign-in piece: a password change, a suspension and a reactivation, each
- * against every token path (login, refresh, each request), and a suspension racing a token issue.
- *   <!-- tenancy:begin -->
- * With tenancy, platform staff suspend accounts; the staff endpoint's own rules (the last ADMIN of a tenant,
- * switch-tenant and impersonation of a suspended member) are PlatformUserStatusIntegrationTest's.
- *   <!-- tenancy:end -->
- */
 class AccountLifecycleIntegrationTest extends IntegrationTest {
 
     private static final String ME = "/api/v1/users/me";
@@ -63,7 +55,7 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    @Value("${app.rate-limit.sign-in.login-per-account.requests}")
+    @Value("${app.rate-limit.sign-in.login-per-account.capacity}")
     private int loginPerAccount;
 
     private ResultActions refresh(String refreshToken) throws Exception {
@@ -78,7 +70,6 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
                 """.formatted(currentPassword, newPassword));
     }
 
-    /** The version as the status changer reads it before a change: through the lookup by email, never SQL. */
     private long versionOf(TestUser account) throws Exception {
         Number version = read(lookUp(statusChanger(), account.email()).andExpect(status().isOk()), "$.response[0].version");
         return version.longValue();
@@ -88,7 +79,6 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
         return mvc.perform(get(ACCOUNTS).param("email", email).header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
     }
 
-    /** A token that changes account statuses: staff's with tenancy, an application ADMIN's without. */
     private String statusChanger() throws Exception {
         // tenancy:begin
         // return platformToken();
@@ -144,7 +134,6 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$.errorCode").value("SESSION_VERSION_STALE"));
         }
         // session-version:else
-        // // An access token lives out its lifetime (at most 15 minutes).
         // getAs(laptop.accessToken(), ME).andExpect(status().isOk());
         // session-version:end
         login(phone.email(), PASSWORD)
@@ -223,7 +212,6 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
         assertThat(liveRefreshTokensOf(phone.id())).isZero();
         // session-version:begin
         // session-version:else
-        // // The access token lives out its lifetime, but issues nothing: a password change is refused too.
         // changePassword(laptop.accessToken(), PASSWORD, NEW_PASSWORD)
         //         .andExpect(status().isForbidden())
         //         .andExpect(jsonPath("$.errorCode").value("AUTH_ACCOUNT_SUSPENDED"));
@@ -314,11 +302,9 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * Starts the suspension of {@code account} and holds it after its account update, at its revocation (a
-     * SHARE lock on refresh_tokens), then sends {@code tokenRequest} and waits until it waits on a lock too:
-     * the account's row, which the issue share-locks first. Without that lock the request would read the
-     * account as still ACTIVE and get past it. Then lets both go; returns the suspension's answer, then the
-     * request's.
+     * The suspension is held after its account update, at its revocation (a SHARE lock on refresh_tokens); the
+     * token request then waits on the account's row, which the issue share-locks first. Without that lock the
+     * request would read the account as still ACTIVE and get past it.
      */
     private List<ResultActions> whileASuspensionIsInProgress(TestUser account, Callable<ResultActions> tokenRequest) throws Exception {
         // The changer signs in before the gate shuts: its own sign-in writes a refresh token.
@@ -346,8 +332,8 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
             } finally {
                 openGate.countDown();
             }
-            within(gate);
-            return List.of(within(suspended), within(requested));
+            awaitResult(gate);
+            return List.of(awaitResult(suspended), awaitResult(requested));
         }
     }
     @Test
@@ -484,7 +470,7 @@ class AccountLifecycleIntegrationTest extends IntegrationTest {
             Future<Answer> firstAnswer = executor.submit(firstSuspends);
             Future<Answer> secondAnswer = executor.submit(secondSuspends);
             start.countDown();
-            answers = List.of(within(firstAnswer), within(secondAnswer));
+            answers = List.of(awaitResult(firstAnswer), awaitResult(secondAnswer));
         }
 
         assertThat(answers).filteredOn(answer -> answer.status() == 200).hasSize(1);

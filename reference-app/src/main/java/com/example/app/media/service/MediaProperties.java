@@ -13,11 +13,7 @@ import java.time.Duration;
 import java.util.Objects;
 
 /**
- * {@code app.media.*} (config/media.yml).
- *
- * @param region          bound through the SDK's {@code Region.of}, which takes any name: a wrong one fails at the first call
- * @param endpoint        null (empty in the file) for AWS; an S3-compatible store's absolute URL with a host otherwise
- * @param pendingLifetime how long after its upload URL expired a file can still be attached
+ * @param region bound through the SDK's {@code Region.of}, which takes any name: a wrong one fails at the first call
  */
 @Validated
 @ConfigurationProperties(prefix = "app.media")
@@ -27,7 +23,7 @@ record MediaProperties(@NotBlank String bucket,
                        boolean pathStyleAccess,
                        @NotNull Duration uploadUrlExpiry,
                        @NotNull Duration readUrlExpiry,
-                       @NotNull @DurationMin(days = 0) Duration pendingLifetime,
+                       @NotNull @DurationMin(days = 0) Duration claimGracePeriod,
                        @Valid @NotNull Client client) {
 
     // SigV4 signs a URL for at least one second and at most seven days: the SDK refuses any other expiry at each
@@ -49,12 +45,7 @@ record MediaProperties(@NotBlank String bucket,
         }
     }
 
-    /**
-     * {@code app.media.client.*}: the SDK sets neither by default, so a hung store would hold the thread.
-     *
-     * @param apiCallTimeout        the whole call, retries included
-     * @param apiCallAttemptTimeout one attempt
-     */
+    /** The SDK sets neither by default, so a hung store would hold the thread. */
     record Client(@NotNull @DurationMin(millis = 1) Duration apiCallTimeout,
                   @NotNull @DurationMin(millis = 1) Duration apiCallAttemptTimeout) {
 

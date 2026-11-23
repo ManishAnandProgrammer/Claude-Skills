@@ -25,7 +25,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** The change history's actor: which transactions it names a caller in, and a failure that never escapes it. */
 class ChangeHistoryActorTest {
 
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);

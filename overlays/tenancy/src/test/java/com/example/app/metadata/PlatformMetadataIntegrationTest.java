@@ -14,7 +14,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** A direct cross-tenant edit: staff change one tenant's configuration, audited, and only that tenant's. */
 @WithoutTestTenant
 @ResourceLock(MetadataIntegrationTest.FIXED_KEY)
 class PlatformMetadataIntegrationTest extends IntegrationTest {
@@ -22,7 +21,6 @@ class PlatformMetadataIntegrationTest extends IntegrationTest {
     private static final String VALUE = """
             {"reminderMinutesBefore": 45, "archiveDoneTodos": false, "dailyDigestAt": "07:15"}""";
 
-    /** The test tenant's key as seeded, put back after each test. */
     private StoredMetadata seeded;
 
     @BeforeEach

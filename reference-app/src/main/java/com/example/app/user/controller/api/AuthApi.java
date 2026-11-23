@@ -25,9 +25,8 @@ import org.springframework.http.ResponseEntity;
 public interface AuthApi {
 
     @Operation(summary = "Create an account", description = """
-            Creates a USER account. The email (ASCII) is stored lower-case; the password needs at \
-            least 8 characters and at most 72 bytes, with an upper-case letter, a lower-case letter, \
-            a digit and another character, and must not appear in a known data breach (checked \
+            Creates a USER account. The email (ASCII) is stored lower-case; the password follows \
+            its field's rules and must not appear in a known data breach (checked \
             against Have I Been Pwned without sending the password; skipped while that service is \
             unreachable or busy). Sign in afterwards with login.""")
     @ApiResponse(responseCode = "201", description = "Created; Location points at /api/{version}/users/me, in the version called")
@@ -49,6 +48,8 @@ public interface AuthApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTH_INVALID_CREDENTIALS",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "AUTH_ACCOUNT_SUSPENDED (the right password, for a suspended account)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "429", description = "RATE_LIMITED; wait Retry-After seconds",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
@@ -63,6 +64,8 @@ public interface AuthApi {
     @ApiResponse(responseCode = "400", description = "VALIDATION_FAILED, REQUEST_UNREADABLE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTH_INVALID_REFRESH_TOKEN (unknown, expired or reused)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "AUTH_ACCOUNT_SUSPENDED (the account was suspended after the token was issued)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "429", description = "RATE_LIMITED; wait Retry-After seconds",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

@@ -3,11 +3,6 @@ package com.example.app.common.exception;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-/**
- * One entry of a 400's {@code errors} list, the shape RFC 9457 gives in its own example: where in the
- * request a value failed, and why. A body value is named by a JSON Pointer ({@code #/items/0/name}), a
- * query or path parameter by its name; exactly one of the two is set.
- */
 @Schema(description = "One value of the request that failed: in the body (pointer) or a parameter (parameter)")
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record RequestError(

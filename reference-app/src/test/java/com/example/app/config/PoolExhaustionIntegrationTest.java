@@ -17,11 +17,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * With every pooled connection taken, a request waits {@code connection-timeout} and is answered 503
- * {@code DATABASE_UNAVAILABLE} with a {@code Retry-After}: never a 500 (ERR-03, TEST-18). The
- * connections are given back in {@code finally}, so the shared context goes on as before.
- */
 class PoolExhaustionIntegrationTest extends IntegrationTest {
 
     @Autowired

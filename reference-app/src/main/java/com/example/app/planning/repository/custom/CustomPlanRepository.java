@@ -13,9 +13,5 @@ public interface CustomPlanRepository {
 
     CursorBatch<PlanRow> findByFilter(PlanFilter filter, UUID ownerId, int size);
 
-    /**
-     * The days of the owner's live plans (not CANCELLED) that share a day with {@code from}..{@code to}, both
-     * inclusive, in calendar order: one statement over {@code idx_plans_owner_id_starts_on_id}.
-     */
     List<PlanDays> findLiveDays(UUID ownerId, LocalDate from, LocalDate to);
 }

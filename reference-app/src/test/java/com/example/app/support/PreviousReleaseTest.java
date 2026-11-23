@@ -9,7 +9,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** What a release shipped, in the two changeset ranges: the pieces' 0001 to 0099, a project's own from 0100. */
 class PreviousReleaseTest {
 
     @Test

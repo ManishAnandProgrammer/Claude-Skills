@@ -2,7 +2,6 @@ package com.example.app.common.security;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-/** One unmet precondition of an action, as the write's error response would name it. */
 @Schema(description = "One reason you may not do an action")
 public record AllowedActionReason(
         @Schema(description = "The errorCode the action's call would answer for this reason", example = "TODO_NOT_YOURS")

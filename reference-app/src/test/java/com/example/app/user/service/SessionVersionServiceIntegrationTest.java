@@ -23,10 +23,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The session version's cache rules (SessionVersionService), without tenancy: the number is the account's.
- * The HTTP behaviour is {@code SessionVersionIntegrationTest}'s.
- */
 class SessionVersionServiceIntegrationTest extends IntegrationTest {
 
     @Autowired
@@ -58,8 +54,7 @@ class SessionVersionServiceIntegrationTest extends IntegrationTest {
         return redis.opsForValue().get(SessionVersionService.key(userId));
     }
 
-    /** One committed access change: the account signed out everywhere. */
-    private void bump(UUID userId) {
+    private void signOutEverywhere(UUID userId) {
         tokens.endAllSessions(userId);
     }
 
@@ -89,7 +84,7 @@ class SessionVersionServiceIntegrationTest extends IntegrationTest {
         redis.delete(SessionVersionService.key(user.id()));
         int readBeforeTheBump = storedVersion(user.id());
 
-        bump(user.id());
+        signOutEverywhere(user.id());
         sessionVersions.fillIfAbsent(user.id(), readBeforeTheBump);
 
         assertThat(cached(user.id())).isEqualTo(Integer.toString(readBeforeTheBump + 1));
@@ -114,7 +109,7 @@ class SessionVersionServiceIntegrationTest extends IntegrationTest {
         assertThat(storedVersion(user.id())).isZero();
         assertThat(cached(user.id())).isEqualTo("0");
         assertThat(sessionVersions.isCurrent(decoded(user.accessToken()))).isTrue();
-        bump(user.id());
+        signOutEverywhere(user.id());
         assertThat(storedVersion(user.id())).isOne();
         assertThat(cached(user.id())).isEqualTo("1");
     }
@@ -123,7 +118,7 @@ class SessionVersionServiceIntegrationTest extends IntegrationTest {
     @DisplayName("A token newer than Redis's copy (a publish that was lost) is decided by the database: current, so accepted")
     void aTokenNewerThanTheCacheAsksTheDatabase() throws Exception {
         TestUser user = newUser();
-        bump(user.id());
+        signOutEverywhere(user.id());
         Jwt current = decoded(signIn(user).accessToken());
         redis.opsForValue().set(SessionVersionService.key(user.id()), "0");
 
@@ -162,7 +157,7 @@ class SessionVersionServiceIntegrationTest extends IntegrationTest {
                     properties, breakers, meters);
 
             assertThat(withoutRedis.isCurrent(revoked)).isTrue();
-            bump(user.id());
+            signOutEverywhere(user.id());
             assertThat(withoutRedis.isCurrent(revoked)).isFalse();
             assertThat(breakers.circuitBreaker(SessionVersionService.CIRCUIT_BREAKER).getState()).isEqualTo(CircuitBreaker.State.OPEN);
             assertThat(withoutRedis.isCurrent(decoded(signIn(user).accessToken()))).isTrue();

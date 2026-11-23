@@ -10,10 +10,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * The date is on or after {@code app.limits.earliest-date.<value>} (yyyy-MM-dd), e.g. {@code "todo.due-date"}.
- * Every date a request carries into a column or a query takes it, beside {@link LatestDate} or
- * {@link NotAfterToday}: a {@code LocalDate} reaches years PostgreSQL's {@code date} can't hold, which
- * would surface as a 500 at the database instead of a 400.
+ * A {@code LocalDate} reaches years PostgreSQL's {@code date} can't hold, which would surface as a 500 at the
+ * database instead of a 400.
  */
 @Documented
 @Constraint(validatedBy = EarliestDateValidator.class)

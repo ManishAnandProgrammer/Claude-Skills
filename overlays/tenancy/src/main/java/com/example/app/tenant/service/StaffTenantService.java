@@ -11,11 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
 /**
- * Staff's create and approve, answered with the tenant as it is once they return. Row mode provisions
- * right after the approving transaction commits: a body mapped inside that transaction would show an
- * ACTIVE tenant as PENDING, with the version before its activation, and a client sending that version
- * back would get 409. No transaction here, so the read starts after the commit and its provisioning.
- * With a schema per tenant the job provisions later, and the answer is PENDING until then.
+ * Row mode provisions right after the approving transaction commits: a body mapped inside that transaction would show
+ * an ACTIVE tenant as PENDING, with the version before its activation, so the read starts after the commit.
  */
 @Service
 @RequiredArgsConstructor

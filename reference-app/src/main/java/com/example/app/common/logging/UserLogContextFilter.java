@@ -12,12 +12,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.UUID;
 
-/**
- * Names the signed-in user (their id, never their email) on the request's log lines. Runs inside
- * the security chain, right after the bearer token is verified; {@link RequestLogContextFilter}
- * clears it when the request ends. Not a bean, so the servlet container doesn't register it a
- * second time outside the chain.
- */
+/** Not a bean, so the servlet container doesn't register it a second time outside the chain. */
 @RequiredArgsConstructor
 public class UserLogContextFilter extends OncePerRequestFilter {
 

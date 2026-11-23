@@ -15,10 +15,6 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The todo, todo list and todo-tag indexes (crud-gen tests.md row 28): every offered filter and order has its
- * index, and each list's first page is planned on its order's index.
- */
 class TodoIndexIntegrationTest extends IntegrationTest {
 
     @Autowired
@@ -43,7 +39,6 @@ class TodoIndexIntegrationTest extends IntegrationTest {
     private static final String AND_TENANT = "";
     // tenancy-row:end
 
-    /** Each offered filter and order, and each foreign key's check, with the index that serves it. */
     static Stream<Arguments> offeredFiltersAndOrders() {
         return Stream.of(
                 Arguments.of("todos, DUE_DATE", "idx_todos_owner_id_due_sort_id"),
@@ -74,7 +69,6 @@ class TodoIndexIntegrationTest extends IntegrationTest {
         assertThat(QueryPlan.indexExists(jdbc, index)).as(served).isTrue();
     }
 
-    /** Each list's first page in its default order, as its repository issues it, with its order's index. */
     static Stream<Arguments> firstPages() {
         return Stream.of(
                 Arguments.of("todos", "idx_todos_owner_id_due_sort_id",

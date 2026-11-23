@@ -34,7 +34,6 @@ public class UserMapper {
                 user.getVersion());
     }
 
-    /** The areas are those of the held permissions; both in their enums' order, so the answer is stable. */
     public AccessResponse toAccessResponse(Set<Permission> held) {
         Set<Permission> permissions = EnumSet.noneOf(Permission.class);
         permissions.addAll(held);

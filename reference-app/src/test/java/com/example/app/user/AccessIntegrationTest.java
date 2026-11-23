@@ -46,12 +46,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * What a token grants: its role's permissions as its authorities, and GET /users/me/access showing them.
- *   <!-- roles:begin -->
- <!-- * With the roles piece a token carries no role: the converter's own tests are RolePermissionsIntegrationTest's. -->
- *   <!-- roles:end -->
- */
 class AccessIntegrationTest extends IntegrationTest {
 
     private static final String ACCESS = "/api/v1/users/me/access";

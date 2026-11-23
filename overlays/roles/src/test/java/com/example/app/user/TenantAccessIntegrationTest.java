@@ -32,18 +32,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The roles piece with tenancy (house-review AUTHZ-11, TEN-08): a tenant's roles are its own, a person's access is on
- * their member row, and adding or removing a member is a change of their access, under the rules every such change
- * keeps (AUTHZ-12), counted in the caller's tenant. Every test makes its own tenants: the safety rules count a
- * tenant's whole team.
- */
+/** Every test makes its own tenants: the safety rules count a tenant's whole team. */
 @WithoutTestTenant
 class TenantAccessIntegrationTest extends RolesFixtures {
 
     private static final String MEMBERS = "/api/v1/tenant-members";
     // tenancy-row:begin
-    /** A fixture's insert names its row's tenant: row mode's tenant tables have no default (TEN-30). */
+    /** Row mode's tenant tables have no default tenant_id, so a fixture's insert names it. */
     private static final String TENANT_COLUMN = "tenant_id,";
     // tenancy-row:end
     // tenancy-schema:begin
@@ -58,7 +53,7 @@ class TenantAccessIntegrationTest extends RolesFixtures {
     // private static final String OLDER_TOKEN_REFUSAL = "ACCESS_DENIED";
     // session-version:end
 
-    @Value("${app.rate-limit.members.add-per-account.requests}")
+    @Value("${app.rate-limit.members.add-per-account.capacity}")
     private int addsPerAccount;
 
     @Autowired
@@ -73,12 +68,10 @@ class TenantAccessIntegrationTest extends RolesFixtures {
                 """.formatted(email);
     }
 
-    /** The id of the tenant's copy of a built-in role. */
     private String builtInRoleOf(TestTenant tenant, String role) {
         return queryIn(tenant, "select id::text as id from roles where built_in = ?", role).getFirst().get("id").toString();
     }
 
-    /** The codes of the roles the person holds in the tenant. */
     private List<String> rolesOf(TestTenant tenant, UUID userId) {
         List<String> codes = new ArrayList<>();
         for (Map<String, Object> row : queryIn(tenant, """
@@ -97,20 +90,18 @@ class TenantAccessIntegrationTest extends RolesFixtures {
                 Integer.class, tenant.id(), userId);
     }
 
-    /** The person's one row in the tenant's own members (TEN-17), read in that tenant. */
     private Map<String, Object> memberRowOf(TestTenant tenant, UUID userId) {
         List<Map<String, Object>> rows = queryIn(tenant, "select * from members where user_id = ?", userId);
         assertThat(rows).hasSize(1);
         return rows.getFirst();
     }
 
-    /** The tenant's owner: its oldest membership. */
+    /** The owner is the tenant's oldest membership. */
     private UUID ownerOf(TestTenant tenant) {
         return jdbc.queryForObject("select user_id from tenant_memberships where tenant_id = ? order by id limit 1",
                 UUID.class, tenant.id());
     }
 
-    /** A new member of the tenant holding a new role of the tenant of exactly these permissions, until LATER. */
     private TestUser holderIn(TestTenant tenant, TestUser admin, Permission... permissions) throws Exception {
         TestUser user = newUserIn(tenant, "USER");
         assign(admin.accessToken(), user.id(), createRole(admin.accessToken(), permissions), LATER).andExpect(status().isOk());
@@ -124,7 +115,7 @@ class TenantAccessIntegrationTest extends RolesFixtures {
         TestUser admin = newUserIn(tenant, "ADMIN");
         TestUser existing = newUserIn(tenant, "USER");
         String email = uniqueEmail("colleague");
-        UUID colleague = UUID.fromString(read(rawSignup(email, PASSWORD).andExpect(status().isCreated()), "$.response.id"));
+        UUID colleague = UUID.fromString(read(signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated()), "$.response.id"));
 
         postAs(admin.accessToken(), MEMBERS, addPayload(email.toUpperCase()))
                 .andExpect(status().isCreated())
@@ -156,13 +147,13 @@ class TenantAccessIntegrationTest extends RolesFixtures {
         TestUser manager = holderIn(tenant, admin, Permission.TENANT_MEMBERS_MANAGE);
         sqlIn(tenant, "delete from user_roles where user_id = ? and role_id = (select id from roles where built_in = 'USER')",
                 manager.id());
-        // The tenant's copy of USER, edited to hold what the manager doesn't (a copy: the enum is untouched).
+        // The tenant's copy of USER now holds what the manager doesn't.
         sqlIn(tenant, """
                 insert into role_permissions (id, %s role_id, permission, created_at, updated_at, version)
                 select uuidv7(), %s id, 'ROLES_MANAGE', now(), now(), 0 from roles where built_in = 'USER'"""
                 .formatted(TENANT_COLUMN, TENANT_COLUMN));
         String email = uniqueEmail("colleague");
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
 
         try {
             postAs(manager.accessToken(), MEMBERS, addPayload(email))
@@ -188,13 +179,13 @@ class TenantAccessIntegrationTest extends RolesFixtures {
         TestUser admin = newUserIn(tenant, "ADMIN");
         TestUser manager = holderIn(tenant, admin, Permission.TENANT_MEMBERS_MANAGE);
         sqlIn(tenant, "update user_roles set valid_until = ? where user_id = ?", Timestamp.from(LATER), manager.id());
-        // The tenant's copy of USER, edited to hold what the manager holds only until LATER.
+        // The tenant's copy of USER now holds what the manager holds only until LATER.
         sqlIn(tenant, """
                 insert into role_permissions (id, %s role_id, permission, created_at, updated_at, version)
                 select uuidv7(), %s id, 'TENANT_MEMBERS_MANAGE', now(), now(), 0 from roles where built_in = 'USER'"""
                 .formatted(TENANT_COLUMN, TENANT_COLUMN));
         String email = uniqueEmail("colleague");
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
 
         try {
             postAs(manager.accessToken(), MEMBERS, addPayload(email))
@@ -216,7 +207,7 @@ class TenantAccessIntegrationTest extends RolesFixtures {
         TestUser admin = newUserIn(tenant, "ADMIN");
         TestUser otherAdmin = newUserIn(tenant, "ADMIN");
         String email = uniqueEmail("colleague");
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
 
         for (int lookup = 0; lookup < addsPerAccount; lookup++) {
             postAs(admin.accessToken(), MEMBERS, addPayload(uniqueEmail("nobody"))).andExpect(status().isNotFound());
@@ -358,9 +349,9 @@ class TenantAccessIntegrationTest extends RolesFixtures {
             Future<Answer> secondRemovesFirst = executor.submit(() -> answerOf(deleteAs(second.accessToken(), MEMBERS + "/" + first.id())));
             awaitLockWaiters(2, null);
             release.countDown();
-            within(holder);
+            awaitResult(holder);
 
-            List<Answer> answers = List.of(within(firstRemovesSecond), within(secondRemovesFirst));
+            List<Answer> answers = List.of(awaitResult(firstRemovesSecond), awaitResult(secondRemovesFirst));
             assertThat(answers).extracting(Answer::status).containsExactlyInAnyOrder(204, 403);
             assertThat(answers).filteredOn(answer -> answer.status() == 403).extracting(Answer::errorCode).containsExactly("ACCESS_DENIED");
         } finally {
@@ -377,7 +368,7 @@ class TenantAccessIntegrationTest extends RolesFixtures {
         TestUser admin = newUserIn(tenant, "ADMIN");
         TestUser second = newUserIn(tenant, "ADMIN");
         String email = uniqueEmail("sock-puppet");
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
 
         deleteAs(admin.accessToken(), MEMBERS + "/" + second.id()).andExpect(status().isNoContent());
 
@@ -509,7 +500,6 @@ class TenantAccessIntegrationTest extends RolesFixtures {
         assertThat(rolesOf(tenant, admin.id())).containsExactly("ADMIN");
     }
 
-    /** What the per-request read gives the person in the tenant, as the security chain reads it. */
     private Set<Permission> heldIn(TestTenant tenant, UUID userId) {
         return TenantScope.callAs(tenant.id(), () -> access.effectivePermissions(userId));
     }

@@ -23,7 +23,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Platform staff acting as a tenant's member: the token, its actor, the audit row and the policy's gate. */
 @WithoutTestTenant
 class ImpersonationIntegrationTest extends IntegrationTest {
 
@@ -41,13 +40,11 @@ class ImpersonationIntegrationTest extends IntegrationTest {
     }
 
     // roles:begin
-    /** The tenant's owner: its oldest membership (the roles piece gave it the tenant's ADMIN role). */
     private UUID ownerOf(TestTenant tenant) {
         return jdbc.queryForObject("select user_id from tenant_memberships where tenant_id = ? order by id limit 1",
                 UUID.class, tenant.id());
     }
 
-    /** What the token may do in its tenant, read where every check reads it. */
     private List<String> permissionsOf(String accessToken) throws Exception {
         return read(getAs(accessToken, "/api/v1/users/me/access").andExpect(status().isOk()), "$.response.permissions");
     }

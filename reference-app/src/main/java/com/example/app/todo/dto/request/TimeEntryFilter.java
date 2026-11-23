@@ -21,11 +21,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Time entries are read by the todo's screen in an end-user app, so this list is cursor-paged. Both ranges
- * are inclusive; an inverted one is a 400, each comes with its own column's order, and the minutes bounds
- * take the values an entry can have.
- */
 @Getter
 @Setter
 public class TimeEntryFilter extends CursorFilter {
@@ -67,7 +62,6 @@ public class TimeEntryFilter extends CursorFilter {
         return !CollectionUtils.isEmpty(ids);
     }
 
-    /** An inverted range is a mistake the client should hear about, not an empty list. */
     @CrossField(reportedOn = "spentOnTo", message = "{time-entry.spent-on-range}")
     public boolean isSpentOnRangeOrdered() {
         return DateRanges.isOrdered(spentOnFrom, spentOnTo);
@@ -78,11 +72,7 @@ public class TimeEntryFilter extends CursorFilter {
         return NumberRanges.isOrdered(minMinutes, maxMinutes);
     }
 
-    /**
-     * A range filter comes with the order of its own column: under SPENT_ON the days are a range of the
-     * spent-on index, under MINUTES no index serves them (the walk reads the todo's every entry until a page
-     * is full). Likewise the minutes under MINUTES only. Reported on each bound sent.
-     */
+    /** A range filter needs its own column's order: under any other, no index serves it and the walk reads every entry. */
     @CrossField(reportedOn = "spentOnFrom", message = "{time-entry.spent-on-filter-order}")
     public boolean isSpentOnFromSortedBySpentOn() {
         return Objects.isNull(spentOnFrom) || sort == TimeEntrySort.SPENT_ON;

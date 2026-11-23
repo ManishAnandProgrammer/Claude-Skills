@@ -27,7 +27,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** The real Have I Been Pwned checker, wired as in production, against a local range API. */
 class BreachedPasswordConfigTest {
 
     // SHA-1 of "Password123!" is 49EFE F5F70D47ADC2DB2EB397FBEF5F7BC560E29: the API is asked for the
@@ -128,7 +127,6 @@ class BreachedPasswordConfigTest {
         checker.check(BREACHED_PASSWORD);
         checker.check("Qz8-a91f3c-Vw-x7");
 
-        // Two passwords, two hash prefixes: still one timer, tagged with the URI template only.
         assertThat(meterRegistry.get("http.client.requests").timers()).hasSize(1);
         assertThat(meterRegistry.get("http.client.requests").tag("uri", RangeLookupObservationConvention.URI)
                 .timer().count()).isEqualTo(2);

@@ -160,8 +160,9 @@ is code-smells.md, java.md and architecture.md.
   public endpoint: SKILL.md Step 3), the review report answers:
   1. how many SQL statements per request;
   2. new allocation or retained collections (GC pressure);
-  3. blocking or CPU-bound work on virtual threads. CPU-bound work starves carriers. On JDK 24+
-     `synchronized` no longer pins, but native frames and class initialisation still can;
+  3. CPU-bound or long blocking work on a request thread (bcrypt, a remote call): it holds one of
+     `server.tomcat.threads.max` and an admission permit for its whole duration, so it gets an admission
+     group of its own (the reference's `sign-in`);
   4. **which metric would show a regression in production.**
 
   A cache hit takes no connection (the lazy proxy, DATA-20).
@@ -178,9 +179,10 @@ is code-smells.md, java.md and architecture.md.
     (usage histogram).
 - **Severity:** High.
 
-### PERF-03: Under virtual threads, bound concurrency explicitly
-- **Check:** with virtual threads, `server.tomcat.threads.max` bounds nothing (a load test left
-  requests waiting on the pool). Admission control does the bounding:
+### PERF-03: Bound concurrency explicitly, per route group
+- **Check:** Tomcat's `threads.max` bounds the total, but the excess waits unseen in the accept queue
+  until the client times out, and one slow route group takes the threads every other group needs.
+  Admission control decides at the door instead:
   - a Resilience4j **semaphore** bulkhead per route group (the `api` group at least 2× the pool,
     checked at startup, golden `app.admission`; a report or export group's limit is the developer's
     number), or Spring 7 `@ConcurrencyLimit`;
@@ -294,8 +296,9 @@ is code-smells.md, java.md and architecture.md.
 
 ### REL-07: No inert limits
 - **Check:** every configured limit is really applied, and no comment claims a limit that
-  doesn't exist. Under virtual threads, `server.tomcat.threads.max` and
-  `spring.task.scheduling.pool.size` do nothing. Verify against the framework source.
+  doesn't exist. Admission caps whose sum reaches `server.tomcat.threads.max` never refuse; with
+  virtual threads on, `server.tomcat.threads.max` and `spring.task.scheduling.pool.size` do nothing.
+  Verify against the framework source.
 - **Severity:** Medium (High when a safeguard relies on it).
 
 ### REL-08: Schedulers are isolated and stop cleanly
@@ -319,7 +322,7 @@ is code-smells.md, java.md and architecture.md.
 - **Not a finding when:** a virtual-thread-per-task executor whose downstream is already
   bounded **and** whose backlog is bounded too (rejected past a limit) or held as a durable pending
   row with a backlog gauge: a semaphore bounds concurrency, not the queue, so parked threads hold
-  the work in memory and lose it on shutdown. Don't recommend lowering `max-connections` or using platform threads for Tomcat.
+  the work in memory and lose it on shutdown. Don't recommend lowering `max-connections`.
 - **Severity:** High.
 
 ### REL-10: Outages answer 503 + Retry-After, never 500 or 401
@@ -609,7 +612,7 @@ resilience or failure-injection test is Medium).
     first so no test depends on the one before, the second so no class that doesn't hold the lock
     meets a test's values (a narrowed upload policy fails every todo create elsewhere);
   - every wait on a latch, a gate or a request the test started has a deadline (`awaitLatch`,
-    `within`, `awaitLockWaiters` against one `lockWaitDeadline()` per gated sequence, which stays
+    `awaitResult`, `awaitLockWaiters` against one `lockWaitDeadline()` per gated sequence, which stays
     under `lock_timeout`): a gate that never opens fails the test instead of hanging the build;
   - a fixture that inherits data from neighbouring rows (a new record copying the previous one's
     settings) resets it to known values, so no test depends on the one that ran before; a direct

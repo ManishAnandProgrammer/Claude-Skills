@@ -24,12 +24,6 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * A record two parties see with different rights (house-review REST-16): a todo's owner may do everything,
- * its requester may read the todo and nothing more (403 TODO_NOT_YOURS on every other call: they know it
- * exists), and anyone else gets the 404 of a missing todo. Each party by each action, and the
- * relationship changing.
- */
 class TodoRequesterIntegrationTest extends IntegrationTest {
 
     private static final String TODOS = "/api/v1/todos";
@@ -37,7 +31,6 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    /** The owner's todo with {@code requester} on it, a tag and a time entry. */
     private record Asked(TestUser owner, TestUser requester, String listId, String todoId, String tagId, String entryId) {
     }
 
@@ -66,7 +59,6 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
                 """.formatted(asked.listId(), requester, version));
     }
 
-    /** Every call on a todo but its detail: the owner's alone. */
     private enum OwnersCall {
         UPDATE, REPLACE_TAGS, CHANGE_STATUS, DELETE, LIST_TIME_ENTRIES, GET_TIME_ENTRY, CREATE_TIME_ENTRY,
         UPDATE_TIME_ENTRY, DELETE_TIME_ENTRY, CREATE_PLAN
@@ -99,14 +91,13 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
         };
     }
 
-    // A piece marker can't sit inside a chain of matchers: the requester's path in the detail, by mode.
+    // A piece marker can't sit inside a chain of matchers.
     // tenancy:begin
     // private static final String REQUESTER_ID = "$.response.requester.id";
     // tenancy:else
     private static final String REQUESTER_ID = "$.response.requesterId";
     // tenancy:end
 
-    /** The todo, its tag, its time entry and its plans as the owner left them. */
     private void assertUnchanged(Asked asked) throws Exception {
         getAs(asked.owner().accessToken(), TODOS + "/" + asked.todoId())
                 .andExpect(status().isOk())
@@ -191,7 +182,7 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
 
         int status = send(call, asked.owner(), asked).andReturn().getResponse().getStatus();
 
-        // The todo's delete is refused while it has time entries, as for any todo: that is its rule, not a right.
+        // A todo with time entries refuses its delete, whoever asks: that is its rule, not a right.
         if (call == OwnersCall.DELETE) {
             assertThat(status).isEqualTo(409);
             return;
@@ -226,11 +217,6 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.errorCode").value("TODO_NOT_FOUND"));
     }
 
-    /**
-     * The lock a write takes is the policy's: only on a todo the caller may change. A refused caller never queues
-     * behind the owner's writers: while the owner's transaction holds the row, the requester's and a stranger's
-     * delete answer at once, instead of waiting out lock_timeout for a 503 (house-review DATA-29).
-     */
     @Test
     @DisplayName("While the owner holds the todo's lock, the requester's delete is 403 and a stranger's 404 at once, never queued behind it")
     void aRefusedWriteNeverWaitsForTheOwnersLock() throws Exception {
@@ -256,7 +242,7 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
             } finally {
                 release.countDown();
             }
-            within(holder);
+            awaitResult(holder);
         }
         assertUnchanged(asked);
     }

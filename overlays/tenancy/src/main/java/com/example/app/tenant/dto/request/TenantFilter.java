@@ -12,7 +12,6 @@ import org.springframework.util.StringUtils;
 
 import java.util.Objects;
 
-/** Staff's tenant list, an admin screen with page numbers and a total: offset-paged, newest first or by name. */
 @Getter
 @Setter
 public class TenantFilter extends PageFilter implements QueryFilter {

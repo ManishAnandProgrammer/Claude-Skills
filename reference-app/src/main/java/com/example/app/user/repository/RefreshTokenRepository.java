@@ -13,11 +13,8 @@ import java.util.UUID;
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID> {
 
     /*
-     * One batch of the purge (RefreshTokenPurgeJob), a constant so that RefreshTokenIndexIntegrationTest plans
-     * exactly what the job runs. The batch is an ARRAY(...) of the locked ids, which PostgreSQL computes once (an
-     * init plan); as "id IN (SELECT ... LIMIT ...)" the planner may run the subquery again per outer row and delete
-     * more than one batch in one transaction (house-review DATA-29). SKIP LOCKED: instances purging at once take
-     * disjoint rows instead of waiting for each other's.
+     * PostgreSQL computes the ARRAY(...) once (an init plan); as "id IN (SELECT ... LIMIT ...)" the planner may run
+     * the subquery again per outer row and delete more than one batch in one transaction.
      */
     String DELETE_EXPIRED = """
             DELETE FROM refresh_tokens
@@ -30,10 +27,8 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
     /**
-     * Revokes the token if it is still live, in one statement: of two writers racing on one token (two
-     * refreshes, or a refresh and a logout) exactly one gets 1, the other waits for its row lock, re-checks
-     * {@code revoked_at} and gets 0. A bulk update: sets {@code updated_at} and bumps {@code version}
-     * itself; it clears the persistence context, so a token read before it is detached and stale.
+     * Of two writers racing on one token (two refreshes, or a refresh and a logout) exactly one gets 1: the other
+     * waits for its row lock, re-checks {@code revoked_at} and gets 0.
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
@@ -43,10 +38,6 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
              where t.tokenHash = :tokenHash and t.revokedAt is null""")
     int revokeIfLive(String tokenHash, RevocationReason reason, Instant now);
 
-    /**
-     * Revokes every live token of a user for reuse. A bulk update: sets {@code updated_at} and bumps
-     * {@code version} itself.
-     */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update RefreshToken t
@@ -55,10 +46,6 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
              where t.user.id = :userId and t.revokedAt is null""")
     int revokeAllOfUserForReuse(UUID userId, Instant now);
 
-    /**
-     * Revokes every live token of a user with {@code reason} (a password change, a suspension, signing out
-     * everywhere). A bulk update: sets {@code updated_at} and bumps {@code version} itself.
-     */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update RefreshToken t
@@ -67,7 +54,6 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
              where t.user.id = :userId and t.revokedAt is null""")
     int revokeAllOfUser(UUID userId, RevocationReason reason, Instant now);
 
-    /** Deletes up to {@code batchSize} tokens that expired before {@code expiredBefore}; the rows deleted. */
     @Modifying
     @Query(nativeQuery = true, value = DELETE_EXPIRED)
     int deleteExpiredBefore(Instant expiredBefore, int batchSize);

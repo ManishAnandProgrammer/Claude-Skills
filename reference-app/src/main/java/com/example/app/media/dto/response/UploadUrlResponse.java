@@ -10,7 +10,6 @@ public record UploadUrlResponse(
         @Schema(
                 // example:begin
                 // tenancy:begin
-                // // With tenancy a key starts with the tenant id.
                 // example = "0190a9c2-6c43-7cc1-9f2a-1d1e5a6b7c8d/TODO_ATTACHMENT/0b6f1c1e-3c55-4c3a-9b1e-5f0c2d7a8e41",
                 // tenancy:else
                 example = "TODO_ATTACHMENT/0b6f1c1e-3c55-4c3a-9b1e-5f0c2d7a8e41",

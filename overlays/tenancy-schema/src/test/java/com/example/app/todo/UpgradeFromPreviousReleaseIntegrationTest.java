@@ -27,14 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Schema per tenant: what the deploy-time migrations did to a used database (support/PreviousReleaseDatabase
- * built it: the platform at the previous release with tenants in every status, each provisioned tenant's
- * schema at that release with its rows; crud-gen tests.md, *Upgrading a used database*). TenantMigrations
- * brings the schemas up as a deploy does; the cells of the tenant lifecycle x seeding matrix
- * (house-review references/tenancy-matrices.md) a fresh database can't reach. Runs only on such a run:
- * verify.sh sets {@code app.test.upgrade.previous-release}.
- */
+/** Runs only under verify.sh, which sets {@code app.test.upgrade.previous-release}. */
 @WithoutTestTenant
 @EnabledIfSystemProperty(named = "app.test.upgrade.previous-release", matches = "\\d+")
 class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
@@ -66,18 +59,17 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     private DataSource ownerDataSource;
     // roles:begin
 
-    /** The platform's Liquibase, which a deploy runs at every start. */
     @Autowired
     private SpringLiquibase platformLiquibase;
     // roles:end
 
-    /** The schemas as a deploy leaves them: the run migrates what is missing, so a second one changes nothing. */
+    /** The run migrates what is missing, so a second one changes nothing. */
     private JdbcTemplate migratedOwner() {
         assertThat(tenantMigrations.run().failed()).isEmpty();
         return new JdbcTemplate(ownerDataSource);
     }
 
-    /** A seeded account's access token: the seed stores no real password hash, so the test gives it one. */
+    /** The seed stores no real password hash, so the test gives it one. */
     private String tokenOf(String email) throws Exception {
         sql("update users set password_hash = ? where email = ?", passwordEncoder.encode(PASSWORD), email);
         return read(login(email, PASSWORD).andExpect(status().isOk()), "$.response.accessToken");
@@ -222,7 +214,6 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         provisioning.provisionPending();
 
         // roles:begin
-        // The schema's own built-in roles from its changelog, and the owner's ADMIN once, for good.
         JdbcTemplate asOwner = new JdbcTemplate(ownerDataSource);
         String pi = TenantSchemas.of(PI);
         assertThat(asOwner.queryForObject("select count(*) from %s.roles where built_in in ('USER', 'ADMIN')".formatted(pi), Integer.class))
@@ -260,6 +251,23 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.number").value(31));
     }
     // metadata:end
+    // media:begin
+
+    @Test
+    @DisplayName("After 0040 every seeded schema's attached files are VERIFIED with their claim window kept")
+    void theSeededFilesAreVerified() {
+        JdbcTemplate owner = migratedOwner();
+
+        assertThat(owner.queryForObject("select count(*) from %s.media_files where status = 'VERIFIED'"
+                .formatted(TenantSchemas.of(ALPHA)), Integer.class)).isEqualTo(6);
+        for (UUID tenant : PROVISIONED) {
+            assertThat(owner.queryForObject("""
+                    select count(*) from %s.media_files
+                     where status <> 'VERIFIED' or claimable_until <> upload_expires_at + interval '1 day'"""
+                    .formatted(TenantSchemas.of(tenant)), Integer.class)).as(TenantSchemas.of(tenant)).isZero();
+        }
+    }
+    // media:end
 
     @Test
     @DisplayName("After 0033 every seeded schema's plans are PLANNED without a done day")

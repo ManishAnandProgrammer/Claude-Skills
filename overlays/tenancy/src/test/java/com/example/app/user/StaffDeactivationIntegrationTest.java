@@ -7,10 +7,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Staff deactivation: an operator sets {@code platform_users.deactivated_at}; the staff member's tokens die at
- * their next request (ActiveStaffFilter re-reads the row): TokenPathIntegrationTest has each path.
- */
 @WithoutTestTenant
 class StaffDeactivationIntegrationTest extends IntegrationTest {
 

@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** The startup check itself; every tenancy integration test starts the application through it. */
 class PoolRoleCheckTest {
 
     @Test

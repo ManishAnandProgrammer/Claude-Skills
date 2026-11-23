@@ -18,10 +18,6 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Values to and from JSON with the application's {@code JsonMapper}, the one that reads request
- * bodies: the same ISO dates and the same strictness, except for stored documents.
- */
 @Component
 @RequiredArgsConstructor
 public class MetadataMapper {
@@ -42,22 +38,17 @@ public class MetadataMapper {
     }
 
     /**
-     * Tolerant of unknown fields (DATA-27): a field this version of the record doesn't know (removed
-     * since, or written by a newer instance during a deployment) is ignored rather than making the row
-     * unreadable. A missing field takes the record's default.
+     * A field this version of the record doesn't know (removed since, or written by a newer instance
+     * during a deployment) is ignored rather than making the row unreadable.
      */
-    public <T> T toValue(ConfigurationMetadata metadata, MetadataKey<T> key) {
+    public <T> T readStoredValue(ConfigurationMetadata metadata, MetadataKey<T> key) {
         return jsonMapper.readerFor(key.type())
                 .without(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .readValue(metadata.getValue());
     }
 
-    /**
-     * An admin's value, read strictly like any request body: a misspelt field is refused, not dropped.
-     * Every refusal is 400 {@code REQUEST_UNREADABLE} pointing to the field ({@code #/value/graceMinutes}),
-     * never Jackson's message, which names Java classes.
-     */
-    public <T> T toValue(JsonNode value, MetadataKey<T> key) {
+    /** Every refusal points to the field, never Jackson's message, which names Java classes. */
+    public <T> T readRequestValue(JsonNode value, MetadataKey<T> key) {
         if (!value.isObject()) {
             throw unreadable(JsonPointers.of(List.of(VALUE)), "must be a JSON object");
         }
@@ -81,7 +72,6 @@ public class MetadataMapper {
                 metadata.getVersion());
     }
 
-    /** The value is the body's {@code value}, so Jackson's path inside it starts there. */
     private static String pointerOf(JacksonException exception) {
         List<String> tokens = new ArrayList<>(List.of(VALUE));
         tokens.addAll(JsonPointers.tokensOf(exception));

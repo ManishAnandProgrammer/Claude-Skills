@@ -17,12 +17,6 @@ import java.util.Objects;
 
 import static org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE;
 
-/**
- * Documents the 403 of every {@code @Requires} handler from the annotation itself, {@code ACCESS_DENIED (without X)}
- * ahead of what its {@code *Api} interface says: the permission is written once, on the handler, so the published
- * document can't drift from it (house-review REST-20, AUTHZ-03). An interface that already names
- * {@code ACCESS_DENIED} (with its own reason) is left as it is.
- */
 @Component
 class PermissionOpenApiCustomizer implements OperationCustomizer {
 

@@ -21,11 +21,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Provisioning and the deploy-time migrations of tenant schemas, against the owner role's real
- * Liquibase runs. The test changelog ends with the {@code tenancy-probe} changeset; a schema is made to
- * miss it by deleting its record (and its table, or not, to make the rerun pass or fail).
- */
 @WithoutTestTenant
 class TenantMigrationsIntegrationTest extends IntegrationTest {
 
@@ -63,7 +58,7 @@ class TenantMigrationsIntegrationTest extends IntegrationTest {
     void provisioningCreatesMigratesAndActivates() throws Exception {
         String staff = platformToken();
         String ownerEmail = uniqueEmail("owner");
-        rawSignup(ownerEmail, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(ownerEmail, PASSWORD).andExpect(status().isCreated());
         UUID tenantId = UUID.fromString(read(postAs(staff, "/api/v1/platform/tenants", """
                 {"name": "Provisioned Ltd", "ownerEmail": "%s"}
                 """.formatted(ownerEmail)).andExpect(status().isCreated()), "$.response.id"));
@@ -91,7 +86,7 @@ class TenantMigrationsIntegrationTest extends IntegrationTest {
     void rejectedBeforeProvisioningGetsNoSchema() throws Exception {
         String staff = platformToken();
         String ownerEmail = uniqueEmail("owner");
-        rawSignup(ownerEmail, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(ownerEmail, PASSWORD).andExpect(status().isCreated());
         UUID tenantId = UUID.fromString(read(postAs(staff, "/api/v1/platform/tenants", """
                 {"name": "Rejected Ltd", "ownerEmail": "%s"}
                 """.formatted(ownerEmail)).andExpect(status().isCreated()), "$.response.id"));

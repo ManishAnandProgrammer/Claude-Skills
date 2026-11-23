@@ -1,6 +1,6 @@
 package com.example.app.user.controller.api;
 
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.dto.request.UserFilter;
 import com.example.app.user.dto.request.UserStatusRequest;
@@ -21,13 +21,11 @@ import java.util.UUID;
 public interface PlatformUserApi {
 
     // roles:begin
-    /** What a suspension never does to an open tenant. */
     String LAST_MANAGER_NOTE = """
              A person whose suspension would leave an open tenant without another active member holding, for \
             good, each permission that manages it (its roles, people's access, its members) is not suspended: give \
             another member those first, or suspend the tenant.""";
     // roles:else
-    // /** What a suspension never does to an open tenant. */
     // String LAST_MANAGER_NOTE = """
     //          A person who is the last ADMIN with an ACTIVE account of an open tenant is not suspended: \
     //         make another member ADMIN first, or suspend the tenant.""";
@@ -44,7 +42,7 @@ public interface PlatformUserApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    ListWrapper<UserResponse> lookUp(UserFilter filter);
+    BoundedListWrapper<UserResponse> lookUp(UserFilter filter);
 
     @Operation(summary = "Suspend or reactivate an account", description = """
             SUSPENDED ends every session of the account in every tenant at once (every refresh token revoked, \

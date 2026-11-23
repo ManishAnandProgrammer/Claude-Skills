@@ -14,13 +14,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-/**
- * What a constraint the database enforced means to a client: the domain code a module declared for
- * it ({@link ConstraintErrorCodes}), else {@code DUPLICATE_RECORD} for any unique violation. A foreign
- * key answers by the statement that tripped it: an insert or update wrote a child of a parent deleted
- * meanwhile (the parent's not-found code), a delete removed a parent still in use. Anything else is
- * empty: a bug, answered 500.
- */
 @Component
 class ConstraintViolationCodes {
 
@@ -30,8 +23,8 @@ class ConstraintViolationCodes {
     private final Map<String, ErrorCode> byConstraintName;
     private final Map<String, ErrorCode> byForeignKeyOnWrite;
 
-    // Hand-written (JAVA-26): the modules' claims are merged once into immutable maps, and a constraint two
-    // modules claim stops the startup.
+    // Hand-written: the modules' claims are merged once into immutable maps, and a constraint two modules claim
+    // stops the startup.
     ConstraintViolationCodes(List<ConstraintErrorCodes> contributors) {
         Map<String, ErrorCode> merged = new HashMap<>();
         Map<String, ErrorCode> mergedOnWrite = new HashMap<>();
@@ -81,9 +74,9 @@ class ConstraintViolationCodes {
     }
 
     /**
-     * The side of a foreign key violation. The server's error can't tell: it names the child table and
-     * the constraint for a child's insert and for its parent's delete alike. The statement Hibernate
-     * ran can, and unlike the message it doesn't depend on the server's language.
+     * The server's error can't tell the side of a foreign key violation: it names the child table and the
+     * constraint for a child's insert and for its parent's delete alike. The statement Hibernate ran can, and
+     * unlike the message it doesn't depend on the server's language.
      */
     private static boolean isInsertOrUpdate(JDBCException violation) {
         String statement = Objects.requireNonNullElse(violation.getSQL(), "").stripLeading().toLowerCase(Locale.ROOT);

@@ -13,7 +13,7 @@ public record PasswordChangeRequest(
         String currentPassword,
 
         @Schema(description = """
-                At least 8 characters and at most 72 bytes in UTF-8 (a Gurmukhi letter takes 3), with an \
+                At most 72 bytes in UTF-8 (a Gurmukhi letter takes 3), with an \
                 upper-case letter, a lower-case letter, a digit and one other character; not from a known breach.""",
                 example = "Battery-Staple-7")
         @PasswordPolicy

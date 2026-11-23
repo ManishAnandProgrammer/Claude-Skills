@@ -12,16 +12,14 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Every status change is one conditional statement, so a claim, a removal and a job never act on a
- * state another one already changed. Native statements bypass auditing: they set {@code updated_at},
- * {@code updated_by} and {@code version} themselves. Times are the database's {@code now()} throughout,
- * so every instance and both jobs compare against one clock.
+ * Native statements bypass auditing: they set {@code updated_at}, {@code updated_by} and {@code version}
+ * themselves. Times are the database's {@code now()} throughout, so every instance and both jobs compare
+ * against one clock.
  *
  * <p>Row mode: Hibernate's tenant filter never reaches a native statement, so each one names its tenant
- * ({@code tenant_id = :tenantId}, once per table it reads or writes) and the service passes the current
- * one, a job's included (the tenant it runs for). The policy is the fallback, not the filter: a platform
- * statement and a tenant statement never look alike, and the planner sees the tenant as a parameter
- * (house-review TEN-37).</p>
+ * ({@code tenant_id = :tenantId}, once per table it reads or writes). The policy is the fallback, not the
+ * filter: a platform statement and a tenant statement never look alike, and the planner sees the tenant
+ * as a parameter.</p>
  */
 public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
 
@@ -37,7 +35,7 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
             SET lease_until = now() + :leaseSeconds * interval '1 second'
             WHERE id = ANY (ARRAY(SELECT id
                                     FROM media_files
-                                   WHERE status = 'IN_REVIEW'
+                                   WHERE status = 'ATTACHED'
                                      AND upload_expires_at < now()
                                      AND (lease_until IS NULL OR lease_until < now())
                                      AND tenant_id = :tenantId
@@ -62,42 +60,40 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
               AND tenant_id = :tenantId
             RETURNING id""";
 
-    String LEASE_EXPIRED_PENDING = """
+    String LEASE_EXPIRED_UNCLAIMED = """
             UPDATE media_files
             SET lease_until = now() + :leaseSeconds * interval '1 second'
             WHERE id = ANY (ARRAY(SELECT id
                                     FROM media_files
-                                   WHERE status = 'PENDING'
-                                     AND expires_at < now()
+                                   WHERE status = 'UNCLAIMED'
+                                     AND claimable_until < now()
                                      AND (lease_until IS NULL OR lease_until < now())
                                      AND tenant_id = :tenantId
-                                   ORDER BY expires_at, id
+                                   ORDER BY claimable_until, id
                                    LIMIT :batchSize
                                    FOR UPDATE SKIP LOCKED))
               AND tenant_id = :tenantId
             RETURNING id""";
 
     /**
-     * PENDING to IN_REVIEW for the keys that are the caller's, of this purpose, never claimed and still
-     * claimable; the others are left alone. The row locks last until the caller's transaction ends, so
-     * two records claiming one key queue, and the second finds it IN_REVIEW.
+     * The row locks last until the caller's transaction ends, so two records claiming one key queue, and
+     * the second finds it ATTACHED.
      */
     @Query(nativeQuery = true, value = """
             UPDATE media_files
-            SET status = 'IN_REVIEW',
+            SET status = 'ATTACHED',
                 updated_at = now(),
                 updated_by = CAST(:uploadedBy AS uuid),
                 version = version + 1
             WHERE key IN (:keys)
               AND purpose = :purpose
               AND uploaded_by = CAST(:uploadedBy AS uuid)
-              AND status = 'PENDING'
-              AND expires_at > now()
+              AND status = 'UNCLAIMED'
+              AND claimable_until > now()
               AND tenant_id = :tenantId
             RETURNING id""")
     List<UUID> claim(UUID tenantId, Collection<String> keys, String purpose, UUID uploadedBy);
 
-    /** Attached files to RELEASED; a PENDING or RELEASED one is left alone. */
     @Modifying
     @Query(nativeQuery = true, value = """
             UPDATE media_files
@@ -106,7 +102,7 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
                 updated_by = CAST(:updatedBy AS uuid),
                 version = version + 1
             WHERE id IN (:ids)
-              AND status IN ('IN_REVIEW', 'UPLOADED', 'MISSING')
+              AND status IN ('ATTACHED', 'VERIFIED', 'MISSING')
               AND tenant_id = :tenantId""")
     int release(UUID tenantId, Collection<UUID> ids, UUID updatedBy);
 
@@ -122,46 +118,55 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
     List<MediaFileKey> findKeys(Collection<UUID> ids);
 
     /**
-     * Leases a batch of attached files whose upload URL expired, oldest first
-     * ({@code idx_media_files_in_review_upload_expires_at_id}). {@code SKIP LOCKED} passes over rows
-     * another instance is leasing right now, and {@code lease_until} over the ones it leased before:
-     * instances get disjoint batches, and a crashed instance's rows return when its lease runs out.
-     * The lease is bookkeeping, not a change of the file: no version or audit columns.
+     * {@code SKIP LOCKED} passes over rows another instance is leasing right now, and {@code lease_until}
+     * over the ones it leased before: instances get disjoint batches, and a crashed instance's rows return
+     * when its lease runs out. The lease is bookkeeping, not a change of the file: no version or audit columns.
      */
     @Query(nativeQuery = true, value = LEASE_FOR_VERIFICATION)
     List<UUID> leaseForVerification(UUID tenantId, int batchSize, long leaseSeconds);
 
-    /** The verification's result, for files still IN_REVIEW (a removal since wins); ends the lease. */
+    // Both only while the file is still ATTACHED: a removal since wins.
     @Modifying
     @Query(nativeQuery = true, value = """
             UPDATE media_files
-            SET status = :status,
+            SET status = 'VERIFIED',
                 lease_until = NULL,
                 updated_at = now(),
                 updated_by = NULL,
                 version = version + 1
             WHERE id IN (:ids)
-              AND status = 'IN_REVIEW'
+              AND status = 'ATTACHED'
               AND tenant_id = :tenantId""")
-    int recordVerification(UUID tenantId, Collection<UUID> ids, String status);
+    int markVerified(UUID tenantId, Collection<UUID> ids);
 
-    /** Like {@link #leaseForVerification}, for removed files whose upload URL expired ({@code idx_media_files_released_upload_expires_at_id}). */
+    @Modifying
+    @Query(nativeQuery = true, value = """
+            UPDATE media_files
+            SET status = 'MISSING',
+                lease_until = NULL,
+                updated_at = now(),
+                updated_by = NULL,
+                version = version + 1
+            WHERE id IN (:ids)
+              AND status = 'ATTACHED'
+              AND tenant_id = :tenantId""")
+    int markMissing(UUID tenantId, Collection<UUID> ids);
+
     @Query(nativeQuery = true, value = LEASE_RELEASED)
     List<UUID> leaseReleased(UUID tenantId, int batchSize, long leaseSeconds);
 
-    /** Like {@link #leaseForVerification}, for never-attached files past their claim window ({@code idx_media_files_pending_expires_at_id}). */
-    @Query(nativeQuery = true, value = LEASE_EXPIRED_PENDING)
-    List<UUID> leaseExpiredPending(UUID tenantId, int batchSize, long leaseSeconds);
+    @Query(nativeQuery = true, value = LEASE_EXPIRED_UNCLAIMED)
+    List<UUID> leaseExpiredUnclaimed(UUID tenantId, int batchSize, long leaseSeconds);
 
     /**
-     * Deletes the rows whose objects are gone. Only RELEASED and expired PENDING ones: neither can change
-     * state any more (a claim needs an unexpired PENDING file), so nothing attached is ever deleted.
+     * Only RELEASED and expired UNCLAIMED rows: neither can change state any more (a claim needs an
+     * unexpired UNCLAIMED file), so nothing attached is ever deleted.
      */
     @Modifying
     @Query(nativeQuery = true, value = """
             DELETE FROM media_files
             WHERE id IN (:ids)
-              AND (status = 'RELEASED' OR (status = 'PENDING' AND expires_at < now()))
+              AND (status = 'RELEASED' OR (status = 'UNCLAIMED' AND claimable_until < now()))
               AND tenant_id = :tenantId""")
     int deleteRemoved(UUID tenantId, Collection<UUID> ids);
 }

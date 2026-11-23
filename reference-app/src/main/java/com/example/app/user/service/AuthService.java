@@ -21,10 +21,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Sign-in: login, refresh, logout, a password change. The methods run without a transaction (the password
- * check is CPU work that must not hold a connection); each step that touches the database runs in its own.
- */
+/** Without a transaction: the password check is CPU work that must not hold a connection. */
 @Service
 @Slf4j
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -38,16 +35,15 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthRateLimits rateLimits;
     private final BreachedPasswordCheck breachedPasswordCheck;
-    /** Refused logins: logged at INFO, which production's WARN hides, so they are counted here. */
     private final Counter refusedLogins;
     /**
-     * Compared against when the email is unknown, so an unknown email takes as long as a wrong
-     * password and the answer is the same: login doesn't reveal which emails have accounts.
+     * Matched when the email is unknown, so that takes as long as a wrong password: login doesn't reveal which
+     * emails have accounts.
      */
     private final String unknownUserHash;
 
-    // Hand-written (JAVA-26): the decoy hash costs one bcrypt run, paid once at startup, and the counter is
-    // registered then, so its series reads 0 before the first refusal. Package-private: its collaborators are (JAVA-27).
+    // Hand-written: the decoy hash costs one bcrypt run, paid once at startup, and the counter is registered then,
+    // so its series reads 0 before the first refusal.
     AuthService(UserService userService, TokenService tokenService, PasswordEncoder passwordEncoder,
                 AuthRateLimits rateLimits, BreachedPasswordCheck breachedPasswordCheck, MeterRegistry meterRegistry) {
         this.userService = userService;
@@ -67,7 +63,6 @@ public class AuthService {
         boolean passwordMatches = passwordEncoder.matches(request.password(),
                 found.map(User::getPasswordHash).orElse(unknownUserHash));
         User user = found.filter(account -> passwordMatches).orElseThrow(this::invalidCredentials);
-        // Issuing runs the remaining checks (a suspended account, an inactive tenant): log only once they pass.
         TokenResponse tokens = tokenService.issue(user);
         log.info("Login succeeded: userId={}", user.getId());
         return ObjectWrapper.withObject(tokens);
@@ -83,12 +78,7 @@ public class AuthService {
         tokenService.revoke(request.refreshToken());
     }
 
-    /**
-     * The signed-in user's new password: the current one must match (400 {@code USER_PASSWORD_INCORRECT} at
-     * {@code #/currentPassword}), rate limited as a login of the account is, since a stolen access token
-     * would otherwise guess the password here; the new one passes signup's policy and breached-password
-     * check. Every session of the account ends; the answer is new tokens for the calling device.
-     */
+    /** Rate limited as a login of the account: a stolen access token would otherwise guess the password here. */
     public ObjectWrapper<TokenResponse> changePassword(UUID userId, PasswordChangeRequest request, String clientIp) {
         User user = userService.getUser(userId);
         rateLimits.login(clientIp, user.getEmail());
@@ -102,11 +92,7 @@ public class AuthService {
     }
     // session-version:begin
 
-    /**
-     * Signs the caller out on every device: their refresh tokens are revoked and their access tokens are
-     * refused from the next request on (the session version). Signed in, so not rate limited like logout.
-     */
-    public void logoutEverywhere(UUID userId) {
+    public void endAllSessions(UUID userId) {
         tokenService.endAllSessions(userId);
     }
     // session-version:end

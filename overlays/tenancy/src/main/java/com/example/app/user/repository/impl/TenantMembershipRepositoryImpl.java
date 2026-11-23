@@ -7,18 +7,19 @@ import com.example.app.user.domain.TenantMembership_;
 import com.example.app.user.domain.User;
 import com.example.app.user.domain.User_;
 import com.example.app.user.dto.request.TenantMemberFilter;
+import com.example.app.user.dto.request.TenantMemberSort;
 import com.example.app.user.dto.response.TenantMemberResponse;
 import com.example.app.user.repository.custom.CustomTenantMembershipRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.query.QueryUtils;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -31,15 +32,7 @@ class TenantMembershipRepositoryImpl implements CustomTenantMembershipRepository
 
     private final EntityManager entityManager;
 
-    /**
-     *   <!-- roles:begin -->
-     * One tenant's members: the membership holds when they joined, the account their email and name.
-     *   <!-- roles:else -->
-     <!-- * One tenant's members: the membership holds the role and the version, the account its email and -->
-     <!-- * name. -->
-     *   <!-- roles:end -->
-     * A platform table without a policy, so the tenant is a predicate of every statement.
-     */
+    /** A platform table without a policy, so the tenant is a predicate of every statement. */
     @Override
     public Page<TenantMemberResponse> findByFilter(TenantMemberFilter filter, UUID tenantId, Pageable pageable) {
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
@@ -55,7 +48,7 @@ class TenantMembershipRepositoryImpl implements CustomTenantMembershipRepository
                 root.get(TenantMembership_.createdAt), root.get(TenantMembership_.updatedAt),
                 root.get(TenantMembership_.createdBy), root.get(TenantMembership_.updatedBy)));
         query.where(matching(builder, root, user, tenantId, filter).toArray(new Predicate[0]));
-        query.orderBy(QueryUtils.toOrders(pageable.getSort(), root, builder));
+        query.orderBy(orderOf(builder, root, filter.getSort()));
 
         CriteriaQuery<Long> countQuery = builder.createQuery(Long.class);
         Root<TenantMembership> countRoot = countQuery.from(TenantMembership.class);
@@ -64,6 +57,15 @@ class TenantMembershipRepositoryImpl implements CustomTenantMembershipRepository
         countQuery.where(matching(builder, countRoot, countUser, tenantId, filter).toArray(new Predicate[0]));
 
         return OffsetPages.page(entityManager.createQuery(query), entityManager.createQuery(countQuery), pageable);
+    }
+
+    // NEWEST is never the id alone: the planner would walk the UUIDv7 primary key backward through every
+    // scope's rows instead of the scope's index.
+    private static List<Order> orderOf(CriteriaBuilder builder, Root<TenantMembership> root, TenantMemberSort sort) {
+        return switch (sort) {
+            case NEWEST -> List.of(builder.desc(root.get(TenantMembership_.createdAt)), builder.desc(root.get(TenantMembership_.id)));
+            case OLDEST -> List.of(builder.asc(root.get(TenantMembership_.createdAt)), builder.asc(root.get(TenantMembership_.id)));
+        };
     }
 
     private static List<Predicate> matching(CriteriaBuilder builder, Root<TenantMembership> root,

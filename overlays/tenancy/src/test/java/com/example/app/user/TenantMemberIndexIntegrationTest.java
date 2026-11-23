@@ -16,11 +16,6 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The members list's indexes (crud-gen tests.md row 28): every offered filter and order has its index, and the
- * first page, with the statement of {@code TenantMembershipRepositoryImpl} (its select list and join), is
- * planned on its order's index.
- */
 class TenantMemberIndexIntegrationTest extends IntegrationTest {
 
     @Autowired
@@ -38,7 +33,6 @@ class TenantMemberIndexIntegrationTest extends IntegrationTest {
     //           join users u on u.id = m.user_id""";
     // roles:end
 
-    /** Each offered filter and order with the index that serves it. */
     static Stream<Arguments> offeredFiltersAndOrders() {
         return Stream.of(
                 Arguments.of("members, NEWEST and OLDEST (one index, read either way)", "idx_tenant_memberships_tenant_id_created_at_id"),

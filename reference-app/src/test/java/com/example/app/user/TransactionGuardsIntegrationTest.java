@@ -20,9 +20,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The checks {@link TransactionGuards} runs under every integration test still see what they guard against:
- * a project's change to the transaction setup (its own transaction manager, a client bean of its own type)
- * could switch one off, and every other test would stay green. The account is the entity sign-in brings.
+ * A project's change to the transaction setup (its own transaction manager, a client bean of its own type) could
+ * switch a guard off, and every other test would stay green.
  */
 class TransactionGuardsIntegrationTest extends IntegrationTest {
 

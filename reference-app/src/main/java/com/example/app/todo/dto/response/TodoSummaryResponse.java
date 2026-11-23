@@ -9,10 +9,6 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * A todo as listed: the detail ({@link TodoResponse}) adds the notes. Its list's name comes in a second step
- * (TodoService.findByFilter: one lookup of the batch's lists), the requester as an id (the detail shows more).
- */
 @Schema(description = "A todo in a list")
 public record TodoSummaryResponse(
         @Schema(description = "Todo id") UUID id,
@@ -38,7 +34,6 @@ public record TodoSummaryResponse(
         tags = List.copyOf(tags);
     }
 
-    /** The batch's projection: the row without its list's name and its tags, which the service reads in two more steps. */
     public TodoSummaryResponse(UUID id, UUID todoListId,
                                // metadata:begin
                                Long number,

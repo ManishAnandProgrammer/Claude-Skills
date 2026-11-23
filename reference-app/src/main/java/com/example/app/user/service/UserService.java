@@ -84,18 +84,15 @@ public class UserService implements Users {
     // roles:begin
     // tenancy:begin
     // tenancy:else
-    // /** The account and its first role (the built-in USER, PersonAccessService) in one short transaction. */
     // private final TransactionTemplate transactions;
     // private final ApplicationEventPublisher accountEvents;
     // tenancy:end
     // roles:end
 
     /**
-     * Runs without a transaction: hashing the password takes about a quarter of a second of CPU and
-     * the breached-password check is a remote call; neither may hold a pooled connection meanwhile.
-     * The existence check and the insert each run in their own short transaction; a concurrent
-     * signup with the same email that slips between them is refused by {@code uq_users_email} with
-     * the same {@code USER_EMAIL_TAKEN}.
+     * Without a transaction: hashing the password takes about a quarter of a second of CPU and the breached-password
+     * check is a remote call; neither may hold a pooled connection meanwhile. A concurrent signup with the same email
+     * that slips past the existence check is refused by {@code uq_users_email} ({@code UserConstraintErrorCodes}).
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ObjectWrapper<UserResponse> signup(SignupRequest request, String clientIp) {
@@ -122,7 +119,6 @@ public class UserService implements Users {
     // roles:begin
     // tenancy:begin
     // tenancy:else
-    // /** The account, and its first role in the same transaction (AccountCreated's listener, PersonAccessService). */
     // private User created(User user) {
     //     User saved = repository.saveAndFlush(user);
     //     accountEvents.publishEvent(new AccountCreated(saved.getId()));
@@ -135,7 +131,6 @@ public class UserService implements Users {
         return ObjectWrapper.withObject(mapper.toResponse(getUser(userId)));
     }
 
-    /** The caller's areas and permissions, from their token's (no database read): {@code GET /users/me/access}. */
     public ObjectWrapper<AccessResponse> access(Set<Permission> held) {
         return ObjectWrapper.withObject(mapper.toAccessResponse(held));
     }
@@ -154,17 +149,11 @@ public class UserService implements Users {
         return repository.findByEmail(Emails.normalize(email));
     }
 
-    /** 404 {@code USER_NOT_FOUND}. */
     User getUser(UUID userId) {
         return repository.findById(userId).orElseThrow(AppException.supply(ErrorCode.USER_NOT_FOUND));
     }
 
-    /**
-     * The account a token is about to be issued for, share-locked until the issue commits
-     * ({@code UserRepository.findForTokenIssue}): 403 {@code AUTH_ACCOUNT_SUSPENDED} unless it is ACTIVE.
-     * Every path that issues a token calls it before anything else touches the account's rows. A refusal
-     * leaves the caller's transaction committable: a refresh commits its own writes even when it refuses.
-     */
+    /** A refusal leaves the caller's transaction committable: a refresh commits its own writes even when it refuses. */
     @Transactional(propagation = Propagation.MANDATORY, noRollbackFor = AppException.class)
     User activeForTokenIssue(UUID userId) {
         User user = repository.findForTokenIssue(userId).orElseThrow(AppException.supply(ErrorCode.USER_NOT_FOUND));
@@ -175,7 +164,6 @@ public class UserService implements Users {
         return user;
     }
 
-    /** In the password change's transaction (hence MANDATORY), which also ends the account's sessions. */
     @Transactional(propagation = Propagation.MANDATORY)
     void changePassword(UUID userId, String newPasswordHash) {
         User user = getUser(userId);
@@ -185,17 +173,12 @@ public class UserService implements Users {
 
     // roles:begin
     // tenancy:begin
-    // /** The account with this id, locked for update until the caller's transaction ends (platform staff's status change). */
     // @Transactional(propagation = Propagation.MANDATORY)
     // List<User> lockForStatusChange(Collection<UUID> userIds) {
     //     return repository.findAllForUpdate(userIds);
     // }
     // tenancy:end
     // roles:else
-    /**
-     * The accounts with these ids, locked for update in id order until the caller's transaction ends (an
-     * account status change: the caller and the target). A missing one is simply not in the list.
-     */
     @Transactional(propagation = Propagation.MANDATORY)
     List<User> lockForStatusChange(Collection<UUID> userIds) {
         return repository.findAllForUpdate(userIds);
@@ -205,11 +188,6 @@ public class UserService implements Users {
     // roles:begin
     // tenancy:begin
     // tenancy:else
-    // /**
-    //  * The accounts with these ids, locked for update in id order until the caller's transaction ends: every change
-    //  * of someone's access (a role, a grant, a suspension, a role's edit) locks the rows of the people it may change,
-    //  * so two such changes of one person queue (PersonAccessService).
-    //  */
     // @Transactional(propagation = Propagation.MANDATORY)
     // void lockForAccessChange(Collection<UUID> userIds) {
     //     repository.findAllForUpdate(userIds);
@@ -217,7 +195,6 @@ public class UserService implements Users {
     //
     // tenancy:end
     // roles:end
-    /** The status change's write, after its checks; its caller ends the sessions in the same transaction. */
     @Transactional(propagation = Propagation.MANDATORY)
     UserResponse changeStatus(User user, UserStatus status) {
         user.changeStatus(status);
@@ -227,16 +204,11 @@ public class UserService implements Users {
     // tenancy:begin
     // tenancy:else
 
-    /** The account's session version (SessionVersionService's check, on a Redis miss); empty without an account. */
     Optional<Integer> findSessionVersion(UUID userId) {
         return repository.findSessionVersion(userId);
     }
 
-    /**
-     * Raises the account's session version in the access change's own transaction (hence MANDATORY): two
-     * transactions could commit the change without the bump. Every access token issued before it, on every
-     * device, is refused from the commit on; Redis gets the new number after the commit.
-     */
+    /** In the access change's own transaction (hence MANDATORY): in two, the change could commit without the bump. */
     @Transactional(propagation = Propagation.MANDATORY)
     void bumpSessionVersion(UUID userId) {
         repository.bumpSessionVersion(userId);

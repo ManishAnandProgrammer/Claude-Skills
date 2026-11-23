@@ -24,14 +24,12 @@ public record PlanUpdateRequest(
         @NotNull
         Long version) {
 
-    /** As on the create: inverted is a 400 naming its end, endsOn. */
     @CrossField(reportedOn = "endsOn", message = "{plan.date-range}")
     @Schema(hidden = true)
     public boolean isDateRangeOrdered() {
         return DateRanges.isOrdered(startsOn, endsOn);
     }
 
-    /** As on the create: too long is reported on the end. */
     @ConfiguredMax(value = "plan.max-days", reportedOn = "endsOn")
     @Schema(hidden = true)
     public Long getLengthInDays() {

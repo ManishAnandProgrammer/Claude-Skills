@@ -26,7 +26,6 @@ public record PlanStatusRequest(
         @NotNull
         Long version) {
 
-    /** The day comes with DONE and only with it: missing for DONE, or sent with another status, is a 400 on doneOn. */
     @CrossField(reportedOn = "doneOn", message = "{plan.done-on-with-done}")
     @Schema(hidden = true)
     public boolean isDoneOnGivenWithDoneOnly() {

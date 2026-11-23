@@ -25,11 +25,9 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
-/** A new ErrorCode can't reach production without its HTTP status, its message, and a Retry-After when it is a 503. */
 class ErrorCodeContractTest {
 
     private static final Properties MESSAGES = load("messages/message_en.properties");
-    /** Every language's file, English's included: a project adds a language by adding its file. */
     private static final Map<String, Properties> LANGUAGES = loadEveryLanguage();
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{[^}]*}");
 

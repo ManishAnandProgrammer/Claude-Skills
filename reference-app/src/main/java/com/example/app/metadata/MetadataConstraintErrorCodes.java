@@ -6,10 +6,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-/**
- * A configuration created twice (two lifecycle events racing, or a seed run again). A counter
- * created twice keeps the generic {@code DUPLICATE_RECORD}.
- */
 @Component
 class MetadataConstraintErrorCodes implements ConstraintErrorCodes {
 

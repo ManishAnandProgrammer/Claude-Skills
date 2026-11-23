@@ -11,7 +11,6 @@ import org.springframework.util.StringUtils;
 @Component
 public class TimeEntryMapper {
 
-    /** The entry takes its todo's owner, which the composite foreign key requires. */
     public TimeEntry toEntity(TimeEntryCreateRequest request, Todo todo) {
         return TimeEntry.builder()
                 .todo(todo)
@@ -46,7 +45,6 @@ public class TimeEntryMapper {
                 timeEntry.getVersion());
     }
 
-    /** One representation of "no note": blank is stored as null. */
     private static String noteOrNone(String note) {
         return StringUtils.hasText(note) ? note : null;
     }

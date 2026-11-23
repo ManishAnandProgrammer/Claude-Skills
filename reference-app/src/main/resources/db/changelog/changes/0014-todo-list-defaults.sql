@@ -1,6 +1,6 @@
 --liquibase formatted sql
 -- The fixed key TODO_LIST_DEFAULTS (MetadataKeys): seeded by the changeset that needs it (META-05), so
--- every database has it from the start and a read never meets METADATA_NOT_FOUND; an admin changes it
+-- every database has it from the start and a read never meets METADATA_VALUE_MISSING; an admin changes it
 -- through PUT /metadata/TODO_LIST_DEFAULTS. The value is TodoListSettings.defaults(), written out.
 -- bootstrap-copy.sh copies this file only with the example and metadata pieces. Numbered after the
 -- tenancy overlays' 0012 and 0013, which a bootstrap copy may also hold.

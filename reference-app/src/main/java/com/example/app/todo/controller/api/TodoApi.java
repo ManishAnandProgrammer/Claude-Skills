@@ -34,14 +34,12 @@ import java.util.UUID;
         the requester of: you may read it (GET /todos/{id}), and every other call on it is 403 TODO_NOT_YOURS.""")
 public interface TodoApi {
 
-    // A piece marker can't sit inside a text block, so the create's 404 text starts with this constant:
-    // generated code knows whether a project has tenancy and writes the description as one text block.
+    // A piece marker can't sit inside a text block, so the 404 texts that differ with tenancy start with this constant.
     // tenancy:begin
     // String REQUESTER_NOT_FOUND = "TENANT_MEMBER_NOT_FOUND (requesterId is no member of your organisation, or has left it); ";
     // tenancy:else
     String REQUESTER_NOT_FOUND = "USER_NOT_FOUND (requesterId is no account); ";
     // tenancy:end
-    /** Every write of a todo, and its time entries, refuse its requester, who may read the todo itself. */
     String NOT_YOURS = "TODO_NOT_YOURS (you are its requester: you may read the todo, only its owner acts on it)";
 
     @Operation(summary = "Your todos, in batches", description = """
@@ -104,14 +102,14 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:begin
     @ApiResponse(responseCode = "404", description = REQUESTER_NOT_FOUND + """
-            TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_GONE, \
-            TAG_GONE (deleted while the todo was being saved); UPLOAD_POLICY_NOT_FOUND (no upload policy for \
+            TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_DELETED_MEANWHILE, \
+            TAG_DELETED_MEANWHILE (deleted while the todo was being saved); UPLOAD_POLICY_NOT_SEEDED (no upload policy for \
             the todos' attachments: an operator's setup is missing)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:else
     // @ApiResponse(responseCode = "404", description = REQUESTER_NOT_FOUND + """
-    //         TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_GONE, \
-    //         TAG_GONE (deleted while the todo was being saved)""",
+    //         TODO_LIST_NOT_FOUND, TAG_NOT_FOUND (the list or a tag is missing, or another user's); TODO_LIST_DELETED_MEANWHILE, \
+    //         TAG_DELETED_MEANWHILE (deleted while the todo was being saved)""",
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:end
     // media:begin
@@ -160,13 +158,13 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:begin
     @ApiResponse(responseCode = "404", description = REQUESTER_NOT_FOUND + """
-            TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_GONE (the new list deleted while the todo was being \
+            TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_DELETED_MEANWHILE (the new list deleted while the todo was being \
             saved), TODO_ATTACHMENT_NOT_FOUND (a removeAttachmentIds entry is not one of its files); \
-            UPLOAD_POLICY_NOT_FOUND (no upload policy for the todos' attachments: an operator's setup is missing)""",
+            UPLOAD_POLICY_NOT_SEEDED (no upload policy for the todos' attachments: an operator's setup is missing)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:else
     // @ApiResponse(responseCode = "404", description = REQUESTER_NOT_FOUND + """
-    //         TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_GONE (the new list deleted while the todo was being \
+    //         TODO_NOT_FOUND, TODO_LIST_NOT_FOUND, TODO_LIST_DELETED_MEANWHILE (the new list deleted while the todo was being \
     //         saved)""",
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:end
@@ -227,7 +225,7 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = NOT_YOURS,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TAG_NOT_FOUND (missing, or another user's); TAG_GONE (deleted while the tags were being saved)",
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND, TAG_NOT_FOUND (missing, or another user's); TAG_DELETED_MEANWHILE (deleted while the tags were being saved)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT (a stale version, or a dropped tag deleted meanwhile)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -313,7 +311,7 @@ public interface TodoApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = NOT_YOURS,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's); TODO_GONE (deleted while the entry was being saved)",
+    @ApiResponse(responseCode = "404", description = "TODO_NOT_FOUND (missing, or another user's); TODO_DELETED_MEANWHILE (deleted while the entry was being saved)",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

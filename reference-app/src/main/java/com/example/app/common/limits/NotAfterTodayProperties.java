@@ -8,11 +8,8 @@ import java.time.Period;
 import java.util.Objects;
 
 /**
- * {@code app.limits.not-after-today.*} (config/limits.yml): the {@link NotAfterToday} rule's settings.
- *
- * @param tolerance how far past UTC today a date may be ({@code 1d}): days only, from 0 (which refuses a user east of
- *                  UTC their own today) to 2 (every time zone is at most 14 hours ahead of UTC, so more only lets future
- *                  dates in; {@code 1m} would be a month)
+ * @param tolerance days only, at most 2: every time zone is at most 14 hours ahead of UTC, so more only lets
+ *                  future dates in
  */
 @Validated
 @ConfigurationProperties(prefix = "app.limits.not-after-today")

@@ -16,12 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * What the changesets after the previous release did to a used database (support/PreviousReleaseDatabase
- * built it: that release's changesets, then db/upgrade/previous-release-seed.sql, then the rest; crud-gen
- * tests.md, *Upgrading a used database*). Runs only on such a run: verify.sh sets
- * {@code app.test.upgrade.previous-release}.
- */
+/** Runs only under verify.sh, which sets {@code app.test.upgrade.previous-release}. */
 @EnabledIfSystemProperty(named = "app.test.upgrade.previous-release", matches = "\\d+")
 class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
 
@@ -37,7 +32,7 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    /** The seeded owner's access token: the seed stores no real password hash, so the test gives it one. */
+    /** The seed stores no real password hash, so the test gives it one. */
     private String heavyOwnersToken() throws Exception {
         sql("update users set password_hash = ? where id = ?", passwordEncoder.encode(PASSWORD), HEAVY);
         return read(login(HEAVY_EMAIL, PASSWORD).andExpect(status().isOk()), "$.response.accessToken");
@@ -143,6 +138,23 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         assertThat(created.longValue()).isEqualTo(counter + 1);
     }
     // metadata:end
+    // media:begin
+
+    @Test
+    @DisplayName("After 0040 every seeded attached file is VERIFIED with its claim window kept, and its todo shows it so")
+    void theSeededFilesAreVerified() throws Exception {
+        assertThat(jdbc.queryForList("select status from media_files where uploaded_by = ?", String.class, HEAVY))
+                .hasSize(6).containsOnly("VERIFIED");
+        assertThat(jdbc.queryForObject("""
+                select count(*) from media_files where uploaded_by = ? and claimable_until = upload_expires_at + interval '1 day'""",
+                Integer.class, HEAVY)).isEqualTo(6);
+        UUID todoId = jdbc.queryForObject("select todo_id from todo_attachments order by todo_id limit 1", UUID.class);
+
+        getAs(heavyOwnersToken(), "/api/v1/todos/" + todoId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.attachments[0].status").value("VERIFIED"));
+    }
+    // media:end
 
     @Test
     @DisplayName("After 0033 every seeded plan is PLANNED without a done day, and still holds its days")

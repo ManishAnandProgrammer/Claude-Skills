@@ -27,7 +27,6 @@ import java.util.stream.LongStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Gapless counters: each number handed out once, in order, and a rolled-back one handed out again. */
 class CounterIntegrationTest extends IntegrationTest {
 
     private static final int RACERS = 8;
@@ -42,7 +41,6 @@ class CounterIntegrationTest extends IntegrationTest {
         return Counters.perContext("TEST_COUNTER", UUID.randomUUID());
     }
 
-    /** One caller's business transaction that takes a number and commits. */
     private long nextCommitted(String name) {
         return new TransactionTemplate(transactionManager).execute(status -> counters.next(name));
     }
@@ -118,7 +116,7 @@ class CounterIntegrationTest extends IntegrationTest {
             }
             start.countDown();
             for (Future<Long> number : pending) {
-                numbers.add(within(number));
+                numbers.add(awaitResult(number));
             }
         }
 
@@ -176,7 +174,6 @@ class CounterIntegrationTest extends IntegrationTest {
 
         for (String other : List.of("INVOICE_NUMBER_" + storeId.toString().toUpperCase(), "invoice_number", "INVOICE-NUMBER")) {
             // tenancy-row:begin
-            // // Row mode: every insert names its tenant (tenant_id has no default).
             // assertThatThrownBy(() -> sql("""
             //         insert into counters (id, tenant_id, key, last_value, created_at, updated_at, version)
             //         values (uuidv7(), ?, ?, 0, now(), now(), 0)

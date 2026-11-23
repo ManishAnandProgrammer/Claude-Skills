@@ -20,7 +20,6 @@ import java.util.UUID;
 @Component
 public class PersonAccessMapper {
 
-    /** The roles by code; the grants in the repository's order (by permission); held and removed as computed. */
     public PersonAccessResponse toResponse(UUID userId, List<RoleAssignment> assignments, List<PersonalGrant> grants,
                                            EffectiveAccess access) {
         List<AssignedRoleResponse> roles = assignments.stream()
@@ -48,7 +47,7 @@ public class PersonAccessMapper {
         return new HeldPermissionResponse(granted.permission(), granted.roleCodes(), granted.personallyAllowed());
     }
 
-    /** The missing prerequisites in the enum's order, so the answer is stable. */
+    /** The enum's order, so the answer is stable. */
     private static RemovedPermissionResponse toRemoved(EffectiveAccess.Removed removed) {
         Set<Permission> missing = EnumSet.noneOf(Permission.class);
         missing.addAll(removed.missing());

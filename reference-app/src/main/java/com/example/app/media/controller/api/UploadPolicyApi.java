@@ -1,6 +1,6 @@
 package com.example.app.media.controller.api;
 
-import com.example.app.common.wrapper.ListWrapper;
+import com.example.app.common.wrapper.BoundedListWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.media.api.UploadPurpose;
 import com.example.app.media.dto.request.UploadPolicyUpdateRequest;
@@ -26,7 +26,7 @@ public interface UploadPolicyApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    ListWrapper<UploadPolicyResponse> all();
+    BoundedListWrapper<UploadPolicyResponse> all();
 
     @Operation(summary = "Replace a purpose's limits", description = """
             Send every limit and the version you last read; a stale one is refused with 409 \
@@ -41,7 +41,7 @@ public interface UploadPolicyApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "UPLOAD_POLICY_NOT_FOUND",
+    @ApiResponse(responseCode = "404", description = "UPLOAD_POLICY_NOT_SEEDED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

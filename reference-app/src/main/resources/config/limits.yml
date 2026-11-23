@@ -157,11 +157,11 @@ app:
     # While Redis is unreachable, the background reconnect tries this often.
     reconnect-interval: 5s
     sign-in:
-      login-per-ip: { requests: 20, window: 1m }
-      login-per-account: { requests: 5, window: 1m }
-      signup-per-ip: { requests: 5, window: 10m }
-      refresh-per-ip: { requests: 30, window: 1m }
-      logout-per-ip: { requests: 30, window: 1m }
+      login-per-ip: { capacity: 20, refill-period: 1m }
+      login-per-account: { capacity: 5, refill-period: 1m }
+      signup-per-ip: { capacity: 5, refill-period: 10m }
+      refresh-per-ip: { capacity: 30, refill-period: 1m }
+      logout-per-ip: { capacity: 30, refill-period: 1m }
   # sign-in:end
 
 # The admission bulkheads (AdmissionControlFilter). Other bulkheads live beside the code they guard;

@@ -22,10 +22,6 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * A person's roles and personal grants (the roles piece, house-review AUTHZ-12): the explanation an admin reads, the
- * changes, and the safety rules about a person (1, 2, 3, 7).
- */
 class PersonAccessIntegrationTest extends RolesFixtures {
 
     @Autowired
@@ -94,7 +90,7 @@ class PersonAccessIntegrationTest extends RolesFixtures {
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
         putAs(granter.accessToken(), userPermission(person.id(), NEEDING), grantJson("ALLOW"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
-        // The granter holds NEEDED until a date: they give it until a date, never for good.
+        // The granter holds NEEDED only until a date, so they can't give it for good.
         putAs(granter.accessToken(), userPermission(person.id(), NEEDED), grantJson("ALLOW"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_NOT_HELD"));
         putAs(granter.accessToken(), userPermission(person.id(), NEEDED), """
@@ -172,9 +168,9 @@ class PersonAccessIntegrationTest extends RolesFixtures {
                     userPermission(first.id(), Permission.ACCESS_GRANT), grantJson("DENY"))));
             awaitLockWaiters(2, null);
             release.countDown();
-            within(holder);
+            awaitResult(holder);
 
-            List<Answer> answers = List.of(within(firstDeniesSecond), within(secondDeniesFirst));
+            List<Answer> answers = List.of(awaitResult(firstDeniesSecond), awaitResult(secondDeniesFirst));
             assertThat(answers).extracting(Answer::status).containsExactlyInAnyOrder(200, 403);
             // The second, under the lock, reads that its own ACCESS_GRANT was just denied.
             assertThat(answers).filteredOn(answer -> answer.status() == 403).extracting(Answer::errorCode).containsExactly("ACCESS_DENIED");
@@ -190,8 +186,8 @@ class PersonAccessIntegrationTest extends RolesFixtures {
 
     // tenancy:begin
     // example:begin
-    // With tenancy the one prerequisite outside the example's is ACCESS_GRANT's own (TENANT_MEMBERS_MANAGE), which every
-    // granter holds both of: the example's plans give the pair, the granter denied the dependent one.
+    // With tenancy the only prerequisite pair besides ACCESS_GRANT's own (which every granter holds) is the example's
+    // plans.
     @Test
     @DisplayName("Safety rule 1 on the result: taking a DENY away that would hand back a permission the caller lacks is 403 ACCESS_NOT_HELD")
     void takingADenyAwayHandsBackNothingTheCallerLacks() throws Exception {

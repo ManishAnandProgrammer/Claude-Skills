@@ -8,15 +8,14 @@ import org.springframework.data.support.PageableExecutionUtils;
 import java.util.List;
 
 /**
- * Runs an offset page: the rows of the page, and the count only when the page itself can't tell the
- * total (a full page), so a partial page costs one statement.
+ * The count runs only when the page itself can't tell the total (a full page), so a partial page costs one
+ * statement.
  */
 public final class OffsetPages {
 
     private OffsetPages() {
     }
 
-    /** {@code rows} is the ordered select, {@code count} the same predicates counted. */
     public static <R> Page<R> page(TypedQuery<R> rows, TypedQuery<Long> count, Pageable pageable) {
         List<R> content = rows
                 .setFirstResult(Math.toIntExact(pageable.getOffset()))

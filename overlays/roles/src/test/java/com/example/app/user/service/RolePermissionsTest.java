@@ -13,7 +13,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-/** The roles piece's TokenPermissions on tokens that name nobody it reads: nothing held, and nothing read. */
 class RolePermissionsTest {
 
     private final PersonAccessService access = mock(PersonAccessService.class);

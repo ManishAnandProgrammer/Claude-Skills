@@ -11,15 +11,9 @@ import java.sql.SQLException;
 import java.util.UUID;
 
 /**
- * Hibernate's connection hook in the row mode: the only code that writes {@code app.tenant_id}, the
- * setting every row-level security policy reads. Hibernate calls it when a transaction's first
- * statement needs a connection (release-after-transaction mode), so a transaction that runs no SQL
- * borrows nothing.
- *
- * <p>It runs one parameterised statement as the transaction's first: the tenant and, for a read-only
- * transaction, the read-only flag (in this mode Spring no longer sets it). Both are transaction-local,
- * so the commit or rollback clears them and the connection returns to the pool without a tenant: no
- * reset step that could be forgotten, and a plain JDBC borrower sees no tenant's rows.</p>
+ * One statement sets the tenant and, for a read-only transaction, the read-only flag (in this connection handling
+ * mode Spring no longer sets it). Both are transaction-local, so the commit or rollback clears them and the connection
+ * returns to the pool without a tenant: no reset step that could be forgotten.
  *
  * <p>{@link TenantContext#NO_TENANT} sets an empty tenant: the policies match no row, so tenant tables
  * read as empty and refuse writes, while the platform's tables (no policy) work.</p>
@@ -54,7 +48,7 @@ public class TransactionLocalTenantProvider implements MultiTenantConnectionProv
         connection.close();
     }
 
-    /** Hibernate's startup work (schema validation) reads the catalog only: no tenant needed. */
+    /** Schema validation at startup reads the catalog only: no tenant needed. */
     @Override
     public Connection getAnyConnection() throws SQLException {
         return dataSource.getConnection();

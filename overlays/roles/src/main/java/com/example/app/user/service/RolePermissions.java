@@ -16,15 +16,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * A token's permissions with the roles piece: what its bearer holds now, read from the tables on every request
- * ({@link PersonAccessService#effectivePermissions}, one statement, joined with the account's status). The token
- * carries the user's id and nothing about access, so a change of roles or grants, or a suspension, reaches the
- * person's next request, and {@code GET /users/me/access} shows the same set every check reads. No cache: the one
- * indexed read is the cost.
- *   <!-- tenancy:begin -->
- * A tenant token is read in its tenant's context: the roles are the tenant's. A platform token (staff, no tenant)
- * holds no tenant permission.
- *   <!-- tenancy:end -->
+ * Read from the tables on every request, without a cache: the token carries nothing about access, so a change of
+ * roles or grants, or a suspension, reaches the person's next request.
  */
 @Component
 @RequiredArgsConstructor

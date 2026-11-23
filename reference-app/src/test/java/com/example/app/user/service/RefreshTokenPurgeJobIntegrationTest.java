@@ -20,14 +20,13 @@ class RefreshTokenPurgeJobIntegrationTest extends IntegrationTest {
     @Autowired
     private Validator validator;
 
-    /** Inserts a token directly; {@code expiresAt} is an SQL expression relative to now. */
-    private UUID insertToken(UUID userId, String expiresAt, boolean revoked) {
+    private UUID insertToken(UUID userId, String expiresAtSql, boolean revoked) {
         UUID id = UUID.randomUUID();
         sql("""
                 insert into refresh_tokens (id, user_id, token_hash, expires_at, revoked_at, revocation_reason,
                                             created_at, updated_at, version)
                 values (?, ?, ?, %s, %s, %s, now(), now(), 0)
-                """.formatted(expiresAt, revoked ? "now()" : "null", revoked ? "'ROTATED'" : "null"),
+                """.formatted(expiresAtSql, revoked ? "now()" : "null", revoked ? "'ROTATED'" : "null"),
                 id, userId, UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", ""));
         return id;
     }

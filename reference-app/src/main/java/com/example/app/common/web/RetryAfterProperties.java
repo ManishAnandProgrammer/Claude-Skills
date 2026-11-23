@@ -12,8 +12,8 @@ import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * How long a refused client is told to wait ({@code app.retry-after.*}). Each answer picks a fresh
- * value within the range, so clients refused by one outage don't all come back in the same second.
+ * Each answer picks a fresh value within the range, so clients refused by one outage don't all come back in the
+ * same second.
  */
 @Validated
 @ConfigurationProperties(prefix = "app.retry-after")
@@ -25,10 +25,6 @@ public record RetryAfterProperties(@Valid @NotNull Range serverBusy,
                                    // media:end
                                    @Valid @NotNull Range databaseUnavailable) {
 
-    /**
-     * The range for a code a client should come back from: every 503 has one
-     * ({@code ErrorCodeContractTest}), so no refusal of that kind goes out without {@code Retry-After}.
-     */
     public Optional<Range> rangeFor(ErrorCode code) {
         return switch (code) {
             case SERVER_BUSY -> Optional.of(serverBusy);
@@ -54,7 +50,6 @@ public record RetryAfterProperties(@Valid @NotNull Range serverBusy,
             }
         }
 
-        /** Whole seconds within the range, jittered, as the {@code Retry-After} header wants them. */
         public String pickSeconds() {
             return String.valueOf(ThreadLocalRandom.current().nextLong(min.toSeconds(), max.toSeconds() + 1));
         }

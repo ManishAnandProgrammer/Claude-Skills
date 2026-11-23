@@ -9,11 +9,9 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * The permission a handler needs: 403 {@code ACCESS_DENIED} without it. Spring Security resolves the
- * {@code {value}} template from this annotation's attribute (an enum constant becomes its name; Spring Security 7's
- * annotation scanners resolve templates by default, {@code SecurityAnnotationScanners.requireUnique}), so a misspelt permission fails
- * at compile time, never on one endpoint at run time. Every handler declares exactly one of this,
- * {@link SignedIn} or {@link Public} (ArchUnit).
+ * Spring Security 7's annotation scanners resolve the {@code {value}} template from this annotation's attribute
+ * (an enum constant becomes its name), so a misspelt permission fails at compile time, never on one endpoint at
+ * run time.
  */
 @Documented
 @Target(ElementType.METHOD)

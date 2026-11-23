@@ -8,7 +8,6 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Objects;
 
-/** A Spring bean (created through the validator factory), so the tolerance and the clock are the application's. */
 @RequiredArgsConstructor
 class NotAfterTodayValidator implements ConstraintValidator<NotAfterToday, LocalDate> {
 

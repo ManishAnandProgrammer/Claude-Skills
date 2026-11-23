@@ -25,7 +25,7 @@ public interface MetadataApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "404", description = """
             METADATA_KEY_UNKNOWN (no fixed key of that name; a per-record configuration is not reached \
-            here); METADATA_NOT_FOUND (declared, but not set up yet)""",
+            here); METADATA_VALUE_MISSING (declared, but not set up yet)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY; retry after Retry-After",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
@@ -48,7 +48,7 @@ public interface MetadataApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = "METADATA_KEY_UNKNOWN, METADATA_NOT_FOUND",
+    @ApiResponse(responseCode = "404", description = "METADATA_KEY_UNKNOWN, METADATA_VALUE_MISSING",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

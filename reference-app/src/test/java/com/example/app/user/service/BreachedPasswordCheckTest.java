@@ -28,7 +28,6 @@ class BreachedPasswordCheckTest {
     private final BulkheadRegistry bulkheads = onePermit();
     private final AtomicInteger checks = new AtomicInteger();
 
-    /** The check's bulkhead with a single permit and no wait. */
     private static BulkheadRegistry onePermit() {
         BulkheadRegistry registry = BulkheadRegistry.ofDefaults();
         registry.bulkhead(BreachedPasswordCheck.BULKHEAD, BulkheadConfig.custom()

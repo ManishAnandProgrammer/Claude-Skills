@@ -23,10 +23,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * What the ArchUnit rules refuse and what they let pass, proven on the fixture classes beside this test
- * (the rules themselves analyse production code only). A narrowed rule keeps refusing what it is for.
- */
+/** The fixture classes beside this test break the rules on purpose: the rules themselves analyse production code only. */
 class ArchRuleScopeTest {
 
     private static final String HIDDEN = "com.example.app.archunit.fixture.visibility.Hidden";

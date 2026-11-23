@@ -9,25 +9,18 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The token-path table: every change that takes an account's access away, against every path that hands out or
- * accepts a token, with what each answers. A row per cell; a cell that doesn't exist in this mode (a tenant, a
- * switch, staff) has no row. The tenancy overlay's version of this class holds the tenancy subjects and paths.
- */
 class TokenPathIntegrationTest extends IntegrationTest {
 
     private static final String ME = "/api/v1/users/me";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     enum Subject {
-        /** An ADMIN suspended the account. */
         SUSPENDED_USER
     }
 
     enum Path {
         LOGIN,
         REFRESH,
-        /** The access token issued before the change. */
         NEXT_REQUEST
     }
 

@@ -12,17 +12,18 @@ import com.example.app.common.pagination.TextSearch;
 import com.example.app.todo.domain.TodoList;
 import com.example.app.todo.domain.TodoList_;
 import com.example.app.todo.dto.request.TodoListFilter;
+import com.example.app.todo.dto.request.TodoListSort;
 import com.example.app.todo.dto.response.TodoListResponse;
 import com.example.app.todo.repository.custom.CustomTodoListRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.query.QueryUtils;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -33,11 +34,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class TodoListRepositoryImpl implements CustomTodoListRepository {
 
-    /** The cursor names the direction it was taken in, so it is refused in the other. */
     private static final String NAME_ASC = "NAME_ASC";
     private static final String NAME_DESC = "NAME_DESC";
 
-    /** Every order's keyset: its sort key, then the id. */
     private static final int CURSOR_KEYS = 2;
 
     private final EntityManager entityManager;
@@ -52,7 +51,7 @@ class TodoListRepositoryImpl implements CustomTodoListRepository {
                 root.get(TodoList_.createdAt), root.get(TodoList_.updatedAt),
                 root.get(TodoList_.createdBy), root.get(TodoList_.updatedBy), root.get(TodoList_.version)));
         query.where(pageMatching(builder, root, ownerId, filter).toArray(new Predicate[0]));
-        query.orderBy(QueryUtils.toOrders(pageable.getSort(), root, builder));
+        query.orderBy(orderOf(builder, root, filter.getSort()));
 
         CriteriaQuery<Long> countQuery = builder.createQuery(Long.class);
         Root<TodoList> countRoot = countQuery.from(TodoList.class);
@@ -62,7 +61,15 @@ class TodoListRepositoryImpl implements CustomTodoListRepository {
         return OffsetPages.page(entityManager.createQuery(query), entityManager.createQuery(countQuery), pageable);
     }
 
-    /** Scrolls by name, then id. */
+    // NEWEST is never the id alone: the planner would walk the UUIDv7 primary key backward through every
+    // owner's rows instead of the owner's index.
+    private static List<Order> orderOf(CriteriaBuilder builder, Root<TodoList> root, TodoListSort sort) {
+        return switch (sort) {
+            case NAME -> List.of(builder.asc(root.get(TodoList_.name)), builder.asc(root.get(TodoList_.id)));
+            case NEWEST -> List.of(builder.desc(root.get(TodoList_.createdAt)), builder.desc(root.get(TodoList_.id)));
+        };
+    }
+
     @Override
     public CursorBatch<DropdownItem> findDropdownItems(DropdownFilter filter, UUID ownerId, int size) {
         boolean descending = filter.getSortDirection() == DropdownCandidate.SortDirection.DESC;
@@ -74,7 +81,7 @@ class TodoListRepositoryImpl implements CustomTodoListRepository {
         Root<TodoList> root = query.from(TodoList.class);
         query.select(builder.construct(DropdownItem.class, root.get(TodoList_.id), root.get(TodoList_.name)));
         List<Predicate> predicates = ownedAndMatching(builder, root, ownerId, filter);
-        if (cursor.isPresent()) {
+        if (cursor.hasPosition()) {
             predicates.add(Seek.after(builder, descending,
                     root.get(TodoList_.name), cursor.text(0),
                     root.get(TodoList_.id), cursor.uuid(1)));
@@ -86,7 +93,6 @@ class TodoListRepositoryImpl implements CustomTodoListRepository {
         return CursorBatch.of(rows, size, item -> Cursor.write(sort, item.label(), item.value()));
     }
 
-    /** The page's rows and its count: the shared predicates plus the page's own filters. */
     private static List<Predicate> pageMatching(CriteriaBuilder builder, Root<TodoList> root, UUID ownerId,
                                                 TodoListFilter filter) {
         List<Predicate> predicates = ownedAndMatching(builder, root, ownerId, filter);
@@ -96,7 +102,6 @@ class TodoListRepositoryImpl implements CustomTodoListRepository {
         return predicates;
     }
 
-    /** Shared by the page and the dropdown, so both list exactly what the caller may read. */
     private static List<Predicate> ownedAndMatching(CriteriaBuilder builder, Root<TodoList> root, UUID ownerId,
                                                     QueryFilter filter) {
         List<Predicate> predicates = new ArrayList<>();

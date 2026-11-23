@@ -23,14 +23,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
-/**
- * A write a constraint refuses is logged without the row's values: no bound parameter of the failed
- * statement and no server DETAIL ("Key (email)=(...) already exists") in any log line or logged
- * exception (SEC-04; {@code logServerErrorDetail: false} in {@code config/db.yml}). Every unique, foreign
- * key and check refusal of every entity takes this path, and most of them are ordinary 409s. Checked twice:
- * in the exception's own messages (what any logger of it prints) and in the log with Hibernate's lines on. The
- * table is temporary: it lives only in the test's own transaction.
- */
 class RefusedWriteLogIntegrationTest extends IntegrationTest {
 
     private static final String CONSTRAINT = "uq_people_email";
@@ -93,7 +85,6 @@ class RefusedWriteLogIntegrationTest extends IntegrationTest {
         assertThat(log.text()).contains(CONSTRAINT).doesNotContain(email);
     }
 
-    /** Creates the table, stores {@code email} once, then runs the write that repeats it. */
     private void inTemporaryPeopleTable(String email, Runnable repeat) {
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             entityManager.createNativeQuery("""
@@ -107,7 +98,6 @@ class RefusedWriteLogIntegrationTest extends IntegrationTest {
         });
     }
 
-    /** Every message of the exception, its causes and a batch's next exceptions: what a logger of it prints. */
     private static String messagesOf(Throwable refused) {
         List<String> messages = new ArrayList<>();
         for (Throwable cause = refused; Objects.nonNull(cause); cause = cause.getCause()) {

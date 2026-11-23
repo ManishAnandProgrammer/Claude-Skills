@@ -35,30 +35,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// roles:begin
-/**
- * A tenant ADMIN reads their tenant's members: the list and one member (their roles are the roles piece's, read with
- * {@code GET /users/{id}/access}). Every test makes its own tenants: the members list is the tenant's whole team.
- */
-// roles:else
-// /**
-//  * A tenant ADMIN reads their tenant's members: the list and one member, each with the version a role
-//  * change sends back. Every test makes its own tenants: the members list is the tenant's whole team.
-//  */
-// roles:end
+/** Every test makes its own tenants: the members list is the tenant's whole team. */
 @WithoutTestTenant
 class TenantMemberListIntegrationTest extends IntegrationTest {
 
     private static final String MEMBERS = "/api/v1/tenant-members";
 
     // roles:begin
-    /**
-     * An account that signed up and was added through the API: its membership id is the application's (UUIDv7). A
-     * {@code role} other than USER is given by fixture (the add gives USER; GET /users/{id}/access shows it).
-     */
+    /** Through the API, so its membership id is the application's (UUIDv7). */
     private UUID addedThroughTheApi(TestUser admin, String emailPrefix, String role) throws Exception {
         String email = uniqueEmail(emailPrefix);
-        rawSignup(email, PASSWORD).andExpect(status().isCreated());
+        signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
         ResultActions added = postAs(admin.accessToken(), MEMBERS, """
                 {"email": "%s"}
                 """.formatted(email)).andExpect(status().isCreated());
@@ -69,16 +56,16 @@ class TenantMemberListIntegrationTest extends IntegrationTest {
         return userId;
     }
 
-    /** The admin's tenant: the fixtures make each admin a member of one tenant. */
+    /** The fixtures make each admin a member of one tenant. */
     private TestTenant tenantOf(TestUser admin) {
         return tenant(jdbc.queryForObject("select tenant_id from tenant_memberships where user_id = ?", UUID.class, admin.id()));
     }
 
     // roles:else
-    // /** An account that signed up and was added through the API: its membership id is the application's (UUIDv7). */
+    // /** Through the API, so its membership id is the application's (UUIDv7). */
     // private UUID addedThroughTheApi(TestUser admin, String emailPrefix, String role) throws Exception {
     //     String email = uniqueEmail(emailPrefix);
-    //     rawSignup(email, PASSWORD).andExpect(status().isCreated());
+    //     signupWithoutATenant(email, PASSWORD).andExpect(status().isCreated());
     //     ResultActions added = postAs(admin.accessToken(), MEMBERS, """
     //             {"email": "%s", "role": "%s"}
     //             """.formatted(email, role)).andExpect(status().isCreated());

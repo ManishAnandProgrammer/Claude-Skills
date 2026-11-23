@@ -579,7 +579,7 @@ E1–E3 and the row tests named below, which run as the real application role.
 ### TEN-34: [row] Tenant data comes from listeners, never from changesets
 - **Check:** a changeset can't seed a tenant's rows: none exists when it runs, and the forced policy
   binds the owner too (`RowSecurityCatalogIntegrationTest`). A module seeds a new tenant's defaults in
-  a `TenantProvisioned` listener (golden `TodoAttachmentPolicySeed` through `Uploads.definePolicy`),
+  a `TenantProvisioned` listener (golden `TodoAttachmentPolicySeed` through `Uploads.definePolicyIfAbsent`),
   which runs under the tenant's scope in its activating transaction: `TenantProvisioning` activates an
   approved tenant right after the approval commits, in a new transaction opened inside
   `TenantScope.runAs` (the approving one has no tenant, and the tenant is fixed when a transaction
@@ -593,7 +593,7 @@ E1–E3 and the row tests named below, which run as the real application role.
   every existing tenant without the row. A failed provisioning leaves the
   tenant PENDING and logs it; approving again retries.
 - **Check:** the backfill gives the row to **every** tenant, a PENDING registration included, so the
-  listener creates its row **only when missing** (`Uploads.definePolicy`, `Metadata.createIfAbsent`,
+  listener creates its row **only when missing** (`Uploads.definePolicyIfAbsent`, `Metadata.createIfAbsent`,
   `Counters.createIfAbsent`: one `INSERT … ON CONFLICT DO NOTHING` naming its tenant, or a check first).
   A plain insert meets the backfilled row on approval, the unique key refuses it, the activation rolls
   back, and every retry fails the same way: the tenant can never be activated. Tested by approving a

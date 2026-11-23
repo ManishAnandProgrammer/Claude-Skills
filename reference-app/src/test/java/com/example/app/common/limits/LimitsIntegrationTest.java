@@ -40,10 +40,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class LimitsIntegrationTest extends IntegrationTest {
 
-    /**
-     * Every text limit whose value a cursor carries: a dropdown's label, a cursor list's text sort key.
-     * crud-gen adds the key of each new one, so a longer key can't outgrow the cursor limit unnoticed.
-     */
     private static final List<String> CURSOR_TEXT_KEYS = List.of(
             // example:begin
             "todo-list.name",
@@ -52,7 +48,6 @@ class LimitsIntegrationTest extends IntegrationTest {
             // example:end
     );
 
-    /** Longer than any sort's name, so the frame of every real cursor is at most this one's. */
     private static final String LONGEST_SORT = "A_SORT_NAME_OF_THIRTY_LETTERS_";
 
     @Autowired
@@ -106,7 +101,6 @@ class LimitsIntegrationTest extends IntegrationTest {
             }
         }
 
-        // A limit on a computed getter (a range's length: PlanCreateRequest.getLengthInDays) is on a method.
         for (JavaMethod method : classes.stream().flatMap(javaClass -> javaClass.getMethods().stream()).toList()) {
             if (method.isAnnotatedWith(ConfiguredMax.class)) {
                 checked++;
@@ -154,12 +148,10 @@ class LimitsIntegrationTest extends IntegrationTest {
         assertThat(unbounded).as("request fields without a configured bound").isEmpty();
     }
 
-    /** A password: bcrypt reads only 72 bytes, so the bound is that number, not a configured one. */
     private static boolean isBoundInBytes(JavaField field) {
         return field.isAnnotatedWith(MaxUtf8Bytes.class) || field.isMetaAnnotatedWith(MaxUtf8Bytes.class);
     }
 
-    /** A pattern without an open repetition ({@code *}, {@code +}, {@code {n,}}) bounds the text's length. */
     private static boolean hasALengthBoundingPattern(JavaField field) {
         if (!field.isAnnotatedWith(jakarta.validation.constraints.Pattern.class)) {
             return false;
@@ -242,7 +234,7 @@ class LimitsIntegrationTest extends IntegrationTest {
                 .containsExactly("must be at most 100");
     }
 
-    /** A request with a text limited by a key every project has (search-query: 100). */
+    /** A key every project has (search-query: 100). */
     record SomeTextRequest(@MaxLength("search-query") String text) {
     }
 
@@ -262,7 +254,7 @@ class LimitsIntegrationTest extends IntegrationTest {
         assertThat(validator.validate(new SomeTextRequest("a\ud83d\ude00b"))).isEmpty();
     }
 
-    /** A request with a collection limited by a key every project has (offset-page.max-size: 100). */
+    /** A key every project has (offset-page.max-size: 100). */
     record SomeBulkRequest(@ConfiguredMaxSize("offset-page.max-size") List<Integer> items) {
     }
 
@@ -294,7 +286,7 @@ class LimitsIntegrationTest extends IntegrationTest {
         assertThat(element.getMaxItems()).as("swagger also passes the field's annotations for the items").isNull();
     }
 
-    /** A request with element Strings limited by a key every project has (search-query: 100). */
+    /** A key every project has (search-query: 100). */
     record SomeKeysRequest(Set<@MaxLength("search-query") String> keys) {
     }
 

@@ -7,12 +7,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy;
 
 /**
- * Wraps the pool so a transaction borrows its connection at the first statement. Without it, every
- * read-only transaction (the class-level default on services) borrows at begin: Spring's
- * {@code HibernateJpaDialect} takes the connection then to call {@code setReadOnly}. The proxy
- * records the flag and applies it when the real connection is borrowed, so PostgreSQL still runs
- * the transaction read-only. Code that must hold a real connection without running a statement
- * borrows from the unwrapped {@link HikariDataSource}.
+ * Without the proxy every read-only transaction borrows at begin: Spring's {@code HibernateJpaDialect} takes the
+ * connection then to call {@code setReadOnly}. The proxy records the flag and applies it at the first statement.
  */
 @Configuration(proxyBeanMethods = false)
 class LazyConnectionConfig {

@@ -14,11 +14,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Display numbers count per tenant (house-review TEN-18): a counter is a row of the tenant's own data,
- * never a sequence the tenants share, so a tenant's numbers move with its data and never reveal how much
- * another tenant numbers.
- */
 class CounterTenantIntegrationTest extends IntegrationTest {
 
     @Autowired
@@ -31,7 +26,6 @@ class CounterTenantIntegrationTest extends IntegrationTest {
         TenantScope.runAs(tenant.id(), () -> counters.create(name, 0));
     }
 
-    /** A business transaction in the tenant that takes a number and commits. */
     private long nextIn(TestTenant tenant, String name) {
         return TenantScope.callAs(tenant.id(), () -> new TransactionTemplate(transactionManager).execute(status -> counters.next(name)));
     }

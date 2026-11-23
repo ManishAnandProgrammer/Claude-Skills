@@ -13,16 +13,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 
-/**
- * What one person may do (the roles piece, house-review AUTHZ-11): the permissions of their current roles, plus
- * their current personal ALLOWs, minus their current personal DENYs. A deny always wins; roles only allow. A
- * permission whose prerequisite isn't held (a DENY took it, or nothing gave it) is dropped too, until nothing
- * changes: a prerequisite is never granted for it. An unknown code in a row grants nothing. Computed from the
- * rows of one read, so every check of a request and {@code GET /users/me/access} see the same set.
- */
+/** A permission whose prerequisite isn't held is dropped too: a prerequisite is never granted for it. */
 public final class EffectiveAccess {
 
-    /** A held permission and where it comes from: the codes of the roles that give it (sorted), and a personal ALLOW. */
     public record Granted(Permission permission, List<String> roleCodes, boolean personallyAllowed) {
 
         public Granted {
@@ -30,11 +23,9 @@ public final class EffectiveAccess {
         }
     }
 
-    /** Why a permission something gave is not held. */
     @Schema(enumAsRef = true, description = "DENIED (a personal DENY) or PREREQUISITE_MISSING (one it needs isn't held)")
     public enum Removal { DENIED, PREREQUISITE_MISSING }
 
-    /** A permission something gave but the person doesn't hold, and why ({@code missing}: the prerequisites not held). */
     public record Removed(Permission permission, Removal reason, Set<Permission> missing) {
 
         public Removed {
@@ -57,7 +48,7 @@ public final class EffectiveAccess {
         this.denied = denied;
     }
 
-    /** The access the rows of one person give now (the read returns current rows only). */
+    /** The read returns current rows only, so every row here gives or takes now. */
     public static EffectiveAccess of(Collection<AccessRow> rows) {
         Map<Permission, Set<String>> fromRoles = new EnumMap<>(Permission.class);
         Set<String> roleCodes = new TreeSet<>();
@@ -97,9 +88,8 @@ public final class EffectiveAccess {
     }
 
     /**
-     * What the rows give for good: only the grants without an end (a role assignment or an ALLOW until a date will
-     * stop giving), every current DENY still taking away. Safety rule 6 counts these holders, so an expiring grant
-     * is never the last one of a permission that must stay held.
+     * Every current DENY still takes away, whatever its end: the last-manager check counts these holders, so an
+     * expiring grant is never the last one of a permission that must stay held.
      */
     public static EffectiveAccess forGoodOf(Collection<AccessRow> rows) {
         List<AccessRow> lasting = new ArrayList<>();
@@ -111,7 +101,6 @@ public final class EffectiveAccess {
         return of(lasting);
     }
 
-    /** Removes, until nothing changes, every held permission one of whose prerequisites isn't held. */
     private static void dropThoseMissingAPrerequisite(Set<Permission> held, List<Removed> removed) {
         boolean changed = true;
         while (changed) {
@@ -129,7 +118,6 @@ public final class EffectiveAccess {
         }
     }
 
-    /** The permissions held, in the enum's order. */
     public Set<Permission> permissions() {
         Set<Permission> permissions = EnumSet.noneOf(Permission.class);
         permissions.addAll(granted.keySet());
@@ -140,20 +128,14 @@ public final class EffectiveAccess {
         return granted.containsKey(permission);
     }
 
-    /** Every held permission with its sources, in the enum's order. */
     public List<Granted> granted() {
         return List.copyOf(granted.values());
     }
 
-    /** The permissions something gave but the person doesn't hold, with the reason, in the order they were removed. */
     public List<Removed> removed() {
         return List.copyOf(removed);
     }
 
-    /**
-     * The read's inputs and result as codes, for the authorization log's TRACE line: the roles that gave a
-     * permission, the personal ALLOWs and DENYs (known codes only, as the read counts them), and what is held.
-     */
     public String describe() {
         return "roles %s, allowed %s, denied %s, held %s".formatted(roleCodes, allowed, denied, permissions());
     }

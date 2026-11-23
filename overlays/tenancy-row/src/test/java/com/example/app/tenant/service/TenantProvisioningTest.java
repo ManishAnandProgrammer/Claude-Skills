@@ -15,7 +15,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 
-/** A failed provisioning leaves the approval's answer alone and is counted, so an alert can see it. */
 class TenantProvisioningTest {
 
     private final TenantService tenantService = mock(TenantService.class);

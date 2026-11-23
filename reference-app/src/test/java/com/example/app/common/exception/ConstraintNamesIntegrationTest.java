@@ -20,11 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.fail;
 
-/**
- * A constraint Hibernate can't name (an exclusion constraint) still maps to the code a module
- * declared for it, and every code a constraint answers has a message that needs no arguments. The
- * table is temporary: it lives only in the test's own transaction.
- */
 class ConstraintNamesIntegrationTest extends IntegrationTest {
 
     private static final String EXCLUSION = "ex_bookings_during";
@@ -67,7 +62,6 @@ class ConstraintNamesIntegrationTest extends IntegrationTest {
         assertThat(new ConstraintViolationCodes(List.of()).codeFor(refused)).isEmpty();
     }
 
-    /** Hibernate's own exception for a real exclusion violation, as Spring receives it. */
     private ConstraintViolationException overlappingBooking() {
         Throwable failure = catchThrowable(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             entityManager.createNativeQuery("""

@@ -12,10 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
-/**
- * Documents the members every error response adds to Spring's {@code ProblemDetail}: springdoc only
- * sees the class, whose extension members are a map it can't describe.
- */
+/** Springdoc only sees the {@code ProblemDetail} class, whose extension members are a map it can't describe. */
 @Component
 class ProblemSchemaOpenApiCustomizer implements OpenApiCustomizer {
 

@@ -5,12 +5,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Objects;
 
-/**
- * One option of a write's options ({@code GET /plans/todo-options}): a {@link DropdownItem}'s {@code value} and
- * {@code label}, and whether the write would take it now, with every reason when not, from the policy method the
- * write calls. A type of its own, so the plain dropdown stays exactly {@code {value, label}} and no option is
- * ever taken as selectable because a field is missing. The write still decides.
- */
 @Schema(description = "One option, and whether the action it serves would take it now")
 public record SelectableDropdownItem(
         @Schema(description = """

@@ -18,7 +18,7 @@ public record SignupRequest(
         String fullName,
 
         @Schema(description = """
-                At least 8 characters and at most 72 bytes in UTF-8 (a Gurmukhi letter takes 3), with \
+                At most 72 bytes in UTF-8 (a Gurmukhi letter takes 3), with \
                 an upper-case letter, a lower-case letter, a digit and one other character.""",
                 example = "Correct-Horse-9")
         @PasswordPolicy

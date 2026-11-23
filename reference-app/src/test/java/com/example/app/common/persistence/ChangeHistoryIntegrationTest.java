@@ -29,10 +29,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The change history (the change-history piece, house-review DATA-08): what the triggers write, who they name, what
- * they never copy, that the table is append-only, and the purge past the retention.
- */
 // tenancy:begin
 // // The purge is a platform job, which runs outside any tenant; requests name their tenant in their token.
 // @WithoutTestTenant
@@ -63,10 +59,6 @@ class ChangeHistoryIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    /**
-     * The tables the change history audits, each piece's own (the review profile's {@code auditedTables}): a table
-     * that matters gets its trigger in the changeset that creates it, and its name here.
-     */
     private static Set<String> auditedTables() {
         Set<String> tables = new HashSet<>();
         // sign-in:begin
@@ -85,7 +77,6 @@ class ChangeHistoryIntegrationTest extends IntegrationTest {
         return tables;
     }
 
-    /** The history of one row, oldest first. */
     private List<Map<String, Object>> historyOf(String table, UUID rowId) {
         return jdbc.queryForList("""
                 select operation, old_row::text as old_row, new_row::text as new_row, actor_id
@@ -288,11 +279,6 @@ class ChangeHistoryIntegrationTest extends IntegrationTest {
                 .isZero();
     }
 
-    /**
-     * The batch is {@code = ANY (ARRAY(...))}, an init plan computed once whatever the planner picks: as
-     * {@code IN (...)} it may run again per outer row and delete more than one batch (DATA-29). That is the
-     * statement's own text, so it is checked as text too.
-     */
     @Test
     @DisplayName("The purge's batch is an init plan over idx_audit_log_changed_at")
     void thePurgeBatchIsPlannedOnItsIndex() {

@@ -29,11 +29,6 @@ public class ObjectWrapper<T> {
         return wrapper;
     }
 
-    /** Build-first pattern: create the wrapper empty, fill it once the object is known. */
-    public void setResponse(T response) {
-        this.response = response;
-    }
-
     public void addExtraDetails(@NonNull String key, Object value) {
         if (Objects.isNull(extraDetails)) {
             extraDetails = new LinkedHashMap<>();

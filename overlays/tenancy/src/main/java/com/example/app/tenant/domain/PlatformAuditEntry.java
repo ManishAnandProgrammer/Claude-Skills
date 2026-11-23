@@ -11,7 +11,6 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.UUID;
 
-/** One action of platform staff inside a tenant. Append-only: every column is {@code updatable = false}. */
 @Entity
 @Table(name = "platform_audit")
 @Getter
@@ -19,7 +18,6 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PlatformAuditEntry extends AuditableEntity {
 
-    /** The platform staff member. */
     @Column(name = "actor_id", nullable = false, updatable = false)
     private UUID actorId;
 

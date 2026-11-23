@@ -11,12 +11,6 @@ import java.util.UUID;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * A todo's requester is a member of the tenant (crud-gen tests.md row 28g): checked through Members whenever a
- * write names someone new, shown by name while they are a member, by id alone once they have left, the todo
- * itself unchanged and still editable (a PUT re-sending the former member keeps them).
- * Each test works in a tenant of its own, through the tokens that name it.
- */
 @WithoutTestTenant
 class TodoRequesterTenancyIntegrationTest extends IntegrationTest {
 

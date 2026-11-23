@@ -41,24 +41,15 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Turns every exception into RFC 9457 Problem Details with the same members: {@code type}
- * ({@code urn:<application>:error:<CODE>}), {@code title}, {@code status}, {@code detail}, {@code instance}
- * (the request path) and {@code errorCode}; {@code errors} (RFC 9457's list of {@link RequestError}s) when the
- * request's values failed: a JSON Pointer for a body value, the name for a parameter. The request id
- * travels in the {@code X-Request-ID} header and the log context. Every status comes from
- * {@link ErrorCodeHttpStatusMapper}.
- *
- * <p>Client errors carry their message from the MessageSource. Every 5xx carries one generic
- * sentence and is logged at ERROR with its stack: no class names, SQL, constraint names or
- * framework messages ever reach a client.</p>
+ * Every 5xx carries one generic sentence: no class names, SQL, constraint names or framework messages ever
+ * reach a client.
  */
 @RestControllerAdvice
 @Slf4j
 @RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
-    /** The attribute of {@code CrossField} and {@code ConfiguredMax} that names the field a rule across fields is reported on. */
-    private static final String REPORTED_ON = "reportedOn";
+    private static final String REPORTED_ON_ATTRIBUTE = "reportedOn";
 
     private final MessageSource messageSource;
     private final ProblemTypes problemTypes;
@@ -70,8 +61,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ErrorCode code = exception.getErrorCode();
         HttpStatus status = ErrorCodeHttpStatusMapper.resolve(code);
         if (status == HttpStatus.SERVICE_UNAVAILABLE) {
-            // A dependency that didn't answer (ERR-02): the client comes back after Retry-After; no stack.
-            // The cause's class only: a message may carry the request's values (SEC-04).
+            // The cause's class only: a message may carry the request's values.
             log.warn("Unavailable: code={}, cause={}", code, causeName(exception.getCause()));
             return withOwnMessage(code, request);
         }
@@ -88,12 +78,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return respond(code, problem, request);
     }
 
-    /**
-     * A body or query object that failed. A value that couldn't even be converted (an unknown enum
-     * constant, a malformed date or UUID) is {@code REQUEST_PARAMETER_INVALID}, naming only the field:
-     * the conversion message names Java classes. Constraint failures are {@code VALIDATION_FAILED}
-     * with their messages.
-     */
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException exception,
                                                                   HttpHeaders headers,
@@ -115,10 +99,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return withErrors(ErrorCode.VALIDATION_FAILED, errors, request);
     }
 
-    /**
-     * Method validation: a constraint on a {@code @RequestParam} or {@code @PathVariable} (named as a
-     * parameter), and the {@code @Valid} objects of the same method, reported like the handler above.
-     */
     @Override
     protected ResponseEntity<Object> handleHandlerMethodValidationException(HandlerMethodValidationException exception,
                                                                             HttpHeaders headers,
@@ -141,12 +121,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return withErrors(ErrorCode.VALIDATION_FAILED, errors, request);
     }
 
-    /**
-     * Every other exception Spring MVC handles arrives here already as Problem Details. Each gets an
-     * {@code errorCode} and a message of ours (a specific one where it exists, else by status), and
-     * keeps Spring's headers ({@code Allow} on a 405). A 5xx among them is a bug: logged with its
-     * stack, answered with the generic text.
-     */
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(Exception exception,
                                                              Object body,
@@ -167,7 +141,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             if (!statusCode.is5xxServerError() && !errors.isEmpty()) {
                 problem.setProperty(ProblemTypes.ERRORS, errors);
             }
-            problemTypes.identify(problem, request);
+            problemTypes.setTypeAndInstance(problem, request);
             Optional<String> retryAfterSeconds = retryAfterSeconds(code);
             if (retryAfterSeconds.isPresent()) {
                 return ResponseEntity.status(response.getStatusCode()).headers(response.getHeaders())
@@ -194,10 +168,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         log.warn("Rate limited: retryAfterSeconds={}", exception.getRetryAfterSeconds());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
                 ErrorCodeHttpStatusMapper.resolve(ErrorCode.RATE_LIMITED), message(ErrorCode.RATE_LIMITED));
-        return respond(ErrorCode.RATE_LIMITED, problem, request, String.valueOf(exception.getRetryAfterSeconds()));
+        return respondWithRetryAfter(ErrorCode.RATE_LIMITED, problem, request,
+                String.valueOf(exception.getRetryAfterSeconds()));
     }
 
-    /** A constraint without a meaning for clients is a bug: 500, with the constraint logged, never returned. */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ProblemDetail> handleDataIntegrity(DataIntegrityViolationException exception, WebRequest request) {
         Optional<ErrorCode> code = constraintCodes.codeFor(exception);
@@ -216,10 +190,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return withOwnMessage(ErrorCode.OPTIMISTIC_LOCK_CONFLICT, request);
     }
 
-    /**
-     * The catch-all, after the transient database failures: a lock wait, a statement timeout or no
-     * connection is 503 with a jittered {@code Retry-After}; anything else is the generic 500.
-     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ProblemDetail> handleUnexpected(Exception exception, WebRequest request) {
         Optional<TransientDatabaseFailure> transientFailure = TransientDatabaseFailure.of(exception);
@@ -235,7 +205,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (failure == TransientDatabaseFailure.QUERY_TIMEOUT) {
             log.error("Database query timed out", exception);
         } else {
-            // The cause's class and SQL state only: a message may carry the statement's values (SEC-04).
+            // The cause's class and SQL state only: a message may carry the statement's values.
             log.warn("Database busy or unavailable: code={}, cause={}, sqlState={}", failure.errorCode(),
                     exception.getClass().getSimpleName(), sqlStateOf(exception));
         }
@@ -246,7 +216,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return Objects.isNull(cause) ? "none" : cause.getClass().getSimpleName();
     }
 
-    /** The first SQL state in the exception's causes, or "none" (no connection: no statement ran). */
     private static String sqlStateOf(Throwable exception) {
         for (Throwable cause = exception; Objects.nonNull(cause); cause = cause.getCause()) {
             if (cause instanceof SQLException failure && Objects.nonNull(failure.getSQLState())) {
@@ -262,7 +231,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problemBuilder(code, problem, request).body(problem);
     }
 
-    /** The code's own message: client errors, and the 503s a client should come back from. */
     private ResponseEntity<ProblemDetail> withOwnMessage(ErrorCode code, WebRequest request) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(ErrorCodeHttpStatusMapper.resolve(code), message(code));
         return respond(code, problem, request);
@@ -272,10 +240,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(status, message(ErrorCode.UNEXPECTED_ERROR));
     }
 
-    /**
-     * A field of a body is named by its JSON Pointer, a field of a query object by its name, which is the
-     * query parameter's. A rule on the object as a whole, reported on no field, points to the body ({@code #}).
-     */
     private static List<RequestError> describe(boolean body, Errors errors) {
         List<RequestError> described = new ArrayList<>();
         for (FieldError error : errors.getFieldErrors()) {
@@ -287,16 +251,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return described;
     }
 
-    /**
-     * The field a violation names: its own, or, for a rule across fields on a getter ({@code CrossField},
-     * {@code ConfiguredMax} with {@code reportedOn}), the sibling its constraint names
-     * ({@code items[0].dateRangeOrdered} becomes {@code items[0].endsOn}).
-     */
     private static String reportedField(FieldError error) {
         if (!error.contains(ConstraintViolation.class)) {
             return error.getField();
         }
-        Object reportedOn = error.unwrap(ConstraintViolation.class).getConstraintDescriptor().getAttributes().get(REPORTED_ON);
+        Object reportedOn = error.unwrap(ConstraintViolation.class).getConstraintDescriptor().getAttributes().get(REPORTED_ON_ATTRIBUTE);
         if (!(reportedOn instanceof String sibling) || sibling.isEmpty()) {
             return error.getField();
         }
@@ -330,16 +289,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problemBuilder(code, problem, request).body(problem);
     }
 
-    /** With the wait the limiter computed, which no configured range can know. */
-    private ResponseEntity<ProblemDetail> respond(ErrorCode code, ProblemDetail problem, WebRequest request,
-                                                  String retryAfterSeconds) {
+    private ResponseEntity<ProblemDetail> respondWithRetryAfter(ErrorCode code, ProblemDetail problem,
+                                                                WebRequest request, String retryAfterSeconds) {
         return problemBuilder(code, problem, request).header(HttpHeaders.RETRY_AFTER, retryAfterSeconds).body(problem);
     }
 
-    /** Every 503 carries a jittered {@code Retry-After} from its code's range. */
     private ResponseEntity.BodyBuilder problemBuilder(ErrorCode code, ProblemDetail problem, WebRequest request) {
         problem.setProperty(ProblemTypes.ERROR_CODE, code.name());
-        problemTypes.identify(problem, request);
+        problemTypes.setTypeAndInstance(problem, request);
         ResponseEntity.BodyBuilder builder = ResponseEntity.status(problem.getStatus())
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         Optional<String> retryAfterSeconds = retryAfterSeconds(code);

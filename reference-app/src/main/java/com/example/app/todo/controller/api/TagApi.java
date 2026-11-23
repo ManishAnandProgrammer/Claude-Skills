@@ -105,7 +105,7 @@ public interface TagApi {
             Every todo carrying sourceTagId carries this tag instead (once, when it carried both), and the \
             source tag is deleted, all at once: either all of it happens or nothing does. Each todo whose tags \
             changed gets a new version. This tag itself stays as it was, its version too. A todo tagged with \
-            the source while the merge runs is refused with 404 TAG_GONE.""")
+            the source while the merge runs is refused with 404 TAG_DELETED_MEANWHILE.""")
     @ApiResponse(responseCode = "200", description = "Merged: this tag")
     @ApiResponse(responseCode = "400", description = """
             VALIDATION_FAILED (sourceTagId missing; see errors), REQUEST_UNREADABLE, REQUEST_PARAMETER_INVALID (the \

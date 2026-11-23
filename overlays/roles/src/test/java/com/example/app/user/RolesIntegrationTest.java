@@ -19,9 +19,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Roles an admin edits (the roles piece, house-review AUTHZ-12): the catalogue, the role's CRUD and the safety rules
- * about a role (1, 4, 5, 6, 7). A test that edits a built-in role puts it back, so the built-in roles' own test
- * ({@code BuiltInRolesIntegrationTest}) reads them as the changeset seeded them.
+ * A test that edits a built-in role puts it back: {@code BuiltInRolesIntegrationTest} reads them as the changeset seeded
+ * them.
  */
 class RolesIntegrationTest extends RolesFixtures {
 
@@ -128,7 +127,7 @@ class RolesIntegrationTest extends RolesFixtures {
     }
 
     // tenancy:begin
-    // In a tenant of its own, where only its owner holds what manages it for good: TenantAccessIntegrationTest.
+    // Rule 6 needs a tenant where only its owner holds what manages it for good: TenantAccessIntegrationTest.
     // tenancy:else
     // @Test
     // @DisplayName("Safety rule 6: an edit that would leave no active account holding ROLES_MANAGE or ACCESS_GRANT for good is 409 ACCESS_LAST_MANAGER")
@@ -290,7 +289,6 @@ class RolesIntegrationTest extends RolesFixtures {
                 .andExpect(jsonPath("$.errors[0].parameter").value("status"));
     }
 
-    /** A new role with this name and exactly these permissions; its id. */
     private String namedRole(String adminToken, String name, Permission... permissions) throws Exception {
         return read(postAs(adminToken, ROLES, """
                 {"code": "%s", "name": "%s", "permissions": %s}

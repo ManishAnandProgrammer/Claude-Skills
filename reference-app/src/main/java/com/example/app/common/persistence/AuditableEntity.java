@@ -21,25 +21,6 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Base of every entity: a time-ordered id, the audit columns and the optimistic-locking version.
- *
- * <ul>
- *   <li>{@code id}: UUIDv7, assigned by Hibernate in the application (not a database default), so
- *       inserts batch and need no read-back. {@code style = VERSION_7} uses Hibernate's one shared,
- *       monotonic generator; {@code algorithm = UuidVersion7Strategy.class} would build one per entity
- *       through a constructor Hibernate marks internal;</li>
- *   <li>{@code createdAt} / {@code updatedAt} / {@code createdBy} / {@code updatedBy}: filled by Spring
- *       Data auditing ({@code JpaAuditingConfig}); {@code createdBy} / {@code updatedBy} are the
- *       signed-in user's id, {@code null} outside a request (signup, scheduled jobs);</li>
- *   <li>{@code version}: every update checks and increments it, so of two transactions that loaded
- *       the same row the second to commit fails (409 {@code OPTIMISTIC_LOCK_CONFLICT}). A {@code null}
- *       version also tells Spring Data the entity is new, so {@code save} persists without a
- *       select.</li>
- * </ul>
- *
- * <p>No setters: auditing and Hibernate write these fields.</p>
- */
 @MappedSuperclass
 @EntityListeners(AuditingEntityListener.class)
 @Getter
@@ -47,6 +28,11 @@ import java.util.UUID;
 @NoArgsConstructor
 public abstract class AuditableEntity {
 
+    /**
+     * {@code style = VERSION_7} uses Hibernate's one shared, monotonic generator;
+     * {@code algorithm = UuidVersion7Strategy.class} would build one per entity through a constructor Hibernate
+     * marks internal.
+     */
     @Id
     @GeneratedValue
     @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
@@ -69,15 +55,11 @@ public abstract class AuditableEntity {
     @Column(name = "updated_by")
     private UUID updatedBy;
 
+    /** A {@code null} version also tells Spring Data the entity is new, so {@code save} persists without a select. */
     @Version
     @Column(nullable = false)
     private Long version;
 
-    /**
-     * Refuses a change made from a stale copy: the version the client last read must be the current
-     * one. It fails like a write that lost the race at the flush, so both answer 409
-     * {@code OPTIMISTIC_LOCK_CONFLICT} through one handler.
-     */
     public void checkVersion(Long expected) {
         if (!Objects.equals(version, expected)) {
             throw new ObjectOptimisticLockingFailureException(getClass(), id);

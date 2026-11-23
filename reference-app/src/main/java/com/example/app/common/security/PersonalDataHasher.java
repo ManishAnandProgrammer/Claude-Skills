@@ -13,10 +13,8 @@ import java.util.HexFormat;
 import java.util.Objects;
 
 /**
- * Keys personal data (client addresses, emails) for logs and rate-limit buckets without keeping it:
- * HMAC-SHA256 under a server-side pepper ({@code app.security.personal-data-pepper}). A plain hash
- * wouldn't do: every IPv4 address can be hashed in seconds, and emails fall to a dictionary.
- * Random tokens use {@link Hashes#sha256Hex} instead.
+ * HMAC under a server-side pepper: a plain hash wouldn't do, since every IPv4 address can be hashed in seconds
+ * and emails fall to a dictionary.
  */
 @Component
 @RequiredArgsConstructor
@@ -26,7 +24,6 @@ public class PersonalDataHasher {
 
     private final PepperProperties properties;
 
-    /** Lower-case hex HMAC of the UTF-8 bytes: 64 characters. */
     public String hash(String value) {
         try {
             Mac mac = Mac.getInstance(HMAC_SHA_256);
@@ -37,10 +34,6 @@ public class PersonalDataHasher {
         }
     }
 
-    /**
-     * {@code app.security.*}. The pepper has no default: startup fails naming
-     * {@code PERSONAL_DATA_PEPPER} when it is missing or shorter than 32 bytes.
-     */
     @ConfigurationProperties(prefix = "app.security")
     public record PepperProperties(String personalDataPepper) {
 

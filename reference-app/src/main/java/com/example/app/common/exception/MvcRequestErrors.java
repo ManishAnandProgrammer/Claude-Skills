@@ -9,11 +9,6 @@ import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * The {@code errors} of a 400 Spring MVC answers itself, when it knows the value: the parameter that is
- * missing or couldn't be converted, the body value Jackson couldn't read. Empty when it names none (a
- * body that isn't JSON at all, a missing header). Never the exception's message: it names Java classes.
- */
 final class MvcRequestErrors {
 
     private static final String MISSING = "must be present";
@@ -32,7 +27,6 @@ final class MvcRequestErrors {
         };
     }
 
-    /** Jackson's path to the value it stopped at: free, so the client learns which one; none for broken syntax. */
     private static List<RequestError> unreadableValue(HttpMessageNotReadableException exception) {
         if (!(exception.getCause() instanceof JacksonException jackson) || jackson.getPath().isEmpty()) {
             return List.of();

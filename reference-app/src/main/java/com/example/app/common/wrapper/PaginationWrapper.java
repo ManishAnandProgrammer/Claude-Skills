@@ -13,11 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * One page of a paginated list: the items under {@code response}, the page's position under an
- * explicit, documented {@code pageInfo}. Both come from the same {@link Page}, so the flags can't
- * disagree with the items.
- */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 @Schema(description = "One page of a paginated list")

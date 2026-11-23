@@ -9,14 +9,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.validation.annotation.Validated;
 
 /**
- * Lettuce bounded for a fail-open client. By default it buffers every command while disconnected
- * and replays them on reconnect, in an unbounded queue: during an outage that is memory growing per
- * request, and checks answered long after their request was let through. Refused at once instead,
- * the rate limiter fails open immediately.
- *
- * <p>A client-options customizer, not a whole {@code LettuceClientConfigurationBuilderCustomizer}
- * setting new {@code ClientOptions}: it adds to the options Boot builds, so
- * {@code spring.data.redis.connect-timeout} (a socket option) still applies.</p>
+ * By default Lettuce buffers every command while disconnected, in an unbounded queue, and replays them on
+ * reconnect: during an outage memory grows per request, and the rate limiter can't fail open until it reconnects.
+ * A client-options customizer adds to the options Boot builds, so {@code spring.data.redis.connect-timeout} still
+ * applies; new {@code ClientOptions} would drop it.
  */
 @Configuration
 class RedisClientConfig {

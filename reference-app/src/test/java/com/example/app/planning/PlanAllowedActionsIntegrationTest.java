@@ -21,10 +21,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * A plan's allowedActions: each action an object of {@code allowed} and every reason at once, on the detail and on
- * the list's rows, each reason the code and the message the write itself answers in the request's language.
- */
 class PlanAllowedActionsIntegrationTest extends IntegrationTest {
 
     private static final String PLANS = "/api/v1/plans";
@@ -48,7 +44,6 @@ class PlanAllowedActionsIntegrationTest extends IntegrationTest {
         return new Planned(user, planId, todoId);
     }
 
-    /** The plan cancelled and its todo done: two reasons against new days. */
     private Planned cancelledWithItsTodoDone() throws Exception {
         Planned planned = planned();
         patchAs(planned.user().accessToken(), PLANS + "/" + planned.planId() + "/status", """

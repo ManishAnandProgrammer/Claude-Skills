@@ -59,7 +59,6 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 """.formatted(minutes, spentOn, billable, version);
     }
 
-    /** A user with one list and one todo in it; fails the test unless every fixture answers 201. */
     private String createTodo(TestUser user) throws Exception {
         String listId = read(postAs(user.accessToken(), LISTS, """
                 {"name": "List %s"}
@@ -74,11 +73,7 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 .andExpect(status().isCreated()), "$.response.id");
     }
 
-    /**
-     * Follows {@code pageInfo.nextCursor} from {@code firstBatch} (a path with its query string) to
-     * the last batch, which must say {@code hasMore} false with no cursor; returns each batch's ids.
-     */
-    private List<List<String>> walk(TestUser user, String firstBatch) throws Exception {
+    private List<List<String>> idsOfEveryBatch(TestUser user, String firstBatch) throws Exception {
         List<List<String>> batches = new ArrayList<>();
         String next = firstBatch;
         while (Objects.nonNull(next)) {
@@ -269,19 +264,17 @@ class TimeEntryIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Entries created while their todo is deleted: the delete is 204, every create 404 TODO_GONE, and no entry is left without its todo")
+    @DisplayName("Entries created while their todo is deleted: the delete is 204, every create 404 TODO_DELETED_MEANWHILE, and no entry is left without its todo")
     void childWritesRacingAParentDeleteKeepTheInvariant() throws Exception {
         TestUser user = newUser();
         String todoId = createTodo(user);
 
-        // Nothing locks the todo for a create, so the delete goes through; the foreign key refuses each
-        // insert that comes after it.
         List<Answer> creates = createsHeldAtTheirInsert("time_entries",
                 () -> postAs(user.accessToken(), entries(todoId), createPayload(5, "2026-11-01", false)),
                 () -> deleteAs(user.accessToken(), TODOS + "/" + todoId).andExpect(status().isNoContent()));
 
         assertThat(creates).extracting(Answer::status).containsOnly(404);
-        assertRefusalsAre(creates, 404, "TODO_GONE");
+        assertRefusalsAre(creates, 404, "TODO_DELETED_MEANWHILE");
         Integer entries = jdbc.queryForObject("select count(*) from time_entries where todo_id = ?::uuid", Integer.class, todoId);
         assertThat(entries).isZero();
     }
@@ -512,10 +505,10 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         String day4 = createEntry(user, todoId, 50, "2026-11-04", false);
         String day2b = createEntry(user, todoId, 60, "2026-11-02", false);
 
-        assertThat(walk(user, entries(todoId) + "?size=4")).containsExactly(
+        assertThat(idsOfEveryBatch(user, entries(todoId) + "?size=4")).containsExactly(
                 List.of(day5, day4, day3, day2b),
                 List.of(day2a, day1));
-        assertThat(walk(user, entries(todoId) + "?sort=SPENT_ON&size=2")).containsExactly(
+        assertThat(idsOfEveryBatch(user, entries(todoId) + "?sort=SPENT_ON&size=2")).containsExactly(
                 List.of(day5, day4), List.of(day3, day2b), List.of(day2a, day1));
     }
 
@@ -530,7 +523,7 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         String sixtyLater = createEntry(user, todoId, 60, "2026-11-04", false);
         String thirty = createEntry(user, todoId, 30, "2026-11-05", false);
 
-        assertThat(walk(user, entries(todoId) + "?sort=MINUTES&size=2")).containsExactly(
+        assertThat(idsOfEveryBatch(user, entries(todoId) + "?sort=MINUTES&size=2")).containsExactly(
                 List.of(ninety, sixtyLater), List.of(sixty, thirty), List.of(ten));
     }
 
@@ -731,7 +724,6 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"));
     }
 
-    /** An update with one value in another form than the documented one: refused naming that field. */
     private void assertUpdateIsUnreadable(TestUser user, String path, String body, String field) throws Exception {
         putAs(user.accessToken(), path, body)
                 .andExpect(status().isBadRequest())
@@ -809,8 +801,7 @@ class TimeEntryIntegrationTest extends IntegrationTest {
         long forOne = statementsFor(user, entries(single) + "?size=20");
         long forBatch = statementsFor(user, entries(many) + "?size=20");
 
-        // Two, not a root list's one: an unknown or foreign todo must answer 404, not an empty batch,
-        // so the todo is read first. It stays two however many entries there are.
+        // An unknown or foreign todo must answer 404, not an empty batch, so the todo is read first.
         assertThat(forOne).isEqualTo(2);
         assertThat(forBatch).isEqualTo(2);
     }
@@ -901,7 +892,6 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.errors[?(@.parameter == 'spentOnTo')].detail", contains("must be on or before 2999-12-31")));
     }
 
-    /** Statements run by one list request: a cursor list never counts. */
     private long statementsFor(TestUser user, String path) throws Exception {
         statistics().clear();
         getAs(user.accessToken(), path).andExpect(status().isOk());

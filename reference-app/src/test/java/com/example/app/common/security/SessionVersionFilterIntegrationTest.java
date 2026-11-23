@@ -20,10 +20,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * The filter's answer when the session version can't be read at all (Redis missed and the database is
- * down): a 503 the client retries, never a pass (SEC-06). The 401 and the pass are the HTTP tests'.
- */
 class SessionVersionFilterIntegrationTest extends IntegrationTest {
 
     @Autowired

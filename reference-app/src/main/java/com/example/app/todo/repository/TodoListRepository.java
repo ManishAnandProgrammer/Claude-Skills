@@ -15,7 +15,6 @@ public interface TodoListRepository extends JpaRepository<TodoList, UUID>, Custo
 
     Optional<TodoList> findByIdAndOwnerId(UUID id, UUID ownerId);
 
-    /** The names of a page's lists: the two columns, never the lists' whole rows (DATA-11). */
     @Query("""
             select new com.example.app.todo.dto.internal.TodoListName(list.id, list.name)
               from TodoList list

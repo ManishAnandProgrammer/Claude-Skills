@@ -9,7 +9,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-/** The date is on or before {@code app.limits.latest-date.<value>} (yyyy-MM-dd), e.g. {@code "todo.due-date"}. */
 @Documented
 @Constraint(validatedBy = LatestDateValidator.class)
 @Target({ElementType.FIELD, ElementType.PARAMETER, ElementType.RECORD_COMPONENT})

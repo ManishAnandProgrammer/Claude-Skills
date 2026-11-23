@@ -17,9 +17,8 @@ import java.util.UUID;
 public class MediaFileMapper {
 
     /**
-     * {@code tenantId/PURPOSE/uuid}: one tenant's files are one prefix, to copy to another store or delete
-     * with the tenant (house-review TEN-19); no personal data in a key (keys appear in logs, URLs and audit
-     * trails), nothing to escape.
+     * One tenant's files are one prefix, to copy to another store or delete with the tenant. No personal data in a
+     * key (keys appear in logs, URLs and audit trails), nothing to escape.
      */
     public String newKey(UploadPurpose purpose) {
         return TenantContext.id() + "/" + purpose.name() + "/" + UUID.randomUUID();
@@ -27,7 +26,7 @@ public class MediaFileMapper {
 
     /** The upload URL's own expiry, so the jobs compare against exactly when the store stops accepting the PUT. */
     public MediaFile toEntity(String key, UploadPurpose purpose, UploadFileRequest file, UUID uploadedBy,
-                              PresignedUpload upload, Duration pendingLifetime) {
+                              PresignedUpload upload, Duration claimGracePeriod) {
         Instant uploadExpiresAt = upload.expiresAt();
         return MediaFile.builder()
                 .key(key)
@@ -37,7 +36,7 @@ public class MediaFileMapper {
                 .sizeBytes(file.sizeBytes())
                 .uploadedBy(uploadedBy)
                 .uploadExpiresAt(uploadExpiresAt)
-                .expiresAt(uploadExpiresAt.plus(pendingLifetime))
+                .claimableUntil(uploadExpiresAt.plus(claimGracePeriod))
                 .build();
     }
 

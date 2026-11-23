@@ -28,13 +28,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/**
- * A role an admin edits (the roles piece, Spring's group): a code, a name and the permissions it gives. A built-in
- * one ({@link #getBuiltIn()}, the {@link Role} constant it was seeded from) is a copy: its edits change this row,
- * never the enum. Roles only allow (no role-level DENY); a person's DENY is a personal grant. Its permissions are
- * members of this aggregate ({@link RolePermission}), written only here; changing them bumps the version, which an
- * edit sends back.
- */
 @Entity
 @Table(name = "roles")
 @Getter
@@ -46,24 +39,24 @@ public class AccessRole extends TenantOwnedEntity {
 // public class AccessRole extends AuditableEntity {
 // tenancy-row:end
 
-    /** Stable, the client's and the changesets' handle (a new permission's grant changeset names it). */
+    /** A new permission's grant changeset names the role by it. */
     @Column(nullable = false, updatable = false)
     private String code;
 
     @Column(nullable = false)
     private String name;
 
-    /** The {@link Role} constant this built-in role was seeded from; null for a role an admin created. */
     @Column(name = "built_in", updatable = false)
     private String builtIn;
 
+    /** Changing them bumps the role's version, which an edit sends back. */
     @Getter(AccessLevel.NONE)
     @Builder.Default
     @OptimisticLock(excluded = false)
     @OneToMany(mappedBy = "role", cascade = {CascadeType.PERSIST, CascadeType.REMOVE}, orphanRemoval = true)
     private Set<RolePermission> permissionLinks = new HashSet<>();
 
-    /** A new role; the caller has checked who may give these permissions and that each one's prerequisites are in. */
+    /** The caller has checked who may give these permissions and that each one's prerequisites are in. */
     public static AccessRole create(String code, String name, Set<Permission> permissions) {
         AccessRole role = AccessRole.builder().code(code).name(name.strip()).build();
         role.replacePermissions(permissions);
@@ -72,9 +65,8 @@ public class AccessRole extends TenantOwnedEntity {
 
     // tenancy-row:begin
     /**
-     * A copy of a built-in role as the {@link Role} enum lists it now, for a new tenant (row mode's activation): its
-     * code and {@code built_in} the constant's name, its name the constant's in words ({@code ADMIN}: "Admin"), as
-     * the roles changeset seeds them.
+     * As the roles changeset seeds a built-in role: code and {@code built_in} the constant's name, {@code ADMIN}
+     * named "Admin".
      */
     public static AccessRole copyOf(Role builtIn) {
         String code = builtIn.name();
@@ -89,7 +81,6 @@ public class AccessRole extends TenantOwnedEntity {
         name = newName.strip();
     }
 
-    /** Makes {@code replacement} its permissions: those it already has stay as they are. */
     public void replacePermissions(Set<Permission> replacement) {
         Set<String> wanted = replacement.stream().map(Permission::name).collect(Collectors.toSet());
         permissionLinks.removeIf(link -> !wanted.contains(link.getPermission()));
@@ -101,12 +92,10 @@ public class AccessRole extends TenantOwnedEntity {
         }
     }
 
-    /** The codes its rows hold, an unknown one included. */
     public Set<String> permissionCodes() {
         return permissionLinks.stream().map(RolePermission::getPermission).collect(Collectors.toSet());
     }
 
-    /** The permissions it gives: its codes that name a {@link Permission} (an unknown code grants nothing). */
     public Set<Permission> permissions() {
         Set<Permission> permissions = EnumSet.noneOf(Permission.class);
         for (String code : permissionCodes()) {

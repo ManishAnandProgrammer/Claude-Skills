@@ -18,10 +18,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The {@link Members} facade other modules ask about a person: always the current tenant's members, the
- * same answer for another tenant's member as for an unknown account.
- */
 @WithoutTestTenant
 class MembersIntegrationTest extends IntegrationTest {
 

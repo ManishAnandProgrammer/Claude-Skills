@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.UUID;
 
-/** One of a todo's files, mapped from the media module's view: the todo's API owns its shape. */
 @Schema(description = "A file attached to the todo")
 public record TodoAttachmentResponse(
         @Schema(description = "The file's id: send it in removeAttachmentIds to remove it", example = "0190a9c2-9f00-7a3c-8b4d-3e5f7a9b1c2d")
@@ -16,9 +15,9 @@ public record TodoAttachmentResponse(
         @Schema(description = "Its size in bytes", example = "48213")
         long sizeBytes,
         @Schema(description = """
-                IN_REVIEW (usable; the check that it arrived runs after its upload URL expired), UPLOADED \
+                ATTACHED (usable; the check that it arrived runs after its upload URL expired), VERIFIED \
                 (confirmed) or MISSING (never arrived: remove it and attach a new upload)""",
-                allowableValues = {"IN_REVIEW", "UPLOADED", "MISSING"}, example = "UPLOADED")
+                allowableValues = {"ATTACHED", "VERIFIED", "MISSING"}, example = "VERIFIED")
         String status,
         @Schema(description = """
                 A short-lived URL that downloads it (as an attachment, with its name); null while MISSING. \

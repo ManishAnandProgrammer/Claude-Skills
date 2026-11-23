@@ -26,14 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Row mode: what the changesets after the previous release did to a used database (support/
- * PreviousReleaseDatabase built it: that release's changesets, then db/upgrade/previous-release-seed.sql
- * with tenants in every status, then the rest; crud-gen tests.md, *Upgrading a used database*). The cells
- * of the tenant lifecycle x seeding matrix (house-review references/tenancy-matrices.md) a fresh database
- * can't reach: a changeset over tenants that already hold rows, in every status. Runs only on such a run: verify.sh sets
- * {@code app.test.upgrade.previous-release}.
- */
+/** Runs only under verify.sh, which sets {@code app.test.upgrade.previous-release}. */
 @WithoutTestTenant
 @EnabledIfSystemProperty(named = "app.test.upgrade.previous-release", matches = "\\d+")
 class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
@@ -62,13 +55,12 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     @Value("${app.liquibase.password}")
     private String ownerPassword;
 
-    /** A seeded account's access token: the seed stores no real password hash, so the test gives it one. */
+    /** The seed stores no real password hash, so the test gives it one. */
     private String tokenOf(String email) throws Exception {
         sql("update users set password_hash = ? where email = ?", passwordEncoder.encode(PASSWORD), email);
         return read(login(email, PASSWORD).andExpect(status().isOk()), "$.response.accessToken");
     }
 
-    /** {@code query}'s single number in {@code tenantId}, read as the owner told that tenant (the policy binds it too). */
     private long inTenant(UUID tenantId, String query) throws SQLException {
         return Long.parseLong(textInTenant(tenantId, "select (" + query + ")::text"));
     }
@@ -77,6 +69,7 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         return textInTenant(tenantId, "select id::text from todo_lists where owner_id = '%s' order by id limit 1".formatted(ownerId));
     }
 
+    /** The forced policy binds the owner too, so the owner's connection names the tenant. */
     private String textInTenant(UUID tenantId, String query) throws SQLException {
         try (Connection owner = DriverManager.getConnection(dataSource.unwrap(HikariDataSource.class).getJdbcUrl(), ownerUser, ownerPassword)) {
             JdbcTemplate asOwner = new JdbcTemplate(new SingleConnectionDataSource(owner, true));
@@ -189,7 +182,6 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
         assertThat(inTenant(PI, "select count(*) from configuration_metadata where key = 'TODO_LIST_DEFAULTS'")).isOne();
         assertThat(inTenant(PI, "select count(*) from counters where key = 'TODO_NUMBER'")).isOne();
         // roles:begin
-        // The backfill's built-in roles kept, none copied twice, and the owner's ADMIN once, for good.
         assertThat(inTenant(PI, "select count(*) from roles where built_in = 'USER'")).isOne();
         assertThat(inTenant(PI, "select count(*) from roles where built_in = 'ADMIN'")).isOne();
         assertThat(inTenant(PI, """
@@ -223,6 +215,19 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.number").value(31));
     }
     // metadata:end
+    // media:begin
+
+    @Test
+    @DisplayName("After 0040 every attached file of every tenant is VERIFIED with its claim window kept")
+    void theSeededFilesAreVerified() throws SQLException {
+        assertThat(inTenant(ALPHA, "select count(*) from media_files where status = 'VERIFIED'")).isEqualTo(6);
+        for (UUID tenant : TENANTS) {
+            assertThat(inTenant(tenant, """
+                    select count(*) from media_files
+                     where status <> 'VERIFIED' or claimable_until <> upload_expires_at + interval '1 day'""")).as(tenant.toString()).isZero();
+        }
+    }
+    // media:end
 
     @Test
     @DisplayName("After 0033 every seeded tenant's plans are PLANNED without a done day")

@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Todos are read by an end-user app's main screen, so this list is cursor-paged. */
 @Getter
 @Setter
 public class TodoFilter extends CursorFilter {
@@ -77,11 +76,7 @@ public class TodoFilter extends CursorFilter {
         return Objects.nonNull(priority);
     }
 
-    /**
-     * A range filter comes with the order of its own column: under DUE_DATE it is a range of the due index,
-     * under NEWEST no index serves it (newest first, filtered by a date, walks the owner's whole history).
-     * Reported on the filter, the field that needs the order.
-     */
+    /** Under NEWEST no index serves the due filter: the walk would read the owner's whole history. */
     @CrossField(reportedOn = "dueOnOrBefore", message = "{todo.due-filter-order}")
     public boolean isDueOnOrBeforeSortedByDueDate() {
         return Objects.isNull(dueOnOrBefore) || sort == TodoSort.DUE_DATE;

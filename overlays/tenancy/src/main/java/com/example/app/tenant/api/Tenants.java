@@ -4,50 +4,30 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
-/** The tenant register, for the modules that issue tokens or run work per tenant. */
 public interface Tenants {
 
-    /**
-     * 403 {@code TENANT_NOT_ACTIVE}, with the tenant's {@code tenantStatus}, unless it is ACTIVE; an
-     * unknown tenant is refused the same way. Called whenever tokens are issued.
-     */
     void requireActive(UUID tenantId);
 
-    /** The ACTIVE tenants' ids, oldest first: a job runs its work once per tenant, each in its own scope. */
     List<UUID> activeIds();
 
-    /**
-     * The ids of every tenant that holds data, ACTIVE, SUSPENDED or CLOSED, oldest first: for housekeeping
-     * that must reach a suspended or closed tenant's rows too (expired uploads still cost storage).
-     */
     List<UUID> idsHoldingData();
 
-    /**
-     * The one way in: a PENDING tenant may be provisioned ({@link TenantApproved}), and becomes ACTIVE once
-     * its tables exist. Staff call it now, a billing module's payment webhook later. 409
-     * {@code TENANT_STATUS_CHANGE_INVALID} unless the tenant is PENDING.
-     */
     void approve(UUID tenantId);
 
-    /**
-     * Self-registration's tenant: PENDING, with {@code ownerEmail}'s account as its ADMIN
-     * ({@link TenantCreated}), not approved: staff approve or reject it.
-     */
     UUID register(String name, String ownerEmail);
 
     /**
      *   <!-- roles:begin -->
      * Locks the tenant in the caller's transaction, which must exist: every change of its memberships or of anyone's
      * access there takes it before reading the caller's access and counting who manages the tenant, so a change that
-     * commits first is seen, and two changes can't each leave the other as the last one. 404 {@code TENANT_NOT_FOUND}.
+     * commits first is seen, and two changes can't each leave the other as the last one.
      *   <!-- roles:else -->
      <!-- * Locks the tenant in the caller's transaction, which must exist: a change to its memberships takes -->
      <!-- * it before reading the caller's role and counting the ADMINs, so a demotion that commits first is -->
-     <!-- * seen, and two changes can't each leave the other as the last one. 404 {@code TENANT_NOT_FOUND}. -->
+     <!-- * seen, and two changes can't each leave the other as the last one. -->
      *   <!-- roles:end -->
      */
     void lockForMemberChange(UUID tenantId);
 
-    /** Name and status of each tenant in {@code ids} that exists: a member's list of their tenants. */
     List<TenantView> findAllById(Collection<UUID> ids);
 }

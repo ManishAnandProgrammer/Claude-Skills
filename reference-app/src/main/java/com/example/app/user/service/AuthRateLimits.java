@@ -7,10 +7,6 @@ import com.example.app.common.validation.Emails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/**
- * Throttles every public sign-in endpoint against password guessing, signup floods and lock churn.
- * Addresses and emails are personal data: they reach Redis only as keyed hashes.
- */
 @Component
 @RequiredArgsConstructor
 class AuthRateLimits {

@@ -34,13 +34,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Issues, rotates and revokes tokens. Access tokens are short-lived JWTs (not checked against the
- * database); refresh tokens are random, stored hashed, single use.
- *
- * <p>Every issue starts with the account's row, share-locked and ACTIVE ({@code UserService.activeForTokenIssue}),
+ * Every issue starts with the account's row, share-locked and ACTIVE ({@code UserService.activeForTokenIssue}),
  * before it touches a refresh token: a suspension or a password change updates that row first, so either the
  * issue commits before the change (which then revokes what it issued) or it reads the change and refuses. Same
- * order everywhere (account, then tokens): no deadlock.</p>
+ * order everywhere (account, then tokens): no deadlock.
  */
 @Service
 @Slf4j
@@ -59,27 +56,12 @@ class TokenService {
     private final Clock clock;
     private final UserService users;
 
-    /** Login's tokens, once the password matched: 403 {@code AUTH_ACCOUNT_SUSPENDED} for a suspended account. */
     @Transactional
     TokenResponse issue(User user) {
         return issueTokens(users.activeForTokenIssue(user.getId()));
     }
 
-    /**
-     * Exchanges a refresh token for new tokens and revokes it (rotation).
-     *
-     * <p>A revoked token presented again:</p>
-     * <ul>
-     *   <li>rotated within {@code app.jwt.rotation-grace}: a client duplicate. Refused, and the session that
-     *       the first refresh started lives on;</li>
-     *   <li>rotated earlier: the token leaked. Every session of the user is revoked; that revocation
-     *       must commit although the request is refused, hence {@code noRollbackFor};</li>
-     *   <li>signed out, or already revoked for reuse: refused.</li>
-     * </ul>
-     * <p>The token is read without a lock and revoked by a conditional update: of concurrent refreshes
-     * (or a refresh and a logout) with one token, only one revokes it; the others find it revoked
-     * when they read it again, and take the paths above.</p>
-     */
+    /** A reused token revokes every session of the user, which must commit although the request is refused. */
     @Transactional(noRollbackFor = AppException.class)
     TokenResponse refresh(String rawToken) {
         Instant now = clock.instant();
@@ -99,43 +81,30 @@ class TokenService {
         return issueTokens(user);
     }
 
-    /** Idempotent: an unknown or already revoked token is not an error (logout always succeeds). */
     @Transactional
     void revoke(String rawToken) {
         repository.revokeIfLive(Hashes.sha256Hex(rawToken), RevocationReason.LOGOUT, clock.instant());
     }
 
-    /**
-     * A password change, in one transaction: the new hash (its update takes the account's row first), every
-     * refresh token of the account revoked, and new tokens for the device that changed it.
-     *   <!-- session-version:begin -->
-     * The session version is raised too, so every other access token is refused from its next request.
-     *   <!-- session-version:end -->
-     * A suspended account changes nothing: 403 {@code AUTH_ACCOUNT_SUSPENDED}.
-     */
     @Transactional
     TokenResponse replacePassword(UUID userId, String newPasswordHash) {
         users.changePassword(userId, newPasswordHash);
         int revoked = repository.revokeAllOfUser(userId, RevocationReason.PASSWORD_CHANGED, clock.instant());
         // session-version:begin
         users.bumpSessionVersion(userId);
+        // The account is read again below, after the bump (the revoking update cleared the persistence context):
+        // its token carries the new number.
         // session-version:end
         log.info("Password changed, every session ended: userId={}, sessions={}", userId, revoked);
-        // Read after the bump (the revoking update cleared the persistence context): its number is the new one.
         return issueTokens(users.activeForTokenIssue(userId));
     }
 
-    /** A suspension's revocation, in the suspension's own transaction (hence MANDATORY), after its account update. */
     @Transactional(propagation = Propagation.MANDATORY)
     int revokeForSuspension(UUID userId) {
         return repository.revokeAllOfUser(userId, RevocationReason.SUSPENDED, clock.instant());
     }
     // session-version:begin
 
-    /**
-     * Signs the account out everywhere, in one transaction: every refresh token revoked, and the session
-     * version raised, so every access token already issued is refused on its next request.
-     */
     @Transactional
     void endAllSessions(UUID userId) {
         int revoked = repository.revokeAllOfUser(userId, RevocationReason.LOGOUT, clock.instant());
@@ -148,10 +117,6 @@ class TokenService {
         return repository.findByTokenHash(tokenHash).orElseThrow(AppException.supply(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
     }
 
-    /**
-     * One batch of the purge ({@code RefreshTokenPurgeJob}), in a short transaction of its own: up to
-     * {@code batchSize} tokens that expired before {@code expiredBefore}; the rows deleted.
-     */
     @Transactional
     int deleteExpiredBefore(Instant expiredBefore, int batchSize) {
         return repository.deleteExpiredBefore(expiredBefore, batchSize);
@@ -187,7 +152,6 @@ class TokenService {
                 // roles:end
                 // session-version:begin
                 // roles:begin
-                // // From the account's row, read under the token issue's share lock.
                 // roles:else
                 // From the same row as the role: a token never pairs a newer number with an older role.
                 // roles:end

@@ -46,7 +46,7 @@ class CursorTest {
     @Test
     @DisplayName("No after is the first batch")
     void absentIsFirstBatch() {
-        assertThat(Cursor.read(null, "AMOUNT", 2).isPresent()).isFalse();
+        assertThat(Cursor.read(null, "AMOUNT", 2).hasPosition()).isFalse();
     }
 
     @Test
@@ -70,7 +70,7 @@ class CursorTest {
 
         Cursor cursor = Cursor.read(Cursor.write("ALL", "Groceries", ID, day, moment, 45, Priority.HIGH, microseconds, -7), "ALL", 8);
 
-        assertThat(cursor.isPresent()).isTrue();
+        assertThat(cursor.hasPosition()).isTrue();
         assertThat(cursor.text(0)).isEqualTo("Groceries");
         assertThat(cursor.uuid(1)).isEqualTo(ID);
         assertThat(cursor.date(2)).isEqualTo(day);
@@ -188,7 +188,6 @@ class CursorTest {
         assertThat(Cursor.read(Cursor.write("NAME", "Lists 𐌰", ID), "NAME", 2).text(0)).isEqualTo("Lists 𐌰");
     }
 
-    /** A one-key cursor holding {@code key}, as a client could send it. */
     private static Cursor keyOf(String key) {
         return Cursor.read(Cursor.write("ONE", key), "ONE", 1);
     }

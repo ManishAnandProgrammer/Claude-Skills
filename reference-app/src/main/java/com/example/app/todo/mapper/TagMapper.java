@@ -41,10 +41,7 @@ public class TagMapper {
                 tag.getVersion());
     }
 
-    /**
-     * One spelling per colour, and one for none: empty is stored as null, and the check constraint in
-     * changeset 0004 accepts upper-case only.
-     */
+    /** The check constraint in changeset 0004 accepts upper-case only. */
     private static String normalisedColor(String color) {
         return StringUtils.hasText(color) ? color.toUpperCase(Locale.ROOT) : null;
     }

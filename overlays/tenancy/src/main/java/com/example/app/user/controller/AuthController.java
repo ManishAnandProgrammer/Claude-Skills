@@ -31,7 +31,6 @@ import java.net.URI;
 @RequiredArgsConstructor
 class AuthController implements AuthApi {
 
-    /** In the version the client called: a v1+ signup serving a later version must not point back to v1. */
     private static final String OWN_ACCOUNT = "/api/{version}/users/me";
 
     private final UserService userService;

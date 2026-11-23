@@ -9,11 +9,6 @@ import software.amazon.awssdk.services.s3.S3Client;
 
 import java.net.URI;
 
-/**
- * An S3-compatible store (versitygw on a local directory) for the media tests. The application reaches
- * it through {@code app.media.endpoint} and the SDK's default credentials chain; tests use
- * {@link #client()} to look at the bucket directly.
- */
 public class MediaStorageContainer extends GenericContainer<MediaStorageContainer> {
 
     public static final String ACCESS_KEY = "test-access-key";
@@ -35,8 +30,7 @@ public class MediaStorageContainer extends GenericContainer<MediaStorageContaine
         return "http://" + getHost() + ":" + getMappedPort(PORT);
     }
 
-    /** A client of its own, for fixtures and assertions; close it after use. */
-    public S3Client client() {
+    public S3Client newClient() {
         return S3Client.builder()
                 .region(Region.of(REGION))
                 .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY)))
@@ -46,7 +40,7 @@ public class MediaStorageContainer extends GenericContainer<MediaStorageContaine
     }
 
     public void createBucket(String bucket) {
-        try (S3Client s3 = client()) {
+        try (S3Client s3 = newClient()) {
             s3.createBucket(request -> request.bucket(bucket));
         }
     }

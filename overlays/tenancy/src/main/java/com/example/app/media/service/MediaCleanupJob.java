@@ -23,16 +23,9 @@ import java.util.UUID;
 import java.util.function.BiFunction;
 
 /**
- * Deletes from the store, then from the table: files removed from their record (RELEASED, once their
- * upload URL expired, so no PUT can recreate the object) and files never attached in time (PENDING
- * past their claim window). A MISSING file still attached is never touched. Removing a file in the
- * request only marks it: deleting the object there would either precede the commit (a rollback leaves
- * a row pointing at nothing) or follow it (a failure leaves an orphan).
- *
- * <p>Each batch: leased in a short transaction, deleted from the store outside any transaction, its
- * rows deleted in a second short one. A store that doesn't answer ends the tenant's run; the leased rows
- * return to the next run when their lease ends. A tenant that fails is logged and the run goes on with
- * the next. Settings: {@code app.jobs.media-cleanup.*}.</p>
+ * RELEASED files only once their upload URL expired, so no PUT can recreate the object. Removing a file
+ * in the request only marks it: deleting the object there would either precede the commit (a rollback
+ * leaves a row pointing at nothing) or follow it (a failure leaves an orphan).
  */
 @Slf4j
 @Component
@@ -45,18 +38,17 @@ class MediaCleanupJob {
     private final Tenants tenants;
 
     @Scheduled(cron = "${app.jobs.media-cleanup.cron}")
-    @MultiInstanceSafe("""
+    @MultiInstanceSafe(reason = """
             Each instance leases its own batch (FOR UPDATE SKIP LOCKED, then lease_until), so instances never \
             delete the same file; a crashed instance's batch returns when its lease ends, and S3 deletes are \
             idempotent, so deleting an object twice is harmless""")
     void cleanUp() {
-        // Suspended and closed tenants too: their removed and expired uploads cost storage all the same.
         for (UUID tenantId : tenants.idsHoldingData()) {
             try {
                 TenantScope.runAs(tenantId, () -> cleanUpAll(tenantId));
             } catch (RuntimeException failure) {
                 // One tenant's failure must not skip every tenant after it, run after run: its leased rows
-                // return when the lease ends, and the next run retries.
+                // return when the lease ends.
                 log.error("Media cleanup failed for tenant {}", tenantId, failure);
             }
         }
@@ -64,11 +56,10 @@ class MediaCleanupJob {
 
     private void cleanUpAll(UUID tenantId) {
         int released = clean(mediaFiles::leaseReleased);
-        int expired = clean(mediaFiles::leaseExpiredPending);
-        log.info("Media cleanup: tenant={}, released={}, expiredPending={}", tenantId, released, expired);
+        int expired = clean(mediaFiles::leaseExpiredUnclaimed);
+        log.info("Media cleanup: tenant={}, released={}, expiredUnclaimed={}", tenantId, released, expired);
     }
 
-    /** Batch after batch of one kind until a batch comes back short or the store stops answering. */
     private int clean(BiFunction<Integer, Duration, List<MediaFileKey>> lease) {
         int deleted = 0;
         List<MediaFileKey> batch;
@@ -97,11 +88,6 @@ class MediaCleanupJob {
         return true;
     }
 
-    /**
-     * {@code app.jobs.media-cleanup.*}.
-     *
-     * @param lease how long a leased batch is this instance's; longer than a batch takes
-     */
     @Validated
     @ConfigurationProperties(prefix = "app.jobs.media-cleanup")
     record Settings(@NotNull Cron cron, @Positive int batchSize, @NotNull @DurationMin(millis = 1) Duration lease) {

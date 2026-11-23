@@ -11,6 +11,5 @@ public interface PersonalGrantRepository extends JpaRepository<PersonalGrant, UU
 
     Optional<PersonalGrant> findByUserIdAndPermission(UUID userId, String permission);
 
-    /** A person's grants (uq_user_permissions_user_id_permission). */
     List<PersonalGrant> findByUserIdOrderByPermission(UUID userId);
 }

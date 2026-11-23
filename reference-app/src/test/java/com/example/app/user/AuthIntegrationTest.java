@@ -59,19 +59,19 @@ class AuthIntegrationTest extends IntegrationTest {
     @Value("${app.jwt.issuer}")
     private String issuer;
 
-    @Value("${app.rate-limit.sign-in.login-per-ip.requests}")
+    @Value("${app.rate-limit.sign-in.login-per-ip.capacity}")
     private int loginPerIp;
 
-    @Value("${app.rate-limit.sign-in.login-per-account.requests}")
+    @Value("${app.rate-limit.sign-in.login-per-account.capacity}")
     private int loginPerAccount;
 
-    @Value("${app.rate-limit.sign-in.signup-per-ip.requests}")
+    @Value("${app.rate-limit.sign-in.signup-per-ip.capacity}")
     private int signupPerIp;
 
-    @Value("${app.rate-limit.sign-in.refresh-per-ip.requests}")
+    @Value("${app.rate-limit.sign-in.refresh-per-ip.capacity}")
     private int refreshPerIp;
 
-    @Value("${app.rate-limit.sign-in.logout-per-ip.requests}")
+    @Value("${app.rate-limit.sign-in.logout-per-ip.capacity}")
     private int logoutPerIp;
 
     private ResultActions refresh(String refreshToken) throws Exception {
@@ -80,7 +80,6 @@ class AuthIntegrationTest extends IntegrationTest {
                 """.formatted(refreshToken));
     }
 
-    /** A request from one pinned client address, to trip a per-IP limit (see DistinctClientAddresses). */
     private ResultActions postFrom(String clientIp, String path, String json) throws Exception {
         return mvc.perform(post(path).remoteAddress(clientIp).contentType(MediaType.APPLICATION_JSON).content(json));
     }
@@ -97,8 +96,7 @@ class AuthIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * Sends the attempt until it is refused and returns how many got through first. The bucket
-     * refills gradually (a 20-a-minute limit gains a token every 3 seconds), so a slow run may get a
+     * The bucket refills gradually (a 20-a-minute limit gains a token every 3 seconds), so a slow run may get a
      * few more through than the limit, never fewer.
      */
     private static int attemptsBeforeTheLimit(int limit, Attempt attempt) throws Exception {
@@ -214,7 +212,7 @@ class AuthIntegrationTest extends IntegrationTest {
             start.countDown();
             List<Integer> results = new ArrayList<>();
             for (Future<Integer> status : statuses) {
-                results.add(within(status));
+                results.add(awaitResult(status));
             }
             assertThat(results).containsOnlyOnce(201).containsOnly(201, 409);
         }
@@ -359,7 +357,7 @@ class AuthIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("Another account still logs in from the same address while one account is limited")
     void aLimitedAccountDoesNotLimitOthers() throws Exception {
-        String clientIp = DistinctClientAddresses.next();
+        String clientIp = DistinctClientAddresses.unusedAddress();
         String limited = uniqueEmail("limited");
         String other = uniqueEmail("other");
         signup(limited, PASSWORD).andExpect(status().isCreated());
@@ -377,7 +375,7 @@ class AuthIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("Login is limited per client address, across accounts: once the limit is used up, 429 with Retry-After")
     void loginIsRateLimitedPerIp() throws Exception {
-        String clientIp = DistinctClientAddresses.next();
+        String clientIp = DistinctClientAddresses.unusedAddress();
         int accepted = attemptsBeforeTheLimit(loginPerIp,
                 () -> loginFrom(clientIp, uniqueEmail("nobody"), "Wrong-Password-1"));
 
@@ -387,7 +385,7 @@ class AuthIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("Signup is limited per client address: once the limit is used up, 429 with Retry-After")
     void signupIsRateLimitedPerIp() throws Exception {
-        String clientIp = DistinctClientAddresses.next();
+        String clientIp = DistinctClientAddresses.unusedAddress();
         String email = uniqueEmail("flood");
         String body = signupBody(email, "Test User", PASSWORD);
         postFrom(clientIp, "/api/v1/auth/signup", body).andExpect(status().isCreated());
@@ -400,7 +398,7 @@ class AuthIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("Refresh is limited per client address: once the limit is used up, 429 with Retry-After")
     void refreshIsRateLimitedPerIp() throws Exception {
-        String clientIp = DistinctClientAddresses.next();
+        String clientIp = DistinctClientAddresses.unusedAddress();
         String body = """
                 {"refreshToken": "unknown-token"}
                 """;
@@ -412,7 +410,7 @@ class AuthIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("Logout is limited per client address: once the limit is used up, 429 with Retry-After")
     void logoutIsRateLimitedPerIp() throws Exception {
-        String clientIp = DistinctClientAddresses.next();
+        String clientIp = DistinctClientAddresses.unusedAddress();
         String body = """
                 {"refreshToken": "unknown-token"}
                 """;
@@ -509,7 +507,7 @@ class AuthIntegrationTest extends IntegrationTest {
             start.countDown();
             List<Integer> results = new ArrayList<>();
             for (Future<Integer> status : statuses) {
-                results.add(within(status));
+                results.add(awaitResult(status));
             }
             assertThat(results).containsOnlyOnce(200).containsOnly(200, 401);
         }
@@ -536,8 +534,8 @@ class AuthIntegrationTest extends IntegrationTest {
                     return answerOf(refresh(user.refreshToken()));
                 });
                 start.countDown();
-                logout = within(logoutOnce);
-                refreshed = within(refreshOnce);
+                logout = awaitResult(logoutOnce);
+                refreshed = awaitResult(refreshOnce);
             }
 
             // Whichever revokes the token first wins; the other's conditional update changes nothing.

@@ -18,7 +18,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** The job scheduler as configured: isolated runs, each with its own log context (REL-08, OPS-05). */
 class SchedulingIntegrationTest extends IntegrationTest {
 
     @Autowired

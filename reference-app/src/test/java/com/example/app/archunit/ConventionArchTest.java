@@ -62,7 +62,6 @@ import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_THROW_GENERIC_EXCEPTIONS;
 import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
 
-/** House conventions that live in bytecode (architecture.md "Conventions in bytecode", "Naming"). */
 @AnalyzeClasses(packages = "com.example.app", importOptions = ImportOption.DoNotIncludeTests.class)
 class ConventionArchTest {
 
@@ -73,10 +72,9 @@ class ConventionArchTest {
     private static final String VERSIONED_API = API + "/{version}/";
     private static final List<String> NUMBERS = List.of("int", "long", "double", Integer.class.getName(), Long.class.getName(),
             Double.class.getName());
-    // A number with its unit in its name: the unit belongs in the value (a Duration, a Period, a DataSize).
     private static final Pattern UNIT_IN_THE_NAME = Pattern.compile(
             ".*(Ms|Millis|Seconds|Minutes|Hours|Days|Bytes|Kb|Mb)|millis|seconds|minutes|hours|days|bytes");
-    // Text with a grammar: an address is a URI, a schedule a Cron. A host name alone is no URI, so *Host stays text.
+    // A host name alone is no URI, so *Host stays text.
     private static final Pattern TEXT_WITH_A_GRAMMAR = Pattern.compile(".*(Url|Uri|Endpoint|Cron)|url|uri|endpoint|cron");
 
     @ArchTest
@@ -92,14 +90,13 @@ class ConventionArchTest {
             .should().beAnnotatedWith(Transactional.class)
             .because("the proxy can't apply to a private method: the write would silently not be transactional (DATA-16)");
 
-    /** A project with a lock library adds its annotation: {@code .orShould().beAnnotatedWith(SchedulerLock.class)} (ShedLock). */
     @ArchTest
     static final ArchRule scheduledJobsDeclareTheirConcurrencyPosture = methods().that().areAnnotatedWith(Scheduled.class)
             .should().beAnnotatedWith(MultiInstanceSafe.class)
             .because("several instances run: a job is either safe on all of them at once, or takes a distributed lock (ARCH-12)");
 
-    // Requests and filters only: a settings record's startup check (@AssertTrue on a @ConfigurationProperties record)
-    // is no request, and no client field could name it.
+    // A settings record's startup check (@AssertTrue on a @ConfigurationProperties record) is no request, and no
+    // client field could name it.
     @ArchTest
     static final ArchRule crossFieldRulesNameTheirField = noMethods().that().areDeclaredInClassesThat().resideInAPackage("..dto..")
             .should().beAnnotatedWith(AssertTrue.class)
@@ -116,9 +113,8 @@ class ConventionArchTest {
             .allowEmptyShould(true);
 
     /**
-     * A settings record and the records it holds (a nested group, a value such as {@code RateLimit}). A bound in the
-     * API's own unit ({@code time-entry.max-minutes} for a request field in minutes) is a {@code Limits} key, read by
-     * key, so it never meets this rule.
+     * A bound in the API's own unit ({@code time-entry.max-minutes} for a request field in minutes) is a
+     * {@code Limits} key, read by key, so it never meets this rule.
      */
     @ArchTest
     static final ArchRule settingsAreTypedByWhatTheyMean = classes().that().areAnnotatedWith(ConfigurationProperties.class)
@@ -205,7 +201,6 @@ class ConventionArchTest {
                     a check is @Requires(Permission.X), @SignedIn or @Public on each handler, declared once in \
                     common.security: a class-level expression names what the compiler never checks (AUTHZ-03)""");
 
-    /** Everywhere, common.security included: the house's authorities are permissions, never roles. */
     @ArchTest
     static final ArchRule noRoleChecks = noClasses()
             .should().beAnnotatedWith(aRoleCheckWrittenAsAString())
@@ -266,7 +261,6 @@ class ConventionArchTest {
         };
     }
 
-    /** {@code @PreAuthorize("hasRole('ADMIN')")}, a {@code 'ROLE_'} authority and the like, on a class, an annotation type or a method. */
     private static DescribedPredicate<JavaAnnotation<?>> aRoleCheckWrittenAsAString() {
         return new DescribedPredicate<>("@PreAuthorize or @PostAuthorize naming a role") {
             @Override
@@ -323,7 +317,6 @@ class ConventionArchTest {
         };
     }
 
-    /** The method's mapping with its composed annotation ({@code @GetMapping}, ...) merged in; null when it has none. */
     private static RequestMapping handlerMapping(JavaMethod method) {
         return AnnotatedElementUtils.findMergedAnnotation(method.reflect(), RequestMapping.class);
     }
@@ -364,7 +357,6 @@ class ConventionArchTest {
                 && (modifiers.contains(JavaModifier.PUBLIC) || modifiers.contains(JavaModifier.PROTECTED));
     }
 
-    /** The field's type, or the parameter and return types, each with its type arguments and array components. */
     private static Set<JavaClass> typesNamedBy(JavaMember member) {
         Set<JavaClass> named = new HashSet<>();
         if (member instanceof JavaField field) {
@@ -379,7 +371,6 @@ class ConventionArchTest {
         return named;
     }
 
-    /** Public, and so is every class it is nested in; a primitive or an array of a visible type too. */
     private static boolean isVisibleEverywhere(JavaClass type) {
         JavaClass base = type.isArray() ? type.getBaseComponentType() : type;
         if (base.isPrimitive()) {
@@ -398,7 +389,6 @@ class ConventionArchTest {
         };
     }
 
-    /** The record's own fields, then those of every record of the application it holds, a map's or list's included. */
     private static void checkSettingsFields(JavaClass settings, ConditionEvents events, Set<JavaClass> seen) {
         if (!seen.add(settings)) {
             return;

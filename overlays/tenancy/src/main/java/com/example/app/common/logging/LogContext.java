@@ -3,17 +3,8 @@ package com.example.app.common.logging;
 import org.slf4j.MDC;
 
 /**
- * The MDC keys a request's context rides on, printed on every log line by
- * {@code logback-spring.xml} and included in production's JSON: which request, which endpoint,
- * from where, for which user. {@code traceId} and {@code spanId} come from Micrometer Tracing
- * (Brave), which keeps those two itself.
- *
- * <p>{@link RequestLogContextFilter} sets the first three when a request arrives and clears them
- * all when it ends; {@link UserLogContextFilter} adds the user (and, with tenancy, the tenant) once the token is verified. The MDC
- * is thread-local, so clearing every key in one place keeps one request's context off the next.</p>
- *
- * <p>A scheduled job's run fills the same keys ({@link ScheduledRunLogContext}): {@code requestId} is
- * the run's id and {@code endpoint} names the job.</p>
+ * The MDC is thread-local, so clearing every key in one place keeps one request's context off the next.
+ * {@code traceId} and {@code spanId} are Micrometer Tracing's (Brave), which keeps those two itself.
  */
 public final class LogContext {
 
@@ -22,7 +13,6 @@ public final class LogContext {
     public static final String CLIENT_IP = "clientIp";
     public static final String USER_ID = "userId";
     public static final String TENANT_ID = "tenantId";
-    /** The platform staff member behind an impersonation token. */
     public static final String ACTOR_ID = "actorId";
 
     private LogContext() {

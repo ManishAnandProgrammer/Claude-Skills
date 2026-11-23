@@ -11,7 +11,6 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 class AppExceptionTest {
 
-    /** A failure one caller must catch on its own (ERR-04): a subclass, still an AppException with its code. */
     private static final class MoveRefusedException extends AppException {
 
         private MoveRefusedException(UUID recordId) {

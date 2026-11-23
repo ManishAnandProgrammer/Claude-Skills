@@ -15,14 +15,11 @@ import org.springframework.validation.annotation.Validated;
 import java.time.Duration;
 
 /**
- * Scheduled jobs run on their own named platform threads. Under virtual threads Boot's default
- * scheduler ignores {@code spring.task.scheduling.pool.size}; this one is explicit, so one hung job
- * can't stall the others, and shutdown waits a bounded time for running jobs. Each run gets its own
- * log context ({@code ScheduledRunLogContext}).
+ * Under virtual threads Boot's default scheduler ignores {@code spring.task.scheduling.pool.size}: this one has a
+ * pool of its own, at least two threads, so one hung job can't stall the others.
  *
- * <p>The {@link TaskDecorator} bean is applied by Boot to its async executor, so {@code @Async}
- * work keeps the submitting request's log context. A scheduler is itself an {@code Executor}, which
- * would make Boot skip its async executor: {@code spring.task.execution.mode: force} keeps it.</p>
+ * <p>Boot applies the {@link TaskDecorator} bean to its async executor. A scheduler is itself an {@code Executor},
+ * which would make Boot skip that executor: {@code spring.task.execution.mode: force} keeps it.</p>
  */
 @Configuration
 @EnableScheduling
@@ -43,12 +40,6 @@ class SchedulingConfig {
         return new MdcTaskDecorator();
     }
 
-    /**
-     * {@code app.jobs.scheduler.*}.
-     *
-     * @param threads      at least two: with one, a hung job would stop every other job
-     * @param shutdownWait how long shutdown waits for running jobs
-     */
     @Validated
     @ConfigurationProperties(prefix = "app.jobs.scheduler")
     record Settings(@Min(2) int threads, @NotNull @DurationMin(days = 0) Duration shutdownWait) {

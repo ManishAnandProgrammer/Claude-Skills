@@ -9,26 +9,14 @@ import com.example.app.common.security.Reach;
 import java.util.List;
 import java.util.Set;
 
-/**
- * A dropdown's required {@code for}: the permission of the action its options serve. One dropdown per resource
- * serves every screen that picks one, so it never lists who may call it: the caller names the action, and the
- * options are the records that action's reach covers. Like an upload's purpose, the client names it and the
- * server checks it; the write the options feed checks everything again.
- */
 public final class DropdownFor {
 
-    /** The query parameter's name. */
     public static final String PARAMETER = "for";
 
     private DropdownFor() {
     }
 
-    /**
-     * The reach the options narrow to, read in memory (no statement): 403 {@code ACCESS_DENIED} unless the caller
-     * holds {@code action}, 400 {@code DROPDOWN_REACH_UNSUPPORTED} at {@code for} unless its reach is one the
-     * dropdown lists ({@code supported}, each one a condition of its own query).
-     */
-    public static Reach check(Permission action, Set<Permission> held, Set<Reach> supported) {
+    public static Reach requireReach(Permission action, Set<Permission> held, Set<Reach> supported) {
         if (!held.contains(action)) {
             throw AppException.of(ErrorCode.ACCESS_DENIED);
         }

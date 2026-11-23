@@ -6,12 +6,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-/**
- * The roles piece's constraints: a taken role code, and a role's key by the side that trips it. A role's delete is
- * refused while somebody holds it (an assignment's key); an assignment written while its role was deleted answers the
- * role's gone code. The others can't trip: a role's permissions go with it through its aggregate, and a person's
- * assignments and grants are written under the lock of their row, which is never deleted.
- */
 @Component
 class RoleConstraintErrorCodes implements ConstraintErrorCodes {
 
@@ -24,6 +18,6 @@ class RoleConstraintErrorCodes implements ConstraintErrorCodes {
 
     @Override
     public Map<String, ErrorCode> byForeignKeyOnWrite() {
-        return Map.of("fk_user_roles_role_id", ErrorCode.ROLE_GONE);
+        return Map.of("fk_user_roles_role_id", ErrorCode.ROLE_DELETED_MEANWHILE);
     }
 }

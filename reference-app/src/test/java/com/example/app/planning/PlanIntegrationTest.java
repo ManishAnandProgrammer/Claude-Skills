@@ -34,11 +34,7 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Plans: a parent in another module (the todo, through {@code todo.api.Todos}) and no overlapping
- * ranges (the exclusion constraint {@code ex_plans_owner_id_dates}). Every user is fresh, so the
- * exclusion, which is per owner, never meets another test's plans.
- */
+/** Every user is fresh, so the exclusion constraint, which is per owner, never meets another test's plans. */
 class PlanIntegrationTest extends IntegrationTest {
 
     private static final String PLANS = "/api/v1/plans";
@@ -215,7 +211,7 @@ class PlanIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[*].pointer", containsInAnyOrder("#/startsOn", "#/endsOn")))
                 .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("must be on or after 1900-01-01", "must be on or after 1900-01-01")));
-        // A year PostgreSQL's date can't hold, in each field: refused here, not at the insert.
+        // A year PostgreSQL's date can't hold, in each field.
         create(user, todoId, "-300000-01-01", "2026-01-01")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
@@ -255,7 +251,7 @@ class PlanIntegrationTest extends IntegrationTest {
         List<String> bodies = List.of(
                 planPayload("not-a-uuid", "2026-11-20", "2026-11-22"),
                 planPayload(todoId, "20-11-2026", "2026-11-22"),
-                // What a browser's toISOString() gives for a day picked east of UTC: read leniently, the day before is stored.
+                // What a browser's toISOString() gives for a day picked east of UTC: read leniently, the day before would be stored.
                 planPayload(todoId, "2026-11-20T18:30:00Z", "2026-11-22"),
                 planPayload(todoId, "2026-11-20", "2026-11-22T10:00:00"));
 
@@ -324,9 +320,8 @@ class PlanIntegrationTest extends IntegrationTest {
 
         List<Answer> answers = race(() -> create(user, todoIds.get(racer.getAndIncrement() % 2), "2026-11-20", "2026-11-22"));
 
-        // The creates of one todo queue on its lock; the exclusion is per owner, so creates for two todos
-        // still meet at the same instant, each waiting in the exclusion check for the other's row, and
-        // PostgreSQL ends that as a deadlock: the victim's 503 is a safe retry, which then answers 409.
+        // The exclusion is per owner, so creates for two todos wait in the exclusion check for each other's row,
+        // and PostgreSQL ends that as a deadlock: the victim's 503 is a safe retry, which then answers 409.
         assertThat(answers).extracting(Answer::status).containsOnlyOnce(201).isSubsetOf(201, 409, 503);
         assertRefusalsAre(answers, 409, "PLAN_OVERLAPS");
         assertRefusalsAre(answers, 503, "DATABASE_CONTENTION");
@@ -530,8 +525,8 @@ class PlanIntegrationTest extends IntegrationTest {
 
         List<Answer> answers = race(() -> update(user, ids.get(racer.getAndIncrement() % 2), "2026-12-10", "2026-12-12", 0));
 
-        // Each plan's racers queue on its row (the losers then see a stale version); the two plans' winners meet
-        // in the exclusion check, where one waits for the other's row and may deadlock (503, a safe retry).
+        // The two plans' winners meet in the exclusion check, where one waits for the other's row and may
+        // deadlock (503, a safe retry).
         assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).isSubsetOf(200, 409, 503);
         for (Answer answer : answers) {
             if (answer.status() == 409) {
@@ -591,9 +586,8 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * Row 23 with a locked parent: each create locks the todo (it checks the todo is open), so the delete
-     * waits for the held creates instead of landing between a create's read and its insert. It then finds
-     * their plans: every create 201, the delete 409 TODO_IN_USE, and TODO_GONE can't happen.
+     * Each create locks the todo (it checks the todo is open), so the delete waits for the held creates instead
+     * of landing between a create's read and its insert.
      */
     @Test
     @DisplayName("Plans created while their todo is deleted: the delete waits for them, every create is 201 and the delete 409 TODO_IN_USE")
@@ -616,12 +610,7 @@ class PlanIntegrationTest extends IntegrationTest {
         getAs(user.accessToken(), TODOS + "/" + todoId).andExpect(status().isOk());
     }
 
-    /**
-     * Row 23b: a create checks the todo is open under the todo's lock. Held at its insert, the plan keeps
-     * the todo's completion waiting, which then applies after the plan, made while the todo was open.
-     * Without the lock the completion commits first and the plan is stored for a done todo (the helper's
-     * "waits" assertion goes red).
-     */
+    /** Without the create's lock on the todo, the completion commits first and the plan is stored for a done todo. */
     @Test
     @DisplayName("A todo completed while a plan for it is being created waits for the plan: the plan is 201, the completion 200 after it")
     void completionRacingACreateWaitsForIt() throws Exception {
@@ -685,12 +674,6 @@ class PlanIntegrationTest extends IntegrationTest {
         update(user, id, "2026-12-20", "2026-12-22", 0).andExpect(status().isOk());
     }
 
-    /**
-     * Row 23b for the reschedule: it checks the todo is open under the todo's lock, as the create does. Held
-     * at its write to the plan, it keeps the todo's completion waiting, which then applies after the move,
-     * made while the todo was open. Without the lock the completion commits first under the gate (the
-     * helper's "waits" assertion goes red).
-     */
     @Test
     @DisplayName("A todo completed while its plan is being rescheduled waits for the reschedule: the move is 200, the completion 200 after it")
     void completionRacingARescheduleWaitsForIt() throws Exception {
@@ -743,10 +726,8 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * Runs {@code read} (the plan, then its todo through the todo module's facade: two statements) while
-     * the plan and its todo are deleted between them. A transaction deletes both and holds the todos table
-     * ACCESS EXCLUSIVE: the read's first statement (plans only) still sees the plan, its second (the todos)
-     * waits for that lock. Once it waits there, the deletion commits.
+     * The deleting transaction holds the todos table ACCESS EXCLUSIVE: the read's first statement (plans only)
+     * still sees the uncommitted delete's plan, its second (the todos) waits for that lock.
      */
     private Answer whileThePlanAndItsTodoGoBetweenTheReads(String planId, String todoId, Callable<ResultActions> read)
             throws Exception {
@@ -771,16 +752,14 @@ class PlanIntegrationTest extends IntegrationTest {
             } finally {
                 commit.countDown();
             }
-            within(deletion);
-            return within(reading);
+            awaitResult(deletion);
+            return awaitResult(reading);
         }
     }
 
     /**
-     * Plans on consecutive days, as {@code user}, across two todos; returns their ids in calendar order.
-     * The last day is created first, so calendar order and creation (id) order differ: a STARTS_ON walk
-     * that ignored its sort would fail (TEST-10). Newest first is then the other days backwards, then the
-     * last day ({@link #newestFirst}).
+     * Ids in calendar order. The last day is created first, so calendar order and creation (id) order differ: a
+     * STARTS_ON walk that ignored its sort would fail.
      */
     private List<String> planDays(TestUser user, LocalDate firstDay, int days) throws Exception {
         List<String> todoIds = List.of(createTodo(user, "Even days"), createTodo(user, "Odd days"));
@@ -795,7 +774,6 @@ class PlanIntegrationTest extends IntegrationTest {
         return List.of(ids);
     }
 
-    /** {@link #planDays}' ids in creation order, newest first: the days before the last backwards, then the last. */
     private static List<String> newestFirst(List<String> calendarOrder) {
         List<String> newest = new ArrayList<>(calendarOrder.subList(0, calendarOrder.size() - 1));
         Collections.reverse(newest);
@@ -803,11 +781,7 @@ class PlanIntegrationTest extends IntegrationTest {
         return newest;
     }
 
-    /**
-     * Follows {@code pageInfo.nextCursor} from {@code firstBatch} (a path with its query string) to the
-     * last batch, which must say {@code hasMore} false with no cursor; returns each batch's ids.
-     */
-    private List<List<String>> walk(TestUser user, String firstBatch) throws Exception {
+    private List<List<String>> idsOfEveryBatch(TestUser user, String firstBatch) throws Exception {
         List<List<String>> batches = new ArrayList<>();
         String next = firstBatch;
         while (Objects.nonNull(next)) {
@@ -836,7 +810,7 @@ class PlanIntegrationTest extends IntegrationTest {
         TestUser stranger = newUser();
         createPlan(stranger, createTodo(stranger, "Not mine"), "2026-03-02", "2026-03-02");
 
-        List<List<String>> batches = walk(user, PLANS + "?size=3");
+        List<List<String>> batches = idsOfEveryBatch(user, PLANS + "?size=3");
 
         assertThat(batches).hasSize(3);
         assertThat(flatten(batches)).containsExactlyElementsOf(ids);
@@ -851,7 +825,7 @@ class PlanIntegrationTest extends IntegrationTest {
         TestUser user = newUser();
         List<String> ids = newestFirst(planDays(user, LocalDate.parse("2026-04-01"), 5));
 
-        assertThat(flatten(walk(user, PLANS + "?sort=NEWEST&size=2"))).containsExactlyElementsOf(ids);
+        assertThat(flatten(idsOfEveryBatch(user, PLANS + "?sort=NEWEST&size=2"))).containsExactlyElementsOf(ids);
     }
 
     @Test
@@ -959,10 +933,10 @@ class PlanIntegrationTest extends IntegrationTest {
         }
         createPlan(user, createTodo(user, "Elsewhere"), "2026-06-09", "2026-06-09");
 
-        assertThat(flatten(walk(user, PLANS + "?todoId=" + todoId + "&size=2"))).containsExactlyElementsOf(ids);
+        assertThat(flatten(idsOfEveryBatch(user, PLANS + "?todoId=" + todoId + "&size=2"))).containsExactlyElementsOf(ids);
         List<String> newestFirst = new ArrayList<>(ids);
         Collections.reverse(newestFirst);
-        assertThat(flatten(walk(user, PLANS + "?todoId=" + todoId + "&sort=NEWEST&size=2"))).containsExactlyElementsOf(newestFirst);
+        assertThat(flatten(idsOfEveryBatch(user, PLANS + "?todoId=" + todoId + "&sort=NEWEST&size=2"))).containsExactlyElementsOf(newestFirst);
     }
 
     @Test
@@ -1078,14 +1052,13 @@ class PlanIntegrationTest extends IntegrationTest {
         TestUser many = newUser();
         List<String> ids = planDays(many, LocalDate.parse("2026-09-01"), 11);
 
-        // Two, not a root list's one: the todos' titles are the todo module's, read in one lookup per batch.
         assertThat(statementsFor(one, PLANS + "?size=10")).isEqualTo(2);
         assertThat(statementsFor(many, PLANS + "?size=10")).isEqualTo(2);
         assertThat(statementsFor(many, PLANS + "?ids=" + String.join(",", ids))).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("The API docs describe the overlap and done-todo refusals and the todo's 404, without TODO_GONE (the create locks the todo)")
+    @DisplayName("The API docs describe the overlap and done-todo refusals and the todo's 404, without TODO_DELETED_MEANWHILE (the create locks the todo)")
     void apiDocsDescribeThePlanErrors() throws Exception {
         getAs(null, "/v3/api-docs")
                 .andExpect(status().isOk())
@@ -1094,7 +1067,7 @@ class PlanIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['409'].description", containsString("PLAN_OVERLAPS")))
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['409'].description", containsString("PLAN_TODO_DONE")))
                 .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['404'].description", containsString("TODO_NOT_FOUND")))
-                .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['404'].description", not(containsString("TODO_GONE"))))
+                .andExpect(jsonPath("$.paths['/api/v1/plans'].post.responses['404'].description", not(containsString("TODO_DELETED_MEANWHILE"))))
                 .andExpect(jsonPath("$.paths['/api/v1/plans/{id}'].put.responses['409'].description", containsString("PLAN_OVERLAPS")))
                 .andExpect(jsonPath("$.paths['/api/v1/plans/{id}'].put.responses['409'].description", containsString("OPTIMISTIC_LOCK_CONFLICT")))
                 .andExpect(jsonPath("$.paths['/api/v1/plans/{id}'].put.responses['409'].description", containsString("PLAN_TODO_DONE")))

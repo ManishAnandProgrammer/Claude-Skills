@@ -17,13 +17,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.time.Duration;
 
-/**
- * One line per request when it ends: its status and duration, at WARN past
- * {@code app.logging.request-completion.slow-threshold}, and the {@code apiVersion} Spring resolved
- * (left out for a request outside the API or with a refused version). The request id, endpoint,
- * client and user are already on the line from the log context. Actuator scrapes are skipped; the line is switched
- * off with {@code app.logging.request-completion.enabled=false}.
- */
 @Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 2)

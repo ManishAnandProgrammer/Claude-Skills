@@ -27,11 +27,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The per-request read (the roles piece, house-review AUTHZ-11): a token carries the user's id alone, and every
- * authenticated request reads what they hold now from the tables, in one indexed statement, through
- * {@code TokenPermissions}. {@code /users/me/access} and every check read the same set.
- */
 class RolePermissionsIntegrationTest extends RolesFixtures {
 
     private static final String AUTHORIZATION_LOGGER = "com.example.app.authorization";
@@ -84,7 +79,7 @@ class RolePermissionsIntegrationTest extends RolesFixtures {
 
         putAs(admin, userPermission(user.id(), NEEDED), """
                 {"effect": "DENY"}""").andExpect(status().isOk());
-        // The DENY takes NEEDED, and NEEDING with it: its prerequisite is gone.
+        // NEEDING goes with NEEDED: its prerequisite is gone.
         assertThat(myPermissions(user.accessToken())).doesNotContain(NEEDED.name(), NEEDING.name());
     }
 
@@ -186,7 +181,7 @@ class RolePermissionsIntegrationTest extends RolesFixtures {
         getAs(user.accessToken(), MY_ACCESS).andExpect(status().isOk());
 
         statistics().clear();
-        int queries = StatementCounter.record(() -> getAs(user.accessToken(), MY_ACCESS).andExpect(status().isOk()));
+        int queries = StatementCounter.countTemplateQueries(() -> getAs(user.accessToken(), MY_ACCESS).andExpect(status().isOk()));
 
         assertThat(statistics().getPrepareStatementCount()).as("Hibernate's statements").isZero();
         assertThat(queries).as("the per-request read's statements").isEqualTo(1);

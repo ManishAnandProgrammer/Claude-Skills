@@ -561,7 +561,7 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
   cell "fails without its index", a seed shaped to make it so): costs turn on the data, which is a
   project's own measured test;
   **an order by the id alone** (`NEWEST` as `id desc`,
-  `Sort.Order.desc("id")`) on any list; a seek in OR form; a range filter offered under another column's
+  `builder.desc(root.get(X_.id))` alone) on any list; a seek in OR form; a range filter offered under another column's
   order, an overlap filter's end (alone or with the other) under NEWEST included; an
   overlap filter written as two comparisons with nothing bounding `starts_on` from below; an index on
   `updated_at` or `version` (or on any column every update changes): every
@@ -672,7 +672,7 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
     names the child table and the same constraint on both sides; Hibernate's `JDBCException.getSQL()`
     tells them apart): `byConstraintName` for a **delete** of the parent (409 `<PARENT>_IN_USE`),
     `byForeignKeyOnWrite` for an **insert or update** of the child whose parent was deleted after the
-    read (404 `<PARENT>_GONE`: a not-found code without placeholders, ERR-06, since the handler has no
+    read (404 `<PARENT>_DELETED_MEANWHILE`: a not-found code without placeholders, ERR-06, since the handler has no
     id to give it). A key with `ON DELETE CASCADE` trips only on the write side. An unmapped side is a
     500 (reference: `TodoConstraintErrorCodes`, `ConstraintViolationCodes`);
   - a child that can change parent does it through an entity method that checks the owner

@@ -22,35 +22,25 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Every native statement on a tenant table names its tenant (house-review TEN-37): Hibernate's tenant
- * filter never reaches native SQL, and the policy is the fallback, not the filter. Read from the
- * repositories' {@code @Query(nativeQuery = true)} statements: each reference to a tenant table (after
- * {@code FROM}, {@code JOIN}, {@code UPDATE} or {@code INTO}) needs its own {@code tenant_id = :tenantId}, or,
- * for an insert, {@code tenant_id} in its column list with {@code :tenantId} passed.
- * Native SQL lives in repositories (a {@code JdbcTemplate} on a tenant table elsewhere is a review
- * finding this test can't see).
+ * Reads the repositories' native statements only: a {@code JdbcTemplate} on a tenant table elsewhere is a review
+ * finding this test can't see.
  */
 @WithoutTestTenant
 class NativeQueryTenantIntegrationTest extends IntegrationTest {
 
-    /** The tables a statement reads or writes, by the keyword before them. */
     private static final Pattern TABLE = Pattern.compile("\\b(?:from|join|update|into)\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
-    /** The tenant predicate, with or without a table alias. */
     private static final Pattern TENANT_PREDICATE = Pattern.compile("\\btenant_id\\s*=\\s*:tenantId\\b");
-    /** An insert's table and its column list: listing tenant_id names the row's tenant, as a predicate does. */
     private static final Pattern INSERT_COLUMNS = Pattern.compile("\\binsert\\s+into\\s+(\\w+)\\s*\\(([^)]*)\\)", Pattern.CASE_INSENSITIVE);
 
     @Autowired
     private ApplicationContext context;
 
-    /** The tables under the tenant policy, from the catalogue. */
     private Set<String> tenantTables() {
         return Set.copyOf(jdbc.queryForList("""
                 select c.relname from pg_policy p join pg_class c on c.oid = p.polrelid
                  where p.polname = 'tenant_isolation'""", String.class));
     }
 
-    /** True when the statement names fewer tenant predicates than it has references to tenant tables. */
     private static boolean missesItsTenant(String statement, Set<String> tenantTables) {
         int tenantTableReferences = 0;
         Matcher table = TABLE.matcher(statement);
@@ -109,7 +99,6 @@ class NativeQueryTenantIntegrationTest extends IntegrationTest {
                 WHERE id IN (SELECT id FROM tenancy_probe WHERE label = 'probe' AND tenant_id = :tenantId)
                   AND tenant_id = :tenantId""", tenantTables)).isFalse();
         assertThat(missesItsTenant("DELETE FROM refresh_tokens WHERE expires_at < :cutoff", tenantTables)).isFalse();
-        // An insert names its tenant in its column list (TEN-37), with the passed tenant as the value.
         assertThat(missesItsTenant("INSERT INTO tenancy_probe (id, label) VALUES (:id, 'probe')", tenantTables)).isTrue();
         assertThat(missesItsTenant("INSERT INTO tenancy_probe (id, tenant_id, label) VALUES (:id, :tenantId, 'probe')",
                 tenantTables)).isFalse();

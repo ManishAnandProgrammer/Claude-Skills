@@ -22,15 +22,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The built-in roles as changeset 0037 (and every later grant changeset) seeded them, against the {@link Role} enum
- * (house-review AUTHZ-12): a new permission listed on a constant without the changeset that grants it to that role's
- * copy fails here, so an existing installation can never miss it after an upgrade. The tests that edit a built-in role
- * put it back.
+ * A permission listed on a {@link Role} constant without the changeset that grants it to that role's copy fails here,
+ * so an existing installation can't miss it after an upgrade.
  *   <!-- tenancy:begin -->
- * With tenancy every tenant has its copies: those its changesets seeded (an upgraded tenant's; schema per tenant also
- * a new tenant's, from the tenant changelog) and, in row mode, a new tenant's, copied from the enum at its activation.
- * So in row mode the changesets are only compared on a database that held tenants before them: the upgrade run
- * ({@code app.test.upgrade.previous-release}, verify.sh's stages with the example), where the seeded tenants are.
+ * In row mode a new tenant's copies come from the enum at its activation, so the changesets are only compared on the
+ * upgrade run ({@code app.test.upgrade.previous-release}), where the seeded tenants are.
  *   <!-- tenancy:end -->
  */
 class BuiltInRolesIntegrationTest extends IntegrationTest {
@@ -61,7 +57,7 @@ class BuiltInRolesIntegrationTest extends IntegrationTest {
     void everyTenantsCopyHoldsItsConstantsPermissions(Role role) throws Exception {
         TestTenant fresh = newTenant();
         // tenancy-schema:begin
-        // Every schema as a deploy leaves it: an upgraded one's tables come with the tenant migrations.
+        // An upgraded schema's tables come with the tenant migrations, as at a deploy.
         assertThat(tenantMigrations.run().failed()).isEmpty();
         // tenancy-schema:end
         List<UUID> tenants = jdbc.queryForList("select id from tenants where status in ('ACTIVE', 'SUSPENDED', 'CLOSED')", UUID.class);

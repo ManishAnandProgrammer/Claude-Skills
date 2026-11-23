@@ -26,7 +26,7 @@ todo-list and tag dropdowns and the todo dropdown under its list (the dependent 
 `overlays/tenancy/.../user/service/MembershipService.lockAsCurrentAdmin` (TEN-08).
 
 Names: Spring Security calls a permission an *authority* and a role a *group*; the house says Permission, Role
-and Policy, and each of `Permission` and `Role` says so in one javadoc line.
+and Policy.
 
 ## Level 1: permissions in code
 
@@ -71,7 +71,7 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
     AUTHZ-10) asks the role whether it grants the permission (`role.grants(ACCOUNT_STATUS_CHANGE)`), never
     compares role names;
   - every role holds the prerequisites of each permission it holds (`RoleTest`);
-  - **freshness** is stated where the role javadoc states it: permissions come from the token's role, so a role
+  - **freshness** is known and tested: permissions come from the token's role, so a role
     change reaches the person within one access-token lifetime, or at their next request with the
     `session-version` piece (SEC-07) or the `roles` piece (which reads the tables on every request, AUTHZ-11).
 - **A new role** needs, in one change: its constant with its list, the changeset widening the role check
@@ -230,7 +230,7 @@ and Policy, and each of `Permission` and `Role` says so in one javadoc line.
   - the server refuses (403 `ACCESS_DENIED`) unless the caller holds that permission, and narrows the
     options to its reach (`Reach`): the reach's condition is the owning module's (the caller's own records for
     `OWN`, an indexed join for `ASSIGNED`, none for `ALL`); a reach the dropdown doesn't list is 400
-    `DROPDOWN_REACH_UNSUPPORTED` at `for` (`DropdownFor.check`);
+    `DROPDOWN_REACH_UNSUPPORTED` at `for` (`DropdownFor.requireReach`);
   - **one query**: the permission check is in memory, the reach is one more condition of the same Criteria
     query, and a dependent dropdown takes its parent id as a plain filter in that same `WHERE`, with no separate
     parent check and no walk up the chain: an out-of-reach parent yields an empty page and nothing leaks. Each

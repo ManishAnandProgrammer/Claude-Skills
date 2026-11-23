@@ -16,11 +16,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The session version with tenancy (the session-version piece): one number per membership, raised by every
- * change of its access, so a member's older tokens are refused on their very next request and the app's
- * refresh reads the access as it is now; another tenant's tokens of the same person stay as they are.
- */
 @WithoutTestTenant
 class SessionVersionTenancyIntegrationTest extends IntegrationTest {
 
@@ -28,7 +23,6 @@ class SessionVersionTenancyIntegrationTest extends IntegrationTest {
     private static final String ME = "/api/v1/users/me";
     private static final String TENANTS = "/api/v1/platform/tenants";
 
-    /** The access token's claims, read without checking the signature (the server checked it). */
     private static String claim(String accessToken, String jsonPath) {
         String payload = new String(Base64.getUrlDecoder().decode(accessToken.split("\\.")[1]), StandardCharsets.UTF_8);
         Object value = JsonPath.read(payload, jsonPath);
@@ -41,11 +35,10 @@ class SessionVersionTenancyIntegrationTest extends IntegrationTest {
     }
 
     // roles:begin
-    /** The tenant's built-in ADMIN role given to the member, or taken (the roles piece's assignment endpoint). */
-    private ResultActions changeAdmin(TestUser admin, TestTenant tenant, TestUser member, boolean given) throws Exception {
+    private ResultActions giveOrTakeAdminRole(TestUser admin, TestTenant tenant, TestUser member, boolean give) throws Exception {
         String roleId = queryIn(tenant, "select id::text from roles where built_in = 'ADMIN'").getFirst().get("id").toString();
         String path = "/api/v1/users/" + member.id() + "/roles/" + roleId;
-        return given ? putAs(admin.accessToken(), path, "{}") : deleteAs(admin.accessToken(), path);
+        return give ? putAs(admin.accessToken(), path, "{}") : deleteAs(admin.accessToken(), path);
     }
 
     // roles:else
@@ -63,11 +56,10 @@ class SessionVersionTenancyIntegrationTest extends IntegrationTest {
                 """.formatted(refreshToken));
     }
 
-    /** One device's tokens. */
     private record Session(String accessToken, String refreshToken) {
     }
 
-    /** The user's tokens for another of their tenants, from their refresh token (which it spends). */
+    /** Spends the user's refresh token. */
     private Session switchedTo(TestUser user, TestTenant tenant) throws Exception {
         ResultActions switched = postAs(null, "/api/v1/auth/switch-tenant", """
                 {"refreshToken": "%s", "tenantId": "%s"}
@@ -214,9 +206,9 @@ class SessionVersionTenancyIntegrationTest extends IntegrationTest {
         Session inB = switchedTo(inA, tenantB);
         getAs(inA.accessToken(), MEMBERS).andExpect(status().isForbidden());
 
-        changeAdmin(ownerA, tenantA, inA, true).andExpect(status().isOk());
+        giveOrTakeAdminRole(ownerA, tenantA, inA, true).andExpect(status().isOk());
         getAs(inA.accessToken(), MEMBERS).andExpect(status().isOk());
-        changeAdmin(ownerA, tenantA, inA, false).andExpect(status().isNoContent());
+        giveOrTakeAdminRole(ownerA, tenantA, inA, false).andExpect(status().isNoContent());
 
         getAs(inA.accessToken(), MEMBERS)
                 .andExpect(status().isForbidden())

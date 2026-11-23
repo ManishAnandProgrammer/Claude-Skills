@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Under /auth, which is public: registering is signing up an organisation. */
 @RestController
 @RequestMapping("/api/{version}/auth/tenant-registrations")
 @RequiredArgsConstructor

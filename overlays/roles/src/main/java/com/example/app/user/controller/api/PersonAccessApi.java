@@ -21,10 +21,8 @@ import java.util.UUID;
 public interface PersonAccessApi {
 
     // tenancy:begin
-    /** The person isn't one here: not a member of the caller's tenant (unknown, removed, or another tenant's). */
     String PERSON_NOT_FOUND = "TENANT_MEMBER_NOT_FOUND (not a member of this tenant)";
     // tenancy:else
-    // /** The person isn't one here: no such account. */
     // String PERSON_NOT_FOUND = "USER_NOT_FOUND";
     // tenancy:end
 
@@ -56,7 +54,7 @@ public interface PersonAccessApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "403", description = RULES_403,
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "404", description = PERSON_NOT_FOUND + ", ROLE_NOT_FOUND, ROLE_GONE (deleted meanwhile)",
+    @ApiResponse(responseCode = "404", description = PERSON_NOT_FOUND + ", ROLE_NOT_FOUND, ROLE_DELETED_MEANWHILE",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "ACCESS_LAST_MANAGER",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))

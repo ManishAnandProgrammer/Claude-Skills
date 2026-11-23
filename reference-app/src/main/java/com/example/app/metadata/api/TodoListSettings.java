@@ -8,11 +8,8 @@ import java.time.LocalTime;
 import java.util.Objects;
 
 /**
- * One todo list's settings (the example configuration: {@link MetadataKeys#todoListSettings}).
- *
- * <p>Components are boxed so the compact constructor can tell a field missing from the stored JSON
- * (null) from a stored 0 or false, and give it its default. A field added later therefore reads on
- * every row written before it.</p>
+ * Components are boxed so the compact constructor can tell a field missing from the stored JSON
+ * (null) from a stored 0 or false, and give it its default.
  */
 @Schema(description = "Settings of one todo list")
 public record TodoListSettings(
@@ -42,7 +39,6 @@ public record TodoListSettings(
         }
     }
 
-    /** The settings before anyone changed them. */
     public static TodoListSettings defaults() {
         return new TodoListSettings(null, null, null);
     }

@@ -11,7 +11,6 @@ import java.time.Clock;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Audit moments come from the application's {@link Clock} (microseconds, like the columns), not the system clock. */
 @Configuration
 @EnableJpaAuditing(auditorAwareRef = "auditor", dateTimeProviderRef = "auditingTime")
 class JpaAuditingConfig {

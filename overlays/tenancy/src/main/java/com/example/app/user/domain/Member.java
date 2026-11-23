@@ -17,15 +17,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * A person inside one tenant's own data (house-review TEN-17): what the tenant's tables reference for
- * an owner ({@code owner_id → members}), so no tenant table points into the platform's {@code users}
- * and a tenant's data can move to a database of its own (TEN-16). The platform's membership
- * ({@link TenantMembership}) stays the authority on who belongs and with which role; this row is
- * written in the same transaction as it.
- *
- * <p>Never deleted: a removed member's records still reference the row, so leaving marks it
- * ({@code leftAt}) and coming back clears the mark on the same row. It holds no personal data: the
- * account's email and name stay on the platform.</p>
+ * The tenant's tables reference this row, never the platform's {@code users}, so a tenant's data can move to a
+ * database of its own. Never deleted: a removed member's records still reference it.
  */
 @Entity
 @Table(name = "members")
@@ -38,11 +31,9 @@ public class Member extends TenantOwnedEntity {
 // public class Member extends AuditableEntity {
 // tenancy-row:end
 
-    /** The account's id, the same as {@code users.id}: a copy, not a reference to the platform. */
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
-    /** When the person stopped being a member; {@code null} while they are one. */
     @Column(name = "left_at")
     private Instant leftAt;
 

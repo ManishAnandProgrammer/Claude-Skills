@@ -17,18 +17,12 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The plans' indexes (crud-gen tests.md row 28): every offered filter and order has its index, and the first
- * page is planned on its order's index.
- */
 class PlanIndexIntegrationTest extends IntegrationTest {
 
     private static final String PLAN_ROW = """
             select id, todo_id, owner_id, starts_on, ends_on, created_at, updated_at, created_by, updated_by, version
               from plans""";
     // tenancy-row:begin
-    // // The repository's query names the tenant (Hibernate's @TenantId adds it), so the statement written as
-    // // the repository issues it does too.
     // private static final String AND_TENANT = " and tenant_id = :tenantId";
     // tenancy-row:else
     private static final String AND_TENANT = "";
@@ -37,7 +31,6 @@ class PlanIndexIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    /** Each offered filter and order, the todo's foreign key check and the overlap check, with their index. */
     static Stream<Arguments> offeredFiltersAndOrders() {
         return Stream.of(
                 Arguments.of("plans, STARTS_ON (and the planned days, offered under it only: a range of it)",

@@ -17,7 +17,6 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** One row per rule and caller: who the caller is to the todo, and what each rule answers them. */
 class TodoPolicyTest {
 
     private static final TodoPolicy POLICY = new TodoPolicy();

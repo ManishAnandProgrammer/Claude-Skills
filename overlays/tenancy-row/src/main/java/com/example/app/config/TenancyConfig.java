@@ -10,9 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import javax.sql.DataSource;
 
 /**
- * Hibernate's multi-tenancy: the resolver (every session opens with {@code TenantContext}'s tenant,
- * which {@code @TenantId} fills on insert and adds to every entity query) and the connection hook that
- * tells the database's row-level security which tenant a transaction is for. The hook needs
+ * The connection hook needs
  * {@code hibernate.connection.handling_mode: DELAYED_ACQUISITION_AND_RELEASE_AFTER_TRANSACTION}
  * ({@code config/tenancy.yml}): in Spring's default mode a read-only transaction borrows its connection
  * when it begins, and the hook's statement would then run in every transaction, SQL or not.

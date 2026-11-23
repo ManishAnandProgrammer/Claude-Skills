@@ -11,10 +11,6 @@ import org.springframework.util.StringUtils;
 
 import java.util.UUID;
 
-/**
- * The parameters of a plan's todo options: the todo dropdown's (a list, a title search, a batch), without its
- * status and sort direction, since the options are always the list's todos in title order.
- */
 @Getter
 @Setter
 public class PlanTodoOptionsFilter extends CursorFilter implements QueryFilter {

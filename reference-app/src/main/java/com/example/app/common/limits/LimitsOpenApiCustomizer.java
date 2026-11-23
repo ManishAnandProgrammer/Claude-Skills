@@ -13,12 +13,6 @@ import java.lang.annotation.Annotation;
 import java.math.BigDecimal;
 import java.util.Objects;
 
-/**
- * Writes the configured limits into the API docs: {@code maxLength} for {@link MaxLength} body
- * fields and query parameters, {@code maximum} for {@link ConfiguredMax}, {@code maxItems} for
- * {@link ConfiguredMaxSize}. Without it the schema couldn't show a limit that lives in configuration.
- * A limit on a collection's elements is {@link ElementLimitsModelConverter}'s.
- */
 @Component
 @RequiredArgsConstructor
 class LimitsOpenApiCustomizer implements PropertyCustomizer, ParameterCustomizer {

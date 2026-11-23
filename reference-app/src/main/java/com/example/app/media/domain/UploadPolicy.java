@@ -21,7 +21,6 @@ import org.hibernate.type.SqlTypes;
 import java.util.ArrayList;
 import java.util.List;
 
-/** One purpose's limits. Seeded by a changeset per purpose; changed by an admin ({@link #replaceLimits}). */
 @Entity
 @Table(name = "upload_policies")
 @Getter
@@ -53,7 +52,6 @@ public class UploadPolicy extends AuditableEntity {
     @Column(name = "content_types", nullable = false, columnDefinition = "text[]")
     private List<String> contentTypes;
 
-    /** The ranges are checked by the request and by the table's constraints. */
     public void replaceLimits(long minSizeBytes, long maxSizeBytes, int minFiles, int maxFiles, List<String> contentTypes) {
         this.minSizeBytes = minSizeBytes;
         this.maxSizeBytes = maxSizeBytes;

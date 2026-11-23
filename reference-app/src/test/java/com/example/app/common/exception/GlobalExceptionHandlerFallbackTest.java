@@ -18,9 +18,8 @@ import java.util.Locale;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * An {@link IllegalArgumentException} has no mapping of its own (ERR-04): the handler can't tell a
- * bad payload from bad internal data, so a request value is refused on purpose with an
- * {@link AppException}, and an IAE that reaches the handler is a bug, answered 500.
+ * An {@link IllegalArgumentException} has no mapping of its own: the handler can't tell a bad payload from bad
+ * internal data, so a request value is refused on purpose with an {@link AppException}.
  */
 class GlobalExceptionHandlerFallbackTest {
 

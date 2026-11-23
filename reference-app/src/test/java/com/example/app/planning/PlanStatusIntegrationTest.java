@@ -21,10 +21,6 @@ import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * A plan's status workflow (PlanStatus.canBecome) and the state action that records a day (DONE's doneOn,
- * the user's own today). Every user is fresh, so the overlap rule never meets another test's plans.
- */
 class PlanStatusIntegrationTest extends IntegrationTest {
 
     private static final String PLANS = "/api/v1/plans";
@@ -50,7 +46,6 @@ class PlanStatusIntegrationTest extends IntegrationTest {
         return version.longValue();
     }
 
-    /** The status change with the plan's current version; {@code doneOn} null leaves it out. */
     private ResultActions changeStatus(TestUser user, String id, String target, String doneOn) throws Exception {
         return changeStatus(user, id, target, doneOn, versionOf(user, id));
     }
@@ -62,7 +57,6 @@ class PlanStatusIntegrationTest extends IntegrationTest {
                 """.formatted(target, day, version));
     }
 
-    /** DONE needs its day; the others take none. */
     private static String dayFor(String target) {
         return target.equals("DONE") ? "2026-01-11" : null;
     }

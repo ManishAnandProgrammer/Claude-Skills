@@ -15,14 +15,14 @@ import java.util.UUID;
 @Component
 public class MediaFileMapper {
 
-    /** {@code PURPOSE/uuid}: no personal data in a key (keys appear in logs, URLs and audit trails), nothing to escape. */
+    /** No personal data in a key (keys appear in logs, URLs and audit trails), nothing to escape. */
     public String newKey(UploadPurpose purpose) {
         return purpose.name() + "/" + UUID.randomUUID();
     }
 
     /** The upload URL's own expiry, so the jobs compare against exactly when the store stops accepting the PUT. */
     public MediaFile toEntity(String key, UploadPurpose purpose, UploadFileRequest file, UUID uploadedBy,
-                              PresignedUpload upload, Duration pendingLifetime) {
+                              PresignedUpload upload, Duration claimGracePeriod) {
         Instant uploadExpiresAt = upload.expiresAt();
         return MediaFile.builder()
                 .key(key)
@@ -32,7 +32,7 @@ public class MediaFileMapper {
                 .sizeBytes(file.sizeBytes())
                 .uploadedBy(uploadedBy)
                 .uploadExpiresAt(uploadExpiresAt)
-                .expiresAt(uploadExpiresAt.plus(pendingLifetime))
+                .claimableUntil(uploadExpiresAt.plus(claimGracePeriod))
                 .build();
     }
 

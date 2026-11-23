@@ -16,25 +16,16 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Tells the database who is writing, for the change history (the change-history piece, house-review DATA-08): at
- * the start of every new write transaction of a signed-in request, {@code set_config('app.user_id', <the caller's
- * id>, true)}, which {@code audit_row_change()} (changeset 0035) records as {@code audit_log.actor_id}.
- *
- * <p>Transaction-local ({@code is_local = true}): PostgreSQL drops the setting at the commit or the rollback, so a
+ * Transaction-local ({@code is_local = true}): PostgreSQL drops the setting at the commit or the rollback, so a
  * pooled connection never carries one request's caller into the next borrower's transaction; never set at session
- * level. A read-only transaction writes no history and is skipped; outside a signed-in request (a signup, a
- * scheduled job) nothing is set and the history's actor is null, as {@code updated_by} is.</p>
+ * level. Boot adds every {@link TransactionExecutionListener} bean to the transaction manager, which calls
+ * {@code afterBegin} once the transaction's resources are bound, so the statement runs on the transaction's own
+ * connection.
  *
- * <p>Spring's own hook: Boot adds every {@link TransactionExecutionListener} bean to the transaction manager, which
- * calls {@code afterBegin} once the transaction's resources are bound, so the statement runs on the transaction's
- * own connection, inside it (the pool's lazy proxy borrows that connection here rather than at the first
- * statement, which follows anyway).</p>
- *
- * <p>Never throws: the transaction's resources are bound by now, and an exception out of a listener would leave
- * them bound to the thread (its connection never returned). A failed statement is rethrown at the commit instead
- * ({@link FailAtCommit}): the transaction rolls back and the caller gets the database's error (a 503 through
- * {@code TransientDatabaseFailure}), never a success whose writes were dropped nor writes without their author.
- * Marking it rollback-only would roll back without a word: the request would answer 2xx.</p>
+ * <p>Never throws: an exception out of a listener would leave the transaction's resources bound to the thread (its
+ * connection never returned). A failed statement is rethrown at the commit instead ({@link FailAtCommit}), so the
+ * transaction rolls back; marking it rollback-only would roll back without a word, and the request would answer
+ * 2xx.</p>
  */
 @Slf4j
 @Component
@@ -68,7 +59,6 @@ public class ChangeHistoryActor implements TransactionExecutionListener {
         }
     }
 
-    /** Rethrows the actor's failure before the commit, so the transaction rolls back and its caller learns why. */
     record FailAtCommit(DataAccessException failure) implements TransactionSynchronization {
 
         @Override

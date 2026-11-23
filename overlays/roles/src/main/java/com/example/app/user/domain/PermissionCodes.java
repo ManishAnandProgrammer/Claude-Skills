@@ -12,11 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/**
- * The permission a code in a table names (the roles piece stores codes as text the application checks): a code
- * that names no {@link Permission} constant (one removed since, or written by hand) grants nothing, and is
- * logged once per code, not once per request.
- */
+/** A table can hold a code no {@link Permission} names (one removed since, or written by hand): it grants nothing. */
 @Slf4j
 public final class PermissionCodes {
 
@@ -27,7 +23,6 @@ public final class PermissionCodes {
     private PermissionCodes() {
     }
 
-    /** The permission {@code code} names; empty for an unknown one, which fails closed. */
     public static Optional<Permission> known(String code) {
         Permission permission = BY_CODE.get(code);
         if (Objects.isNull(permission) && LOGGED.add(code)) {

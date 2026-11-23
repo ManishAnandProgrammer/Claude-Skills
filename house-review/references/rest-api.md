@@ -150,7 +150,12 @@ the path.
     entity has no text column of its own: an enrollment between a student and a course, the
     reference's `PlanFilter`; its parents' text is searched in their own lists);
   - **sorting:** a sort enum (allow-list), a stable tie-breaker (id); a cursor carries its sort, and
-    one from another sort is refused;
+    one from another sort is refused. The enum is only names (`NAME`, `NEWEST`): no Spring Data `Sort`
+    and no property string in the request DTO. The repository maps each constant with an exhaustive
+    `switch` over the JPA metamodel (`Author_.name`, `Author_.id`), so a renamed field or a constant
+    without an order fails to compile (reference: `TagRepositoryImpl.orderOf` for an offset list,
+    `TodoRepositoryImpl.orderOf` for a cursor list). A test per constant
+    still proves the order itself;
   - **a tampered cursor is a 400** `REQUEST_PARAMETER_INVALID` naming `after`, never a 500: `Cursor.read`
     takes the sort and its key count (a key missing or extra is refused), and each key reader takes a key
     only in the form `Cursor.write` gives it and only inside what the column stores (text without U+0000
@@ -166,7 +171,8 @@ the path.
     `QUERY` method (RFC 10008, June 2026) replaces it once the project's Spring has it in a GA
     release (merged for Spring Framework 7.1) and the proxies and OpenAPI tooling pass it.
 - **Detect:** a `PageRequest` from raw client values; an unbounded `findAll()` behind an endpoint;
-  a sort as a free String; a list whose kind doesn't follow the rule for its recorded consumer, or a list
+  a sort as a free String; `Sort.Order.asc("<field>")` or `Sort.by("<field>")` with a property string
+  anywhere (a rename of the field compiles and answers 500); a list whose kind doesn't follow the rule for its recorded consumer, or a list
   with no consumer recorded; a count on a cursor list; a cursor
   limit below `(6 × max + 100) × 4/3` for a text sort key or a dropdown label; a cursor key parsed by
   `java.time` with no range check, by `UUID.fromString`/`Integer.valueOf` without comparing with what was
@@ -240,11 +246,11 @@ the path.
     `pageInfo` (number, size, totalElements, totalPages, hasNext, hasPrevious);
   - `CursorWrapper` for a **cursor-paged** list: `response` + `pageInfo {nextCursor, hasMore}`;
   - `MapWrapper` for values keyed by name;
-  - `{{ListWrapper}}` only for a list the code bounds (an enum's values, a configured maximum enforced
+  - `{{BoundedListWrapper}}` only for a list the code bounds (an enum's values, a configured maximum enforced
     on create, a fixed relation such as a student's subjects this session), or one that
     `{{unpagedLists}}` names with the developer's statement.
 - **Detect:** an unpaged list the code doesn't bound and `{{unpagedLists}}` doesn't name; a paged list
-  returned as `{{ListWrapper}}`, or page details put in `extraDetails`
+  returned as `{{BoundedListWrapper}}`, or page details put in `extraDetails`
   (they are invisible in the OpenAPI schema). A hand-built `PageInfo` that doesn't come from the
   same `Page` as the items is a finding (TEST-12, FLAG-AND-FIELD-DIVERGE).
 - **Cursor lists** (`{{cursorLists}}`): the same principle; the cursor is opaque to clients and
@@ -420,7 +426,23 @@ types.
     and mapped by the handler;
   - the permission required (the `403` names it: `ACCESS_DENIED (without X)`).
 
-  Any mismatch is a finding. Also check the consumers in `{{publishedContracts}}` (frontend
+  Any mismatch is a finding.
+- **Drift is tested, not only reviewed.** Prose can't be checked, so the docs keep as little of it as
+  possible, and the rest is held by tests over the app's own `/v3/api-docs`:
+  - constraints, required fields and enum values come from Bean Validation and the types, never repeated
+    in a description: `ApiDocsDriftIntegrationTest` fails on a description stating a bound ("at least 8
+    characters", "up to 100") where its schema publishes one (`maxLength`, `minimum`, `maxItems`...);
+  - every error code a description names exists in `ErrorCode` (the same test: a renamed or removed code
+    fails; a value the docs publish as an enum, a permission, is not a code);
+  - every outcome the integration tests observe (method, path template, status, `errorCode`) is documented
+    on that operation: a MockMvc hook every test context picks up (reference: `support/ObservedOutcomes`)
+    fails the test whose response's status the operation doesn't list, or whose code that status's
+    description doesn't name. A response a filter wrote (401, 429, 503) counts too. Codes any operation
+    answers (content negotiation, the firewall) are a short allow-list in the hook, a why each; one a
+    client should see everywhere is documented by an `OpenApiCustomizer` instead (CORS, the version, the
+    permission). An outcome no test produces is a missing test (TEST lens), not a docs question;
+  - descriptions say what the names can't: the business meaning and the permission.
+  Also check the consumers in `{{publishedContracts}}` (frontend
   changelog, k6 scripts); non-OpenAPI contracts follow ARCH-13. In **diff mode**, a change to a request or response DTO, a
   controller method or a thrown exception, with no change to the matching API interface or
   `@Schema`, is a finding.

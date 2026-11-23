@@ -11,10 +11,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-/**
- * Only ASCII characters: the house email shape ({@code @NotBlank @Email @MaxLength @AsciiOnly}), so a stored
- * address has one spelling ({@link Emails}). An empty value passes: {@code @NotBlank} reports it alone.
- */
 @Documented
 @Constraint(validatedBy = {})
 @Pattern(regexp = "\\p{ASCII}*")
