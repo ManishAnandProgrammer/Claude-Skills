@@ -1,6 +1,7 @@
 package com.example.app.archunit.fixture.security;
 
 import com.example.app.common.security.Public;
+import com.example.app.common.security.Requires;
 import com.example.app.common.security.SignedIn;
 import org.springframework.web.bind.annotation.GetMapping;
 
@@ -14,6 +15,11 @@ public class HandlerDeclarations {
     @SignedIn
     @Public
     public void declaresTwo() {
+    }
+
+    @GetMapping("/nobody")
+    @Requires({})
+    public void requiresNobody() {
     }
 
     @GetMapping("/one")

@@ -114,7 +114,7 @@ is code-smells.md, java.md and architecture.md.
   `SessionVersionService`), every write that changes what a person may do raises their session
   version **in the same transaction** as the change: a role change, a removal from a tenant, a
   suspension or disable of the account or of its tenant, a password change, signing out everywhere,
-  and any new one (a lock, a downgrade, a revoked grant). Per account without tenancy; per membership
+  and any new one (a lock, a downgrade, a revoked grant), except the roles piece's access changes (below). Per account without tenancy; per membership
   with tenancy, so only the tenant that changed is touched (golden `MembershipService`). The bump is
   the aggregate service's own write (its repository, `Propagation.MANDATORY`), published to Redis only
   after the commit (`SessionVersionsRaised`, `AFTER_COMMIT`, a plain SET); a cache miss fills with
@@ -136,7 +136,7 @@ is code-smells.md, java.md and architecture.md.
   piece the access tokens already out live out their lifetime (REST-15's bound) and issue nothing. The
   table of states × paths with a test per cell is `references/tenancy-matrices.md` (*Every state × every
   token path*; without tenancy its suspended-account row).
-- **Detect:** a new write to a role, a status, a membership row, a password hash or the refresh tokens
+- **Detect:** a new write to a role column, a status, a membership row, a password hash or the refresh tokens
   without a bump in its transaction; a token issue that reads the account without its share lock, or
   after it spent the refresh token (a suspension racing it leaves a token); a status check on some paths
   only; a bump in another transaction (`REQUIRES_NEW`, `@Async`, a second
@@ -147,8 +147,15 @@ is code-smells.md, java.md and architecture.md.
   refresh returns the new access; a removed or suspended member's refresh fails; a rolled-back change
   raises nothing and leaves Redis alone (golden `SessionVersionServiceIntegrationTest`,
   `SessionVersionTenancyIntegrationTest`).
-- **Not a finding when:** one device signs out: it revokes that refresh token and lets the access token
-  run out (a bump would sign out every device).
+- **Not a finding when:**
+  - one device signs out: it revokes that refresh token and lets the access token run out (a bump would sign
+    out every device);
+  - **with the roles piece** (AUTHZ-11), a change of a person's roles or personal grants, a role's edit, or a grant
+    reaching its `valid_until`, with no bump: the permissions are read from the tables on every request and the
+    token carries none of them, so the next request already holds the new set (golden `PersonAccessService`,
+    `AccessRoleManager`, which raise nothing). The bump stays for what the token carries or its refresh relies
+    on: the account's status, the password, signing out everywhere, and with tenancy the membership (a removal, a
+    tenant's suspension).
 - **Severity:** High: a revoked person keeps access for up to one token lifetime.
 
 ---

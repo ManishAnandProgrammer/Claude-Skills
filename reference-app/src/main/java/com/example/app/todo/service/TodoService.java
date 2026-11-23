@@ -337,7 +337,7 @@ public class TodoService implements Todos {
                 // requesterOf(todo),
                 // tenancy:end
                 todoTagRepository.findTagsOfTodo(todo.getId()),
-                new TodoAllowedActionsResponse(allowedActionMapper.toAllowedAction("edit", policy.edit(todo, currentUser.id())))));
+                new TodoAllowedActionsResponse(allowedActionMapper.toAllowedAction("edit", Permission.TODO_EDIT_OWN, policy.edit(todo, currentUser.id())))));
     }
     // tenancy:begin
 

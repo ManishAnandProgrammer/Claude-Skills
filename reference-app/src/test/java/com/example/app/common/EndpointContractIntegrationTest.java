@@ -34,6 +34,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -78,9 +79,10 @@ class EndpointContractIntegrationTest extends IntegrationTest {
             return handler.hasMethodAnnotation(Public.class);
         }
 
-        Permission requiredPermission() {
+        /** Empty for an endpoint that requires no permission; any one of them lets a caller in. */
+        Set<Permission> acceptedPermissions() {
             Requires requires = handler.getMethodAnnotation(Requires.class);
-            return Objects.isNull(requires) ? null : requires.value();
+            return Objects.isNull(requires) ? Set.of() : Set.copyOf(Arrays.asList(requires.value()));
         }
 
         boolean takesABody() {
@@ -230,19 +232,19 @@ class EndpointContractIntegrationTest extends IntegrationTest {
 
     // sign-in:begin
     @Test
-    @DisplayName("A caller holding every permission but the one an endpoint @Requires is 403 ACCESS_DENIED, with a valid body")
+    @DisplayName("A caller holding every permission but the ones an endpoint @Requires (any one of them lets in) is 403 ACCESS_DENIED, with a valid body")
     void everyRequiredPermissionIsChecked() throws Exception {
         List<String> allowed = new ArrayList<>();
         int checked = 0;
         String token = newUser().accessToken();
         for (Endpoint endpoint : endpoints()) {
-            Permission required = endpoint.requiredPermission();
-            if (Objects.isNull(required)) {
+            Set<Permission> accepted = endpoint.acceptedPermissions();
+            if (accepted.isEmpty()) {
                 continue;
             }
-            Set<Permission> allButIt = EnumSet.allOf(Permission.class);
-            allButIt.remove(required);
-            MockHttpServletResponse answer = sendAs(endpoint, endpoint.concretePath(null), holding(token, allButIt), validBody(endpoint));
+            Set<Permission> allButThem = EnumSet.allOf(Permission.class);
+            allButThem.removeAll(accepted);
+            MockHttpServletResponse answer = sendAs(endpoint, endpoint.concretePath(null), holding(token, allButThem), validBody(endpoint));
             // An enum path variable without constants yet (a piece's purposes before the project declares one):
             // no request reaches the endpoint, so there is no permission check to see.
             if (isProblem(answer, 400, "REQUEST_PARAMETER_INVALID") && endpoint.pathVariables().contains(parameterOf(answer))) {
@@ -250,7 +252,7 @@ class EndpointContractIntegrationTest extends IntegrationTest {
             }
             checked++;
             if (!isProblem(answer, 403, "ACCESS_DENIED")) {
-                allowed.add("%s without %s answered %d %s".formatted(endpoint.name(), required, answer.getStatus(),
+                allowed.add("%s without %s answered %d %s".formatted(endpoint.name(), accepted, answer.getStatus(),
                         answer.getContentAsString()));
             }
         }
@@ -324,7 +326,7 @@ class EndpointContractIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The OpenAPI document lists the 400, 401 and 403 these checks see, per endpoint, the 403 naming the permission an endpoint @Requires")
+    @DisplayName("The OpenAPI document lists the 400, 401 and 403 these checks see, per endpoint, the 403 naming every permission an endpoint @Requires")
     void apiDocsListTheStatusesTheEndpointsAnswer() {
         List<String> missing = new ArrayList<>();
         for (Endpoint endpoint : endpoints()) {
@@ -332,11 +334,12 @@ class EndpointContractIntegrationTest extends IntegrationTest {
             if (!endpoint.isPublic() && !responses.has("401")) {
                 missing.add(endpoint.name() + " 401");
             }
-            Permission required = endpoint.requiredPermission();
-            boolean namesItsPermission = responses.path("403").path("description").asString().contains("ACCESS_DENIED")
-                    && responses.path("403").path("description").asString().contains(Objects.toString(required));
-            if (Objects.nonNull(required) && !namesItsPermission) {
-                missing.add(endpoint.name() + " 403 ACCESS_DENIED naming " + required);
+            Set<Permission> accepted = endpoint.acceptedPermissions();
+            String forbidden = responses.path("403").path("description").asString();
+            boolean namesItsPermissions = forbidden.contains("ACCESS_DENIED")
+                    && accepted.stream().allMatch(permission -> forbidden.contains(permission.name()));
+            if (!accepted.isEmpty() && !namesItsPermissions) {
+                missing.add(endpoint.name() + " 403 ACCESS_DENIED naming " + accepted);
             }
             boolean refusesInput = endpoint.takesABody() || !endpoint.uuidPathVariables().isEmpty()
                     || endpoint.hasQueryParameter("after") || endpoint.hasQueryParameter("page");

@@ -27,4 +27,14 @@ class RoleTest {
             }
         }
     }
+    // roles:begin
+
+    // @Test
+    // @DisplayName("""
+    //         ADMIN holds every permission: an admin gives a role, or changes a person's access, only within what they \
+    //         hold (safety rules 1 and 3), so one missing would leave a role nobody could give""")
+    // void adminHoldsEveryPermission() {
+    //     assertThat(Role.ADMIN.permissions()).containsExactlyInAnyOrder(Permission.values());
+    // }
+    // roles:end
 }

@@ -48,8 +48,9 @@ public interface UserApi {
     ObjectWrapper<UserResponse> me();
 
     @Operation(summary = "What you may do: your menu areas and your permissions", description = """
-            What the server grants you now: call it again after a token refresh, or when a request is refused \
-            with 403. A client shows a menu \
+            What the server grants you now, with no expiry of its own: call it again after every token refresh \
+            and whenever a request is refused with 403 ACCESS_DENIED, which is how a removed or expired grant hides \
+            its tab. A client shows a menu \
             item by its area, a tab or a button by its permission (or by a record's allowedActions), and never \
             decides which permissions make an area. Every request is checked by the server whatever the client \
             shows; which role holds which permission is never published.""")

@@ -8,6 +8,7 @@ import com.example.app.common.pagination.Paging;
 import com.example.app.common.security.AllowedAction;
 import com.example.app.common.security.AllowedActionMapper;
 import com.example.app.common.security.CurrentUser;
+import com.example.app.common.security.Permission;
 import com.example.app.common.wrapper.CursorWrapper;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.planning.domain.Plan;
@@ -77,8 +78,8 @@ public class PlanService {
 
     public ObjectWrapper<PlanAvailabilityResponse> availability(PlanAvailabilityFilter filter) {
         List<PlanDays> taken = repository.findLiveDays(currentUser.id(), filter.getFrom(), filter.getTo());
-        AllowedAction free = allowedActionMapper.toAllowedAction("plan", policy.planDays(false));
-        AllowedAction busy = allowedActionMapper.toAllowedAction("plan", policy.planDays(true));
+        AllowedAction free = allowedActionMapper.toAllowedAction("plan", Permission.PLAN_CREATE_OWN, policy.planDays(false));
+        AllowedAction busy = allowedActionMapper.toAllowedAction("plan", Permission.PLAN_CREATE_OWN, policy.planDays(true));
         return ObjectWrapper.withObject(mapper.toAvailability(filter.getFrom(), filter.getTo(), taken, free, busy));
     }
 
@@ -152,7 +153,7 @@ public class PlanService {
 
     private SelectableDropdownItem toTodoOption(TodoView todo) {
         return new SelectableDropdownItem(todo.id(), todo.title(),
-                allowedActionMapper.toAllowedAction("create", policy.create(todo)));
+                allowedActionMapper.toAllowedAction("create", Permission.PLAN_CREATE_OWN, policy.create(todo)));
     }
 
     private PlanResponse toResponse(Plan plan, TodoView todo) {
@@ -161,9 +162,9 @@ public class PlanService {
 
     private PlanAllowedActionsResponse allowedActions(UUID planId, PlanStatus status, TodoView todo) {
         return new PlanAllowedActionsResponse(
-                allowedActionMapper.toAllowedAction("reschedule", policy.reschedule(planId, status, todo)),
-                allowedActionMapper.toAllowedAction("markDone", policy.changeStatus(status, PlanStatus.DONE)),
-                allowedActionMapper.toAllowedAction("cancel", policy.changeStatus(status, PlanStatus.CANCELLED)));
+                allowedActionMapper.toAllowedAction("reschedule", Permission.PLAN_EDIT_OWN, policy.reschedule(planId, status, todo)),
+                allowedActionMapper.toAllowedAction("markDone", Permission.PLAN_EDIT_OWN, policy.changeStatus(status, PlanStatus.DONE)),
+                allowedActionMapper.toAllowedAction("cancel", Permission.PLAN_EDIT_OWN, policy.changeStatus(status, PlanStatus.CANCELLED)));
     }
 
     private Plan getOwnedPlan(UUID id, UUID ownerId) {

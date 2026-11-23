@@ -246,7 +246,5 @@ Not in scope by default (rules and notes only, no golden code):
   short one; the cleanup job removes an object whose row never committed.
 - **Purposes defined at runtime** (dynamic form fields): one purpose plus the field id as context,
   its policy from the field's rules.
-- **Dynamic permissions:** `UploadPurpose` names a permission instead of a role; pending its own
-  design session.
 - **Public assets and CloudFront:** a visibility per purpose; short cache times for private files
   (a deleted file is served from the edge until it expires).

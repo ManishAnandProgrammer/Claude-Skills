@@ -31,10 +31,19 @@ a finding**. Profile keys are written `{{key}}`.
   - a **state change** on an existing resource is `PATCH /x/{id}/<action>` (activate, approve,
     reject, dismiss, enable);
   - an action that **creates something or starts processing** is `POST /x/{id}/<action>`
-    (copy, regenerate, retry, replay, reconcile).
+    (copy, regenerate, retry, replay, reconcile);
+  - **status moves by different parties:** when each move has its own party or permission (a leave request
+    approved or rejected by the requester's manager, cancelled by the requester, overridden or revoked by HR),
+    each move is its own action endpoint by the two rules above (`PATCH {{urlPrefix}}/leave-requests/{id}/approve`,
+    `/reject`, `/cancel`, ...), each with its own `@Requires`, its own policy method and its own `allowedActions`
+    flag (AUTHZ-04, AUTHZ-07), and a body holding only what that move takes (the `version`, a reason). One
+    `PATCH /x/{id}/status` with the target status is right when one permission covers every move and the policy
+    tells them apart by state alone (golden `PATCH /plans/{id}/status`: `PLAN_EDIT_OWN`,
+    `PlanPolicy.changeStatus`, the flags `markDone` and `cancel`).
 - **Detect:** for `POST` actions, ask whether they only change the status. For two endpoints
   calling one method with `true` / `false`, it's a flag argument (SMELL-21): use one PATCH with
-  the target state.
+  the target state. A `/status` endpoint whose moves need different permissions, checked per target status in
+  the service (the generated 403 test and the documented 403 can't see them).
 - **Severity:** Medium.
 
 ### REST-04: Method semantics
@@ -169,10 +178,20 @@ the path.
     Base64url JSON, a control character escaped in six bytes, so `(6 × @MaxLength + 100) × 4/3`.
     Shorter, the next batch after a long value is a 400 on the server's own cursor (reference:
     `limits.yml`, `LimitsIntegrationTest.cursorLimitHoldsTheLongestTextKeys`);
+  - **a list split by reach** (AUTHZ-05: a resource listed at more than one reach) is named by its reach: the
+    bare collection lists `ALL` (`GET {{urlPrefix}}/leave-requests`), `/mine` lists `OWN`
+    (`/leave-requests/mine`), a named collection lists `ASSIGNED` (`/team`, `/assigned`: the business's word for
+    the caller's charge). Each has its own `@Requires` (that reach's READ permission) and the policy's scope for
+    that reach; never one list with a `scope` parameter, or a reach picked from what the caller holds, whose rows
+    would change with the caller's roles. A resource listed at one reach keeps the bare collection for it (golden
+    `GET /todos`, `OWN`). A dropdown is the other shape on purpose: one per resource, its reach named by
+    `for=<Permission>` (REST-13, AUTHZ-08), since it serves a write's picker rather than a screen of records; a
+    list's reach is its path, a dropdown's the action it serves, and both apply the same reach conditions;
   - `POST /x/search` with a body only when a query string can't express the filter. The HTTP
     `QUERY` method (RFC 10008, June 2026) replaces it once the project's Spring has it in a GA
     release (merged for Spring Framework 7.1) and the proxies and OpenAPI tooling pass it.
-- **Detect:** a `PageRequest` from raw client values; an unbounded `findAll()` behind an endpoint;
+- **Detect:** a `PageRequest` from raw client values; an unbounded `findAll()` behind an endpoint; a list
+  whose rows depend on which reach the caller holds (`ALL` for HR, `ASSIGNED` for a manager) behind one path;
   a sort as a free String; `Sort.Order.asc("<field>")` or `Sort.by("<field>")` with a property string
   anywhere (a rename of the field compiles and answers 500); a list whose kind doesn't follow the rule for its recorded consumer, or a list
   with no consumer recorded; a count on a cursor list; a cursor
@@ -511,14 +530,16 @@ types.
 
 ### REST-25: Permissions are declared once
 - **Check:** no permission or role name is a string literal at a use site. A handler names its permission
-  as an enum constant (`@Requires(Permission.TODO_EDIT_OWN)`), the one meta-annotation declared in
+  as an enum constant (`@Requires(Permission.TODO_EDIT_OWN)`, or each reach's for a detail several reaches read:
+  `@Requires({X_READ_OWN, X_READ})`, AUTHZ-03), the one meta-annotation declared in
   `common/security`, or is `@SignedIn` or `@Public`; a renamed or misspelt permission then fails at compile
   time, not silently on one endpoint. Roles are groups of permissions (`Role` lists them) and nothing checks
   a role. The rules are `references/authorization.md` (AUTHZ-01 to AUTHZ-03).
 - **A new role** needs, in one change: its constant in `Role` with its permissions, a changeset widening the
   role check constraint (`ck_users_role` in the reference, widened for `ADMIN` by
   `0007-users-admin-role.sql`), and the test base's `new<Role>()` (through `newUserWithRole`). Without the
-  changeset the first user given the role fails the insert. **A new permission** needs its constant and a line
+  changeset the first user given the role fails the insert. With the roles piece the column is gone and the
+  changeset seeds the role's built-in copy instead (AUTHZ-12). **A new permission** needs its constant and a line
   in each role that gets it (AUTHZ-02).
 - **Roles don't include each other**, and the house ships no role hierarchy: an account has exactly one
   role, and a permission two roles share is listed on both. A check the request's data decides (an upload

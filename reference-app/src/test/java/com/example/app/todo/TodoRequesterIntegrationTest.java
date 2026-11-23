@@ -1,15 +1,19 @@
 package com.example.app.todo;
 
+import com.example.app.common.security.Permission;
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -21,6 +25,8 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.hasItem;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -139,6 +145,31 @@ class TodoRequesterIntegrationTest extends IntegrationTest {
         getAs(asked.requester().accessToken(), TODOS)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response[*].id", not(hasItem(asked.todoId()))));
+    }
+
+    @Test
+    @DisplayName("""
+            The owner holding TODO_READ_OWN without TODO_EDIT_OWN sees edit refused with ACCESS_DENIED alone, the \
+            message the edit's 403 answers; the requester without it too, in place of TODO_NOT_YOURS""")
+    void aPermissionNotHeldIsTheEditFlagsOnlyReason() throws Exception {
+        Asked asked = askedTodo();
+        Set<Permission> readOnly = Set.of(Permission.TODO_READ_OWN);
+        String forbidden = read(mvc.perform(patch(TODOS + "/" + asked.todoId() + "/status")
+                        .with(holding(asked.owner().accessToken(), readOnly))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"status": "DONE", "version": 0}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED")), "$.detail");
+
+        for (TestUser caller : List.of(asked.owner(), asked.requester())) {
+            mvc.perform(get(TODOS + "/" + asked.todoId()).with(holding(caller.accessToken(), readOnly)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.response.allowedActions.edit.allowed").value(false))
+                    .andExpect(jsonPath("$.response.allowedActions.edit.reasons[*].errorCode", contains("ACCESS_DENIED")))
+                    .andExpect(jsonPath("$.response.allowedActions.edit.reasons[0].message").value(forbidden));
+        }
     }
 
     @ParameterizedTest(name = "{0}")

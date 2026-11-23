@@ -186,6 +186,15 @@ class ConventionArchTest {
                     (@SignedIn) or anyone (@Public); none is a forgotten check, two a contradiction (AUTHZ-03)""");
 
     @ArchTest
+    static final ArchRule requiresNamesAPermission = methods().that().areAnnotatedWith(Requires.class)
+            .should(nameAtLeastOnePermission())
+            .because("""
+                    @Requires lets in a caller holding any one of its permissions: an empty list lets in nobody, a \
+                    handler no caller can reach (AUTHZ-03)""")
+            // A copy whose pieces have no permission yet has no @Requires handler.
+            .allowEmptyShould(true);
+
+    @ArchTest
     static final ArchRule methodSecurityIsDeclaredOnce = noMethods().that().areDeclaredInClassesThat().resideOutsideOfPackage(SECURITY)
             .should().beAnnotatedWith(PreAuthorize.class)
             .orShould().beAnnotatedWith(PostAuthorize.class)
@@ -293,6 +302,16 @@ class ConventionArchTest {
                 long declared = Arrays.stream(declarations).filter(method::isAnnotatedWith).count();
                 events.add(new SimpleConditionEvent(method, declared == 1,
                         "%s declares %d of @Requires, @SignedIn, @Public".formatted(method.getFullName(), declared)));
+            }
+        };
+    }
+
+    private static ArchCondition<JavaMethod> nameAtLeastOnePermission() {
+        return new ArchCondition<>("name at least one permission") {
+            @Override
+            public void check(JavaMethod method, ConditionEvents events) {
+                boolean named = method.getAnnotationOfType(Requires.class).value().length > 0;
+                events.add(new SimpleConditionEvent(method, named, method.getFullName() + " @Requires no permission"));
             }
         };
     }

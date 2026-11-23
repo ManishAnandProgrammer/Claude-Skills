@@ -1,6 +1,7 @@
 package com.example.app.config;
 
 import com.example.app.common.exception.ErrorCode;
+import com.example.app.common.security.Permission;
 import com.example.app.common.security.Requires;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.media.Content;
@@ -13,7 +14,9 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 
+import java.util.Arrays;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE;
 
@@ -29,7 +32,7 @@ class PermissionOpenApiCustomizer implements OperationCustomizer {
         if (Objects.isNull(requires)) {
             return operation;
         }
-        String refusal = "%s (without %s)".formatted(ErrorCode.ACCESS_DENIED.name(), requires.value().name());
+        String refusal = "%s (without %s)".formatted(ErrorCode.ACCESS_DENIED.name(), accepted(requires.value()));
         if (Objects.isNull(operation.getResponses())) {
             operation.setResponses(new ApiResponses());
         }
@@ -45,5 +48,10 @@ class PermissionOpenApiCustomizer implements OperationCustomizer {
             forbidden.setDescription(refusal + "; " + forbidden.getDescription());
         }
         return operation;
+    }
+
+    private static String accepted(Permission[] permissions) {
+        String names = Arrays.stream(permissions).map(Permission::name).collect(Collectors.joining(", "));
+        return permissions.length == 1 ? names : "any of " + names;
     }
 }

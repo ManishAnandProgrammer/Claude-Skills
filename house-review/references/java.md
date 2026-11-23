@@ -193,7 +193,11 @@ The backend handles no time zone.
   user picks are `LocalDate`, stored and returned as sent, never converted through a zone; "now" and
   "today" come from the injected `Clock` (UTC), also inside validators; a date compared with today
   allows a configured tolerance (1 day: every zone is within +14 h of UTC), so no real user is
-  refused, and the client enforces the exact local rule.
+  refused, and the client enforces the exact local rule;
+- **One configured zone, read in one place:** a business rule a date decides against today (a leave already
+  taken, a deadline at midnight; DATA-37) takes the organisation's day from `BusinessCalendar.today()`
+  (`common/time`, `app.business-calendar.zone`), never from the server's UTC day nor the client's; nothing else
+  reads the zone, and domain code holds none.
 - **One boundary, one clock read:** a write that ends one period and starts the next (close a
   version, open its successor; DATA-36) reads the clock **once** at the top of the service method
   and passes that value to both. Two reads leave a gap, and reads taken in the wrong order overlap (23P01). Never mix the
@@ -203,7 +207,7 @@ The backend handles no time zone.
   (auditing reads it too).
 - **Detect:** `ZoneId`/`ZonedDateTime`/`OffsetDateTime` in domain code; `LocalDate.now()` or
   `@PastOrPresent`/`@FutureOrPresent` on a `LocalDate` without the application clock; a `LocalDate`
-  derived from an `Instant` on the server; `LocalDate.now(clock)` stored as the day an action records
+  derived from an `Instant` on the server outside `BusinessCalendar`; `LocalDate.now(clock)` stored as the day an action records
   (returned on, approved on: the server's UTC day is yesterday east of UTC until midnight UTC; the
   client sends the user's own day, `@NotAfterToday`); `LocalDateTime` for a moment; two `clock.instant()` /
   `LocalDate.now(clock)` calls in one close-and-open method; `now()` or `clock_timestamp()` in a

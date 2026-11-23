@@ -21,6 +21,7 @@ todo-list and tag dropdowns and the todo dropdown under its list (the dependent 
 `everyPublicEndpointAnswersWithoutAToken`, `everyEndpointNeedsAToken`), `common/security/PermissionTest`,
 `user/domain/RoleTest`, `user/AccessIntegrationTest`, `todo/service/TodoPolicyTest`, `planning/service/PlanPolicyTest`,
 `common/security/DecisionTest`, `planning/PlanAllowedActionsIntegrationTest`, `todo/TodoRequesterIntegrationTest`,
+`todo/RequiresAnyOfIntegrationTest` (a `@Requires` of two permissions, on the test-only `RequiresAnyOfProbeController`),
 `common/dropdown/DropdownForTest`, `todo/TodoListIntegrationTest` (the dropdown's `for`),
 `todo/TodoDropdownIntegrationTest` (the dependent dropdown: its out-of-reach parent, one statement). With tenancy:
 `overlays/tenancy/.../user/service/MembershipService.lockAsCurrentAdmin` (TEN-08).
@@ -52,7 +53,9 @@ and Policy.
 - **Detect:** permission names as string literals (`hasAuthority('TODO_READ')`) outside `common/security`; a
   constant named after a role or a screen; code parsing a suffix (`name().endsWith("_OWN")`) outside the
   enum's own test; a permission granted because another one is held (`if (holds(EDIT)) grant(READ)`);
-  prerequisites in a table or a properties file; an unknown authority mapped to a default permission.
+  prerequisites in a table or a properties file; an unknown authority mapped to a default permission; one reach's
+  permission made a prerequisite of another reach's (`LEAVE_REQUEST_READ` needing `LEAVE_REQUEST_READ_OWN`) only so a
+  single-permission `@Requires` lets both in (AUTHZ-03 names each reach's instead).
 - **Not a finding when:** the project is on the roles piece (the enum stays the list of codes; the tables
   assign them, AUTHZ-12).
 - **Severity:** Medium; High when an unknown code grants anything.
@@ -75,7 +78,8 @@ and Policy.
     change reaches the person within one access-token lifetime, or at their next request with the
     `session-version` piece (SEC-07) or the `roles` piece (which reads the tables on every request, AUTHZ-11).
 - **A new role** needs, in one change: its constant with its list, the changeset widening the role check
-  constraint (`ck_users_role`), and the test base's `new<Role>()` (REST-25). **A new permission** needs its
+  constraint (`ck_users_role`), and the test base's `new<Role>()` (REST-25); with the roles piece, the changeset
+  seeding its built-in copy instead (AUTHZ-12). **A new permission** needs its
   constant (area, reach, prerequisites) and a line in each role that gets it: crud-gen asks which roles.
 - **Detect:** `getRole() == Role.ADMIN` deciding access; a role constant without a permission list; a
   `RoleHierarchy` bean; a role's list missing a prerequisite; role contents published (an endpoint or a
@@ -86,25 +90,41 @@ and Policy.
 
 ### AUTHZ-03: Every handler declares who may call it, exactly once
 - **Check:**
-  - each handler method carries exactly one of `@Requires(Permission.X)` (that permission), `@SignedIn`
+  - each handler method carries exactly one of `@Requires(Permission.X)` (that permission; `@Requires({X, Y})`:
+    any one of them), `@SignedIn`
     (every signed-in caller: their own account, or a service that checks a permission the request names,
     AUTHZ-08, AUTHZ-10) or `@Public` (no token; the security chain's public paths let it in). ArchUnit
     `handlersDeclareWhoMayCallThem` fails the build for none or two;
-  - `@Requires` is a meta-annotation over `@PreAuthorize("hasAuthority('{value}')")`: Spring Security 7's
-    annotation scanners resolve the template from the enum attribute by default (`SecurityAnnotationScanners
-    .requireUnique`), so no template bean is needed and a misspelt permission fails at compile time. No
-    `@PreAuthorize`/`@PostAuthorize` string outside `common/security` (ArchUnit `methodSecurityIsDeclaredOnce`);
+  - `@Requires` is a meta-annotation over `@PreAuthorize("hasAnyAuthority('{value}'.split(','))")` with a
+    `Permission[] value()`: Spring Security 7's annotation scanners resolve the template from the enum array by
+    default (`SecurityAnnotationScanners.requireUnique`), writing its names joined by commas, which the split turns
+    back into `hasAnyAuthority`'s arguments (`RequiresAnyOfIntegrationTest` pins the rendered expression for one
+    permission and for two, and the 403 of a caller holding neither). No template bean is needed, a misspelt
+    permission fails at compile time, and `@Requires(Permission.X)` stays the single form. An empty `@Requires({})`
+    lets nobody in and is refused (ArchUnit `requiresNamesAPermission`). No `@PreAuthorize`/`@PostAuthorize` string
+    outside `common/security` (ArchUnit `methodSecurityIsDeclaredOnce`);
+  - **a detail several reaches read** (a leave request its requester reads with `LEAVE_REQUEST_READ_OWN`, their
+    manager with `LEAVE_REQUEST_READ_ASSIGNED`, HR with `LEAVE_REQUEST_READ`) names each reach's READ permission,
+    `@Requires({LEAVE_REQUEST_READ_OWN, LEAVE_REQUEST_READ_ASSIGNED, LEAVE_REQUEST_READ})`, and its policy picks the
+    reach: the record is readable when one of the caller's held reaches covers it (each reach's condition defined
+    once, AUTHZ-05), else the `<ENTITY>_NOT_FOUND` refusal (AUTHZ-04). A reach's permission never becomes a
+    prerequisite of the others so that one permission could guard the endpoint (HR made to hold `_READ_OWN` as a
+    door): a prerequisite is what a permission needs to be usable (AUTHZ-01), and a fake one hands out a reach
+    nobody chose. Lists are one per reach (AUTHZ-05, REST-08);
   - `@Public` handlers and the chain's public paths agree both ways: every `@Public` handler answers without
     a token, every other one is 401 `AUTHENTICATION_REQUIRED` (`EndpointContractIntegrationTest`);
-  - the OpenAPI 403 of every `@Requires` handler names `ACCESS_DENIED` and its permission, written from the
-    annotation (`config/PermissionOpenApiCustomizer`), so the document can't drift from the handler (REST-20);
+  - the OpenAPI 403 of every `@Requires` handler names `ACCESS_DENIED` and each permission it accepts
+    (`ACCESS_DENIED (without X)`, `ACCESS_DENIED (without any of X, Y)`), written from the annotation
+    (`config/PermissionOpenApiCustomizer`), so the document can't drift from the handler (REST-20);
   - a role check on the class is no substitute: the declaration is read on the handler.
 - **Know:** method security on a controller runs after the arguments are bound and validated, so an invalid
   body is 400 before a caller without the permission gets 403. It reveals only the request's own shape; a
   test that expects the 403 sends a valid body.
 - **Detect:** a handler with no declaration; a class-level `@PreAuthorize`; `@PreAuthorize("isAuthenticated()")`
   written out; a public path in the chain with no `@Public` handler under it, or the reverse; `permitAll()`
-  for a path that also has a `@Requires` handler.
+  for a path that also has a `@Requires` handler; a detail several reaches read guarded by `@SignedIn` with the
+  permissions checked in the service (the generated 403 test and the documented 403 miss it), or by one reach's
+  permission that the others were given as a prerequisite.
 - **Severity:** High (a handler without a check is open to every signed-in caller); Medium for a declaration
   written as a string.
 
@@ -148,7 +168,11 @@ and Policy.
 - **Check:** "own" or "assigned" is defined once, in the policy, for the detail and the list: the policy
   returns the condition the list's Criteria query adds (`TodoPolicy.listScope(callerId)`, a
   `PredicateSpecification` the repository applies in the same statement: Pundit's Scope). A list never shows a
-  record its detail would refuse.
+  record its detail would refuse. **A resource listed at several reaches** has one list per reach, named by
+  REST-08 (the bare collection `ALL`, `/mine` `OWN`, a named collection `ASSIGNED`: `/team`, `/assigned`), each
+  with its own `@Requires` (that reach's READ permission alone) and the policy's scope for that reach
+  (`listScope(Reach.ASSIGNED, callerId)`, or a method per reach); the detail they open accepts every reach
+  (AUTHZ-03), and its policy uses the same conditions, so each list shows only what the detail lets its caller read.
 - **Detect:** a list query with its own owner condition next to a policy with another; a list filtered in
   memory after the query; a scope that needs a second statement per page.
 - **Not a finding when:** a facade's batch lookup for another module states that it is the scope's condition
@@ -168,9 +192,15 @@ and Policy.
   - the client shows a menu item by its area, a tab or a button by its permission (or by a record's
     `allowedActions`, AUTHZ-07); it never decides which permissions make an area, and labels, order and icons
     stay the client's;
-  - role contents are never published: no endpoint lists which role holds what.
+  - role contents are never published: no endpoint lists which role holds what;
+  - **the client reads it again** after every token refresh and on any 403 `ACCESS_DENIED` (then hides what the
+    new answer leaves out, and shows the refusal's message for the call that failed). The answer has no expiry of
+    its own: an access change (a role taken, a grant removed or past its end, with the roles piece on the next
+    request) reaches the menu at the client's next refresh or at the first call it refuses, never by a timer or a
+    push. The operation's description says so (`UserApi.access`).
 - **Detect:** a frontend copy of a role → permission table; menus keyed by role names; a role list in a
-  response for showing buttons; permissions as free strings in the schema.
+  response for showing buttons; permissions as free strings in the schema; a client that reads the access once
+  per sign-in and keeps a removed tab after a 403 `ACCESS_DENIED`.
 - **Severity:** Medium.
 
 ### AUTHZ-07: `allowedActions` for every action the record decides, with every reason
@@ -182,12 +212,20 @@ and Policy.
     record;
   - each action is an `AllowedAction` (`common/security`): `{"allowed": false, "reasons": [{"errorCode":
     "PLAN_CANCELLED", "message": "..."}, ...]}`, made from the `Decision` of the policy method the write calls,
-    in one place (`AllowedActionMapper.toAllowedAction(name, decision)`), never assembled by hand. `reasons` lists
+    in one place (`AllowedActionMapper.toAllowedAction(name, permission, decision)`), never assembled by hand. `reasons` lists
     **every** unmet precondition at once (shown one at a time, a person fixes one on another screen, comes back
     and meets the next), in the policy's order, empty when allowed; a reach refusal stands alone. `errorCode` is
     the code the write would answer, `message` that code's message from the existing message files in the
     request's language with the same arguments (the write's Problem Details `detail`): no new message texts. The
     write still answers one Problem Details, the first refusal's;
+  - **a permission not held:** each flag names what its action's endpoint `@Requires` (one permission, or the set
+    of an any-of endpoint), and when the caller holds none of it the flag is `allowed: false` with
+    `ACCESS_DENIED` alone, the code and message that call answers, whatever the record's state or reach (the
+    mapper checks `CurrentUser.holds`; golden `PlanService.allowedActions` with `PLAN_EDIT_OWN`,
+    `TodoService.toResponse` with `TODO_EDIT_OWN`, the availability's and the options' flags with
+    `PLAN_CREATE_OWN`; tests `PlanAllowedActionsIntegrationTest.aPermissionNotHeldIsTheFlagsOnlyReason`,
+    `TodoRequesterIntegrationTest.aPermissionNotHeldIsTheEditFlagsOnlyReason`). A flag never says `allowed: true`
+    to a caller its endpoint refuses (a role with the read but not the edit; with the roles piece, a personal DENY);
   - the flags of a list's rows come from fields the row already has; a rule needing another table's data comes from
     the list's own query (an aggregate in the projection, DATA-26) or the page's one facade lookup (ARCH-04's
     `get<Parent>Views`, golden `PlanService.withTodos`), never a query per row;
@@ -213,7 +251,8 @@ and Policy.
     per policy method. It is not an audit (the change history is, DATA-08) and not a metric. A test proves a
     refused write writes its DEBUG line (`PlanAllowedActionsIntegrationTest.aRefusedWriteIsLoggedAtDebug`).
 - **Detect:** an `allowedActions` flag computed by its own condition (a copy of the policy), or a boolean flag
-  with no reasons; an option labelled or disabled by the client from its fields (`[withdrawn]` from a status); a reasons list cut to the first; a reason's message written for the flag instead of the code's
+  with no reasons; a flag naming no permission, or another one than its endpoint's `@Requires` (allowed for a
+  caller that call answers 403); an option labelled or disabled by the client from its fields (`[withdrawn]` from a status); a reasons list cut to the first; a reason's message written for the flag instead of the code's
   message; a client that shows a record's button by its status or fields; flags for actions the permission alone
   decides; a flag that reads another table per row; message arguments taken from another person's record, or a
   threshold in a message; an authorization log line with a message, a name or an email, or one written in a policy
@@ -261,7 +300,7 @@ and Policy.
 ### AUTHZ-09: The authorization tests
 - **Check:**
   - **every `@Requires` endpoint, one generated test:** a signed-in caller holding every permission but the
-    endpoint's own gets 403 `ACCESS_DENIED` with a valid body; the caller's token is real, only its
+    ones the endpoint accepts gets 403 `ACCESS_DENIED` with a valid body; the caller's token is real, only its
     authorities are chosen (`IntegrationTest.holding`), so a new endpoint is covered without anyone writing a
     test (`EndpointContractIntegrationTest.everyRequiredPermissionIsChecked`);
   - `@Public` against the chain's public paths, both ways (AUTHZ-03);
@@ -356,6 +395,11 @@ test, unchanged but where it asserted a role column or claim.
     client would sign out) nor a 500;
   - no Redis permission cache, no permissions in the token, no revocation keys: a change applies on the person's
     next request, and `/users/me/access` and every check read the same set;
+  - **so no session-version bump for access** (with the `session-version` piece, SEC-07): a role's assignment or
+    removal, a personal grant or its removal, a role's edit and a grant reaching its `valid_until` change nothing a
+    token carries, and the next request reads them (`PersonAccessService` and `AccessRoleManager` raise nothing, by
+    design). The bump stays for what the token carries or its refresh relies on: the account's status, the
+    password, signing out everywhere and, with tenancy, the membership (a member's removal, a tenant's suspension);
   - the endpoints, the policies, `/users/me/access` and the dropdowns' `for` are Level 1's, unchanged (the account's
     `role` field goes, a breaking change of its response, announced): the Level 1
     tests pass in a copy with the piece, but the ones that asserted the role column or claim (those are marked
@@ -439,6 +483,19 @@ test, unchanged but where it asserted a role column or claim.
   - **a new permission** arrives with a changeset that grants it to the built-in roles that should hold it
     (`INSERT INTO role_permissions ... SELECT ... FROM roles WHERE built_in = 'ADMIN'`), so existing installations get
     it on upgrade (crud-gen asks which built-in roles);
+  - **a new built-in role** (a `MANAGER`, an `HR`) arrives with its `Role` constant and a project changeset (0100+)
+    that inserts its `roles` row (`code` and `built_in` the constant's name, `name` as `AccessRole.copyOf` writes it)
+    and its `role_permissions` rows as literal SQL, with its rollback; with tenancy one copy per tenant, as for a new
+    permission below (row mode's new tenants copy every constant at activation). Where an admin already built a role
+    of that code, the unique code key stops the migration: the release notes tell the owner to rename theirs first. `BuiltInRolesIntegrationTest` takes
+    every `Role` constant (`@EnumSource`), so it compares the new copy with no edit; tests give the role through the
+    test base's `newUserWithRole("<ROLE>")` (its roles block assigns the built-in copy by SQL), wrapped as
+    `new<Role>()` beside `newAdmin()`. Signup still gives `USER`; people get the new role through the assignment
+    endpoint (crud-gen bootstrap.md, *A new built-in role*);
+  - **`ADMIN` holds every permission**, each new one included: rule 1 lets a caller give a role only when they hold
+    all of it, and rule 3 lets them change only someone who holds nothing they don't, so an `ADMIN` missing one
+    permission could neither give a role that holds it nor manage anyone who holds it (`RoleTest`'s roles block fails
+    such an `ADMIN`);
   - **with tenancy** the grant changeset gives every tenant's copy (row mode lifts `FORCE` for its own transaction,
     TEN-34; schema per tenant is a tenant changeset), and a new tenant gets its built-in roles at its provisioning:
     schema per tenant from the tenant changelog's literal seed (it runs into every new schema), row mode by copying
@@ -456,6 +513,7 @@ test, unchanged but where it asserted a role column or claim.
   - limits stay out of role tables (AUTHZ-04).
 - **Detect:** a grant endpoint without the "holds it" check; a self-grant; a change of someone who holds more; a
   check on the request's earlier read instead of under the lock; a cascade delete of assignments; seeds that read
-  the enum at run time in a migration; a permission constant with no grant changeset; an access change that can
-  leave nobody holding the management permissions.
+  the enum at run time in a migration; a permission constant with no grant changeset; a `Role` constant with no
+  changeset seeding its copy; an `ADMIN` without every permission; an access change that can leave nobody holding
+  the management permissions.
 - **Severity:** High.

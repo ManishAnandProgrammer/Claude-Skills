@@ -154,8 +154,14 @@ no owner parameter, unscoped lists (tests.md *Shared tables*).
 action of its own such as `APPROVE` when a state change is one; several handlers may share one, as a todo's
 update, status, tags and time entries share `TODO_EDIT_OWN`); (2) **the reach** of each: `_OWN` (the caller's own
 records: an owned entity), `_ASSIGNED` (records the module says are theirs to work: ask what assigns them), none
-(every record: a shared root); (3) **which roles get each**, role by role (roles don't include each other, so a
-permission two roles hold is on both lists); (4) **its menu `Area`** (an existing one, or a new constant: ask its
+(every record: a shared root). **A detail several reaches read** (the requester, their manager, HR) gets each
+reach's READ permission (`<ENTITY>_READ_OWN`, `_READ_ASSIGNED`, `_READ`), its handler `@Requires` all of them (any
+one lets in) and its policy picks the reach; one reach's READ is never made the others' prerequisite so that one
+permission could guard it (AUTHZ-03). Its lists are one per reach (REST-08: the bare collection `ALL`, `/mine`
+`OWN`, `/team` or `/assigned` `ASSIGNED`), each `@Requires` that reach's READ and uses the policy's scope for it
+(AUTHZ-05); (3) **which roles get each**, role by role (roles don't include each other, so a
+permission two roles hold is on both lists; a role the developer names that doesn't exist yet is a new built-in
+role: references/bootstrap.md, *A new built-in role*); (4) **its menu `Area`** (an existing one, or a new constant: ask its
 name); (5) **the prerequisites** (an edit needs the read that opens the record: offer `EDIT`/`DELETE`/`CREATE` →
 `READ`, and let the developer change it). Record the answers in *Decisions per entity*. The generation then adds
 the constants to `{{Permission}}` (`<ENTITY>_<ACTION>[_OWN|_ASSIGNED]`, its area, reach and prerequisites: golden
@@ -166,7 +172,9 @@ the tables grant: the same commit adds a **grant changeset** of the next free nu
 to the built-in roles the developer named (ask which: never guess; `INSERT INTO role_permissions (id, role_id,
 permission, created_at, updated_at, version) SELECT uuidv7(), r.id, p.permission, now(), now(), 0 FROM roles r CROSS
 JOIN unnest(ARRAY['<ENTITY>_READ', ...]) AS p (permission) WHERE r.built_in = 'ADMIN';`, with its `--rollback`
-deleting those rows), so an existing installation's copies get it on upgrade; `BuiltInRolesIntegrationTest` fails a
+deleting those rows), so an existing installation's copies get it on upgrade. `ADMIN` is always among those roles,
+said rather than asked: safety rules 1 and 3 let an admin give a role, or change a person, only within what they
+hold, so an `ADMIN` without the new permission could give no role that holds it (AUTHZ-12; `RoleTest`'s roles block); `BuiltInRolesIntegrationTest` fails a
 `Role` line without its changeset. With a tenancy piece every tenant has its copies: row mode's changeset names each
 row's tenant (`SELECT uuidv7(), r.tenant_id, r.id, ...`) and lifts `FORCE` on `role_permissions` and `roles` for its own
 transaction, its rollback too (TEN-34); schema per tenant's is a tenant changeset (it runs in every schema); a new
@@ -179,7 +187,9 @@ record, an amount and the module setting that bounds it; never a role's column).
 `allowedActions` for every action whose answer can differ between records the caller sees, state rules included
 (AUTHZ-07; golden `TodoAllowedActionsResponse`, `PlanAllowedActionsResponse`): each an `AllowedAction` (allowed and
 every reason, a reason the code and its existing message) made by `AllowedActionMapper.toAllowedAction(name,
-policy.x(...))` from the same policy method the write calls, on the detail and on the list's rows from the row's
+<the permission the action's endpoint @Requires>, policy.x(...))` from the same policy method the write calls (a
+caller holding none of that permission gets `allowed: false` with `ACCESS_DENIED` alone, the call's own 403:
+AUTHZ-07), on the detail and on the list's rows from the row's
 own fields (a parent's state from the page's one facade lookup, golden `PlanService.withTodos`); a rule with several
 preconditions lists them all with plain `if`s into a `List<Decision.Refusal>` (golden `PlanPolicy.reschedule`), a
 reach refusal alone. Actions the permission alone decides, creates, and a delete only a foreign key refuses get no
@@ -430,7 +440,12 @@ with different rights** (REST-16) copies golden `TodoPolicy` (`read`: the owner 
 anyone else; `edit`: the owner, 403 `TODO_NOT_YOURS` for the requester; `editScope`, the condition of the
 statement that locks, so a refused caller never takes the owner's lock), used by `TodoService.findById` and
 `lockEditableTodo`, tested by `TodoPolicyTest` and `TodoRequesterIntegrationTest` (each party by each call, a stranger, the relationship changing); ask for
-the parties and their actions. **Money, exactly one current, month values** are use cases: no golden code,
+the parties and their actions. **Status moves by different parties** (a leave request approved or rejected by
+the manager, cancelled by the requester, revoked by HR; REST-03): each move is its own action endpoint
+(`PATCH {{urlPrefix}}/<resources>/{id}/<verb>`, `POST` for a move that creates or starts something), each with its
+own `@Requires`, policy method (the party's rule, then the status enum's `canBecome`) and `allowedActions` flag, and
+a body holding only what the move takes (the `version`, a reason); one `PATCH /<resources>/{id}/status` with the
+target, as golden `Plan`'s below, when one permission covers every move. **Money, exactly one current, month values** are use cases: no golden code,
 the house-review rules are the bar; ask. A **status workflow**
 (several states, only some moves allowed) copies golden `PlanStatus` and `Plan.changeStatus`
 (`PATCH /plans/{id}/status`, `PlanStatusRequest`, `PlanStatusIntegrationTest`): the moves as one
@@ -599,7 +614,13 @@ description and its 400 response name it.
   `Todo.changeStatus`'s `completedAt`). Golden: `PlanStatusRequest.doneOn` (given with DONE and only with
   it, a `@CrossField` on `doneOn`), checked in `Plan.changeStatus` against the plan's first day (400
   `PLAN_DONE_ON_BEFORE_STARTS_ON`), tests `PlanStatusIntegrationTest.doneOnIsAtMostToday` and
-  `doneOnIsNeverBeforeTheFirstDay`. A planned date (a leave, a plan)
+  `doneOnIsNeverBeforeTheFirstDay`. **A rule a date decides against today** (a request revoked only while its
+  end date is today or later, a deadline at midnight) reads today from `BusinessCalendar.today()` (`common/time`:
+  the calendar day of `app.business-calendar.zone` at the clock's instant; the zone is the owner's, `UTC` until they
+  name the organisation's region id, so ask), in the service, which passes it to the policy method (the write
+  and the flag then agree, and the policy's table test fixes the day): never `LocalDate.now(clock)` (UTC's day)
+  and never a day the client sends (the rule is the organisation's, not the user's). The status the dates make
+  (a leave `TAKEN` once it has begun) is derived when read, never stored (DATA-37). A planned date (a leave, a plan)
   lies ahead or behind: no `@NotAfterToday`, a sanity `@LatestDate` (golden `plan.dates`), and the
   rules the business gives (within one calendar year: name it so, e.g. `isInOneCalendarYear`; no
   golden code).
@@ -804,7 +825,7 @@ transaction (DATA-01). Never lock "the current X" by a mutable column (DATA-32).
 
 **An access-changing write with the session version** (`tokenRevocation: session-version`, the
 `session-version` piece): a generated write that changes what a person may do (a role or status field
-of an account or membership, a grant table, a lock) raises the session version **in its own
+of an account or membership, a lock) raises the session version **in its own
 transaction**, through the owner's bump (golden `MembershipService.changeRole` calling
 `bumpSessionVersion`; without tenancy `UserService.bumpSessionVersion`, `Propagation.MANDATORY`), after
 the checks that can still refuse it; where it takes access away, the same transaction revokes the
@@ -812,7 +833,12 @@ refresh tokens the code doesn't already refuse. Redis is never written in the tr
 publishes `SessionVersionsRaised`). The write still checks the caller's current role in the database
 (rung 3). Tests: the older token 401 `SESSION_VERSION_STALE` on the next request, the refresh carries
 the new access, a rolled-back write raises nothing (golden `SessionVersionTenancyIntegrationTest`,
-`SessionVersionServiceIntegrationTest`; house-review SEC-07).
+`SessionVersionServiceIntegrationTest`; house-review SEC-07). **The exception, with `authorization: roles-piece`:**
+the permissions are read from the tables on every request (AUTHZ-11) and no token carries them, so a write of
+roles, personal grants or a role's contents (`user_roles`, `user_permissions`, `role_permissions`, and a generated
+table that feeds them) raises nothing, as golden `PersonAccessService` and `AccessRoleManager` don't; the bump stays
+for what the token carries or its refresh relies on (the account's status, the password, signing out everywhere,
+with tenancy the membership).
 
 ### 4.9 API interface (OpenAPI)
 Golden `TodoApi`: `@Tag`; `@Operation` with text-block descriptions; an `@ApiResponse` for every
@@ -842,13 +868,14 @@ Golden `TodoController`: package-private, `implements <Entity>Api`, class-level
 `@RequestMapping("{{urlPrefix}}/<resource-plural>")`, methods with relative paths and
 `version = "v1+"` (the current baseline; REST-07), 201/204 with `@ResponseStatus`, nothing but the service call.
 **Every handler declares exactly one of** `@Requires(Permission.<ENTITY>_<ACTION>[_OWN])` (the permission Step 1's
-*Permissions* gave it), `@SignedIn` (the dropdown, which checks its `for` in the service: `{{dropdownSecurity}}`) or
+*Permissions* gave it; a detail several reaches read names each reach's READ, `@Requires({Permission.<ENTITY>_READ_OWN,
+Permission.<ENTITY>_READ_ASSIGNED, Permission.<ENTITY>_READ})`, any one letting in), `@SignedIn` (the dropdown, which checks its `for` in the service: `{{dropdownSecurity}}`) or
 `@Public` (never without the owner's word, and then a public path in the security chain): ArchUnit
 `handlersDeclareWhoMayCallThem` fails the build otherwise, and `EndpointContractIntegrationTest` calls every
-`@Requires` handler without its permission (403) with no test to write (house-review AUTHZ-03, AUTHZ-09). Never a
+`@Requires` handler without its permissions (403) with no test to write (house-review AUTHZ-03, AUTHZ-09). Never a
 role annotation or a `@PreAuthorize` string (REST-25). The write paths call the policy (4.8: `policy.x(...).orThrow()`
 after the load; a locking load goes through the policy's `editScope`, golden `TodoService.lockEditableTodo`). The
-OpenAPI 403 `ACCESS_DENIED (without <PERMISSION>)` is written from `@Requires` (`PermissionOpenApiCustomizer`): the
+OpenAPI 403 `ACCESS_DENIED (without <PERMISSION>)`, `(without any of <A>, <B>)` for several, is written from `@Requires` (`PermissionOpenApiCustomizer`): the
 API interface names only the entity's own 403 codes (`<ENTITY>_NOT_YOURS`). Its `SPRING_ENDPOINT` entry goes into the exclude file with it (Step 7).
 
 ### 4.11 Dropdown (when the entity carries `{{dropdownAnnotation}}`)
@@ -951,7 +978,9 @@ checklist's review item stays open until that reviewer's report is clean.
       entity*; the constants in `Permission` and each role's lines in `Role`; every handler `@Requires`/`@SignedIn`/
       `@Public`; an owned entity's `<Entity>Policy` with its list scope and its table test; `RoleTest`,
       `PermissionTest` and `EndpointContractIntegrationTest` green. With `authorization: roles-piece`, the grant
-      changeset for the built-in roles the developer named, and `BuiltInRolesIntegrationTest` green.
+      changeset for the built-in roles the developer named (`ADMIN` among them), a new built-in role's seeding
+      changeset, and `BuiltInRolesIntegrationTest` green. A detail several reaches read `@Requires` each reach's READ,
+      a list per reach (AUTHZ-03, AUTHZ-05); each `allowedActions` flag names its endpoint's permission (AUTHZ-07).
 - [ ] A convention changed during the run (what a role holds, what a permission means): the roles'
       grants and the profiles say the new rule, and no comment generated earlier still says the old one
       (grep them).
@@ -969,7 +998,7 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] A review-profile Conventions row only for a departure from a house rule, with the owner's reason;
       a choice no rule forbids goes in the crud profile's *Decisions per entity*.
 - [ ] With the session version: every generated write that changes access bumps it in its transaction
-      and has its 401-then-refresh test (4.8, SEC-07).
+      and has its 401-then-refresh test (4.8, SEC-07); with the roles piece, a write of roles or grants doesn't.
 - [ ] Retention asked (Step 1): accumulating rows have their purge job, index, settings and tests (4.12), or the
       review profile's `retentionExceptions` names the table with the owner's reason.
 - [ ] Every setting the run added is typed by what it means (CFG-12: a `Duration`, `Period`, `DataSize`, `URI`, `Cron`

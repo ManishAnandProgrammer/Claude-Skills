@@ -90,6 +90,15 @@ class ArchRuleScopeTest {
     }
 
     @Test
+    @DisplayName("A @Requires naming no permission is refused (AUTHZ-03)")
+    void requiresNamesAPermission() {
+        List<String> violations = ConventionArchTest.requiresNamesAPermission
+                .evaluate(new ClassFileImporter().importClasses(HandlerDeclarations.class)).getFailureReport().getDetails();
+
+        assertThat(violations).singleElement().asString().contains("requiresNobody()");
+    }
+
+    @Test
     @DisplayName("A method-security string outside common.security is refused on a method and on a class; inside it, it is how the annotations are declared (AUTHZ-03)")
     void methodSecurityStringsLiveInCommonSecurity() {
         assertThat(violates(ConventionArchTest.methodSecurityIsDeclaredOnce, StringChecks.class)).isTrue();

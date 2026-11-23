@@ -77,7 +77,11 @@ With **AskUserQuestion** (several per call):
    | 5 | Opaque tokens / server sessions (not offered) | zero | a session lookup per request and a store |
 
    With yes, add `session-version` to `--with` and record `tokenRevocation: session-version` in the
-   review profile (house-review SEC-07: every later access-changing write bumps it). The sign-in piece's
+   review profile (house-review SEC-07: every later access-changing write bumps it). With the `roles` piece
+   (question 11) the permissions are read from the tables on every request, so a change of roles, grants or a
+   role's contents needs no bump and applies on the next request anyway; the session version then serves what
+   the token carries (a suspension, a password change, signing out everywhere, with tenancy a removal from a
+   tenant): say so when both are asked. The sign-in piece's
    password change and account suspension already bump it and revoke the refresh tokens in their own
    transaction (SEC-07), as a project's own access-changing write must. One device's logout stays as it is
    (that refresh token only; a bump would sign out every device). A deny list of tokens is not offered:
@@ -94,7 +98,7 @@ With **AskUserQuestion** (several per call):
 8. **User files:** does the project store files people upload (attachments, documents, photos)?
    Then the `media` piece (needs `sign-in`). AWS S3 or another S3-compatible store, and whether any
    upload comes from a public form without sign-in (not in the piece: house-review MEDIA-14). The
-   purposes (one `UploadPurpose` each, with the role that may upload and its limits) come with their
+   purposes (one `UploadPurpose` each, with the permissions that may upload and its limits) come with their
    entity in crud-gen Step 5, once its owner and writers are known: note them here, add none yet.
 
 9. **Tenancy:** does one deployment serve several organisations whose data must never meet?
@@ -129,8 +133,8 @@ With **AskUserQuestion** (several per call):
    id or by a batch of ids),
    switch-tenant, impersonation (a reason required) with an audit row that staff read at
    `GET /platform/tenants/{id}/audit`, and a tenant's owner as its ADMIN. Roles don't
-   include each other: a record that members and the owner both write names both roles where a role
-   is listed (an upload purpose: `"USER", "ADMIN"`). Not built: invitations of people without an
+   include each other: a permission that members and the owner both use is on both roles' lists (`USER`'s
+   and `ADMIN`'s). Not built: invitations of people without an
    account, a retention job for CLOSED tenants. Record the ones the project needs as open items.
    (Built since: staff deactivation, `POST /platform/staff/{id}/deactivation` setting
    `platform_users.deactivated_at`, with `ActiveStaffFilter`, and with the session version the end of the
@@ -191,7 +195,7 @@ the root package, and copy the pieces. Step 2's Initializr clean-up doesn't appl
 ```
 | Piece | What it brings |
 |---|---|
-| `core` | `common/` (error contract with `ErrorCode`, mapper, `AppException`, RFC 9457 `errors` (`RequestError`, `JsonPointers`), transient-failure 503s; wrappers `Object`/`BoundedList`/`Map`/`Pagination`/`Cursor`; `PageFilter`, `CursorFilter`, `Paging`, `OffsetPages`, `Cursor`, `Seek`, `TextSearch`; `Limits` with `@MaxLength` / `@ConfiguredMax` and their OpenAPI customizer; the dropdown types; `AuditableEntity`; logging context and filters; admission control; `ProblemTypes`, `ProblemResponses`, `RetryAfterProperties`; `RateLimitExceededException` (429); `CurrentUser`, `PersonalDataHasher`; authorization: `Permission`, `Area`, `Reach`, `@Requires`, `@SignedIn`, `@Public`, `Decision`, `TokenPermissions`, `DropdownFor`; `@MultiInstanceSafe` and `Cron`, a job's schedule as a typed setting); `config/` (security, JWT validation, messages, auditing, scheduling, OpenAPI, startup checks, pool readiness, clock, Liquibase's own connection with a `lock_timeout`); `application.yml` + `config/*.yml` split by concern with `-dev`/`-prod` variants; logback; messages; the test base, ArchUnit and contract tests; `compose.yaml`, `.env.example`; `lombok.config` (Lombok copies `@Qualifier` onto the constructors it generates, JAVA-26, and marks its code `@lombok.Generated` so coverage leaves it out); `spotbugs-exclude.xml` (the static-analysis gate's false positives, house-review CFG-11: each entry names a piece's class and arrives with its piece); `docs/runbook.md` (the incident runbook, OPS-10) |
+| `core` | `common/` (error contract with `ErrorCode`, mapper, `AppException`, RFC 9457 `errors` (`RequestError`, `JsonPointers`), transient-failure 503s; wrappers `Object`/`BoundedList`/`Map`/`Pagination`/`Cursor`; `PageFilter`, `CursorFilter`, `Paging`, `OffsetPages`, `Cursor`, `Seek`, `TextSearch`; `Limits` with `@MaxLength` / `@ConfiguredMax` and their OpenAPI customizer; the dropdown types; `AuditableEntity`; logging context and filters; admission control; `ProblemTypes`, `ProblemResponses`, `RetryAfterProperties`; `RateLimitExceededException` (429); `CurrentUser`, `PersonalDataHasher`; authorization: `Permission`, `Area`, `Reach`, `@Requires`, `@SignedIn`, `@Public`, `Decision`, `TokenPermissions`, `DropdownFor`; `@MultiInstanceSafe` and `Cron`, a job's schedule as a typed setting; `BusinessCalendar`, today in the organisation's configured zone); `config/` (security, JWT validation, messages, auditing, scheduling, OpenAPI, startup checks, pool readiness, clock, Liquibase's own connection with a `lock_timeout`); `application.yml` + `config/*.yml` split by concern with `-dev`/`-prod` variants; logback; messages; the test base, ArchUnit and contract tests; `compose.yaml`, `.env.example`; `lombok.config` (Lombok copies `@Qualifier` onto the constructors it generates, JAVA-26, and marks its code `@lombok.Generated` so coverage leaves it out); `spotbugs-exclude.xml` (the static-analysis gate's false positives, house-review CFG-11: each entry names a piece's class and arrives with its piece); `docs/runbook.md` (the incident runbook, OPS-10) |
 | `sign-in` | The `user` module (signup, login, refresh rotation with a grace window, logout, the expired tokens' purge `RefreshTokenPurgeJob`, house-review OPS-03's golden: by expiry, in batches, `app.jobs.refresh-token-purge.*`; the account lifecycle: `POST /users/me/password` and, without tenancy, an ADMIN's `GET /users?email=` lookup and `PATCH /users/{id}/status` suspension and reactivation, every token path re-reading the account under a share lock, SEC-07; so the `ADMIN` role, changeset 0007 and `newAdmin()` come with sign-in), its changesets (0001, 0007, 0027), the Redis rate limiter (`RedisRateLimiter`, `RateLimit`, `RateLimitProperties`, `RedisClientConfig` and their configuration), its tests. **core's tests need it**: they sign users in. Tokens are signed HS256 with one shared secret. Later, not built: a key pair (RS256/ES256, a JWKS endpoint, `kid` rotation, and with tenancy each cell checking that it serves the token's tenant), to build when a second deployable checks tokens; HS256 stays the default |
 | `metadata` | Optional: configuration metadata (one record per key, `MetadataKeys`, `MetadataService` with `delete`, admin `GET`/`PUT /metadata/{key}` for **fixed keys only**, the `ADMIN` role and the test base's `newAdmin()` with `sign-in`) and gapless `Counters` (`perContext`, `delete`); changesets 0007 (with sign-in) and 0008; rules in house-review `metadata.md`. Per-context configuration is an endpoint of the resource that owns the context, generated by crud-gen (SKILL.md Step 3) |
 | `media` | Optional, needs `sign-in`: the `media` module (`Uploads` with `fileCountRange`, `claim`, `release`, `describe`, `allVerified`; `UploadPurpose`, `MediaFileView`, `MediaUrls`, `AllowedContentTypes`, `MediaFile` + `MediaFileStatus`, `UploadPolicy`; `POST /upload-urls`, `GET /upload-policies`, admin `PUT /upload-policies/{purpose}`; `MediaVerificationJob`, `MediaCleanupJob`), its configuration (`app.media.*`, `app.jobs.media-verification.*`, `app.jobs.media-cleanup.*`, `app.limits.upload-policy.*`), the `media_files` and `upload_policies` changesets, its tests against an S3-compatible server in Testcontainers (the endpoint tests run against the first `UploadPurpose`, so without the example they are **skipped until the project declares one**, crud-gen Step 5); rules in house-review `media.md`. An entity's attachments are generated by crud-gen (SKILL.md Step 5) |
@@ -261,6 +265,9 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   reads the ranges below).
 - The answers of step 0: signup policy, external IdP (`SecurityConfig`), client-IP mode,
   `app.limits.*` values, pool and admission sizes (admission ≥ 2× pool, checked at startup).
+- `app.business-calendar.zone` (`application.yml`, core's `common/time/BusinessCalendar`): the organisation's region
+  id (`Europe/Berlin`) once a rule compares a date with today (crud-gen SKILL.md, *A rule a date decides against
+  today*); ask the owner, and leave `UTC` until then. Only such rules read it (house-review JAVA-25).
 - **An existing project's settings** (house-review CFG-12): the copied `ConventionArchTest.settingsAreTypedByWhatTheyMean`
   fails on a settings component that is a number with its unit in its name (`ttlMinutes`, `refreshTokenTtlDays`) or
   text with a grammar (`baseUrl`, `cron` as a `String`). Migrate each to its type, never keeping its name and value: a
@@ -298,7 +305,53 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   SET role = 'ADMIN'`, then sign in again); name it to the user in the closing summary, and add the
   project's own role names when step 0 added roles. With `session-version`, those statements also
   raise `session_version` and the operator drops the Redis copy (`DEL sv:<id>`), which the copied
-  runbook says: an access change in SQL without the bump keeps the older tokens valid.
+  runbook says: an access change in SQL without the bump keeps the older tokens valid (with `roles` the
+  first admin is an `INSERT INTO user_roles` of the built-in `ADMIN`'s copy, read on the next request: no bump).
+- **A new built-in role** (step 0 named roles beyond `USER` and `ADMIN`: a `MANAGER`, an `HR`). Without `roles`
+  (Level 1): its `Role` constant with its permissions, a changeset widening `ck_users_role` (as
+  `0007-users-admin-role.sql` did for `ADMIN`), and the test base's `new<Role>()` beside `newAdmin()` (house-review
+  REST-25). **With `roles`** (Level 2, house-review AUTHZ-12) the column is gone and the constant only seeds a copy:
+  1. the `Role` constant with its permission list (each permission's prerequisites included: `RoleTest`), and
+     every permission it lists also on `ADMIN` (`ADMIN` holds every permission: safety rules 1 and 3 let an admin
+     give a role, or change its holders, only within what they hold; `RoleTest`'s roles block checks it);
+  2. the project's next changeset (0100 and up) seeding its copy as literal SQL, never read from the enum:
+     ```sql
+     --changeset dev:0101-manager-role
+     INSERT INTO roles (id, code, name, built_in, created_at, updated_at, version)
+     VALUES (uuidv7(), 'MANAGER', 'Manager', 'MANAGER', now(), now(), 0);
+     INSERT INTO role_permissions (id, role_id, permission, created_at, updated_at, version)
+     SELECT uuidv7(), r.id, p.permission, now(), now(), 0
+       FROM roles r
+      CROSS JOIN unnest(ARRAY['LEAVE_REQUEST_READ_ASSIGNED', 'LEAVE_REQUEST_DECIDE_ASSIGNED']) AS p (permission)
+      WHERE r.built_in = 'MANAGER';
+     --rollback DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE built_in = 'MANAGER');
+     --rollback DELETE FROM roles WHERE built_in = 'MANAGER';
+     ```
+     `name` as `AccessRole.copyOf` writes it (the code, capitalised, `_` as a space). With `tenancy-row` one copy
+     per tenant that exists, as `0037-roles.sql`'s `0037-built-in-roles` writes them (`SELECT uuidv7(), t.id, ... FROM
+     tenants t`, each `role_permissions` row with its role's `tenant_id`, `FORCE` lifted on `roles` and
+     `role_permissions` for the changeset's transaction and its rollback, TEN-34), and a tenant activated later
+     copies every constant (`AccessRoleService.copyBuiltInsFromTheEnum`); with `tenancy-schema` it is a tenant
+     changeset (`tenant.yaml`: every schema, and every new one, runs it). Where an admin already built a role of that
+     code, `uq_roles_code` stops the migration: the release notes tell the owner to rename theirs first;
+  3. the tests: `BuiltInRolesIntegrationTest` takes every constant (`@EnumSource(Role.class)`), so it compares the
+     new copy with its constant with no edit, and fails until the changeset seeds exactly its list; a test gives
+     the role with the test base's `newUserWithRole("MANAGER")` (its roles block assigns the built-in copy by SQL)
+     wrapped as `newManager()` beside `newAdmin()`; a role a test builds itself goes through
+     `RolesFixtures.newUserHolding(...)`;
+  4. people get it through `PUT /users/{id}/roles/{roleId}` (`ACCESS_GRANT`, from an admin who holds all of it);
+     signup still gives `USER`; the runbook's *Operator tasks* names its code beside `ADMIN`.
+- **Data for local demos and manual testing** (an account per role, sample records) lives in `scripts/`, never
+  in a Liquibase changeset, a `dev` context's included (a run without the context set runs it too): a changeset
+  runs in production and in every test database, where demo rows become accounts nobody owns and rows every test
+  steps around. What the API can make goes through the running API, as a person would (accounts by signup,
+  `scripts/test-accounts.sh`; records by their endpoints, `scripts/seed-<records>.sh` or `.py`); the step no
+  endpoint does by design (the first admin, a built-in role's first holders) is the operator's SQL through the
+  database container (`docker compose exec -T postgres psql ...`, `scripts/make-admin.sh` or
+  `scripts/demo-seed.sql`), raising the session version where the runbook's statements do. Each script is safe to run
+  again (it checks before it creates), and says what to start first when the app doesn't answer. Their passwords
+  are local ones the README lists, their emails on a reserved domain (`.test`, `example.com`). Tests build their
+  own data through the test base, never through these scripts (house-review DATA-13).
 - With `metadata` but without `example`, `MetadataKeys.fixedKeyNamed`'s list of fixed keys is empty (its
   comment stays): the project's first fixed key goes there; per-context keys never do. Until then
   `GET/PUT /metadata/{key}` only answer `METADATA_KEY_UNKNOWN`: ask whether the project has a first

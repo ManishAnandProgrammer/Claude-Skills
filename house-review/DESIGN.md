@@ -1010,7 +1010,14 @@ scope trees; role-level DENY (a role only allows, so "what may this role do" sta
   `SecurityAnnotationScanners.requireUnique` resolves `{value}` templates by default and converts an enum attribute to
   its name: `@PreAuthorize("hasAuthority('{value}')")` on `@Requires(Permission value())` grants the holder and refuses
   another authority with no `AnnotationTemplateExpressionDefaults` bean; a literal `{value}` authority never matches.
-  So no `AuthorizationManager` of our own.
+  So no `AuthorizationManager` of our own. **Later (leave-desk's design):** a detail several reaches read needed
+  any of several permissions. The scanner's conversion service writes an enum array as its names joined by commas,
+  so `hasAnyAuthority('{value}')` would ask for one authority named `A,B`; `Permission[] value()` with
+  `hasAnyAuthority('{value}'.split(','))` turns it back into the arguments, the single form unchanged
+  (`RequiresAnyOfIntegrationTest` pins both renderings). Rejected: `Permission` implementing Spring Security's
+  `ExpressionTemplateValueProvider` to render each name quoted (a framework interface on the domain's enum for one
+  annotation), a custom expression root (a bean and a handler to replace for a split), and the door pattern (one
+  reach's permission made the others' prerequisite, a reach nobody chose).
 - **`TokenPermissions`** (`common/security`), implemented by sign-in's `RolePermissions`: the converter in `config`
   can't see `user.domain.Role` (config reaches a feature only through its api, and core copies without sign-in), and
   it is Level 2's seam: the same interface then reads the tables. A core copy without sign-in implements it for its

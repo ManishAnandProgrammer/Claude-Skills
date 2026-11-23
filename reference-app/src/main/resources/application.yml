@@ -26,3 +26,7 @@ spring:
 app:
   # The profiles this application may run with; startup fails on any other, or none.
   allowed-profiles: dev,test,prod
+  business-calendar:
+    # The organisation's time zone, a region id (Europe/Berlin): "today" for a rule a date decides
+    # (common/time/BusinessCalendar). Moments stay UTC Instants, picked dates are stored as sent.
+    zone: UTC

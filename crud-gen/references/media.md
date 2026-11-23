@@ -15,15 +15,16 @@ the browser's PUT, verification, cleanup) is the media piece's job: generate not
 Names below use `<X>` for the files' role on the entity (`Attachment`, `Document`, `Photo`).
 
 ## What to generate
-1. **Purpose.** A new `UploadPurpose` constant (`<ENTITY>_<X>`, e.g. `TODO_ATTACHMENT`) with the
-   roles that may upload for it (MEDIA-03, MEDIA-04): **every role that writes the owning record**,
-   since only the uploader can claim the upload (an admin edits employees, so
-   `EMPLOYEE_PHOTO("ADMIN")`; ask when the record's subject should change the file too). Roles don't
-   include each other: a record that members and their tenant's ADMIN owner both edit is
-   `STUDENT_PHOTO("USER", "ADMIN")`. For a
-   shared root that is the writing role Step 1 decided: without tenancy never `USER` while signup is
-   public; with tenancy a `USER` is a member a tenant ADMIN added, so `USER` is fine when every member
-   writes the record (Step 1, SEC-01). Its
+1. **Purpose.** A new `UploadPurpose` constant (`<ENTITY>_<X>`, e.g. `TODO_ATTACHMENT`) naming the
+   permissions that may upload for it (MEDIA-03, MEDIA-04): **the permission of every write that attaches its
+   files**, the create's and the edit's, since only the uploader can claim the upload (golden
+   `TODO_ATTACHMENT(Permission.TODO_CREATE_OWN, Permission.TODO_EDIT_OWN)`; an admin edits employees, so
+   `EMPLOYEE_PHOTO(Permission.EMPLOYEE_EDIT)`; ask when the record's subject should change the file too: a second
+   write with its own permission, `EMPLOYEE_PHOTO_EDIT_OWN`, which the purpose names as well). Never a role: which
+   roles hold those permissions is the roles' lists (house-review AUTHZ-02), so a role the next change gives the
+   edit may upload too. For a shared root those are the writes' permissions Step 1 decided, held by the writing
+   roles alone (without tenancy never `USER`'s while signup is public; with tenancy a `USER` is a member a tenant
+   ADMIN added, so a permission `USER` holds is fine when every member writes the record: Step 1, SEC-01). Its
    starting limits (min/max size, min/max files, content types from `AllowedContentTypes` only,
    MEDIA-09) reach **every** tenant, the existing ones included: the owner's write reads the count
    range, so a tenant without the row answers every create 404 `UPLOAD_POLICY_NOT_SEEDED`. Per mode:
@@ -44,13 +45,14 @@ Names below use `<X>` for the files' role on the entity (`Attachment`, `Document
      don't guess*), never the golden seed's numbers; never SVG,
    HTML or XML. With the **project's first purpose**, the media piece's own endpoint tests
    (`UploadUrlIntegrationTest`, `UploadPolicyIntegrationTest`, `PresignedUploadIntegrationTest`)
-   stop being skipped: they run against `UploadPurpose.values()[0]` with its role; run them. When that
-   purpose names **every** role (`STUDENT_PHOTO("USER", "ADMIN")`), `newNonUploader` has no role to
-   pick, and two tests stay skipped: `UploadUrlIntegrationTest.aRoleThePurposeDoesNotNameIs403` and
+   stop being skipped: they run against `UploadPurpose.values()[0]`, as a role that holds one of its permissions
+   (`newUploader`); run them. When **every** role holds one of that purpose's permissions (golden
+   `TODO_ATTACHMENT`: `USER` and `ADMIN` both edit todos), `newNonUploader` has no role to pick, and two tests stay
+   skipped: `UploadUrlIntegrationTest.aRoleThePurposeDoesNotNameIs403` and
    `UploadPolicyIntegrationTest.canUploadIsFalseForAnUnlistedRole` (a 200 with `canUpload: false`).
    That is expected, not an open duty: the refusal itself is `UploadPurpose.mayUpload`, which both
-   endpoints call and `UploadPurposeTest.onlyTheNamedRolesMayUpload` tests for every purpose with an
-   unknown role (MEDIA-04).
+   endpoints call and `UploadPurposeTest.onlyTheNamedPermissionsMayUpload` tests for every purpose with a caller
+   holding none of its permissions (MEDIA-04).
 2. **Link entity and changeset.** `<Entity><X>` (golden `TodoAttachment`): the owner as a
    `@ManyToOne(fetch = LAZY)` relation (same module), the media file as a plain `UUID mediaFileId`
    column (the media module's: an id with a database foreign key, ARCH-04), audit columns, inserted
@@ -141,9 +143,9 @@ its `errorCode` (TEST-08):
   remove id is 400 `REQUEST_UNREADABLE`, the record keeping its files (golden
   `TodoAttachmentsIntegrationTest.malformedRemoveIdIs400`; re-adding its own key:
   `reAddingThisTodosOwnKeyIsRefused`);
-- a purpose that lists **several roles** (`USER` and `ADMIN`): a member of each role attaches a file
-  (an upload URL, then the record's write); only a role the purpose doesn't list is 403 (that test is
-  skipped while every role is listed: step 1 above);
+- a purpose whose permissions **several roles** hold (`USER` and `ADMIN`): a member of each role attaches a
+  file (an upload URL, then the record's write); only a role holding none of them is 403 (that test is skipped
+  while every role holds one: step 1 above);
 - remove: the file leaves the response and its row is RELEASED; delete releases every file;
 - update with a stale version is 409 and attaches nothing; concurrent removals with one version
   apply once (the RELEASED count exact); **concurrent replacements** (remove the same file, add each

@@ -610,7 +610,10 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
 - **Check:**
   - every entity change has a new changeset with a rollback;
   - an applied changeset is never edited;
-  - sequences and seed rows needed at runtime are created in migrations;
+  - sequences and seed rows needed at runtime are created in migrations; **data for local demos or manual
+    testing never is** (an account per role, sample records): it lives in `scripts/`, through the running API
+    where an endpoint can make it and the operator's SQL where none does by design (crud-gen bootstrap.md, *Data
+    for local demos and manual testing*), so production and the test databases never carry it;
   - foreign keys are named `fk_<table>_<column>`;
   - changeset numbers: the house pieces own 0001-0099, the project's own start at 0100 (crud-gen
     bootstrap.md); a project changeset numbered below 0100 after the skills were adopted is a finding
@@ -634,7 +637,8 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
     what the re-run overwrites (rows an admin edited since). Its `ON CONFLICT` target is the table's
     natural key, and no other unique key of the table may differ between the seed and the rows already
     there: a changed seed value that meets another unique key fails the upsert and stops every startup.
-- **Detect:** an entity `@Index` or `@Table(uniqueConstraints = …)` that no changeset creates:
+- **Detect:** a changeset inserting demo accounts, known passwords or sample records (in a `dev` context too:
+  a run that sets no context runs every changeset); an entity `@Index` or `@Table(uniqueConstraints = …)` that no changeset creates:
   `ddl-auto: validate` doesn't check indexes, so a claimed unique index may never have existed. In a
   formatted-SQL changelog, a comment line starting `-- changeset` (or `-- rollback`, `-- preconditions`)
   is a Liquibase directive, not a comment: the file fails to parse, or the rest becomes a changeset of
@@ -789,11 +793,19 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
   **derived** from the stored dates when it is read (in the projection, or one `static` method that
   the entity and the projection both use, SMELL-01), never stored and flipped by a job. A job that
   runs late, twice or not at all leaves it wrong, and every reader trusts it.
+- **Today** for that derivation, and for a rule a date decides (a leave revoked only while its end date is today
+  or later), is the organisation's calendar day: `BusinessCalendar.today()` (`common/time`, the day of
+  `app.business-calendar.zone` at the clock's instant; a region id, `UTC` until the owner names theirs; tested by
+  `BusinessCalendarTest`), read once in the service and passed to the projection's query or the policy's method as a
+  parameter, so a test fixes the day. Never `LocalDate.now(clock)` (UTC's day, a day early or late for most of the
+  world for part of every day), `CURRENT_DATE` in a query (the session's zone) or a day the client sends (the rule
+  is the organisation's; a day a person records is theirs, JAVA-25).
 - **Not a finding when:** the status is a decision a person or a process takes (`APPROVED`,
   `CANCELLED`, `PUBLISHED`): that is a real attribute (DATA-07). When the passage of time must cause
   something exactly once (send the expiry notice), store **the event** (`expiry_notice_sent_at`),
   not the state.
-- **Detect:** status values of that kind beside date columns; a `@Scheduled` method running
+- **Detect:** a rule's today from `LocalDate.now(clock)`, `CURRENT_DATE` or the request instead of
+  `BusinessCalendar`; status values of that kind beside date columns; a `@Scheduled` method running
   `UPDATE … SET status = 'EXPIRED' WHERE ends_at < now()`; code that "recomputes" a stored status
   defensively; an `is_current` column on a version table (a partial index on `effective_to IS NULL`
   serves "current", DATA-35).
