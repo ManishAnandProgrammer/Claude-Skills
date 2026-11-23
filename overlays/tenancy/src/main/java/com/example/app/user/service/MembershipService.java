@@ -13,6 +13,7 @@ import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.common.wrapper.PaginationWrapper;
 import com.example.app.tenant.api.TenantCreated;
 // session-version:begin
+import com.example.app.tenant.api.ImpersonatedMember;
 import com.example.app.tenant.api.TenantDeactivated;
 // session-version:end
 // roles:begin
@@ -421,6 +422,27 @@ public class MembershipService implements Members {
         repository.bumpSessionVersionsOfUser(userId);
         publish(repository.findSessionVersionsOfUser(userId));
         log.info("Session versions raised: userId={}", userId);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    void bumpSessionVersionsOf(Collection<ImpersonatedMember> impersonated) {
+        if (impersonated.isEmpty()) {
+            return;
+        }
+        Set<ImpersonatedMember> wanted = Set.copyOf(impersonated);
+        List<UUID> membershipIds = repository.findByTenantIdInAndUserIdIn(
+                        wanted.stream().map(ImpersonatedMember::tenantId).collect(Collectors.toSet()),
+                        wanted.stream().map(ImpersonatedMember::userId).collect(Collectors.toSet()))
+                .stream()
+                .filter(membership -> wanted.contains(new ImpersonatedMember(membership.getTenantId(), membership.getUser().getId())))
+                .map(TenantMembership::getId)
+                .toList();
+        if (membershipIds.isEmpty()) {
+            return;
+        }
+        repository.bumpSessionVersions(membershipIds);
+        publish(repository.findSessionVersions(membershipIds));
+        log.info("Session versions raised: memberships={}", membershipIds.size());
     }
 
     @EventListener

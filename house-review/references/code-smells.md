@@ -169,9 +169,13 @@ Lines are counted without blank or comment lines.
     (`/** Accounts. */` on `UserService`, `@param` lists that repeat `@Schema` text);
   - a decision record or design note in code (why this entity has no search, who may write it):
     it belongs in the crud profile's *Decisions per entity* or the project's docs;
-  - a why written in several places: keep it once, where it is needed;
+  - a why written in several places: keep it once, at the code it constrains (two classes under
+    the same constraint keep it at the one that enforces it; the other needs none, or its name
+    says the link);
   - in tests, a comment that repeats the `@DisplayName` or the method name, or a given/when/then
-    label;
+    label. A test's design follows the same rule: a fixture or setup whose why the test can't say
+    (a seed committed outside the test transaction, an order the database imposes) keeps one line;
+    a class Javadoc describing what the tests check is the `@DisplayName`s' job;
   - a historical "no longer …" note;
   - a stale or misleading comment;
   - a `TODO` without an owner or ticket;

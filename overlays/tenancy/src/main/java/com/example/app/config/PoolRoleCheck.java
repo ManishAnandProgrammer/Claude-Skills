@@ -17,8 +17,8 @@ import java.util.Map;
  *   <li>owning no table, nor a member of a table's owner: an owner can lift {@code FORCE}, drop a policy
  *       or grant itself more, and {@code GRANT <owner> TO <app>}, a common quick fix for a missing grant,
  *       hands all of that over while every catalogue column of the pool's role still looks plain;</li>
- *   <li>unable to write {@code platform_users} (0015): with that right, one SQL injection creates a staff
- *       account that may impersonate every tenant.</li>
+ *   <li>unable to write {@code platform_users} (0015) beyond a deactivation's columns (0041): with that right, one
+ *       SQL injection creates a staff account that may impersonate every tenant, or takes one over.</li>
  * </ul>
  */
 @Component
@@ -34,7 +34,13 @@ class PoolRoleCheck implements InitializingBean {
                    (select count(*) from pg_class c
                      where c.relkind in ('r', 'p')
                        and pg_has_role(current_user, c.relowner, 'MEMBER')) as owned_tables,
-                   has_table_privilege('platform_users', 'INSERT, UPDATE, DELETE') as writes_staff""";
+                   has_table_privilege('platform_users', 'INSERT, UPDATE, DELETE')
+                   or exists (select 1 from pg_attribute a
+                               where a.attrelid = 'platform_users'::regclass and a.attnum > 0 and not a.attisdropped
+                                 and (has_column_privilege(a.attrelid, a.attnum, 'INSERT')
+                                      or has_column_privilege(a.attrelid, a.attnum, 'UPDATE')
+                                         and a.attname not in ('deactivated_at', 'updated_at', 'updated_by', 'version')))
+                      as writes_staff""";
 
     private final DataSource dataSource;
 
@@ -58,8 +64,9 @@ class PoolRoleCheck implements InitializingBean {
         }
         if (writesStaff) {
             throw new IllegalStateException("""
-                    The pool's role (DB_USER) can write platform_users: staff accounts are the owner role's to \
-                    write (docs/tenancy-runbook.md, section 2); revoke INSERT, UPDATE and DELETE on it""");
+                    The pool's role (DB_USER) can write platform_users beyond a deactivation: staff accounts are the \
+                    owner role's to write (docs/tenancy-runbook.md, section 2); revoke INSERT, UPDATE and DELETE on \
+                    it, then grant back UPDATE on deactivated_at, updated_at, updated_by and version alone (0041)""");
         }
     }
 }

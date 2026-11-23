@@ -34,8 +34,6 @@ import java.util.UUID;
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class ImpersonationService {
 
-    static final String AUDIT_ACTION = "IMPERSONATION";
-
     private final MembershipService memberships;
     // roles:begin
     private final PersonAccessService access;
@@ -65,7 +63,7 @@ public class ImpersonationService {
         // TenantMembership membership = memberships.forImpersonation(tenantId, request.userId());
         // roles:end
         UUID userId = membership.getUser().getId();
-        audit.record(tenantId, AUDIT_ACTION, "userId=%s, reason=%s".formatted(userId, request.reason()));
+        audit.recordImpersonation(tenantId, userId, "userId=%s, reason=%s".formatted(userId, request.reason()));
         if (!policy.allows(new SupportAccessRequest(staffId, tenantId, userId, request.reason()))) {
             throw AppException.of(ErrorCode.SUPPORT_ACCESS_DENIED);
         }

@@ -27,7 +27,7 @@ class AggregateArchTest {
             // tenancy:begin
             // new Aggregate("Tenant", "TenantService", List.of("TenantStatusChange")),
             // new Aggregate("TenantMembership", "MembershipService", List.of("Member")),
-            // new Aggregate("PlatformUser", "PlatformAuthService", List.of()),
+            // new Aggregate("PlatformUser", "PlatformStaffService", List.of()),
             // new Aggregate("PlatformAuditEntry", "PlatformAuditService", List.of()),
             // tenancy:end
             // tenancy-schema:begin

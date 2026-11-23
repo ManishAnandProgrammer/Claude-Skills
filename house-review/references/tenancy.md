@@ -10,7 +10,7 @@ The shared layer `~/Documents/claude-skills/overlays/tenancy/src/main/java/com/e
 `config/PlatformSecurityConfig` (the platform chain), the `tenant` module (`TenantService` with
 `approve`, `PlatformTenantController`, `PlatformAuditService`, `AllowAllSupportAccess`), `user/`
 (`TenantMembership`, `MembershipService` with "my tenants" and the members list, `user/api/Members` +
-`MemberView` (the facade other modules ask about a person), `PlatformUser`, `PlatformAuthService`,
+`MemberView` (the facade other modules ask about a person), `PlatformUser`, `PlatformStaffService` (its aggregate service; `PlatformAuthService` signs staff in through it),
 `ImpersonationService`, `TokenService`, `TenantRegistrationService`),
 `metadata/service/PlatformMetadataService` (a direct cross-tenant edit), `config/tenancy.yml`,
 changeset `0012`. Schema per tenant, `overlays/tenancy-schema/`: `common/tenancy/`
@@ -27,11 +27,11 @@ their tenant), with `metadata` `metadata/repository/CounterRepository`, with `ex
 `docs/tenancy-runbook.md`, `docker/postgres-init/`; the tenant tables' `tenant_id`, keys and policies
 are `tenancy-row` blocks in the reference's own changesets `0002`–`0011` and entities, `0017-members`,
 with `example` `0018-owners-reference-members`, with a piece that brings tenant tables
-`0019-replica-identity`. Both modes: changesets `0015-platform-users-read-only` and
-`0020-tenant-members-list` (the members list's indexes), `config/PoolRoleCheck`,
-`tenant/service/StaffTenantService`, `user/domain/Member` with `MemberRepository` (the tenant's own
-members, TEN-17) and each mode's `0017-members` (schema mode's `0018-owners-reference-members` with
-`example`).
+`0019-replica-identity`. Both modes: changesets `0015-platform-users-read-only`,
+`0041-platform-staff-deactivation` and `0020-tenant-members-list` (the members list's indexes),
+`config/PoolRoleCheck`, `tenant/service/StaffTenantService`, `user/service/PlatformStaffService`,
+`user/domain/Member` with `MemberRepository` (the tenant's own members, TEN-17) and each mode's
+`0017-members` (schema mode's `0018-owners-reference-members` with `example`).
 Tests: `tenant/**`, `archunit/TenancyArchTest`, `todo/TodoTenantIsolationIntegrationTest`,
 `support/IntegrationTest` (the test tenant, `@WithoutTestTenant`); row mode's
 `tenant/row/RowIsolationIntegrationTest`, `tenant/row/RowSecurityCatalogIntegrationTest` (the guard
@@ -114,12 +114,23 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   tokens, and the main chain accepts only tenant tokens (`aud=tenant`). A platform token on a tenant
   endpoint is 401, and the reverse. Staff are never modelled as a tenant or a "super admin" role in a
   tenant.
-- **Check (staff deactivation):** a staff member leaves by `platform_users.deactivated_at` (the operator's
-  SQL, as staff rows are; the audit key keeps their history, so the row is never deleted). Platform login
-  refuses a deactivated member (401 `AUTH_INVALID_CREDENTIALS`, as an unknown email), the platform chain
-  re-reads the row on every request (`ActiveStaffFilter`, one primary-key read: 401 `AUTHENTICATION_REQUIRED`
-  from the next request on), and the impersonation issue re-reads it again. A platform token is never trusted
-  for its lifetime. Tests: `StaffDeactivationIntegrationTest`.
+- **Check (staff deactivation):** a staff member leaves through the endpoint, never by an operator's SQL:
+  another active staff member calls `POST /platform/staff/{id}/deactivation` (`PlatformStaffService`; staff hold
+  no permissions among themselves; never one's own id, 403 `PLATFORM_STAFF_OWN_DEACTIVATION`; the caller's and the
+  target's rows locked together in id order and the caller re-read, so of two deactivating each other the second
+  is refused; an already deactivated one is a 200 that changes nothing). It sets `platform_users.deactivated_at`
+  (the audit key keeps their history, so the row is never deleted): the pool's role may update that column and
+  the audit columns alone, a trigger refuses it a reactivation (the owner role's), and `PoolRoleCheck` refuses to
+  start on any other write right on staff rows. Platform login refuses a deactivated member (401
+  `AUTH_INVALID_CREDENTIALS`, as an unknown email), the platform chain re-reads the row on every request
+  (`ActiveStaffFilter`, one primary-key read: 401 `AUTHENTICATION_REQUIRED` from the next request on), and the
+  impersonation issue re-reads it again. A platform token is never trusted for its lifetime. An impersonation
+  token they already hold is a tenant token, which the platform chain never sees: with the session version
+  the deactivation raises the version of every membership they impersonated within one impersonation token
+  lifetime (`platform_audit.impersonated_user_id`), in its own transaction, so those tokens end at once and the
+  members refresh theirs (the impersonation issue share-locks the staff row, so an impersonation racing the
+  deactivation is either found or refused); without it they live out their lifetime. A SQL deactivation
+  leaves them alive either way, as nothing publishes it. Tests: `StaffDeactivationIntegrationTest`.
 - **Check (accounts):** with tenancy accounts are global, so only platform staff suspend or reactivate one
   (`GET /platform/users?email=` to find it, `PATCH /platform/users/{id}/status`, `AccountStatusService`, kept
   off the tenant plane by `TenancyArchTest`);
@@ -127,8 +138,10 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   `TENANT_MEMBER_LAST_ADMIN`, the tenant locked as a member change locks it). SEC-07 and TEN-08 for the rest.
 - **Detect:** one decoder for both audiences; a `ROLE_SUPER_ADMIN` that bypasses tenant checks;
   operator endpoints behind a shared secret header; `isPlatform` branches in tenant-plane code; a platform
-  chain without the staff re-read, or a staff "disable" checked only at login; an account suspension
-  endpoint on the tenant plane.
+  chain without the staff re-read, or a staff "disable" checked only at login; staff deactivated by an
+  operator's SQL (a runbook step, a script), or a deactivation that leaves the impersonation tokens alive with
+  the session-version piece; a pool role that may write a staff row beyond a deactivation's columns, or clear
+  one; an account suspension endpoint on the tenant plane.
 - **Severity:** Critical.
 
 ### TEN-06: Tenant status is checked whenever tokens are issued
@@ -270,12 +283,14 @@ Platform staff: their own tokens (`aud=platform`) under `/api/v1/platform/**` on
   `DB_OWNER_USER`); `<app>_app` is the pool's role, not an owner, DML grants only through
   `ALTER DEFAULT PRIVILEGES` in a changeset. **[row]** the app role is `NOBYPASSRLS` and RLS is
   `FORCE`d. No policy or code path has an "or bypass" switch the app role can flip itself.
-- **Check:** the app role only reads `platform_users` (changeset `0015`): staff accounts are the owner's
-  to write (runbook section 2), and with the write right one SQL injection creates a staff account that
-  impersonates every tenant. Tests seed staff as the owner (the Liquibase data source).
+- **Check:** the app role only reads `platform_users` (changeset `0015`) but for a deactivation's columns
+  (`0041`: `UPDATE` on `deactivated_at` and the audit columns, a trigger refusing it a reactivation): staff
+  accounts are the owner's to write (runbook section 2), and with the write right one SQL injection creates a
+  staff account that impersonates every tenant, or brings back one who left. Tests seed staff as the owner (the Liquibase data source).
 - **Check:** `PoolRoleCheck` stops startup unless the pool's role is plain **through its memberships
   too**: no superuser or `BYPASSRLS` role, and no table owner, among the roles it is a member of
-  (`pg_has_role(current_user, …, 'MEMBER')`), and no write on `platform_users`. `GRANT <owner> TO <app>`,
+  (`pg_has_role(current_user, …, 'MEMBER')`), and no write on `platform_users` beyond a deactivation's
+  columns (a column-level grant included). `GRANT <owner> TO <app>`,
   a common quick fix for a missing grant, leaves every catalogue column of the app role plain and hands
   it the owner's power to lift `FORCE` or drop a policy (`PoolRoleCheckIntegrationTest` proves each
   case is caught).

@@ -61,6 +61,9 @@ class TokenService {
     private final Tenants tenants;
     private final ImpersonationProperties impersonation;
     private final UserService users;
+    // session-version:begin
+    private final PlatformStaffService staff;
+    // session-version:end
 
     @Transactional
     TokenResponse issue(User user) {
@@ -104,6 +107,9 @@ class TokenService {
 
     @Transactional(noRollbackFor = AppException.class)
     TokenResponse issueImpersonation(TenantMembership membership, UUID staffId) {
+        // session-version:begin
+        staff.requireActiveForImpersonation(staffId);
+        // session-version:end
         // Staff act as nobody who may not sign in.
         users.activeForTokenIssue(membership.getUser().getId());
         Instant now = clock.instant();

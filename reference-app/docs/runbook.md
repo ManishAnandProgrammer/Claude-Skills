@@ -116,9 +116,8 @@ incident: it locks the table exclusively while it rewrites it.
 
 ## 3. What is the JVM doing?
 
-Requests run on virtual threads: `jstack` and `jcmd <pid> Thread.print` show only the platform
-(carrier) threads and miss them. Take a full dump, two or three a few seconds apart (the JVM is PID 1
-in the container; `/diagnostics` is the private volume, and dumps can show data):
+Take two or three thread dumps a few seconds apart (the JVM is PID 1 in the container; `/diagnostics`
+is the private volume, and dumps can show data):
 ```bash
 docker exec <container> jcmd 1 Thread.dump_to_file -format=json /diagnostics/threads-$(date -u +%H%M%S).json
 ```
@@ -147,7 +146,8 @@ GC logs and out-of-memory heap dumps are already in `/diagnostics/<start>/`.
 5. **More load than capacity** with a healthy database: admission control already answers 503
    `SERVER_BUSY` with `Retry-After`. Add instances. Raise `DB_POOL_SIZE` only when step 2 shows the
    database idle while requests wait for the pool, and only together with `ADMISSION_MAX_CONCURRENT`
-   (at least twice the pool, checked at startup), keeping pool size × instances well under
+   (at least twice the pool, checked at startup) and `TOMCAT_MAX_THREADS` (above the admission caps
+   together, checked at startup), keeping pool size × instances well under
    `max_connections` (`SHOW max_connections;`, `SELECT count(*) FROM pg_stat_activity;`).
 
 ## 5. Afterwards

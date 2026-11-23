@@ -73,6 +73,8 @@ public enum ErrorCode {
     // TENANT_MEMBER_LAST_ADMIN,
     // roles:end
     // TENANT_MEMBER_OWN_CHANGE,
+    // PLATFORM_STAFF_NOT_FOUND,
+    // PLATFORM_STAFF_OWN_DEACTIVATION,
     // tenancy:end
     // metadata:begin
 

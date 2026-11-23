@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PoolRoleCheckTest {
 
     @Test
-    @DisplayName("A superuser or BYPASSRLS pool role, one owning tables, or one that can write staff accounts stops startup; a plain role passes")
+    @DisplayName("A superuser or BYPASSRLS pool role, one owning tables, or one that can write staff accounts beyond a deactivation stops startup; a plain role passes")
     void onlyAPlainRolePasses() {
         assertThatThrownBy(() -> PoolRoleCheck.check(true, 0, false))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("BYPASSRLS");

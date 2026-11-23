@@ -485,9 +485,14 @@ public abstract class IntegrationTest {
         return new TestStaff(id, email, read(login, "$.response.accessToken"));
     }
 
-    protected void deactivateStaff(UUID staffId) {
-        assertThat(new JdbcTemplate(ownerDataSource).update("update platform_users set deactivated_at = now() where id = ?", staffId))
-                .isEqualTo(1);
+    /** As staff leave: another staff member deactivates them. */
+    protected void deactivateStaff(UUID staffId) throws Exception {
+        postAs(platformToken(), "/api/v1/platform/staff/" + staffId + "/deactivation", "").andExpect(status().isOk());
+    }
+
+    /** What the pool's role may not write: a staff row's other columns, a reactivation, an audit row's change. */
+    protected int sqlAsOwner(String statement, Object... args) {
+        return new JdbcTemplate(ownerDataSource).update(statement, args);
     }
 
     /** Both rows, as {@code MembershipService} writes them: the tenant's own tables reference the person's member row. */

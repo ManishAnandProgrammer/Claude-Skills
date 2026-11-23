@@ -2,13 +2,11 @@ package com.example.app.user.service;
 
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
-import com.example.app.common.security.StaffAccounts;
 import com.example.app.common.validation.Emails;
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.domain.PlatformUser;
 import com.example.app.user.dto.request.LoginRequest;
 import com.example.app.user.dto.response.TokenResponse;
-import com.example.app.user.repository.PlatformUserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,18 +19,18 @@ import java.util.UUID;
 @Service
 @Slf4j
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-public class PlatformAuthService implements StaffAccounts {
+public class PlatformAuthService {
 
-    private final PlatformUserRepository repository;
+    private final PlatformStaffService staffAccounts;
     private final TokenService tokenService;
     private final PasswordEncoder passwordEncoder;
     private final AuthRateLimits rateLimits;
     private final String unknownUserHash;
 
     // Hand-written: the decoy hash costs one bcrypt run, paid once at startup.
-    PlatformAuthService(PlatformUserRepository repository, TokenService tokenService, PasswordEncoder passwordEncoder,
+    PlatformAuthService(PlatformStaffService staffAccounts, TokenService tokenService, PasswordEncoder passwordEncoder,
                         AuthRateLimits rateLimits) {
-        this.repository = repository;
+        this.staffAccounts = staffAccounts;
         this.tokenService = tokenService;
         this.passwordEncoder = passwordEncoder;
         this.rateLimits = rateLimits;
@@ -41,7 +39,7 @@ public class PlatformAuthService implements StaffAccounts {
 
     public ObjectWrapper<TokenResponse> login(LoginRequest request, String clientIp) {
         rateLimits.login(clientIp, request.email());
-        Optional<PlatformUser> found = repository.findByEmail(Emails.normalize(request.email()));
+        Optional<PlatformUser> found = staffAccounts.findByEmail(Emails.normalize(request.email()));
         boolean passwordMatches = passwordEncoder.matches(request.password(),
                 found.map(PlatformUser::getPasswordHash).orElse(unknownUserHash));
         PlatformUser staff = found.filter(account -> passwordMatches).orElseThrow(this::invalidCredentials);
@@ -52,11 +50,6 @@ public class PlatformAuthService implements StaffAccounts {
         }
         log.info("Platform login succeeded: platformUserId={}", staff.getId());
         return ObjectWrapper.withObject(tokenService.issuePlatform(staff));
-    }
-
-    @Override
-    public boolean isActive(UUID staffId) {
-        return repository.findById(staffId).filter(PlatformUser::isActive).isPresent();
     }
 
     private AppException invalidCredentials() {

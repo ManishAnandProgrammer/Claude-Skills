@@ -685,8 +685,9 @@ the details that bite).
   a reactivation (the existing contract, TEN-06): neither is revoked on top. Signing out everywhere
   revokes them all.
 - **Impersonation tokens** carry the impersonated member's number: the member's role change ends the
-  impersonation too. Platform tokens (their own chain) carry none: a staff deactivation is an operator's
-  SQL, which no publish follows, so the platform chain re-reads the staff row instead (account lifecycle, below).
+  impersonation too. Platform tokens (their own chain) carry none: the platform chain re-reads the staff row
+  instead (account lifecycle, below). A staff deactivation raises the numbers of the members its staff member
+  impersonated (2026-11-23, below).
 - **Rung 3 stays:** member changes still lock the tenant and check the caller's current role; with the
   session version, an older token is refused before that check (401 instead of 403).
 - Tests: `SessionVersionTenancyIntegrationTest` (demotion, promotion, removal and re-add, suspension,
@@ -732,14 +733,41 @@ as groundwork. Golden code in the reference (no tenancy) and the tenancy overlay
   tenant plane); a tenant keeps an ACTIVE ADMIN (409 `TENANT_MEMBER_LAST_ADMIN`; a CLOSED or REJECTED
   tenant needs none). The ADMIN role now comes with sign-in itself (`0007`, `newAdmin()`): suspension is its
   first admin endpoint.
-- **Staff deactivation** (`platform_users.deactivated_at`, `0028-platform-users-deactivation`, written by the
-  operator as staff rows are: the app role only reads them, 0015): platform login refuses (as an unknown
-  email), `ActiveStaffFilter` re-reads the row on every platform request (one primary-key read; the
-  session-version piece would need a staff number the operator's SQL can't publish, and platform calls are
-  few), and the impersonation issue re-reads it too.
+- **Staff deactivation** (`platform_users.deactivated_at`, `0028-platform-users-deactivation`; first written by
+  the operator as staff rows are, since 2026-11-23 by another staff member through an endpoint, below): platform
+  login refuses (as an unknown email), `ActiveStaffFilter` re-reads the row on every platform request (one
+  primary-key read; platform calls are few, so no staff number in the session-version piece), and the
+  impersonation issue re-reads it too.
 - **Without the session-version piece** a suspended account's or a changed password's access tokens live
   out their lifetime (they issue nothing: every issue re-reads the account), the same documented bound as a
   tenant's suspension.
+
+## Built (2026-11-23): staff deactivation through an endpoint
+
+The gap: an operator's SQL deactivation ended the staff member's platform tokens (`ActiveStaffFilter` re-reads the
+row) but not an impersonation token they already held, which is a tenant token carrying them as its actor: it worked
+on the tenant chain until it expired. A database trigger couldn't end it, since session versions are cached in Redis
+and only the application publishes a raise. Owner decision: an endpoint that raises the session versions; the members
+they impersonated are signed out too (their access tokens there are refused, they refresh).
+
+- **`POST /platform/staff/{id}/deactivation`** (`PlatformStaffController`, `PlatformStaffService`): any active staff
+  member (staff hold no permissions among themselves); never their own id (403 `PLATFORM_STAFF_OWN_DEACTIVATION`,
+  as every own-change refusal of the house is a 403); an unknown id 404 `PLATFORM_STAFF_NOT_FOUND`; an already
+  deactivated one a 200 that changes nothing. The caller's and the target's rows are locked together in id order and
+  the caller re-read, as the account suspension does: of two deactivating each other, the second is refused (401).
+- **The pool's role may write a deactivation (0041):** `UPDATE` on `deactivated_at` and the audit columns only (the
+  entity is `@DynamicUpdate` for it), a trigger refusing it a reactivation (with the column right, one SQL injection
+  could otherwise bring back a staff member who left), `PoolRoleCheck` refusing any other write right on staff rows,
+  column-level ones included. Reactivating stays the owner role's SQL.
+- **Whom they impersonated:** `platform_audit.impersonated_user_id` (0041, read from the detail for the rows already
+  written, foreign key and index), written by `ImpersonationService` through `PlatformAudit.recordImpersonation`.
+  With the session-version piece the deactivation raises the version of each membership the staff member
+  impersonated within one impersonation token lifetime (`app.tenancy.impersonation.token-ttl`, the token's own
+  lifetime), in its own transaction, published as the other raises are. The impersonation issue share-locks the staff
+  row, so an impersonation racing the deactivation is either found by it or refused. Without the piece the endpoint
+  only deactivates, and an impersonation token already out lives out its lifetime.
+- Tests: `StaffDeactivationIntegrationTest`; `PoolRoleCheckIntegrationTest` (column grants); the upgrade tests read
+  the backfill of the seeded impersonations.
 
 ## Later (rules and notes, not in the first setup)
 

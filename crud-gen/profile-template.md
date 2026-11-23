@@ -52,7 +52,7 @@ Fill values from the codebase, not from memory.
 | `offsetLists` | `none` | Offset lists by REST-08's consumer rule (SKILL.md Step 3), as **entity class names** (`TodoList`), each with its consumer: `PageFilter`, `PaginationWrapper`, count on a full page |
 | `CursorFilter` / `CursorWrapper` / `Cursor` / `Seek` / `CursorBatch` | `com.example.common.pagination.CursorFilter` / `…wrapper.CursorWrapper` / `…pagination.Cursor`, `…pagination.Seek` | Cursor lists |
 | `PageFilter` / `PaginationWrapper` / `OffsetPages` | `com.example.common.pagination.PageFilter` / `…wrapper.PaginationWrapper` / `…pagination.OffsetPages` | Offset lists |
-| `Paging` | `com.example.common.pagination.Paging` | Default sizes from configuration (`offset(filter, sort)`, `cursorSize(filter)`) |
+| `Paging` | `com.example.common.pagination.Paging` | Default sizes from configuration (`offset(filter)`, `cursorSize(filter)`) |
 
 ## Validation, ownership, ids
 
@@ -96,6 +96,13 @@ Fill values from the codebase, not from memory.
 | Key | Value | Notes |
 |---|---|---|
 | `tenancy` | `none` | `none`, `row` or `schema`, as bootstrap chose (house-review `references/tenancy.md`). `schema`: generated tables go into the tenant changelog (`db/changelog/tenant.yaml`), carry no `tenant_id`, and no `@Table` or native query names a schema; each entity also gets its cross-tenant test class. `row`: one master, tenant entities extend `TenantOwnedEntity`, each tenant table's changeset has `tenant_id`, tenant-carrying keys and its forced policy (Step 2's row-mode table); each entity also gets its cross-tenant test class |
+
+## Bootstrap
+
+| Key | Value | Notes |
+|---|---|---|
+| `pieces` | `core,sign-in` | The `--with` list the project was bootstrapped with, plus the pieces added since |
+| `skillsRelease` | `none` | The skills repository's commit the shared code was last copied or upgraded from: the base of the next upgrade (bootstrap.md, *5. Upgrade*) |
 
 ## Deviations
 

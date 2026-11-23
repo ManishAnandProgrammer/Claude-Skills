@@ -4,6 +4,9 @@ import com.example.app.common.pagination.CursorBatch;
 import com.example.app.common.pagination.Paging;
 import com.example.app.common.security.CurrentUser;
 import com.example.app.common.wrapper.CursorWrapper;
+// session-version:begin
+import com.example.app.tenant.api.ImpersonatedMember;
+// session-version:end
 import com.example.app.tenant.api.PlatformAudit;
 import com.example.app.tenant.domain.PlatformAuditEntry;
 import com.example.app.tenant.dto.request.PlatformAuditFilter;
@@ -14,6 +17,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+// session-version:begin
+import java.time.Instant;
+import java.util.List;
+// session-version:end
 import java.util.UUID;
 
 @Service
@@ -31,6 +38,19 @@ public class PlatformAuditService implements PlatformAudit {
     public void record(UUID tenantId, String action, String detail) {
         repository.save(PlatformAuditEntry.of(currentUser.id(), tenantId, action, detail));
     }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordImpersonation(UUID tenantId, UUID userId, String detail) {
+        repository.save(PlatformAuditEntry.impersonation(currentUser.id(), tenantId, userId, detail));
+    }
+    // session-version:begin
+
+    @Override
+    public List<ImpersonatedMember> impersonatedBy(UUID staffId, Instant since) {
+        return repository.findImpersonatedBy(staffId, since);
+    }
+    // session-version:end
 
     /** The batch is read before the tenant's check, so a tampered cursor is a 400 whatever the tenant. */
     public CursorWrapper<PlatformAuditResponse> findByTenant(UUID tenantId, PlatformAuditFilter filter) {

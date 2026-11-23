@@ -100,6 +100,13 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
     @Query("update TenantMembership m set m.sessionVersion = m.sessionVersion + 1 where m.tenantId = :tenantId")
     int bumpSessionVersionsOfTenant(UUID tenantId);
 
+    @Modifying(flushAutomatically = true)
+    @Query("update TenantMembership m set m.sessionVersion = m.sessionVersion + 1 where m.id in :ids")
+    int bumpSessionVersions(Collection<UUID> ids);
+
+    /** A superset of the pairs asked for: the caller keeps the pairs it wants. */
+    List<TenantMembership> findByTenantIdInAndUserIdIn(Collection<UUID> tenantIds, Collection<UUID> userIds);
+
     @Query("""
             select new com.example.app.user.dto.internal.MembershipSessionVersion(m.id, m.sessionVersion)
               from TenantMembership m
@@ -111,5 +118,11 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
               from TenantMembership m
              where m.tenantId = :tenantId""")
     List<MembershipSessionVersion> findSessionVersionsOfTenant(UUID tenantId);
+
+    @Query("""
+            select new com.example.app.user.dto.internal.MembershipSessionVersion(m.id, m.sessionVersion)
+              from TenantMembership m
+             where m.id in :ids""")
+    List<MembershipSessionVersion> findSessionVersions(Collection<UUID> ids);
     // session-version:end
 }

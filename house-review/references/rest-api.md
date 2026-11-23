@@ -154,7 +154,9 @@ the path.
     and no property string in the request DTO. The repository maps each constant with an exhaustive
     `switch` over the JPA metamodel (`Author_.name`, `Author_.id`), so a renamed field or a constant
     without an order fails to compile (reference: `TagRepositoryImpl.orderOf` for an offset list,
-    `TodoRepositoryImpl.orderOf` for a cursor list). A test per constant
+    `TodoRepositoryImpl.orderOf` for a cursor list). The metamodel stays in the repository: the API
+    layer sees only the constant's name, and the generated `_` classes come from the same compile as
+    the entities, so no build order is involved. A test per constant
     still proves the order itself;
   - **a tampered cursor is a 400** `REQUEST_PARAMETER_INVALID` naming `after`, never a 500: `Cursor.read`
     takes the sort and its key count (a key missing or extra is refused), and each key reader takes a key

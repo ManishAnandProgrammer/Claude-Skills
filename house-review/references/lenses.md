@@ -508,8 +508,8 @@ is code-smells.md, java.md and architecture.md.
     `idle in transaction` sessions; `max_connections` against what is used;
   - which metrics to read first: pool pending, acquire and usage (CFG-06), bulkhead rejections
     (PERF-03), 503 counters by cause;
-  - thread dumps under virtual threads: `jcmd <pid> Thread.dump_to_file -format=json <file>`
-    (`jstack` doesn't show virtual threads);
+  - thread dumps: `jcmd <pid> Thread.dump_to_file -format=json <file>`, two or three a few
+    seconds apart;
   - rollback and drain steps: how to take an instance out, roll back a release, and what a failed
     migration needs.
 

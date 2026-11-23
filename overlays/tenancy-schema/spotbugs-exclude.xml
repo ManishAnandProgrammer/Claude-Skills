@@ -295,6 +295,10 @@
         <Class name="com.example.app.user.service.PlatformAuthService"/>
         <Bug pattern="CRLF_INJECTION_LOGS"/>
     </Match>
+    <Match>
+        <Class name="com.example.app.user.service.PlatformStaffService"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
     <!-- tenant-registration:begin -->
     <Match>
         <Class name="com.example.app.user.service.TenantRegistrationService"/>
@@ -311,6 +315,10 @@
     </Match>
     <Match>
         <Class name="com.example.app.user.controller.PlatformAuthController"/>
+        <Bug pattern="SPRING_ENDPOINT"/>
+    </Match>
+    <Match>
+        <Class name="com.example.app.user.controller.PlatformStaffController"/>
         <Bug pattern="SPRING_ENDPOINT"/>
     </Match>
     <Match>

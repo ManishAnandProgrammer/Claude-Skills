@@ -7,8 +7,8 @@
 -- too, so each tenant table's is lifted for its inserts and restored. And what the release's last changesets
 -- added: each tenant's todos numbered with its counter after the highest (0026), requesters, one of them the
 -- member who left (0025), a suspended account (0027), a deactivated staff member (0028); 0029 to 0032
--- added indexes only. Its fixed ids are
--- the ones UpgradeFromPreviousReleaseIntegrationTest reads.
+-- added indexes only. Staff's audited actions, for 0041 to read whom an impersonation acted as. Its fixed ids
+-- are the ones UpgradeFromPreviousReleaseIntegrationTest reads.
 
 INSERT INTO tenants (id, name, status, created_at, updated_at, version) VALUES
     ('01890000-0000-7000-8100-00000000000a', 'Upgrade Alpha', 'ACTIVE', now() - interval '400 days', now(), 1),
@@ -40,6 +40,18 @@ INSERT INTO platform_users (id, email, full_name, password_hash, role, deactivat
      now(), now(), 0),
     ('01890000-0000-7000-8200-000000000002', 'upgrade-gone-staff@example.com', 'Gone Staff', 'not-a-hash', 'STAFF',
      now() - interval '3 days', now() - interval '100 days', now(), 1);
+-- Staff's actions in Alpha: two impersonations, whose accounts 0041 reads from their detail (one's reason names
+-- another id), and a direct edit, which names none.
+INSERT INTO platform_audit (id, actor_id, tenant_id, action, detail, created_at, updated_at, created_by, updated_by, version)
+SELECT entry.id::uuid, entry.actor_id::uuid, '01890000-0000-7000-8100-00000000000a', entry.action, entry.detail,
+       now() - interval '30 days', now() - interval '30 days', entry.actor_id::uuid, entry.actor_id::uuid, 0
+  FROM (VALUES ('01890000-0000-7000-8300-000000000001', '01890000-0000-7000-8200-000000000001', 'IMPERSONATION',
+                'userId=01890000-0000-7000-8000-000000000002, reason=SUP-1'),
+               ('01890000-0000-7000-8300-000000000002', '01890000-0000-7000-8200-000000000002', 'IMPERSONATION',
+                'userId=01890000-0000-7000-8000-000000000001, reason=userId=01890000-0000-7000-8000-000000000003,'),
+               ('01890000-0000-7000-8300-000000000003', '01890000-0000-7000-8200-000000000001', 'METADATA_UPDATE',
+                'TODO_LIST_DEFAULTS'))
+       AS entry (id, actor_id, action, detail);
 -- (account, tenant, role): the light member is in Alpha and Beta; the left member's membership is gone.
 INSERT INTO tenant_memberships (id, tenant_id, user_id, role, created_at, updated_at, version)
 SELECT gen_random_uuid(), membership.tenant_id::uuid, membership.user_id::uuid, membership.role, now() - interval '100 days', now(), 0

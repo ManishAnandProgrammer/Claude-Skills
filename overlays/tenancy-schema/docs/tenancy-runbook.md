@@ -27,14 +27,15 @@ volume, `docker compose down -v` first (that deletes the local data).
 
 Changeset `0013` grants the app role its rights (and default privileges for every later table);
 `0015` takes the write rights on `platform_users` back (staff accounts are the owner's to write,
-section 2). The app role must never own a table or be a superuser, itself or through a role it is a
+section 2), and `0041` gives back a deactivation's columns alone (a staff member deactivates another; a
+reactivation stays the owner's). The app role must never own a table or be a superuser, itself or through a role it is a
 member of: never `GRANT <app>_owner TO <app>_app` to fix a missing grant (it could then change any
 schema), grant the missing table right instead. The application checks this at startup
 (`PoolRoleCheck`) and stops naming what is wrong.
 
 ## 2. Platform staff
 
-Staff are rows, not an endpoint. **After the application's first start** (Liquibase creates
+Staff are created as rows, not through an endpoint. **After the application's first start** (Liquibase creates
 `platform_users` then; before it the insert fails with "relation does not exist"), as the owner role
 (`DB_OWNER_USER`), insert one with a bcrypt hash of its password (strength 12). The hash needs nothing but Docker (Apache's `htpasswd` writes `$2y$`, which
 the application's encoder reads):
@@ -54,11 +55,22 @@ SQL
 the local stack, run the same `insert` with the operator's own `psql` connection as the owner role. They
 sign in at `POST /api/v1/platform/auth/login`.
 
-**A staff member who leaves** is deactivated, never deleted (their audit history references the row), as
-the owner role: `update platform_users set deactivated_at = now() where email = lower(trim('<email>'));`
-(`UPDATE 1`). Their login is refused from then on, and the tokens they hold are refused at their next
-request (every platform request re-reads the row); no restart, no cache. Reactivating is the same
-statement with `deactivated_at = null`.
+**A staff member who leaves** is deactivated by another staff member, never deleted (their audit history
+references the row) and never by SQL: `POST /api/v1/platform/staff/{id}/deactivation` with the caller's own
+platform token (the id: `select id from platform_users where email = lower(trim('<email>'));`, any role). Their
+login is refused from then on, and their platform tokens at their next request (every platform request re-reads
+the row); no restart, no cache.
+<!-- session-version:begin -->
+Every impersonation they started within one impersonation token lifetime (`app.tenancy.impersonation.token-ttl`)
+ends at once, and so do the access tokens of the member they acted as, in that tenant (the member's app refreshes
+them). An `update` of `deactivated_at` by hand would leave those impersonation tokens working until they expire:
+nothing tells the application.
+<!-- session-version:else -->
+<!-- An impersonation token they already hold works until it expires (`app.tenancy.impersonation.token-ttl`): it -->
+<!-- issues nothing, and a new impersonation is refused. -->
+<!-- session-version:end -->
+Reactivating is the owner role's alone (the pool's role is refused it):
+`update platform_users set deactivated_at = null where email = lower(trim('<email>'));` (`UPDATE 1`).
 
 **An account** (a person, global across tenants) is suspended or reactivated by staff: find it with
 `GET /api/v1/platform/users?email=<address>` (its `id`, `status` and `version`), then

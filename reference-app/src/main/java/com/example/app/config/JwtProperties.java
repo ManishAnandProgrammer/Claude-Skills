@@ -20,7 +20,6 @@ public record JwtProperties(@NotBlank String secret,
     private static final int HS256_MIN_KEY_BYTES = 32;
     // A token's exp is whole seconds; a bare number (JWT_ACCESS_TTL=15) binds as milliseconds and fails this.
     private static final Duration MIN_ACCESS_TOKEN_TTL = Duration.ofSeconds(1);
-    /** The review profile's {@code short-lived(15)} access-token bound. */
     private static final Duration MAX_ACCESS_TOKEN_TTL = Duration.ofMinutes(15);
     // Sessions last days; an hour's floor refuses a bare number of seconds or days, which binds as milliseconds.
     private static final Duration MIN_REFRESH_TOKEN_TTL = Duration.ofHours(1);

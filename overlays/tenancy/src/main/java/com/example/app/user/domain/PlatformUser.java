@@ -10,12 +10,15 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.Instant;
 import java.util.Objects;
 
+/** Updated column by column: the pool's role may write a deactivation's columns only (0041). */
 @Entity
 @Table(name = "platform_users")
+@DynamicUpdate
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -39,5 +42,9 @@ public class PlatformUser extends AuditableEntity {
 
     public boolean isActive() {
         return Objects.isNull(deactivatedAt);
+    }
+
+    public void deactivate(Instant now) {
+        deactivatedAt = now;
     }
 }

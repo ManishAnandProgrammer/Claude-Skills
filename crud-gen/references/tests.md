@@ -32,7 +32,10 @@ see it. A project's own remote client is added to `TransactionGuards.isRemoteCli
 for free too (REST-20): `ObservedOutcomes` fails a test whose response the operation's docs don't list, and
 `ApiDocsDriftIntegrationTest` an unknown code or a restated bound; so the generated API interface has an
 `@ApiResponse` for every status its tests reach, naming every `errorCode` that status carries, and no
-description repeats a `@MaxLength`/`@Size`/`@Min`/`@Max` bound.
+description repeats a `@MaxLength`/`@Size`/`@Min`/`@Max` bound. The test base's `support` package serves
+test-only handlers (`HostileInputProbeController`, under `/api/{version}/hostile-input-probes`): a project
+test that walks the handler mappings against a table of its own skips the handlers whose bean type is in that
+package (`handler.getBeanType().getPackageName().equals(IntegrationTest.class.getPackageName())`).
 
 ## Conventions
 The test rules are house-review's TEST-xx (lenses.md): one behaviour per test with `@DisplayName`,

@@ -132,8 +132,9 @@ With **AskUserQuestion** (several per call):
    include each other: a record that members and the owner both write names both roles where a role
    is listed (an upload purpose: `"USER", "ADMIN"`). Not built: invitations of people without an
    account, a retention job for CLOSED tenants. Record the ones the project needs as open items.
-   (Built since: staff deactivation, `platform_users.deactivated_at` with `ActiveStaffFilter`; the
-   `tenant.provisioning.failed` metric.)
+   (Built since: staff deactivation, `POST /platform/staff/{id}/deactivation` setting
+   `platform_users.deactivated_at`, with `ActiveStaffFilter`, and with the session version the end of the
+   impersonations the staff member started; the `tenant.provisioning.failed` metric.)
 
 10. **Change history** (opt-in, default **no**: the `change-history` piece, house-review DATA-08). Must the
     project answer "who changed this row, when, and from what" for compliance (a school's marks, an ERP's
@@ -238,7 +239,8 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
 - Changesets: the copied ones keep the reference's numbers, with gaps for pieces not copied:
   sign-in 0001, 0007 (the ADMIN role: an ADMIN suspends accounts) and 0027 (account status, the new
   revocation reasons); metadata 0008; media 0009 and 0040 (its statuses and claim column renamed); example 0002–0006 and 0011, plus 0010 with media;
-  tenancy 0012 (plus 0015, staff accounts read-only for the app role, and 0028, staff deactivation),
+  tenancy 0012 (plus 0015, staff accounts read-only for the app role, 0028, staff deactivation, and 0041,
+  the app role's deactivation write and the impersonated account on the audit trail, a platform changeset),
   schema per tenant 0013 (`0013-tenant-schemas`), row mode 0013 (`0013-row-security`) and, with a
   piece that brings tenant tables, 0016 (their `tenant_id` defaults dropped: every insert names its
   tenant); example with metadata 0014 (the fixed key's seed); tenancy 0017 (the tenant's `members`),
@@ -386,4 +388,32 @@ reference's suite, so the copy measures its own level in step 4 and sets each by
    `SecurityConfig` for an external IdP, the runbook): `/house-review <those files>`. The unmodified
    copy is the reference, which `verify.sh` builds and tests in the skills repository; reviewing
    the copied files again finds nothing new. Expected: no findings outside open business decisions.
-4. Report what was copied, what was skipped (with the differences proposed), and the decisions.
+4. Record `pieces` and `skillsRelease` (`git -C ~/Documents/claude-skills rev-parse --short HEAD`) in the
+   crud profile. Report what was copied, what was skipped (with the differences proposed), and the decisions.
+
+## 5. Upgrade to a later skills release
+On a project whose crud profile records `skillsRelease`. The copied files are the project's now, adapted
+and grown; a later release changed the reference under them. Never copy over them:
+1. **Render both releases** into scratch directories, each holding an empty `pom.xml`: a worktree of the
+   skills repository at `skillsRelease` (`git worktree add <scratch>/base <skillsRelease>`) and the current
+   one, each running `scripts/bootstrap-copy.sh --target <dir> --package <the root package> --with {{pieces}}`.
+2. **Three-way merge each file** (`git merge-file <project file> <base file> <current file>`): base = the
+   old render, theirs = the new one, ours = the project's. A file the project deleted stays deleted;
+   one new in the release is copied. A conflict is resolved by hand, keeping the project's adaptation.
+   A hunk that brings a feature the project never took (a piece it doesn't have, a check its earlier
+   adaptation left out on purpose): ask, never add silently.
+3. **Renames:** read the whole diff between the two releases, not only the commit messages
+   (`git -C ~/Documents/claude-skills diff <skillsRelease> HEAD -- reference-app overlays`), and grep
+   the project for each renamed name: the project's own code calls the copied API too.
+4. **Changesets:** a piece's new changeset is **appended** to `db.changelog-master.yaml` after the
+   project's own, never inserted at its number's place (*Numbers* above). With a release in production,
+   `./mvnw verify -Dapp.test.upgrade.previous-release=<pieces>,<project>` proves the migration and
+   refuses a changeset inserted among the shipped ones.
+5. **Settings:** the new release's `ConfigurationBaselineIntegrationTest` names the baseline (house-review
+   CFG-04). A setting the project lacks is adopted, or kept off as a review-profile deviation with the
+   owner's reason; never by deleting its row.
+6. **Rules that changed:** read `git -C ~/Documents/claude-skills diff <skillsRelease> HEAD -- house-review
+   crud-gen` and run `/house-review` over the project's own code for the rules that changed (a renamed
+   convention, a new check): the copied files follow the reference, the project's own code does not yet.
+7. `{{buildCommand}}` green, then record the new `skillsRelease` and list the breaking changes (renamed
+   codes, values, JSON names, configuration keys) in the project's README or changelog for its clients.

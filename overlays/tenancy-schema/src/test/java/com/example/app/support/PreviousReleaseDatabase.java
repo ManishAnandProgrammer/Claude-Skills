@@ -122,14 +122,8 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
     }
 
     static int changesetsOf(Liquibase liquibase, Release previousRelease) throws LiquibaseException {
-        int count = 0;
-        for (ChangeSet changeSet : liquibase.getDatabaseChangeLog().getChangeSets()) {
-            if (!previousRelease.shipped(numberOf(changeSet.getFilePath()))) {
-                return count;
-            }
-            count++;
-        }
-        return count;
+        return previousRelease.leadingShipped(liquibase.getDatabaseChangeLog().getChangeSets().stream()
+                .map(ChangeSet::getFilePath).toList());
     }
 
     private static int numberOf(String filePath) {
@@ -162,6 +156,24 @@ public class PreviousReleaseDatabase implements BeanPostProcessor {
 
         boolean shipped(int number) {
             return number < FIRST_PROJECT_NUMBER ? number <= pieces : number <= project;
+        }
+
+        /**
+         * A shipped changeset listed after a new one would run in another order on a fresh database than on an
+         * upgraded one, where it already ran: a new changeset is appended to the master, never inserted.
+         */
+        int leadingShipped(List<String> filePaths) {
+            int leading = 0;
+            while (leading < filePaths.size() && shipped(numberOf(filePaths.get(leading)))) {
+                leading++;
+            }
+            for (String later : filePaths.subList(leading, filePaths.size())) {
+                if (numberOf(later) != 0 && shipped(numberOf(later))) {
+                    throw new IllegalStateException("%s shipped in the previous release but the master lists it after %s, which is new"
+                            .formatted(later, filePaths.get(leading)));
+                }
+            }
+            return leading;
         }
     }
 

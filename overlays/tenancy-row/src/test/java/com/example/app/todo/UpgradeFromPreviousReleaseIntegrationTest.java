@@ -109,6 +109,19 @@ class UpgradeFromPreviousReleaseIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("""
+            0041 gave each seeded impersonation the account it acted as, read from the start of its detail, and the \
+            direct edit none""")
+    void theSeededImpersonationsNameTheirAccount() {
+        assertThat(jdbc.queryForList("""
+                select id || ':' || coalesce(impersonated_user_id::text, '-') from platform_audit
+                 where id::text like '01890000-0000-7000-8300-%' order by id""", String.class)).containsExactly(
+                "01890000-0000-7000-8300-000000000001:01890000-0000-7000-8000-000000000002",
+                "01890000-0000-7000-8300-000000000002:01890000-0000-7000-8000-000000000001",
+                "01890000-0000-7000-8300-000000000003:-");
+    }
+
+    @Test
     @DisplayName("On the upgraded database, the seeded owner's OPEN page and newest page are planned on their indexes")
     void theUpgradedIndexesServeTheSeededOwner() {
         MapSqlParameterSource owner = new MapSqlParameterSource("owner", HEAVY).addValue("tenant", ALPHA);

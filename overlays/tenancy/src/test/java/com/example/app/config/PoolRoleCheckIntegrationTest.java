@@ -13,6 +13,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -50,7 +51,7 @@ class PoolRoleCheckIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("The pool's role as migrated is plain: no privileged role, no owned table, no write on platform_users")
+    @DisplayName("The pool's role as migrated is plain: no privileged role, no owned table, no write on platform_users but a deactivation's")
     void thePoolsRoleIsPlain() throws SQLException {
         assertThat(poolRoleAfter(""))
                 .containsEntry("privileged", false)
@@ -67,14 +68,17 @@ class PoolRoleCheckIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Membership in a BYPASSRLS role is caught, and so is a write right on platform_users granted again")
+    @DisplayName("""
+            Membership in a BYPASSRLS role is caught, and so is a write right on platform_users granted again, a single \
+            column's included""")
     void inheritedBypassAndStaffWritesAreCaught() throws SQLException {
         Map<String, Object> bypass = poolRoleAfter("""
                 create role pool_check_bypass nologin bypassrls;
                 grant pool_check_bypass to %s""");
-        Map<String, Object> staff = poolRoleAfter("grant insert on platform_users to %s");
 
         assertThat(bypass).containsEntry("privileged", true);
-        assertThat(staff).containsEntry("writes_staff", true);
+        for (String grant : List.of("insert", "update", "delete", "insert (email)", "update (password_hash)", "update (role)")) {
+            assertThat(poolRoleAfter("grant " + grant + " on platform_users to %s")).as(grant).containsEntry("writes_staff", true);
+        }
     }
 }

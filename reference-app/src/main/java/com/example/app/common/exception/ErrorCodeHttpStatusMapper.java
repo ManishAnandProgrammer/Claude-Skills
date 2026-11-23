@@ -80,6 +80,8 @@ public final class ErrorCodeHttpStatusMapper {
         // MAPPING.put(ErrorCode.TENANT_MEMBER_LAST_ADMIN, HttpStatus.CONFLICT);
         // roles:end
         // MAPPING.put(ErrorCode.TENANT_MEMBER_OWN_CHANGE, HttpStatus.FORBIDDEN);
+        // MAPPING.put(ErrorCode.PLATFORM_STAFF_NOT_FOUND, HttpStatus.NOT_FOUND);
+        // MAPPING.put(ErrorCode.PLATFORM_STAFF_OWN_DEACTIVATION, HttpStatus.FORBIDDEN);
         // tenancy:end
         // metadata:begin
         MAPPING.put(ErrorCode.METADATA_KEY_UNKNOWN, HttpStatus.NOT_FOUND);

@@ -9,8 +9,9 @@ allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion]
 
 Target: **$ARGUMENTS**
 
-- `bootstrap`: set up the shared house infrastructure once. Read
-  `~/.claude/skills/crud-gen/references/bootstrap.md` and follow it; skip the rest of this file.
+- `bootstrap`: set up the shared house infrastructure once, or, on a project whose crud profile records a
+  `skillsRelease`, upgrade it to the current one. Read `~/.claude/skills/crud-gen/references/bootstrap.md`
+  and follow it; skip the rest of this file.
 - a path to an entity: generate its CRUD (Steps 0–8 below). When the entity **already has generated
   code** (its service or repository exists), this is **update mode**: read *Updating an entity* first.
 

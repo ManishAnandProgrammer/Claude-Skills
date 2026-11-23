@@ -18,6 +18,8 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PlatformAuditEntry extends AuditableEntity {
 
+    static final String IMPERSONATION = "IMPERSONATION";
+
     @Column(name = "actor_id", nullable = false, updatable = false)
     private UUID actorId;
 
@@ -30,11 +32,24 @@ public class PlatformAuditEntry extends AuditableEntity {
     @Column(updatable = false)
     private String detail;
 
+    @Column(name = "impersonated_user_id", updatable = false)
+    private UUID impersonatedUserId;
+
     public static PlatformAuditEntry of(UUID actorId, UUID tenantId, String action, String detail) {
         return PlatformAuditEntry.builder()
                 .actorId(actorId)
                 .tenantId(tenantId)
                 .action(action)
+                .detail(detail)
+                .build();
+    }
+
+    public static PlatformAuditEntry impersonation(UUID actorId, UUID tenantId, UUID userId, String detail) {
+        return PlatformAuditEntry.builder()
+                .actorId(actorId)
+                .tenantId(tenantId)
+                .action(IMPERSONATION)
+                .impersonatedUserId(userId)
                 .detail(detail)
                 .build();
     }

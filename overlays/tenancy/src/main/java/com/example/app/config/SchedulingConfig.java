@@ -19,8 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Under virtual threads Boot's default scheduler ignores {@code spring.task.scheduling.pool.size}: this one has a
- * pool of its own, at least two threads, so one hung job can't stall the others.
+ * At least two threads, so one hung job can't stall the others.
  *
  * <p>Boot applies the {@link TaskDecorator} bean to its async executor. A scheduler is itself an {@code Executor},
  * which would make Boot skip that executor: {@code spring.task.execution.mode: force} keeps it.</p>

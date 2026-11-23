@@ -377,12 +377,13 @@ src/test/java/$reference_path/common/security/SessionVersionFilterIntegrationTes
 src/test/java/$reference_path/user/SessionVersionIntegrationTest.java
 src/test/java/$reference_path/user/service/SessionVersionServiceIntegrationTest.java
 LIST
-            # The number: the account's without tenancy, the membership's with it (and the tenant's
-            # suspension raises its members' numbers).
+            # The number: the account's without tenancy, the membership's with it (the tenant's suspension
+            # raises its members' numbers, a staff member's deactivation those of the members they impersonated).
             if tenancy_chosen; then cat <<LIST
 $SHARED/src/main/resources/db/changelog/changes/0022-memberships-session-version.sql
 $SHARED/src/main/java/$reference_path/user/dto/internal/MembershipSessionVersion.java
 $SHARED/src/main/java/$reference_path/tenant/api/TenantDeactivated.java
+$SHARED/src/main/java/$reference_path/tenant/api/ImpersonatedMember.java
 $SHARED/src/test/java/$reference_path/user/SessionVersionTenancyIntegrationTest.java
 LIST
             else
@@ -634,7 +635,7 @@ done
 # support/PreviousReleaseDatabase). A later platform changeset that tenant tables don't need goes in
 # platform_changesets only, never in first_changesets.
 first_changesets="0001-users-and-refresh-tokens.sql 0007-users-admin-role.sql 0012-tenancy.sql 0013-tenant-schemas.sql 0013-row-security.sql 0015-platform-users-read-only.sql 0020-tenant-members-list.sql 0021-users-session-version.sql 0022-memberships-session-version.sql"
-platform_changesets="$first_changesets 0027-users-status.sql 0028-platform-users-deactivation.sql 0030-platform-list-indexes.sql 0032-tenants-name-indexes.sql 0035-change-history.sql 0038-memberships-role-expand.sql 0039-memberships-role-contract.sql"
+platform_changesets="$first_changesets 0027-users-status.sql 0028-platform-users-deactivation.sql 0030-platform-list-indexes.sql 0032-tenants-name-indexes.sql 0035-change-history.sql 0038-memberships-role-expand.sql 0039-memberships-role-contract.sql 0041-platform-staff-deactivation.sql"
 # $1: platform, tenant, first, rest or all; the copied changesets of that kind, in order.
 changesets_of() {
     local want="$1" changeset name
