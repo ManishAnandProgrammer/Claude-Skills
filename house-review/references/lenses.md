@@ -24,8 +24,14 @@ is code-smells.md, java.md and architecture.md.
   recorded with that reason, and the tests prove every role reaches every endpoint on another member's
   record (crud-gen tests.md row 14), not a USER's 403. The same goes for an upload purpose naming
   `USER`: never while a public signup reaches the table, fine for a member someone added.
+- **A named party whose action checks the owner** (an approver, a reviewer, a sign-off: AUTHZ-04): without
+  tenancy, while signup is public, the permission it acts with is held by no role signup grants. Held by `USER`,
+  anyone signs up a second account, names it and approves their own record. Not for a party who only reads or is
+  served (golden `TODO_REQUESTER`, `TODO_READ_OWN`). The party's picker
+  (`/users/dropdown?for=`) shows names to every holder of the write's permission: a recorded owner decision (SEC-04).
 - **Detect:** a controller whose service has no owner scope and whose write methods carry no role
-  annotation while signup is public and there is no tenancy; a shared resource with personal fields
+  annotation while signup is public and there is no tenancy; a `NamedParty` whose `mustHold()` is a deciding
+  permission (`*_APPROVE_*`, `*_REJECT_*`, `*_DECIDE_*`) the signup role holds; a shared resource with personal fields
   readable by every USER without a recorded decision. Not a finding: the same with tenancy and a
   recorded "every member writes" decision.
 - **Severity:** Critical when a refusal is missing (a shared table any account can write is
@@ -348,11 +354,33 @@ is code-smells.md, java.md and architecture.md.
   clients retry 500s wrongly, or not at all); Medium (other 500s instead of 503).
 
 ### REL-11: Writes that clients retry are idempotent
-- **Check:** a POST a client may retry after a 503 or timeout has an `Idempotency-Key` or a
-  natural or client-chosen key, and replays the stored result. "A `JDBCConnectionException`
-  during COMMIT… maps to 503, but the commit may have landed." Clients choose idempotency keys,
-  never primary keys that carry meaning: a client-chosen time-ordered id allowed backdating.
-- **Severity:** Medium (High on payment or submission paths).
+A client retries after a 503 or a timeout, and the first attempt may have landed ("a `JDBCConnectionException`
+during COMMIT… maps to 503, but the commit may have landed"). Whether a write needs an `Idempotency-Key` is
+decided by two questions, in order:
+- **1. Does something already refuse an identical second request?** A unique constraint (a room's name), an
+  exclusion constraint (leave on the same days), the version a PUT or PATCH sends (the retry is a 409
+  `OPTIMISTIC_LOCK_CONFLICT`), a PUT to a URL the client names, a DELETE. Then **no key**: the retry's 409 or 404
+  tells the client to re-read, and the re-read shows the first attempt.
+- **2. Otherwise, does the duplicate do any of these?**
+  - (a) **moves money**: a charge, refund, payout or transfer, in the application or through a provider.
+    Recording an amount (an expense draft's `amount`) moves none;
+  - (b) **acts outside the database and can't be recalled**: an email, SMS, push or webhook sent, a paid or
+    external API called;
+  - (c) **uses up something counted**: stock, seats, a quota, a balance, a gapless number (`INV-000123`);
+  - (d) **lands with another person**: a submission an approver decides, a request routed to someone, a
+    notification;
+  - (e) **has legal or accounting weight, or its owner can't delete it**: an invoice, a ledger entry, an audit
+    record, a record with no delete for its owner.
+
+  Any row: the POST takes an `Idempotency-Key` header (the client's, never a primary key that carries meaning: a
+  client-chosen time-ordered id allowed backdating), stored with the result in the write's transaction under a
+  unique key per caller, and a repeat replays the stored answer; the same key with another body is 422. No row:
+  **no key**, the duplicate stays in its owner's own data, listed and deletable (a todo, an expense draft).
+- **Detect:** a `@PostMapping` create or action with neither question 1's guard nor an `Idempotency-Key`, whose
+  service does one of (a)–(e) (a provider client, a mail or SMS sender, an outbox row, a counter's `next`, a
+  decrement, a status that routes the record to another party).
+- **Not a finding when:** question 1 holds, or none of (a)–(e) does. The verdict names the question and the row.
+- **Severity:** High for (a); Medium for (b)–(e).
 
 ### REL-12: Paid or quota-bearing calls
 - **Check:** a call that costs money (LLM, SMS) has:
@@ -586,7 +614,9 @@ resilience or failure-injection test is Medium).
 
 ### TEST-04: No leaks in errors
 - **Check:** new 409 and 500 paths assert the whole body has no SQL, constraint names, class
-  names or stack traces.
+  names or stack traces. The house test base does it for every error answer of every MockMvc call
+  (`NoInternalsInErrors`, a `MockMvcBuilderCustomizer`): with it, a MockMvc test needs no check of its own and its
+  absence is not a finding; a call through another client (a raw HTTP client) still asserts it.
 
 ### TEST-05: Concurrency
 - **Check:** new transitions, dedupe, caps and uniqueness get N identical requests through a

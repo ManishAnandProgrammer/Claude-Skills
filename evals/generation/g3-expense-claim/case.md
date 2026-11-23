@@ -22,7 +22,7 @@ needed: a new built-in role is a `Role` constant, a changeset widening `ck_users
   - the **approver** (`approverId`): the person the claimant names at the create as the one who decides it: an
     active account holding `EXPENSE_CLAIM_APPROVE_ASSIGNED` now, other than the claimant (the claimant: 400
     `EXPENSE_CLAIM_APPROVER_IS_OWNER`; no account: 404 `USER_NOT_FOUND` through `Users`; suspended, or without the
-    permission, a `FINANCE` account for one: 409 `EXPENSE_CLAIM_APPROVER_INELIGIBLE` through `PermissionHolders`).
+    permission, a `USER` or `FINANCE` account for one: 409 `EXPENSE_CLAIM_APPROVER_INELIGIBLE` through `PermissionHolders`).
     The party is a `user.api.NamedParty` constant, `EXPENSE_CLAIM_APPROVER`, named by `EXPENSE_CLAIM_CREATE_OWN`
     and `EXPENSE_CLAIM_EDIT_OWN`. The approver may be changed by the update while the claim is a `DRAFT`, and
     by the reassignment below while it is `SUBMITTED`, each checked again only when it changes. The approver reads
@@ -30,14 +30,15 @@ needed: a new built-in role is a `Role` constant, a changeset widening `ck_users
   - **finance** reads every claim, and does nothing else.
   Anyone else gets 404 for a claim, as if it didn't exist; a party trying an action it may not take on a claim it
   can read gets 403 `EXPENSE_CLAIM_NOT_YOURS`.
-- **Roles** (Level 1): a new built-in role `FINANCE`. `USER` is both a claimant and an approver (any account can
-  be named approver); `FINANCE` holds only the read of every claim; `ADMIN` holds what `USER` holds and the read of
-  every claim.
+- **Roles** (Level 1): two new built-in roles. Signup is public, so the signup role `USER` is a claimant only
+  (an approver it could hold would let anyone sign up a second account, name it and approve their own claims,
+  SEC-01); `APPROVER` (given by an operator, like `ADMIN`) holds what `USER` holds and the approver's permissions;
+  `FINANCE` holds only the read of every claim; `ADMIN` holds what `APPROVER` holds and the read of every claim.
 - **Permissions**, in a new menu area `EXPENSE_CLAIMS`:
   - `EXPENSE_CLAIM_READ_OWN`, `EXPENSE_CLAIM_CREATE_OWN`, `EXPENSE_CLAIM_EDIT_OWN` (the update),
-    `EXPENSE_CLAIM_SUBMIT_OWN`, `EXPENSE_CLAIM_DELETE_OWN`: the claimant's (reach `OWN`; `USER`, `ADMIN`);
+    `EXPENSE_CLAIM_SUBMIT_OWN`, `EXPENSE_CLAIM_DELETE_OWN`: the claimant's (reach `OWN`; `USER`, `APPROVER`, `ADMIN`);
   - `EXPENSE_CLAIM_READ_ASSIGNED`, `EXPENSE_CLAIM_APPROVE_ASSIGNED`, `EXPENSE_CLAIM_REJECT_ASSIGNED`: the
-    approver's (reach `ASSIGNED`: assigned by the claim's `approverId`; `USER`, `ADMIN`);
+    approver's (reach `ASSIGNED`: assigned by the claim's `approverId`; `APPROVER`, `ADMIN`);
   - `EXPENSE_CLAIM_READ` (reach `ALL`): finance's (`FINANCE`, `ADMIN`).
   Prerequisites: each `_OWN` action needs `EXPENSE_CLAIM_READ_OWN`, each `_ASSIGNED` action
   `EXPENSE_CLAIM_READ_ASSIGNED`. No READ is another READ's prerequisite.
@@ -75,7 +76,9 @@ needed: a new built-in role is a `Role` constant, a changeset widening `ck_users
   latest day first). Filter: `status`. The team and finance lists show the claimant by id only (no names).
 - **No dropdown** of claims. The approver is picked from the user module's picker, `GET
   /users/dropdown?for=EXPENSE_CLAIM_CREATE_OWN` (or `EXPENSE_CLAIM_EDIT_OWN` on the edit and the reassignment),
-  which lists the accounts the `EXPENSE_CLAIM_APPROVER` constant accepts: no dropdown of the module's own.
+  which lists the accounts the `EXPENSE_CLAIM_APPROVER` constant accepts: no dropdown of the module's own. The
+  owner's decision (SEC-04): every claimant sees the approvers' full names and ids in that picker, and nobody
+  else's; record it in *Decisions per entity*.
 - **Retention:** claims are kept (a business record); no purge.
 
 ## Expected outcomes
@@ -88,9 +91,9 @@ The gates decide the verdict (README.md); a reader checks by hand in the work co
   (an `AllowedActionContract` row per flag);
 - `BusinessCalendar.today()` read once in the service and passed to the policy's approve rule (never
   `LocalDate.now(clock)`); the window a typed `Period` setting; a policy test that fixes the day;
-- `Role.FINANCE` with `EXPENSE_CLAIM_READ`, a changeset widening `ck_users_role`, `newFinance()` in the test base;
+- `Role.APPROVER` and `Role.FINANCE` with their permissions, a changeset widening `ck_users_role`, `newApprover()` and `newFinance()` in the test base;
 - the approver checked through `Users` and `PermissionHolders.holds(id, NamedParty.EXPENSE_CLAIM_APPROVER.mustHold())`
   at the create, at an update that changes it and at the reassignment; the `NamedParty` constant the only user-module
-  change; tests.md row 27e (a `FINANCE` approver refused, the picker leaving them out);
+  change; tests.md row 27e (a `USER` or `FINANCE` approver refused, the picker leaving them out);
 - the tests of references/tests.md, each party by each call (`TodoRequesterIntegrationTest`'s shape), the flags'
   `ACCESS_DENIED` for finance.

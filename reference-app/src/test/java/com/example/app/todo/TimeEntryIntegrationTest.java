@@ -890,6 +890,10 @@ class TimeEntryIntegrationTest extends IntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[?(@.parameter == 'spentOnTo')].detail", contains("must be on or before 2999-12-31")));
+        getAs(user.accessToken(), entries(todoId) + "?spentOnTo=-300000-01-01")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[?(@.parameter == 'spentOnTo')].detail", contains("must be on or after 1900-01-01")));
     }
 
     private long statementsFor(TestUser user, String path) throws Exception {

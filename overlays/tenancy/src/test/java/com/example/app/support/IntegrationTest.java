@@ -775,7 +775,7 @@ public abstract class IntegrationTest {
     }
 
     protected static void assertNoInternals(String body) {
-        assertThat(body).doesNotContain("uq_", "fk_", "ex_", "ck_", "pk_", "SQL", "Exception", "java.");
+        NoInternalsInErrors.assertNoInternals(body);
     }
 
     protected static void assertRefusalsAre(List<Answer> answers, int status, String errorCode) {

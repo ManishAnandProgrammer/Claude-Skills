@@ -352,7 +352,13 @@ request or the profile already says. Record each answer in the crud profile's *D
   (4.3; without tenancy a person stays an id), or by id only;
 - **named parties**: per person a write names who will act (an approver, an assignee), "who may be named as
   <party>?", default **an active account holding <ACTING_PERMISSION>** (the permission that party acts with), and
-  what happens when they lose it (default: the owner reassigns while the record is not final; 4.3);
+  what happens when they lose it (default: the owner reassigns while the record is not final; 4.3). **A party whose
+  action checks the owner** (approves, rejects, signs off): without tenancy, while signup is public, its permission
+  is never held by the role signup grants (`USER`), or anyone signs up a second account, names it and approves
+  their own record (SEC-01); it goes to a role an operator gives (`APPROVER`, `MANAGER`), and a request giving it to
+  `USER` is refused. A party who only reads or is served (golden `TODO_REQUESTER`) needs no such role. The picker shows
+  the holders' names to every caller holding the write's permission: a personal-data read, recorded as the owner's
+  decision (SEC-04);
 - **upload limits**: per upload purpose, the file sizes, file counts and content types (Step 5);
 - **overlap race**: with an exclusion constraint, whether DATA-35's rare 503 is accepted (the default) or
   the endpoint's traffic makes it normal, so the scope is serialised;
@@ -944,6 +950,16 @@ table that feeds them) raises nothing, as golden `PersonAccessService` and `Acce
 for what the token carries or its refresh relies on (the account's status, the password, signing out everywhere,
 with tenancy the membership).
 
+**A retried POST (REL-11's two questions).** For each POST the entity gets (its create, each action that is a
+POST): first, does a unique or exclusion constraint, or the version the write sends, already refuse an identical
+second request? Then nothing more. Otherwise, does the duplicate move money, act outside the database beyond
+recall (mail, SMS, a webhook, a paid API), use up something counted (stock, a quota, a balance, a gapless number),
+land with another person (a submission routed to an approver), or carry legal or accounting weight (or have no
+delete for its owner)? None: no key (a draft, a todo). Any: **ask** the developer (unattended: the business rules'
+answer, else record it as an open item in the report); the house has no golden `Idempotency-Key` yet, so the
+generation names the endpoint and REL-11's row and leaves the key to the developer rather than inventing one.
+Record the verdict per POST in *Decisions per entity*.
+
 ### 4.9 API interface (OpenAPI)
 Golden `TodoApi`: `@Tag`; `@Operation` with text-block descriptions; an `@ApiResponse` for every
 status and errorCode the endpoint can return (except `API_VERSION_UNSUPPORTED`: a customizer adds it
@@ -1094,6 +1110,14 @@ checklist's review item stays open until that reviewer's report is clean.
       changeset, and `BuiltInRolesIntegrationTest` green. A detail several reaches read `@Requires` each reach's READ,
       a list per reach (AUTHZ-03, AUTHZ-05); each `allowedActions` flag names its endpoint's permission, proven by
       its `AllowedActionContract` row (AUTHZ-07, references/tests.md row 28l).
+- [ ] Each POST's REL-11 verdict in *Decisions per entity* (refused twice by a key or version; or none of
+      money, outside effects, counted things, another person, legal weight; or the open item reported).
+- [ ] Every 409 and 500 a test reaches asserts its code and no internals (tests.md row 22b); each date filter
+      parameter has its bound and `-300000-01-01` tests (row 25c).
+- [ ] Every absence assertion (a stranger's empty `?ids=`, a row left out) follows, in the same test, the same
+      call showing the record to its party (TEST-16); every 400 a service raises about a request field carries its
+      `errors` pointer (`#/approverId`, ERR-07).
+- [ ] A record listed at several reaches: every list row per list (tests.md, before *Required tests*).
 - [ ] A convention changed during the run (what a role holds, what a permission means): the roles'
       grants and the profiles say the new rule, and no comment generated earlier still says the old one
       (grep them).
