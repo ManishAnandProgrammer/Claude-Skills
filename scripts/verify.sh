@@ -6,11 +6,14 @@
 #   1. reference-app builds and every test passes (Testcontainers: Docker must be reachable), and so do its
 #      quality gates: static analysis with security rules and the coverage minimum (verify, house-review CFG-11).
 #      Every copy below runs the same gates from the same pom and its piece's exclude entries (an overlay's
-#      own with tenancy), with coverage minimums of its own; 2d and 2f, which run a subset of the tests, check
+#      own with tenancy), with the coverage minimums bootstrap-copy.sh --new-project writes for its pieces
+#      (scripts/coverage-minimums, checked against each run); 2d and 2f, which run a subset of the tests, check
 #      static analysis only. It is a plain application: tenancy exists only in overlays/,
 #      so it is proven by 2g and 2h;
 #   2. bootstrap-copy.sh copies core + sign-in into a fresh project under another package and
 #      another application name, and that project builds and passes its tests too;
+#      2q. core + sign-in + example: the golden modules alone, as the eval suite's review copies start
+#          (evals/README.md), so their coverage row is measured too;
 #      2b. the same with the example module and the metadata piece, so every golden file arrives
 #          with its changesets;
 #      2c. core + sign-in + metadata without the example: the mechanism alone, none of its samples;
@@ -48,9 +51,9 @@
 #          the safety rules counted per tenant, staff's suspension counts every tenant of the person; the upgrade path
 #          copies each seeded membership's role (row mode in one changeset, schema per tenant per schema, then the
 #          platform's column dropped once every schema copied: expand, contract);
-#      the session version is opt-in: every copy without it (2, 2b, 2c, 2e, 2g, 2i, 2d) is checked for
+#      the session version is opt-in: every copy without it (2, 2q, 2b, 2c, 2e, 2g, 2i, 2d) is checked for
 #      none of its traces (no column, claim, filter, endpoint or configuration key); so is the change history
-#      (the reference, 2h, 2j, 2k, 2l, 2m, 2n, 2o and 2p have it; 2, 2b, 2c, 2e, 2f, 2g, 2i and 2d have none of its
+#      (the reference, 2h, 2j, 2k, 2l, 2m, 2n, 2o and 2p have it; 2, 2q, 2b, 2c, 2e, 2f, 2g, 2i and 2d have none of its
 #      traces: no table, trigger function, actor, job or setting); and so is the roles piece (only 2n, 2o and 2p have it);
 #      2d. core alone (a project signing users in elsewhere), without sign-in's Redis and Bucket4j
 #          dependencies: main and test code compile and the unit tests pass. Its integration and
@@ -71,11 +74,11 @@
 # While iterating, --only runs just the named stages (comma list of the ids below); step 0 and the
 # setup the copies share always run:
 #   scripts/verify.sh --only 2i,2j
-#   ids: reference (1), 2, 2b, 2c, 2e, 2f, 2g, 2h, 2i, 2j, 2k, 2l, 2m, 2n, 2o, 2p, 2d, image (3)
+#   ids: reference (1), 2, 2q, 2b, 2c, 2e, 2f, 2g, 2h, 2i, 2j, 2k, 2l, 2m, 2n, 2o, 2p, 2d, image (3)
 # A partial run never records the fingerprint, so a push still needs one full run.
 set -euo pipefail
 
-STAGES="reference 2 2b 2c 2e 2f 2g 2h 2i 2j 2k 2l 2m 2n 2o 2p 2d image"
+STAGES="reference 2 2q 2b 2c 2e 2f 2g 2h 2i 2j 2k 2l 2m 2n 2o 2p 2d image"
 # The highest changeset number of the release in production (main): the upgrade path starts from it.
 # Raise it, and extend the previous-release seeds, when a release ships. The pieces' range alone (0001-0099):
 # the reference has no project changesets (a project passes <pieces>,<project>, PreviousReleaseDatabase).
@@ -154,16 +157,54 @@ coverage_of() {
         END { printf "coverage: lines %.2f %%, branches %.2f %%\n", 100 * lc / (lc + lm), 100 * bc / (bc + bm) }' "$csv"
 }
 
+# A bootstrap copy, started as a new project starts (crud-gen references/bootstrap.md, "No project yet"): the application
+# class, then bootstrap-copy.sh --new-project, which writes the wrapper, the .gitignore and the pom, whose coverage
+# minimums are its pieces' row of scripts/coverage-minimums. $1 directory, $2 name (package com.acme.<name>), $3 the
+# pieces, $4 the copy's log.
+declare -A copy_pieces
+new_copy() {
+    local dir="$1" name="$2" pieces="$3" log="$4" class
+    class="${name^}Application"
+    mkdir -p "$dir/src/main/java/com/acme/$name"
+    sed -e "s/package com.acme.smoke;/package com.acme.$name;/" -e "s/SmokeApplication/$class/g" "$APPLICATION" \
+        > "$dir/src/main/java/com/acme/$name/$class.java"
+    "$REPO/scripts/bootstrap-copy.sh" --new-project "$name" --target "$dir" --package "com.acme.$name" --with "$pieces" > "$log" 2>&1 \
+        || { tail -5 "$log" >&2; echo "FAILED: bootstrap-copy.sh for $dir (log: $log)" >&2; exit 1; }
+    copy_pieces["$dir"]="$pieces"
+}
+
+# A copy's coverage against its row of scripts/coverage-minimums. Its pom carries the row, so a coverage under it already
+# failed the build; a row two or more steps (hundredths) under the rule (a full point below the measured ratio, rounded
+# down) is stale and fails here. One step is left to run-to-run noise.
+measured_sets=" "
+stale_sets=""
+minimums_hold() {
+    local dir="$1" key row
+    key="$(tr ',' '\n' <<< "$2" | sort -u | paste -sd, -)"
+    row="$(awk -v key="$key" '!/^#/ && $1 == key { print $2, $3; exit }' "$REPO/scripts/coverage-minimums")"
+    [ -n "$row" ] || { echo "FAILED: scripts/coverage-minimums has no row for $key, which $dir measured: add it" >&2; return 1; }
+    awk -F, -v row="$row" -v key="$key" 'NR > 1 { bm += $6; bc += $7; lm += $8; lc += $9 }
+        END { split(row, minimum, " ")
+              line = int(100 * lc / (lc + lm) - 1) / 100; branch = int(100 * bc / (bc + bm) - 1) / 100
+              if (line >= minimum[1] + 0.015 || branch >= minimum[2] + 0.015) {
+                  printf "FAILED: scripts/coverage-minimums row %s (%s) is stale: this run gives %.2f %.2f; raise it\n", key, row, line, branch > "/dev/stderr"
+                  exit 1 } }' "$dir/target/site/jacoco/jacoco.csv" || stale_sets+="$key "
+    measured_sets+="$key "
+}
+
 # verify runs the tests and the quality gates (static analysis, the coverage minimum). Extra arguments go to Maven.
-# A copy holds fewer tests than the reference, so each copy stage passes minimums of its own
-# (-Dcoverage.line.minimum, -Dcoverage.branch.minimum): measured and set like the reference's (house-review
-# CFG-11: a full point below the lowest measured run, rounded down), and only ever raised.
+# A copy holds fewer tests than the reference: its pom's minimums are its pieces' row of scripts/coverage-minimums
+# (new_copy), measured and set like the reference's (house-review CFG-11: a full point below the lowest measured run,
+# rounded down), only ever raised, and checked against this run (minimums_hold).
 mvn_verify() {
     local dir="$1" log="$2"
     shift 2
     if (cd "$dir" && ./mvnw -B verify "$@" > "$log" 2>&1); then
         grep -E "Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$" "$log" | tail -1
         coverage_of "$dir"
+        if [ -n "${copy_pieces[$dir]:-}" ] && [ -f "$dir/target/site/jacoco/jacoco.csv" ]; then
+            minimums_hold "$dir" "${copy_pieces[$dir]}" || return 1
+        fi
         return 0
     fi
     echo "FAILED: $dir (log: $log)" >&2
@@ -265,10 +306,10 @@ if wants reference; then
     upgraded "$REFERENCE"
 fi
 
-# The smoke project's application class is the template every other copy starts from.
-project="$WORK/smoke"
-mkdir -p "$project/src/main/java/com/acme/smoke"
-cat > "$project/src/main/java/com/acme/smoke/SmokeApplication.java" <<'JAVA'
+# The application class every copy starts from, as a project writes it before bootstrap (bootstrap.md, "No project
+# yet"): new_copy renames it per copy.
+APPLICATION="$WORK/SmokeApplication.java"
+cat > "$APPLICATION" <<'JAVA'
 package com.acme.smoke;
 
 import org.springframework.boot.SpringApplication;
@@ -287,11 +328,12 @@ JAVA
 
 if wants 2; then
     echo "[2/3] bootstrap-copy into a fresh project (package com.acme.smoke)"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$project/"
-    sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>smoke</artifactId>|' -e 's|<name>reference-app</name>|<name>smoke</name>|' \
-        "$REFERENCE/pom.xml" > "$project/pom.xml"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$project" --package com.acme.smoke --with core,sign-in > "$WORK/copy.log"
+    project="$WORK/smoke"
+    new_copy "$project" smoke core,sign-in "$WORK/copy.log"
     grep -q "com.example.app" -r "$project/src" && { echo "FAILED: com.example.app left in the copied sources" >&2; exit 1; }
+    # A new project ignores its build output and local secrets from the first commit.
+    grep -qx "target/" "$project/.gitignore" && grep -qx ".env" "$project/.gitignore" && [ -x "$project/mvnw" ] \
+        || { echo "FAILED: the new project's .gitignore or wrapper is missing (bootstrap-copy.sh --new-project)" >&2; exit 1; }
     [ -f "$project/docs/runbook.md" ] || { echo "FAILED: the incident runbook is missing from the core copy" >&2; exit 1; }
     grep -qiwE "todo|todos" "$project/compose.yaml" "$project/.env.example" && { echo "FAILED: the example's names left in compose.yaml or .env.example" >&2; exit 1; }
     grep -rq "docs/design" "$project/src" && { echo "FAILED: a copied file points to a design note that isn't copied" >&2; exit 1; }
@@ -317,60 +359,51 @@ if wants 2; then
     # Bootstrap renames the application; tests must not depend on the reference's name.
     sed -i 's/\${APP_NAME:reference}/${APP_NAME:smoke}/' "$project/src/main/resources/application.yml"
     grep -q 'APP_NAME:smoke' "$project/src/main/resources/application.yml" || { echo "FAILED: could not rename the smoke application" >&2; exit 1; }
-    # Coverage measured 2026-11-18 at lines 89.33 %, branches 76.52 %; only ever raised.
-    mvn_verify "$project" "$WORK/smoke.log" -Dcoverage.line.minimum=0.88 -Dcoverage.branch.minimum=0.75
+    mvn_verify "$project" "$WORK/smoke.log"
+fi
+
+if wants 2q; then
+    echo "[2q/3] bootstrap-copy with the example module alone (package com.acme.golden)"
+    golden="$WORK/golden"
+    new_copy "$golden" golden core,sign-in,example "$WORK/copy-golden.log"
+    grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-row|tenancy-schema):(begin|else|end)|MetadataKey|TODO_ATTACHMENT|media_files" "$golden/src" \
+        && { echo "FAILED: piece markers, metadata or media entries left in the copy with the example alone" >&2; exit 1; }
+    no_session_version "$golden/src" "$golden/docs"
+    no_change_history "$golden/src" "$golden/docs"
+    no_roles "$golden/src" "$golden/docs" "$golden/spotbugs-exclude.xml"
+    mvn_verify "$golden" "$WORK/golden.log"
 fi
 
 if wants 2b; then
     echo "[2b/3] bootstrap-copy with the example module (package com.acme.example)"
     example="$WORK/example"
-    mkdir -p "$example/src/main/java/com/acme/example"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$example/"
-    sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>example</artifactId>|' -e 's|<name>reference-app</name>|<name>example</name>|' \
-        "$REFERENCE/pom.xml" > "$example/pom.xml"
-    sed -e 's/package com.acme.smoke;/package com.acme.example;/' -e 's/SmokeApplication/ExampleApplication/g' \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$example/src/main/java/com/acme/example/ExampleApplication.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$example" --package com.acme.example --with core,sign-in,example,metadata > "$WORK/copy-example.log"
+    new_copy "$example" example core,sign-in,example,metadata "$WORK/copy-example.log"
     grep -rqE "(example|metadata|admin|media|tenancy-row):(begin|else|end)|TenantOwnedEntity|app\.tenant_id|ROW LEVEL SECURITY|definePolicyIfAbsent" "$example/src" && { echo "FAILED: piece markers or row-mode tenancy left in the copy" >&2; exit 1; }
     grep -rqE "Attachment|UploadPurpose|MEDIA_(BUCKET|STORAGE)|UPLOAD_|media_files|awssdk" "$example/src" && { echo "FAILED: media entries left in an example copy without the media piece" >&2; exit 1; }
     [ -f "$example/src/test/java/com/acme/example/metadata/MetadataIntegrationTest.java" ] || { echo "FAILED: the metadata samples' tests are missing from the copy with both pieces" >&2; exit 1; }
     no_session_version "$example/src" "$example/docs"
     no_change_history "$example/src" "$example/docs"
     no_roles "$example/src" "$example/docs" "$example/spotbugs-exclude.xml"
-    # Coverage measured 2026-11-18 at lines 95.64 %, branches 84.76 %; only ever raised.
-    mvn_verify "$example" "$WORK/example.log" "$UPGRADE" -Dcoverage.line.minimum=0.94 -Dcoverage.branch.minimum=0.83
+    mvn_verify "$example" "$WORK/example.log" "$UPGRADE"
     upgraded "$example"
 fi
 
 if wants 2c; then
     echo "[2c/3] bootstrap-copy with the metadata piece, without the example (package com.acme.meta)"
     meta="$WORK/meta"
-    mkdir -p "$meta/src/main/java/com/acme/meta"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$meta/"
-    sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>meta</artifactId>|' -e 's|<name>reference-app</name>|<name>meta</name>|' \
-        "$REFERENCE/pom.xml" > "$meta/pom.xml"
-    sed -e 's/package com.acme.smoke;/package com.acme.meta;/' -e 's/SmokeApplication/MetaApplication/g' \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$meta/src/main/java/com/acme/meta/MetaApplication.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$meta" --package com.acme.meta --with core,sign-in,metadata > "$WORK/copy-meta.log"
+    new_copy "$meta" meta core,sign-in,metadata "$WORK/copy-meta.log"
     grep -rqE "(example|metadata):(begin|end)|TODO_LIST|todo-list|TodoListSettings" "$meta/src" && { echo "FAILED: samples or markers left in a metadata copy without the example piece" >&2; exit 1; }
     [ -f "$meta/src/main/resources/db/changelog/changes/0007-users-admin-role.sql" ] || { echo "FAILED: the ADMIN role changeset is missing from the metadata copy" >&2; exit 1; }
     no_session_version "$meta/src" "$meta/docs"
     no_change_history "$meta/src" "$meta/docs"
     no_roles "$meta/src" "$meta/docs" "$meta/spotbugs-exclude.xml"
-    # Coverage measured 2026-11-18 at lines 84.73 %, branches 74.80 %; only ever raised.
-    mvn_verify "$meta" "$WORK/meta.log" -Dcoverage.line.minimum=0.83 -Dcoverage.branch.minimum=0.73
+    mvn_verify "$meta" "$WORK/meta.log"
 fi
 
 if wants 2e; then
     echo "[2e/3] bootstrap-copy with the media piece, without the example (package com.acme.media)"
     media="$WORK/media"
-    mkdir -p "$media/src/main/java/com/acme/media"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$media/"
-    sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>media</artifactId>|' -e 's|<name>reference-app</name>|<name>media</name>|' \
-        "$REFERENCE/pom.xml" > "$media/pom.xml"
-    sed -e 's/package com.acme.smoke;/package com.acme.media;/' -e 's/SmokeApplication/MediaApplication/g' \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$media/src/main/java/com/acme/media/MediaApplication.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$media" --package com.acme.media --with core,sign-in,media > "$WORK/copy-media.log" 2>&1
+    new_copy "$media" media core,sign-in,media "$WORK/copy-media.log"
     grep -rqE "(example|metadata|media|admin):(begin|end)|TODO_ATTACHMENT|TodoAttachment|todo_attachments|TODO_LIST|METADATA_" "$media/src" && { echo "FAILED: samples, todo code or markers left in a media copy without the example piece" >&2; exit 1; }
     [ -f "$media/src/main/resources/db/changelog/changes/0007-users-admin-role.sql" ] && grep -q "ADMIN" "$media/src/main/java/com/acme/media/user/domain/Role.java" \
         || { echo "FAILED: the ADMIN role is missing from the media copy (its policy admin endpoint needs it)" >&2; exit 1; }
@@ -382,20 +415,13 @@ if wants 2e; then
     for endpoint_test in UploadUrlIntegrationTest UploadPolicyIntegrationTest PresignedUploadIntegrationTest; do
         [ -f "$media/src/test/java/com/acme/media/media/$endpoint_test.java" ] || { echo "FAILED: $endpoint_test is missing from the media copy" >&2; exit 1; }
     done
-    # Coverage measured 2026-11-18 at lines 82.59 %, branches 70.62 %; only ever raised.
-    mvn_verify "$media" "$WORK/media.log" -Dcoverage.line.minimum=0.81 -Dcoverage.branch.minimum=0.69
+    mvn_verify "$media" "$WORK/media.log"
 fi
 
 if wants 2f; then
     echo "[2f/3] bootstrap-copy with the example and media pieces (package com.acme.files)"
     files="$WORK/files"
-    mkdir -p "$files/src/main/java/com/acme/files"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$files/"
-    sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>files</artifactId>|' -e 's|<name>reference-app</name>|<name>files</name>|' \
-        "$REFERENCE/pom.xml" > "$files/pom.xml"
-    sed -e 's/package com.acme.smoke;/package com.acme.files;/' -e 's/SmokeApplication/FilesApplication/g' \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$files/src/main/java/com/acme/files/FilesApplication.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$files" --package com.acme.files --with core,sign-in,example,media,session-version > "$WORK/copy-files.log" 2>&1
+    new_copy "$files" files core,sign-in,example,media,session-version "$WORK/copy-files.log"
     grep -rqE "(example|metadata|media|admin|session-version):(begin|else|end)|METADATA_|MetadataKey" "$files/src" "$files/docs" \
         && { echo "FAILED: markers or metadata entries left in the example and media copy" >&2; exit 1; }
     # The session version per account: the users column, not the membership's (no tenancy here).
@@ -429,13 +455,7 @@ fi
 if wants 2g; then
     echo "[2g/3] bootstrap-copy with schema per tenant, without the example (package com.acme.tenancy)"
     tenancy="$WORK/tenancy"
-    mkdir -p "$tenancy/src/main/java/com/acme/tenancy"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$tenancy/"
-    sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>tenancy</artifactId>|' -e 's|<name>reference-app</name>|<name>tenancy</name>|' \
-        "$REFERENCE/pom.xml" > "$tenancy/pom.xml"
-    sed -e 's/package com.acme.smoke;/package com.acme.tenancy;/' -e 's/SmokeApplication/TenancyApplication/g' \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$tenancy/src/main/java/com/acme/tenancy/TenancyApplication.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$tenancy" --package com.acme.tenancy --with core,sign-in,tenancy-schema > "$WORK/copy-tenancy.log" 2>&1
+    new_copy "$tenancy" tenancy core,sign-in,tenancy-schema "$WORK/copy-tenancy.log"
     grep -rqE "(example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration):(begin|else|end)|TODO_LIST|todo_lists|METADATA_|media_files|UploadPurpose|TenantOwnedEntity|app\.tenant_id" "$tenancy/src" \
         && { echo "FAILED: markers or other pieces' entries left in the tenancy copy" >&2; exit 1; }
     [ -f "$tenancy/src/main/java/com/acme/tenancy/config/LazyConnectionConfig.java" ] && { echo "FAILED: the lazy proxy in a tenancy copy (the hook borrows lazily)" >&2; exit 1; }
@@ -452,21 +472,13 @@ if wants 2g; then
         && [ "$(grep -c "file:" "$tenancy/src/main/resources/db/changelog/tenant.yaml")" = 1 ] \
         && grep -q "changes/0017-members.sql" "$tenancy/src/main/resources/db/changelog/tenant.yaml" \
         || { echo "FAILED: the tenancy copy's masters don't list its changesets as platform and tenant ones" >&2; exit 1; }
-    # Coverage measured 2026-11-18 at lines 93.68 %, branches 79.42 %; only ever raised.
-    mvn_verify "$tenancy" "$WORK/tenancy.log" -Dcoverage.line.minimum=0.92 -Dcoverage.branch.minimum=0.78
+    mvn_verify "$tenancy" "$WORK/tenancy.log"
 fi
 
 if wants 2h; then
     echo "[2h/3] bootstrap-copy with every piece, schema per tenant and self-registration included (package com.acme.tenants)"
     tenants="$WORK/tenants"
-    mkdir -p "$tenants/src/main/java/com/acme/tenants"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$tenants/"
-    sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>tenants</artifactId>|' -e 's|<name>reference-app</name>|<name>tenants</name>|' \
-        "$REFERENCE/pom.xml" > "$tenants/pom.xml"
-    sed -e 's/package com.acme.smoke;/package com.acme.tenants;/' -e 's/SmokeApplication/TenantsApplication/g' \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$tenants/src/main/java/com/acme/tenants/TenantsApplication.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$tenants" --package com.acme.tenants \
-        --with core,sign-in,example,metadata,media,tenancy-schema,tenant-registration,session-version,change-history > "$WORK/copy-tenants.log" 2>&1
+    new_copy "$tenants" tenants core,sign-in,example,metadata,media,tenancy-schema,tenant-registration,session-version,change-history "$WORK/copy-tenants.log"
     grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version|change-history):(begin|else|end)" "$tenants/src" "$tenants/compose.yaml" "$tenants/.env.example" "$tenants/docs" \
         && { echo "FAILED: markers left in the copy with every piece" >&2; exit 1; }
     grep -rqE "TenantOwnedEntity|app\.tenant_id|ROW LEVEL SECURITY" "$tenants/src" && { echo "FAILED: row mode in a schema-per-tenant copy" >&2; exit 1; }
@@ -491,21 +503,14 @@ if wants 2h; then
         && grep -q "0036-todos-change-history.sql" "$tenants/src/main/resources/db/changelog/tenant.yaml" \
         && ! grep -q "0036-todos-change-history.sql" "$tenants/src/main/resources/db/changelog/platform.yaml" \
         || { echo "FAILED: the change history isn't the platform's, with the example's triggers in the tenant changelog" >&2; exit 1; }
-    # Coverage measured 2026-11-18 at lines 95.99 %, branches 84.78 %; only ever raised.
-    mvn_verify "$tenants" "$WORK/tenants.log" "$UPGRADE" -Dcoverage.line.minimum=0.94 -Dcoverage.branch.minimum=0.83
+    mvn_verify "$tenants" "$WORK/tenants.log" "$UPGRADE"
     upgraded "$tenants"
 fi
 
 if wants 2i; then
     echo "[2i/3] bootstrap-copy with row mode, without the example (package com.acme.rows)"
     rows="$WORK/rows"
-    mkdir -p "$rows/src/main/java/com/acme/rows"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$rows/"
-    sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>rows</artifactId>|' -e 's|<name>reference-app</name>|<name>rows</name>|' \
-        "$REFERENCE/pom.xml" > "$rows/pom.xml"
-    sed -e 's/package com.acme.smoke;/package com.acme.rows;/' -e 's/SmokeApplication/RowsApplication/g' \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$rows/src/main/java/com/acme/rows/RowsApplication.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$rows" --package com.acme.rows --with core,sign-in,tenancy-row > "$WORK/copy-rows.log" 2>&1
+    new_copy "$rows" rows core,sign-in,tenancy-row "$WORK/copy-rows.log"
     grep -rqE "(example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration):(begin|else|end)|TODO_LIST|todo_lists|METADATA_|media_files|UploadPurpose|UploadLimits" "$rows/src" \
         && { echo "FAILED: markers or other pieces' entries left in the row-mode copy" >&2; exit 1; }
     grep -rqE "TenantSchemas|search_path|tenant_template|TenantMigration" "$rows/src" && { echo "FAILED: schema-per-tenant code in a row-mode copy" >&2; exit 1; }
@@ -519,21 +524,13 @@ if wants 2i; then
     grep -q "0012-tenancy.sql" "$rows/src/main/resources/db/changelog/db.changelog-master.yaml" \
         && grep -q "0013-row-security.sql" "$rows/src/main/resources/db/changelog/db.changelog-master.yaml" \
         || { echo "FAILED: the row-mode master doesn't list the tenancy changesets" >&2; exit 1; }
-    # Coverage measured 2026-11-18 at lines 93.26 %, branches 79.45 %; only ever raised.
-    mvn_verify "$rows" "$WORK/rows.log" -Dcoverage.line.minimum=0.92 -Dcoverage.branch.minimum=0.78
+    mvn_verify "$rows" "$WORK/rows.log"
 fi
 
 if wants 2j; then
     echo "[2j/3] bootstrap-copy with every piece, row mode and self-registration included (package com.acme.rowtenants)"
     rowtenants="$WORK/rowtenants"
-    mkdir -p "$rowtenants/src/main/java/com/acme/rowtenants"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$rowtenants/"
-    sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>rowtenants</artifactId>|' -e 's|<name>reference-app</name>|<name>rowtenants</name>|' \
-        "$REFERENCE/pom.xml" > "$rowtenants/pom.xml"
-    sed -e 's/package com.acme.smoke;/package com.acme.rowtenants;/' -e 's/SmokeApplication/RowtenantsApplication/g' \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$rowtenants/src/main/java/com/acme/rowtenants/RowtenantsApplication.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$rowtenants" --package com.acme.rowtenants \
-        --with core,sign-in,example,metadata,media,tenancy-row,tenant-registration,session-version,change-history > "$WORK/copy-rowtenants.log" 2>&1
+    new_copy "$rowtenants" rowtenants core,sign-in,example,metadata,media,tenancy-row,tenant-registration,session-version,change-history "$WORK/copy-rowtenants.log"
     grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version|change-history):(begin|else|end)" "$rowtenants/src" "$rowtenants/compose.yaml" "$rowtenants/.env.example" "$rowtenants/docs" \
         && { echo "FAILED: markers left in the row-mode copy with every piece" >&2; exit 1; }
     no_roles "$rowtenants/src" "$rowtenants/docs" "$rowtenants/spotbugs-exclude.xml"
@@ -557,24 +554,17 @@ if wants 2j; then
         || { echo "FAILED: the todo numbers' changeset or their seed listener is missing from the row-mode copy" >&2; exit 1; }
     [ -f "$rowtenants/src/main/java/com/acme/rowtenants/user/api/Users.java" ] \
         && { echo "FAILED: the accounts' facade in a tenancy copy (a person in a tenant is a member: Members)" >&2; exit 1; }
-    # Coverage measured 2026-11-18 at lines 95.96 %, branches 84.98 %; only ever raised.
-    mvn_verify "$rowtenants" "$WORK/rowtenants.log" "$UPGRADE" -Dcoverage.line.minimum=0.94 -Dcoverage.branch.minimum=0.83
+    mvn_verify "$rowtenants" "$WORK/rowtenants.log" "$UPGRADE"
     upgraded "$rowtenants"
 fi
 
 # Every piece with the roles piece (Level 2): $1 stage id, $2 directory and application name, $3 tenancy pieces ("" for
-# none), $4 and $5 the copy's coverage minimums (lines, branches).
+# none).
 every_piece_with_roles() {
-    local id="$1" name="$2" tenancy="$3" line_minimum="$4" branch_minimum="$5" dir pieces
+    local id="$1" name="$2" tenancy="$3" dir pieces
     dir="$WORK/$name"
     pieces="core,sign-in,example,metadata,media,session-version,change-history,roles${tenancy:+,$tenancy}"
-    mkdir -p "$dir/src/main/java/com/acme/$name"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$dir/"
-    sed -e "s|<artifactId>reference-app</artifactId>|<artifactId>$name</artifactId>|" -e "s|<name>reference-app</name>|<name>$name</name>|" \
-        "$REFERENCE/pom.xml" > "$dir/pom.xml"
-    sed -e "s/package com.acme.smoke;/package com.acme.$name;/" -e "s/SmokeApplication/${name^}Application/g" \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$dir/src/main/java/com/acme/$name/${name^}Application.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$dir" --package "com.acme.$name" --with "$pieces" > "$WORK/copy-$name.log" 2>&1
+    new_copy "$dir" "$name" "$pieces" "$WORK/copy-$name.log"
     grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version|change-history|roles):(begin|else|end)" "$dir/src" "$dir/compose.yaml" "$dir/.env.example" "$dir/docs" \
         && { echo "FAILED: markers left in the $id copy" >&2; exit 1; }
     # One source of a person's access: no role column on the account or the membership, no roles claim, the
@@ -606,82 +596,63 @@ every_piece_with_roles() {
         [ ! -f "$changes/0038-memberships-role-expand.sql" ] && [ ! -f "$changes/0039-memberships-role-contract.sql" ] \
             || { echo "FAILED: schema per tenant's role-column changesets in the $id copy" >&2; exit 1; }
     fi
-    mvn_verify "$dir" "$WORK/$name.log" "$UPGRADE" -Dcoverage.line.minimum="$line_minimum" -Dcoverage.branch.minimum="$branch_minimum"
+    mvn_verify "$dir" "$WORK/$name.log" "$UPGRADE"
     upgraded "$dir"
 }
 
 if wants 2n; then
     echo "[2n/3] bootstrap-copy with every piece and the roles piece, without tenancy (package com.acme.roles)"
-    # Coverage measured 2026-11-19 at lines 95.33 %, branches 84.92 %; only ever raised.
-    every_piece_with_roles 2n roles "" 0.94 0.83
+    every_piece_with_roles 2n roles ""
 fi
 
 if wants 2o; then
     echo "[2o/3] bootstrap-copy with every piece and the roles piece, row mode (package com.acme.rowroles)"
-    # Coverage measured 2026-11-19 at lines 96.23 %, branches 85.95 %; only ever raised.
-    every_piece_with_roles 2o rowroles "tenancy-row,tenant-registration" 0.95 0.84
+    every_piece_with_roles 2o rowroles "tenancy-row,tenant-registration"
 fi
 
 if wants 2p; then
     echo "[2p/3] bootstrap-copy with every piece and the roles piece, schema per tenant (package com.acme.schemaroles)"
-    # Coverage measured 2026-11-19 at lines 96.24 %, branches 85.64 %; only ever raised.
-    every_piece_with_roles 2p schemaroles "tenancy-schema,tenant-registration" 0.95 0.84
+    every_piece_with_roles 2p schemaroles "tenancy-schema,tenant-registration"
 fi
 
 # Every piece but the example, per tenancy mode: what a project starts from before its first entity.
 # $1 stage id, $2 directory and application name, $3 tenancy pieces ("" for none).
-# $4, $5: the copy's coverage minimums (lines, branches).
 every_piece_but_the_example() {
-    local id="$1" name="$2" tenancy="$3" line_minimum="$4" branch_minimum="$5" dir pieces
+    local id="$1" name="$2" tenancy="$3" dir pieces
     dir="$WORK/$name"
     pieces="core,sign-in,metadata,media,session-version,change-history${tenancy:+,$tenancy}"
-    mkdir -p "$dir/src/main/java/com/acme/$name"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$dir/"
-    sed -e "s|<artifactId>reference-app</artifactId>|<artifactId>$name</artifactId>|" -e "s|<name>reference-app</name>|<name>$name</name>|" \
-        "$REFERENCE/pom.xml" > "$dir/pom.xml"
-    sed -e "s/package com.acme.smoke;/package com.acme.$name;/" -e "s/SmokeApplication/${name^}Application/g" \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$dir/src/main/java/com/acme/$name/${name^}Application.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$dir" --package "com.acme.$name" --with "$pieces" > "$WORK/copy-$name.log" 2>&1
+    new_copy "$dir" "$name" "$pieces" "$WORK/copy-$name.log"
     grep -rqE "(sign-in|example|metadata|media|admin|tenancy|tenancy-schema|tenancy-row|tenant-registration|session-version|change-history):(begin|else|end)" "$dir/src" "$dir/compose.yaml" "$dir/.env.example" "$dir/docs" \
         && { echo "FAILED: markers left in the $id copy" >&2; exit 1; }
     grep -rqE "TODO_LIST|TODO_ATTACHMENT|todo_lists|TodoListSettings|com\.acme\.$name\.(todo|planning)\b" "$dir/src" \
         && { echo "FAILED: the example's entries left in the $id copy, which has no example" >&2; exit 1; }
     no_roles "$dir/src" "$dir/docs" "$dir/spotbugs-exclude.xml"
-    mvn_verify "$dir" "$WORK/$name.log" -Dcoverage.line.minimum="$line_minimum" -Dcoverage.branch.minimum="$branch_minimum"
+    mvn_verify "$dir" "$WORK/$name.log"
 }
 
 if wants 2k; then
     echo "[2k/3] bootstrap-copy with every piece but the example, without tenancy (package com.acme.pieces)"
-    # Coverage measured 2026-11-18 at lines 79.43 %, branches 69.09 %; only ever raised.
-    every_piece_but_the_example 2k pieces "" 0.78 0.68
+    every_piece_but_the_example 2k pieces ""
 fi
 
 if wants 2l; then
     echo "[2l/3] bootstrap-copy with every piece but the example, schema per tenant (package com.acme.schemapieces)"
-    # Coverage measured 2026-11-18 at lines 86.26 %, branches 73.33 %; only ever raised.
-    every_piece_but_the_example 2l schemapieces "tenancy-schema,tenant-registration" 0.85 0.72
+    every_piece_but_the_example 2l schemapieces "tenancy-schema,tenant-registration"
 fi
 
 if wants 2m; then
     echo "[2m/3] bootstrap-copy with every piece but the example, row mode (package com.acme.rowpieces)"
-    # Coverage measured 2026-11-18 at lines 85.09 %, branches 72.84 %; only ever raised.
-    every_piece_but_the_example 2m rowpieces "tenancy-row,tenant-registration" 0.84 0.71
+    every_piece_but_the_example 2m rowpieces "tenancy-row,tenant-registration"
 fi
 
 if wants 2d; then
     echo "[2d/3] bootstrap-copy of core alone, without the Redis dependencies (package com.acme.core)"
     core="$WORK/core"
-    mkdir -p "$core/src/main/java/com/acme/core"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/.mvn" "$core/"
+    new_copy "$core" core core "$WORK/copy-core.log"
     # Drops sign-in's and media's dependencies, so code of theirs left in core fails to compile.
-    sed -e 's|<artifactId>reference-app</artifactId>|<artifactId>core</artifactId>|' -e 's|<name>reference-app</name>|<name>core</name>|' \
-        "$REFERENCE/pom.xml" \
-        | perl -0pe 's{\s*<dependency>\s*<groupId>[^<]+</groupId>\s*<artifactId>(?:spring-boot-starter-data-redis|bucket4j_jdk17-core|bucket4j_jdk17-lettuce|s3)</artifactId>.*?</dependency>}{}gs' \
-        > "$core/pom.xml"
+    perl -0pi -e 's{\s*<dependency>\s*<groupId>[^<]+</groupId>\s*<artifactId>(?:spring-boot-starter-data-redis|bucket4j_jdk17-core|bucket4j_jdk17-lettuce|s3)</artifactId>.*?</dependency>}{}gs' \
+        "$core/pom.xml"
     grep -qE "<artifactId>(spring-boot-starter-data-redis|bucket4j_jdk17-[a-z]+|s3)</artifactId>" "$core/pom.xml" && { echo "FAILED: could not drop the Redis and S3 dependencies from the core pom" >&2; exit 1; }
-    sed -e 's/package com.acme.smoke;/package com.acme.core;/' -e 's/SmokeApplication/CoreApplication/g' \
-        "$project/src/main/java/com/acme/smoke/SmokeApplication.java" > "$core/src/main/java/com/acme/core/CoreApplication.java"
-    "$REPO/scripts/bootstrap-copy.sh" --target "$core" --package com.acme.core --with core > "$WORK/copy-core.log"
     grep -rqE "sign-in:(begin|end)|media:(begin|end)|RedisRateLimiter|RedisClientConfig|REDIS_|MEDIA_(BUCKET|STORAGE)|GenericContainer|image: redis" "$core/src" "$core/compose.yaml" "$core/.env.example" \
         && { echo "FAILED: Redis rate limiting, media or their markers left in a core copy" >&2; exit 1; }
     [ -d "$core/src/main/java/com/acme/core/user" ] && { echo "FAILED: the user module in a core copy" >&2; exit 1; }
@@ -739,6 +710,17 @@ if wants image; then
             || { echo "FAILED: $path isn't refused 400 by Tomcat" >&2; exit 1; }
     done
     echo "container: healthy, rate limited through Redis ($codes), metrics on the management port only, refused paths 400"
+fi
+
+# A stale row fails the run once every stage has measured, so one run names every row to raise.
+[ -z "$stale_sets" ] || { echo "FAILED: stale scripts/coverage-minimums rows (each named above): $stale_sets" >&2; exit 1; }
+
+# Every row of scripts/coverage-minimums was measured by a stage of this run: a row no stage builds can't be kept true.
+if [ -z "$only" ]; then
+    for key in $(awk '!/^#/ && NF { print $1 }' "$REPO/scripts/coverage-minimums"); do
+        [[ "$measured_sets" == *" $key "* ]] \
+            || { echo "FAILED: scripts/coverage-minimums row $key: no stage measured it (add the stage or drop the row)" >&2; exit 1; }
+    done
 fi
 
 if [ -n "$only" ]; then

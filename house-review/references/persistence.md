@@ -609,7 +609,16 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
 ### DATA-13: Migrations
 - **Check:**
   - every entity change has a new changeset with a rollback;
-  - an applied changeset is never edited;
+  - a **shipped** changeset is never edited (a changed checksum stops every database that ran it). Shipped is the
+    review profile's `shippedRelease`, the release in production as the upgrade path names it (`<pieces>,<project>`,
+    crud-gen tests.md, *Upgrading a used database*), the one record crud-gen also reads:
+    - a changeset at or below the number of its range (the pieces' below 0100, the project's from 0100) is shipped:
+      an edit to it is a finding;
+    - one above it is unreleased and may still change in place (an index completed in the entity's own changeset):
+      no finding; the report says which local or staging database must be recreated or its checksums cleared;
+    - `none`: the project has never shipped, every changeset is unreleased;
+    - no record (no `shippedRelease` row): every changeset committed before the change under review counts as
+      shipped; an edit is a **possible** finding, and the report asks the owner for the value;
   - sequences and seed rows needed at runtime are created in migrations; **data for local demos or manual
     testing never is** (an account per role, sample records): it lives in `scripts/`, through the running API
     where an endpoint can make it and the operator's SQL where none does by design (crud-gen bootstrap.md, *Data
@@ -643,7 +652,7 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
   formatted-SQL changelog, a comment line starting `-- changeset` (or `-- rollback`, `-- preconditions`)
   is a Liquibase directive, not a comment: the file fails to parse, or the rest becomes a changeset of
   its own.
-- **Severity:** High for an edited applied changeset, a data migration that drops rows, or a
+- **Severity:** High for an edited shipped changeset, a data migration that drops rows, or a
   claimed unique index that doesn't exist; Medium otherwise.
 
 ### DATA-14: Display codes come from sequences
@@ -668,7 +677,7 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
 - **Check:** a child row that carries its own `owner_id` and belongs to an owned parent (a todo in
   a list, a link between two owned records) can't point at another owner's parent:
   - a **composite foreign key** `(parent_id, owner_id) → parent(id, owner_id)`, which needs
-    `UNIQUE (id, owner_id)` on the parent (a new changeset when the parent's is applied);
+    `UNIQUE (id, owner_id)` on the parent (a new changeset when the parent's is shipped, DATA-13);
   - the plain `owner_id` foreign key keeps its own index (the composite one doesn't lead with it);
   - the service still loads the parent by id **and** owner before writing the child (a foreign
     parent is a 404, REST-16), so the composite FK firing means a delete, on one side or the other.

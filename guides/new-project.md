@@ -93,6 +93,11 @@ by default (offset only for an admin screen that needs page numbers or a total, 
 ## Playbook
 
 ### Day 0: create the project
+**Or skip Initializr:** an empty folder works too. `/crud-gen bootstrap` then starts the project from the reference
+(`git init`, the application class, and `bootstrap-copy.sh --new-project`, which writes the wrapper, the
+`.gitignore` and the pom with coverage minimums the copy meets: crud-gen's bootstrap reference, *No project yet*),
+and steps 1 and 2 don't apply.
+
 1. **Spring Initializr** (start.spring.io): Maven, Java 25, Spring Boot 4.x, packaging Jar.
    Dependencies:
    - Spring Web;
@@ -111,7 +116,7 @@ by default (offset only for an admin screen that needs page numbers or a total, 
    project).
 3. Check the machine: JDK 25 (`java -version`), Docker running (`docker ps`; Testcontainers
    needs it), and the skills installed (`ls -l ~/.claude/skills` shows the two symlinks; if not,
-   run `~/Documents/claude-skills/scripts/install.sh`).
+   run `scripts/install.sh` in the skills repository, `~/Documents/claude-skills` by default).
 4. Open the project root in Claude Code.
 
 ### Day 0: bootstrap
@@ -167,4 +172,4 @@ by default (offset only for an admin screen that needs page numbers or a total, 
 | Tests fail to start: "Could not find a valid Docker environment" | Start Docker; your user must be able to run `docker ps` |
 | Build fails on the Java version | Use JDK 25 (`JAVA_HOME`) |
 | A rule doesn't fit this project | Don't ignore it silently: accept a deviation with a reason, or record a project convention in `.claude/review-profile.md` |
-| The skills seem out of date | `~/Documents/claude-skills/scripts/sync.sh`, then check `~/.local/state/claude-skills/sync.log` |
+| The skills seem out of date | `scripts/sync.sh` in the skills repository (`~/Documents/claude-skills` by default), then check `~/.local/state/claude-skills/sync.log` |

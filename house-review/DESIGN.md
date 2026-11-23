@@ -1268,3 +1268,110 @@ endpoint left both the flag and its test agreeing on the old permission.
   - Spring's repackaged ASM, to read the exact argument: an internal package.
   - Checking every main record with a flag whether or not it is built: it fails copies that keep a shared shape unused.
 - **Approximated:** whether a contract covers every endpoint answering the record (the check is by type).
+
+## One record of what has shipped: the review profile's `shippedRelease` (DATA-13, crud-gen Step 2; 2026-11-23)
+
+The eval suite's first generation case showed the two skills disagreeing on a changeset nobody had run: crud-gen
+completed the developer's unreleased changeset in place (its Step 2 called it unapplied, from a local
+`databasechangelog` lookup), and DATA-13 flagged the same edit High ("an applied changeset is never edited"),
+because the review can't see which databases ran it.
+- **Decision:** one record, the review profile's `shippedRelease`: the release in production as the upgrade path
+  names it (`app.test.upgrade.previous-release`, `<pieces>,<project>`). A changeset at or below the number of its
+  range is shipped and never edited; one above it is unreleased and may change in place. `none` means never shipped.
+  - DATA-13 flags only an edit of a shipped changeset. Without the key it counts every changeset committed before
+    the change as shipped and labels the edit **possible**, asking the owner for the value.
+  - crud-gen's Step 2 completes a changeset in place only above it, refuses otherwise, and asks (unattended: writes a
+    new changeset) when nothing is recorded. The report names a local or staging database to recreate, or whose
+    checksums to clear, when an unreleased changeset it ran was completed.
+  - Bootstrap writes `none` for a new project and asks the owner on an existing one.
+- **Rejected:**
+  - Git tags: no house convention names a release tag, and not every project tags.
+  - The crud profile's Bootstrap keys: house-review runs without a crud profile.
+  - The old definition (ran on any lasting database, or pushed): the review can't tell, and the local lookup needed
+    `docker` and a running stack.
+- **Approximated:** the value is kept by hand at each release (the upgrade path's runbook step already names it).
+
+## Each skill pre-approves only the commands its steps run (allowed-tools; 2026-11-23)
+
+Both frontmatters granted plain `Bash`, so a skill run could run anything: the eval's calibration run edited files
+with `python3 - <<EOF` and ran `git checkout -b`.
+- **Decision:** permission rules for the commands the steps name. crud-gen: `./mvnw *`, the skills repository's
+  `bootstrap-copy.sh` and `git -C` (rev-parse, diff, worktree) by `${CLAUDE_SKILL_DIR}/..`, git's reads, `add`,
+  `commit`, `rm` (bootstrap deletes Initializr's files; tracked files only, recoverable), `init`, `merge-file`
+  (the upgrade's three-way merge), `Skill(house-review *)`. house-review: `./mvnw *`, git's reads, `git worktree`
+  (Step 2's scratch worktree), `unzip -l`/`-p` (source jars in `~/.m2`), `Agent`. Both: the read-only commands,
+  Read, Write, Edit, Glob, Grep, AskUserQuestion. Nothing broad.
+  - The smoke test (a probe skill under an isolated HOME, headless, `--permission-prompts none`) showed:
+    `${CLAUDE_SKILL_DIR}` is substituted in the body and in the rules alike (the link's path, not the target's), so
+    the command and the rule match literally; an unlisted command is denied; `ls` and `cat` run without a rule;
+    `git status --short > file` is denied under `Bash(git status *)`, so a prefix rule doesn't open a redirect.
+- **Rejected:**
+  - `Bash(rm src/test/*)` for deleting a probe test: rules match the text, so `rm src/test/../../x` matches too. The
+    deletion asks instead (attended only: unattended runs no probe).
+  - A rule for an environment-prefixed build (`JAVA_HOME=* ./mvnw *`): it matches any command after the prefix.
+  - `docker` for bootstrap's local stack and first admin: bootstrap always runs attended, so those ask.
+- **Approximated:** the upgrade's render from a scratch worktree of an older release runs that worktree's script,
+  which no rule names: it asks.
+
+## Unattended mode, from the arguments (`--unattended`; 2026-11-23)
+
+The eval harness made both skills unattended through system-prompt overrides, which only the harness could give and
+no scheduled run would know.
+- **Decision:** `--unattended` anywhere in `$ARGUMENTS` (the smoke test confirmed the arguments arrive verbatim).
+  - crud-gen: no questions; the request's or profiles' answer, else the skill's default, else the most restrictive
+    answer that still works, each recorded **assumed** in *Decisions per entity* and the report; profiles used or
+    written without confirmation; Step 2 applies all; Step 8 reviews with `--unattended` and offers nothing. A
+    breaking change is never assumed. Bootstrap refuses it: its answers have no default.
+  - house-review: report only, no questions, no edits; an empty scope is `uncommitted`, else `diff`; a compile error
+    doesn't stop it; Steps 7 and 8 don't run.
+  - The harness's prompts keep only what the harness alone knows: the business rules, Step 8 skipped for crud-gen,
+    the delegated build and the structured output's format.
+- **Probe tests are skipped, not run in a scratch copy:** a probe in the project writes into the tree under review;
+  a scratch copy needs writes outside the project, a second build (a second Testcontainers set) and lacks uncommitted
+  code. The claim stays *possible*, the probe listed under *Runtime experiments still to run*.
+- **Rejected:** the system-prompt overrides (harness-only); a scratch-copy probe (above).
+
+## One report, after every pass and its verification (house-review Step 6; 2026-11-23)
+
+An eval review wrote its structured result while background reviewers were still running, then a second one.
+- **Decision:** Step 6 writes the report and any structured output once, after every Step 3 pass (each reviewer's
+  result, background notifications included) and Step 5's verification; Step 3's large scope waits for every
+  reviewer before Step 5.
+
+## crud-gen writes files with Write and Edit only (2026-11-23)
+
+- **Decision:** stated where generation starts (Step 4) and in the checklist: never `cat > file <<EOF`, `tee`,
+  `sed -i`, `python`, `perl` or `cp` over a file. Bash is for the build, git and `bootstrap-copy.sh`. The edit tools
+  show each change and the permission layer sees it; allowed-tools no longer pre-approves the alternatives.
+- **Rejected:** bootstrap's "No project yet" as `mkdir`/`cp`/`sed`: `bootstrap-copy.sh --new-project` writes the
+  wrapper and the pom instead.
+
+## The skills repository is the skill directory's parent (2026-11-23)
+
+The texts named `~/Documents/claude-skills`, so a clone elsewhere, a zip copy or the eval's snapshot needed a link
+at that path.
+- **Decision:** `${CLAUDE_SKILL_DIR}/..`, said once in each SKILL.md; references write `<skills>`. The installer links
+  `~/.claude/skills/<skill>` to the repository's folder, and the kernel resolves `..` past the link, so the path
+  reaches the repository wherever it lives. The eval harness dropped its `Documents/claude-skills` link. The
+  reference stays `~/.claude/skills-reference`.
+- **Rejected:** `~/.claude/skills/../...` (no repository there); an environment variable (the installer would have
+  to set it in every shell, and the rules couldn't name it).
+- **Kept:** the guides still name `~/Documents/claude-skills` as the default clone location: it is an instruction
+  there, not a dependency.
+
+## A new project is green as rendered: `--new-project` and `scripts/coverage-minimums` (CFG-11; 2026-11-23)
+
+A copy started by hand got the reference's coverage minimums (0.94/0.82), which a copy without the example misses,
+and no `.gitignore` unless copied by hand; the eval harness kept its own minimums table.
+- **Decision:** `bootstrap-copy.sh --new-project <name>` writes the wrapper, `.gitattributes`, the reference's
+  `.gitignore` (any target without one gets it) and the pom under the project's names, with the coverage minimums of
+  its pieces' row in `scripts/coverage-minimums` (keyed by the sorted pieces; no row: a warning, the reference's).
+  - verify.sh starts every copy through it (`new_copy`) and passes no minimums of its own. Each measured copy checks
+    its row: a coverage under it fails the build; a row two or more hundredths under the rule (a full point below the
+    measurement, rounded down) fails as stale, one hundredth left to noise. A full run fails on a row no stage
+    measured. Stage 2q (core, sign-in, example) measures the eval's review base.
+  - The eval harness renders through `--new-project`; `evals/lib/coverage` is gone.
+- **Rejected:** minimums low enough for every set (the gate would mean nothing for the larger ones); measuring at
+  bootstrap time (three builds before the first commit, and a new project's suite is the copy's).
+- **Approximated:** the stages that run on the upgraded database measure slightly differently from a user's plain
+  build; the rows are a full point below, which covers it.

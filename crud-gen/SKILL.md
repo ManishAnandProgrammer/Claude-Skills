@@ -1,8 +1,41 @@
 ---
 name: crud-gen
 description: Generate full layered CRUD for a JPA entity in any Spring Boot project, following the house pattern so the result passes house-review with no findings. Generates like the golden module of the house reference application (~/.claude/skills-reference) - API interface with OpenAPI docs, controller, service, mapper, repository with a Criteria projection impl (offset or cursor paging), request/response records, filter, ErrorCodes and messages, configurable limits, and the integration test class, with optional dropdown and media endpoints. Pre-flights the entity and its migration. `/crud-gen bootstrap` copies the shared house infrastructure into a project from the reference application (error contract, wrappers, paging, limits, logging, config, security, test base, ArchUnit). Project specifics come from .claude/crud-profile.md, discovered from the codebase on first use.
-argument-hint: "<path-to-Entity.java> | bootstrap"
-allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion]
+argument-hint: "<path-to-Entity.java> [--unattended] | bootstrap"
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - AskUserQuestion
+  - Skill(house-review *)
+  - Bash(./mvnw *)
+  - Bash(${CLAUDE_SKILL_DIR}/../scripts/bootstrap-copy.sh *)
+  - Bash(git -C ${CLAUDE_SKILL_DIR}/.. rev-parse *)
+  - Bash(git -C ${CLAUDE_SKILL_DIR}/.. diff *)
+  - Bash(git -C ${CLAUDE_SKILL_DIR}/.. worktree *)
+  - Bash(git status *)
+  - Bash(git diff *)
+  - Bash(git log *)
+  - Bash(git show *)
+  - Bash(git ls-files *)
+  - Bash(git rev-parse *)
+  - Bash(git symbolic-ref *)
+  - Bash(git branch --show-current)
+  - Bash(git add *)
+  - Bash(git commit *)
+  - Bash(git rm *)
+  - Bash(git init *)
+  - Bash(git merge-file *)
+  - Bash(ls *)
+  - Bash(cat *)
+  - Bash(head *)
+  - Bash(tail *)
+  - Bash(wc *)
+  - Bash(grep *)
+  - Bash(find *)
+  - Bash(diff *)
 ---
 
 # CRUD Generator
@@ -11,9 +44,42 @@ Target: **$ARGUMENTS**
 
 - `bootstrap`: set up the shared house infrastructure once, or, on a project whose crud profile records a
   `skillsRelease`, upgrade it to the current one. Read `~/.claude/skills/crud-gen/references/bootstrap.md`
-  and follow it; skip the rest of this file.
+  and follow it; skip the rest of this file. Bootstrap always runs attended: with `--unattended` it stops at once
+  and says so (its answers, from the pieces to each dependency, have no default to assume).
 - a path to an entity: generate its CRUD (Steps 0–8 below). When the entity **already has generated
   code** (its service or repository exists), this is **update mode**: read *Updating an entity* first.
+- `--unattended`, anywhere in the arguments: the **unattended mode** (below); the rest is the target.
+
+**The skills repository** is `${CLAUDE_SKILL_DIR}/..`: this skill's own directory, which the installer links into
+the repository (or a zip copy's folder), so the path resolves through the link. Its scripts run by that path,
+exactly as written in this file, which the frontmatter's `allowed-tools` pre-approves; `references/` write it
+`<skills>`. Never assume where the repository was cloned.
+
+**Tools.** Every file is written with **Write** or **Edit**, never through Bash (`cat > file <<EOF`, `tee`, `sed -i`,
+`python`, `perl`, `cp` over a file): the edit tools show each change and the permission layer sees it. Bash runs only
+the build (`./mvnw`), git and the skills repository's `scripts/bootstrap-copy.sh`, plus read-only commands: the
+frontmatter pre-approves exactly these, and nothing broad. The build is `./mvnw` as the profile's `buildCommand`
+names it; a command with an environment prefix (`JAVA_HOME=… ./mvnw`) asks, since a rule that matched one would
+match any command. Bootstrap's local-stack commands (`docker compose`, the first admin's `psql`) and an upgrade's
+render from a scratch worktree of an older release ask too: bootstrap always runs attended.
+
+### Unattended mode (`--unattended`)
+For a run nobody can answer (a scheduled job, an evaluation harness). Everything else in this file holds.
+- **No questions.** Never call AskUserQuestion and never end on a question. Where a step says ask, take the answer
+  the request or the profiles give; else the skill's default (a golden value, the step's stated default); else the
+  most restrictive answer that still lets the entity work: a shared root's writes and its personal-data reads only to
+  `ADMIN`, a terminal status that freezes the record, a delete refused while referenced (409 `<ENTITY>_IN_USE`), no
+  `@Public`, a retention with no purge (an open question, Step 1). A breaking change (update mode, rule 3) is never
+  assumed: leave it out and report it.
+- **Record every assumption** in the crud profile's *Decisions per entity*, marked **assumed**, and list them in the
+  final report, so the owner confirms or changes each one later.
+- **Profiles:** a missing one is built (Step 0) and written without the confirmation; its summary goes into the
+  report instead. An existing one is used as it stands.
+- **Step 2:** apply every pre-flight fix (as for any non-interactive run); a changeset the review profile doesn't
+  record as unreleased is never completed in place (*Shipped*, Step 2).
+- **Step 8:** the self-review runs as `/house-review <scope> --unattended` (report only), and nothing is offered:
+  the fixes to the skills it would offer are listed in the report.
+- The run ends with the report and the final checklist, on a green build (Step 7).
 
 ## The goal: generated code passes house-review
 
@@ -63,7 +129,7 @@ steps are the same; these rules come first:
    touches (requests, response, mapper, repository predicates, service, API docs, changeset,
    tests). Leave everything else byte-for-byte as it is, even if you would write it differently today
    (offer that as a separate refactoring).
-2. **A new changeset, never an edit** of an applied one; existing rows need a default or a backfill
+2. **A new changeset, never an edit** of a shipped one (Step 2, *Shipped*); existing rows need a default or a backfill
    for a new `NOT NULL` column (ask what the default is).
 3. **No breaking change** (REST-20): a new response field and an optional request field are fine;
    a removed or renamed field, a new required request field, a new refusal on an existing call or
@@ -99,7 +165,7 @@ If it doesn't exist, build it before generating anything:
 4. Keys with no equivalent: `none` (see *Fallbacks* in the template).
 5. Write the profile, show a short summary, and get confirmation **once**.
 
-**Read every golden file as the project's mode sees it:** `~/Documents/claude-skills/scripts/bootstrap-copy.sh
+**Read every golden file as the project's mode sees it:** `${CLAUDE_SKILL_DIR}/../scripts/bootstrap-copy.sh
 --render <{{tenancy}}> <golden file>` prints it with the mode's overlay version and its piece markers
 applied, so no marker line or commented-out block reaches the project.
 
@@ -316,27 +382,37 @@ Check before generating:
 | An **email** field: stored as `Emails.normalize` gives it (the first shape, golden `users`: `ck_<table>_email_normalized`, plain unique); the request shape is 4.1's *Email* | DATA-05 |
 | A value the mapper normalises (an email lower-cased and trimmed) has a `CHECK` with the same expression (`email = lower(trim(email))`, golden `users`); trimming alone (a name the mapper `strip()`s) needs none, as its unique index's `lower(trim(…))` already covers it (golden `TodoList`, `Tag`) | DATA-05 |
 | A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one. Its "taken on update" test (tests.md row 11) means the writes that move a row **into** the live status or change the pair; when none does (the pair fixed at the create, no move back to live), the create's test is the whole duty: say so. When the entity also has a **date range**, ask the follow-up: "(a digits-only identifier, an ISBN, needs no `COLLATE "C"`: digits sort the same in every collation; a code with letters keeps it) does a finished record (past its `endsOn`, still `<LIVE>`) still block a new one?" (a student who completed a course retaking it). If not, the rule is either no overlapping live ranges, DATA-35's exclusion constraint `WHERE (status = '<LIVE>')`, or a decided terminal status (`COMPLETED`, set by a person or a job), never "live" read from the dates (DATA-37) | DATA-05, DATA-35, DATA-37 |
-| Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is not applied**, ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
+| Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is unreleased** (*Shipped*, below), ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
 | A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column; a `moveTo` brings its exclude entry (Step 7) | DATA-33, CFG-11 |
 | Accumulating rows (Step 1's *retention*): the column the purge reads is `NOT NULL`, or the purge's index is partial on its set rows (`WHERE finished_at IS NOT NULL`: running work is never purged); its index goes into the entity's changeset (4.12). A table that references it by a foreign key: ask whether its rows go first or keep the parent; no `ON DELETE CASCADE` added for the purge without the changeset saying so | OPS-03, DATA-10 |
 | `Instant` for moments (UTC), `LocalDate` for a date a person picks, stored as sent; the one zone `BusinessCalendar`'s, for a rule a date decides | JAVA-25 |
 | A display number comes from the metadata piece's gapless `Counters` (golden `Todo.number`: a fixed counter seeded by its changeset, after the highest number of the rows already there; with tenancy one per tenant, the TEN-18 row below), or without that piece from a sequence; a fixture inserting rows splices in a number (tests.md) | DATA-14 |
 
 Golden examples: `~/.claude/skills-reference/src/main/resources/db/changelog/changes/000{2,3,4,5}-*.sql`.
-**Applied** means the changeset has run on any database that outlives a test run (a teammate's, a
-shared dev or staging one, production) or has been pushed, where someone else may run it; a changeset
-that only ever ran on Testcontainers is still yours to edit. Committed alone isn't applied; a run of
-the app is: look for the changeset's id in `databasechangelog` of the local database (with
-`{{tenancy}}` = `schema`, of the template and every tenant schema) when a local stack has started
-since it was written. When unsure, it is applied: write a new changeset. Changesets use `--changeset {{changesetAuthor}}:NNNN-…` (the golden files say `dev`: a placeholder).
+**Shipped** has one record for both skills: the review profile's `shippedRelease`, the release in production as
+the upgrade path names it (`<pieces>,<project>`: the highest changeset number of each range it holds, the pieces'
+below 0100 and the project's from 0100; tests.md, *Upgrading a used database*). house-review's DATA-13 reads the
+same value.
+- **A changeset above it in its range is unreleased:** this skill may complete it in place (the entity's own
+  changeset, the indexes the DATA-10 row above puts into it). `none` means the project has never shipped: every
+  changeset is unreleased.
+- **At or below it, shipped:** never edited (DATA-13). The fix is a new changeset; refuse an in-place edit, even
+  when asked, and say why.
+- **No record** (no review profile, or one without the key): every changeset already committed counts as shipped.
+  Ask the owner for the value and record it in the review profile; unattended, write a new changeset and list
+  the question in the report.
+
+A database that ran an unreleased changeset (the local stack, a staging database that deploys unreleased work)
+refuses its changed checksum at its next start: the report names the completed changeset and says to recreate that
+database or clear its checksums (Liquibase `clear-checksums`). Changesets use `--changeset {{changesetAuthor}}:NNNN-…` (the golden files say `dev`: a placeholder).
 **Numbers:** the house pieces own 0001-0099; a project's own changesets are numbered from **0100** (the
 next one after the project's highest at or above 0100, never after a piece's number, DATA-13), so a piece's
 later changeset never shares a number with the project's.
 
 List **every** failure, of every entity in the run, in **one table** (check, what is wrong, the fix:
-the entity change and a **new** changeset; never edit an applied one), then ask **once** with
-**AskUserQuestion**: apply all, or pick. When nobody can be asked (a non-interactive run), apply all
-and say so in the report. A declined fix: generate anyway and list it as an open item.
+the entity change and a **new** changeset, or the unreleased one completed in place; never edit a shipped one), then
+ask **once** with **AskUserQuestion**: apply all, or pick. When nobody can be asked (a non-interactive run,
+`--unattended`), apply all and say so in the report. A declined fix: generate anyway and list it as an open item.
 
 **Add every new changeset to `db.changelog-master.yaml` right away**, for all the entities you will
 generate, before the first build: Hibernate validates every entity's table at startup, so a missing
@@ -367,13 +443,13 @@ names as such; it joins `RowSecurityCatalogIntegrationTest.PLATFORM_TABLES` with
 | Check | Rule |
 |---|---|
 | The entity extends `TenantOwnedEntity` (`@TenantId`), never `{{AuditBase}}` directly; no `tenantId` in its builder calls, requests, filters, repositories or services | TEN-32, TEN-01 |
-| `tenant_id uuid NOT NULL` with **no default** and `fk_<table>_tenant_id → tenants (id)`: every insert names its tenant, so a forgotten one fails at once. The golden `0002`–`0011` blocks still show a `current_setting` default; it predates the rule and the row overlay's `0016` drops it (an applied changeset is never edited): never copy it into a new changeset | TEN-30 |
+| `tenant_id uuid NOT NULL` with **no default** and `fk_<table>_tenant_id → tenants (id)`: every insert names its tenant, so a forgotten one fails at once. The golden `0002`–`0011` blocks still show a `current_setting` default; it predates the rule and the row overlay's `0016` drops it (a shipped changeset is never edited): never copy it into a new changeset | TEN-30 |
 | `ENABLE` + `FORCE ROW LEVEL SECURITY` and the one `tenant_isolation` policy (`USING` and `WITH CHECK`, the same predicate) **in the changeset that creates the table** | TEN-30 |
 | Every unique constraint, exclusion constraint (`tenant_id WITH =`) and list index has `tenant_id` among its leading equality columns: the owner (or a parent column) first when the table has one (`(owner_id, tenant_id, sort…, id)`, `(customer_id, tenant_id, id)`: it also serves the key's check), `tenant_id` first when it has none or a list filters by the tenant alone (`(tenant_id, sort…, id)`). Names: with an owner as in single-tenant (`idx_todos_owner_id_due_sort_id`: `tenant_id` after the owner is left out of the name, as the golden row blocks do); without one `tenant_id` is the scope and is named (`idx_customers_tenant_id_name_id`). A scope column that determines the tenant (an owner, a member) gets `CREATE STATISTICS st_<table>_<column>_tenant_id (dependencies) ON <column>, tenant_id` in the same changeset (golden row overlay `0023-owner-tenant-statistics.sql`, checked by `OwnerTenantStatisticsIntegrationTest`): without it the planner estimates a person's rows at one once other tenants fill the table | TEN-33, DATA-10 |
-| A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually applied by then; the key exists for the child). A reference to a person (an owner, an assignee) is to the tenant's own members, never to `users` or `tenant_memberships` (platform tables): `(owner_id, tenant_id) → members (user_id, tenant_id)` as `fk_<table>_<column>` (golden: the row overlay's `0018-owners-reference-members`); a person the request names (an assignee) is checked through `Members` (Step 1) before the write, since the key also accepts a member who left. A member's row is never deleted (a removal marks it left), so the key never blocks a removal and the record keeps its owner; a project whose records must be reassigned before a removal says so (an open item: the members API has no such check) | TEN-33, TEN-16, TEN-17 |
+| A reference to another tenant table: a composite key `(parent_id[, owner_id], tenant_id) → parent (id[, owner_id], tenant_id)`, the parent's unique key with `tenant_id` last, added **in the child's changeset** (the parent's is usually shipped by then; the key exists for the child). A reference to a person (an owner, an assignee) is to the tenant's own members, never to `users` or `tenant_memberships` (platform tables): `(owner_id, tenant_id) → members (user_id, tenant_id)` as `fk_<table>_<column>` (golden: the row overlay's `0018-owners-reference-members`); a person the request names (an assignee) is checked through `Members` (Step 1) before the write, since the key also accepts a member who left. A member's row is never deleted (a removal marks it left), so the key never blocks a removal and the record keeps its owner; a project whose records must be reassigned before a removal says so (an open item: the members API has no such check) | TEN-33, TEN-16, TEN-17 |
 | The replica identity: `ALTER TABLE <t> REPLICA IDENTITY USING INDEX <uq_…>` **in the changeset that creates the table**, on a unique key that includes `tenant_id` (the parent key `(id, …, tenant_id)` of its composite references, or `(tenant_id, key)`); a table without one gets `uq_<table>_id_tenant_id (id, tenant_id)` | TEN-38 |
 | A display number (an invoice or order number) is a per-tenant counter (the metadata piece's `Counters`), never an identity column or a sequence: one sequence serves every tenant. `counters` is tenant data, so it is a **fixed** name (`TICKET_NUMBER`), not `perContext` with the tenant id; it needs the TEN-34 seed pair (a listener with `Counters.createIfAbsent(name, 0)` plus a backfill changeset for every tenant whatever its status, after its highest number), and the create calls `createIfAbsent` before `next` too (a tenant activated by an instance without the listener, during a rolling deploy, still numbers from 1). A `uq_<table>_number (tenant_id, number)` backs it up. Golden: `Todo.number`, `0026-todo-numbers.sql`'s row block, `TodoNumberSeed`. Tests: rows 27b–27d, 30 | TEN-18, TEN-34 |
-| A changeset already applied gets no new comment (its checksum changes): a later note (a TEN-36 search warning) goes in the runbook | DATA-13 |
+| A shipped changeset (*Shipped* above) gets no new comment (its checksum changes): a later note (a TEN-36 search warning) goes in the runbook | DATA-13 |
 | No seed rows in the entity's changeset: a new tenant's starting rows come from a `TenantProvisioned` listener in the module (golden `TodoAttachmentPolicySeed`, `TodoListDefaultsSeed`), the existing tenants' from a backfill changeset that lifts `FORCE` for its own transaction (golden `0010`'s and `0014`'s `…-existing-tenants`), its `--rollback` lines too: `NO FORCE`, the `DELETE` of the rows it added, `FORCE` (the rollback runs as the owner with no tenant set; `BackfillRollbacksIntegrationTest` checks it). The backfill also reaches a tenant still PENDING, so **the listener creates its row only when missing** (`Uploads.definePolicyIfAbsent`, `Metadata.createIfAbsent`, `Counters.createIfAbsent`): a plain insert fails the approval on the unique key, on every retry, and the tenant can never be activated. Tests (golden `TodoSeedsBackfillIntegrationTest`): the backfill for a tenant without the row, and a PENDING tenant approved after the backfill (ACTIVE, one row, its owner signs in) | TEN-34 |
 | A native query on a tenant table names its tenant: `AND tenant_id = :tenantId` once per tenant table it reads or writes (a subquery's too), a `UUID tenantId` first parameter, the service passing `TenantContext.id()` (a job's batch runs under `TenantScope.runAs`, so it gets the tenant the job runs for); an insert lists `tenant_id`. The policy is the fallback, not the filter (golden: the row overlay's `MediaFileRepository`, guarded by `NativeQueryTenantIntegrationTest`). A search on `jsonb @>`, `LIKE`/`ILIKE` or range `&&` is flagged as a filter over the tenant's rows | TEN-37, TEN-36 |
 | Statuses `text` with a check constraint, never a PostgreSQL enum (its `=` isn't leakproof) | DATA-07, TEN-36 |
@@ -474,6 +550,9 @@ tests.md row 26b (golden `PlanStatusIntegrationTest.aFinalPlanIsFrozen`, `aFinal
 
 ## Step 4: Generate
 
+Every file of this step and the next ones is written with **Write** (a new file) or **Edit** (a change), never by a
+Bash command (*Tools*, above).
+
 ### Conventions (all generated code)
 House-review's rules, as the golden files apply them: KISS and SRP (SMELL-29: queries written top to
 bottom, plain helpers, no lambda-taking helpers), no tunables in code (SMELL-17), comments only for a why the names can't carry (SMELL-19)
@@ -516,7 +595,7 @@ one per offered equality filter and order, whatever its values: `(<scope>, <filt
 golden `0031-filter-indexes.sql`; NEWEST's `(scope…, created_at, id)`; range and overlap filters under their
 own order only; an order index leading with a foreign key replaces the key's own index; the rare-value
 partial index is DATA-10's extension point, not generated), in a new changeset if the entity's own one is
-applied (Step 2). Test row 28 checks that each one exists and that each list's first page is planned on its
+shipped (Step 2). Test row 28 checks that each one exists and that each list's first page is planned on its
 order's index (tests.md, *Index tests*).
 
 **Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
@@ -959,7 +1038,7 @@ no artifact is never made.
 ## Step 8: Self-review (house-review)
 Run house-review on the generated and changed files: `/house-review uncommitted` before the commit,
 or `/house-review commit <sha>` for a commit the run made (a range `<a>..<b>` for several), without
-`--focus`: it loads its rules through its gates like any diff review (house-review Step 3). Either
+`--focus` (with `--unattended` in an unattended run): it loads its rules through its gates like any diff review (house-review Step 3). Either
 way the report is written to `reportDir` as `<date>-<entity>.md` (house-review Step 6), so every
 entity of a run leaves one. **The goal is zero findings.** A finding in
 code that follows the golden files means the reference or this skill is wrong: fix the generated
@@ -970,6 +1049,11 @@ checklist's review item stays open until that reviewer's report is clean.
 
 ### Final checklist
 - [ ] No `{{…}}` left in the generated files.
+- [ ] Every file written with Write or Edit; Bash ran only the build, git and `bootstrap-copy.sh` (*Tools*).
+- [ ] Each changeset completed in place lies above the review profile's `shippedRelease` (Step 2, *Shipped*); a
+      shipped one got a new changeset instead.
+- [ ] Unattended: every assumption marked **assumed** in *Decisions per entity* and listed in the report; no
+      question asked.
 - [ ] The aggregate's row in `AggregateArchTest.AGGREGATES` **and** in both profiles' `aggregates`.
 - [ ] The list's consumer and kind in both profiles (`cursorLists` or `offsetLists`, Step 3).
 - [ ] A changed error shape or pointer (a cross-field error moved to its end field, a new code on an

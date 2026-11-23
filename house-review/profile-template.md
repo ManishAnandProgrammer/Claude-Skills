@@ -66,6 +66,7 @@ project doesn't have.
 | Key | Value | Notes |
 |---|---|---|
 | `idStrategy` | `uuidv7` | DATA-09: `uuidv7`, `long-sequence`, ... |
+| `shippedRelease` | `none` | DATA-13 and crud-gen Step 2: the release in production, as the upgrade path names it (`app.test.upgrade.previous-release`, `<pieces>,<project>`: the highest changeset number of each range it holds, `32,105`; `32` while the project has none of its own). A changeset at or below it is shipped and never edited; one above it is unreleased. `none`: never shipped, every changeset unreleased. Ask the owner when the profile is written (`none` only for a project that has never deployed) and update it at each release |
 | `auditedTables` | `none` | DATA-08: tables with trigger-based change history (the `change-history` piece: one function, the excluded columns as each trigger's arguments), e.g. `users (password_hash excluded), todo_lists, todos` |
 | `auditMechanism` | `pg-trigger` | DATA-08 |
 | `retentionExceptions` | `none` | DATA-07, OPS-03: tables kept instead of deleted or purged (a legal retention; rows that only accumulate, kept by the owner's decision), each with its reason. Every other accumulating table has a purge job |

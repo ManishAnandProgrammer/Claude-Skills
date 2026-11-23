@@ -132,7 +132,8 @@ of `UserResponse`: announce it).
 ### Existing tables and ids
 - Keep existing ids (`Long`, UUIDv4) on existing tables. Set `idStrategy` in the profile to
   what new tables use (`uuidv7`). Converting ids is a data migration of its own: only if worth it.
-- Don't edit applied Liquibase changesets: every change is a new changeset.
+- Don't edit shipped Liquibase changesets (the review profile's `shippedRelease`: ask which ones production holds):
+  every change is a new changeset.
 
 ### ArchUnit on a legacy codebase
 Generating the ArchUnit rules on day one would fail the build everywhere. Two options:
@@ -154,7 +155,8 @@ once:
 ## Playbook
 
 ### Week 1: measure
-1. Install the skills (`~/Documents/claude-skills/scripts/install.sh`), check JDK and Docker,
+1. Install the skills (`scripts/install.sh` in the skills repository, `~/Documents/claude-skills` by default),
+   check JDK and Docker,
    and make sure the project builds and its tests pass as they are. Note any already-failing
    tests: they are the first findings.
 2. Create a branch, e.g. `chore/house-standards`.

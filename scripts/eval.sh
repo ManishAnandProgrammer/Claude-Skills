@@ -82,13 +82,6 @@ release_record() {
 
 # ---- rendering a project copy ------------------------------------------------------------------------------------
 
-# The coverage minimums a bare copy of these pieces holds (verify.sh's method: a full point below the lowest
-# measured run, rounded down), written into the copy's pom as bootstrap's step 4 has the project do.
-coverage_minimums() {
-    awk -v pieces="$1" '$1 == pieces { print $2, $3; found = 1 } END { if (!found) exit 1 }' "$EVALS/lib/coverage" \
-        || die "no coverage minimums for the pieces '$1' in evals/lib/coverage: measure a bare copy and add them"
-}
-
 # Fills a profile template's placeholders for this copy.
 render_profile() {
     local template="$1" out="$2" package="$3" app="$4" pieces="$5" modules="$6" module_lines="$7" aggregates="$8"
@@ -114,20 +107,14 @@ render_profile() {
         perl -pe 's/\@([A-Z_]+)\@/exists $ENV{$1} ? $ENV{$1} : $&/ge' "$template" > "$out"
 }
 
-# A fresh project as verify.sh builds its copies (and bootstrap.md's "No project yet"): the reference's wrapper, pom
-# (another artifactId, the copy's coverage minimums) and ignore files, an application class, the pieces, the profiles.
+# A fresh project as a user starts one (bootstrap.md's "No project yet", as verify.sh builds its copies): an
+# application class, then bootstrap-copy.sh --new-project, which writes the wrapper, the ignore files and the pom with
+# the coverage minimums a bare copy of these pieces holds (scripts/coverage-minimums); then the profiles.
 render_copy() {
     local dir="$1" package="$2" app="$3" pieces="$4" modules="$5" module_lines="$6" aggregates="$7"
-    local path="${package//.//}" class line branch
+    local path="${package//.//}" class
     class="$(tr '[:lower:]' '[:upper:]' <<< "${app:0:1}")${app:1}Application"
-    read -r line branch <<< "$(coverage_minimums "$pieces")"
     mkdir -p "$dir/src/main/java/$path" "$dir/.claude"
-    cp -r "$REFERENCE/mvnw" "$REFERENCE/mvnw.cmd" "$REFERENCE/.mvn" "$REFERENCE/.gitignore" "$REFERENCE/.gitattributes" "$dir/"
-    sed -e "s|<artifactId>reference-app</artifactId>|<artifactId>$app</artifactId>|" -e "s|<name>reference-app</name>|<name>$app</name>|" \
-        -e "s|<coverage.line.minimum>[^<]*<|<coverage.line.minimum>$line<|" \
-        -e "s|<coverage.branch.minimum>[^<]*<|<coverage.branch.minimum>$branch<|" \
-        "$REFERENCE/pom.xml" > "$dir/pom.xml"
-    grep -q "<coverage.line.minimum>$line<" "$dir/pom.xml" || die "could not set the coverage minimums in $dir/pom.xml"
     cat > "$dir/src/main/java/$path/$class.java" <<JAVA
 package $package;
 
@@ -144,7 +131,7 @@ public class $class {
     }
 }
 JAVA
-    "$SKILLS/scripts/bootstrap-copy.sh" --target "$dir" --package "$package" --with "$pieces" > "$dir.copy.log" 2>&1 \
+    "$SKILLS/scripts/bootstrap-copy.sh" --new-project "$app" --target "$dir" --package "$package" --with "$pieces" > "$dir.copy.log" 2>&1 \
         || { tail -20 "$dir.copy.log" >&2; die "bootstrap-copy.sh failed for $dir"; }
     sed -i "s/\${APP_NAME:reference}/\${APP_NAME:$app}/" "$dir/src/main/resources/application.yml"
     grep -q "APP_NAME:$app" "$dir/src/main/resources/application.yml" || die "could not rename the application in $dir"
@@ -188,8 +175,8 @@ render_generation() {
             >> "$dir/src/main/resources/db/changelog/db.changelog-master.yaml"
     done
     # A commit of its own, so the review's range (the bootstrap commit to the end) shows the entity and its changeset as
-    # new: they have never run anywhere, and a review of the baseline onward would take the changeset crud-gen
-    # completes for an applied one edited in place (DATA-13, the G1 calibration).
+    # new: they have never run anywhere (the review profile's shippedRelease is none), so crud-gen may complete the
+    # changeset in place and DATA-13 takes it for unreleased (the G1 calibration).
     commit_all "$dir" "The developer's entity and its changeset, not yet applied anywhere"
 }
 
@@ -235,33 +222,34 @@ build() {
 }
 
 # An isolated HOME: only the snapshot's two skills and its reference are visible, every path the skills read under
-# ~ points into the snapshot, and the login and the Maven repository are the owner's (symlinks: nothing is copied).
+# ~ points into the snapshot (the skills find the repository as their own directory's parent, which the links resolve
+# to the snapshot), and the login and the Maven repository are the owner's (symlinks: nothing is copied).
 isolated_home() {
     local home="$1"
-    mkdir -p "$home/.claude/skills" "$home/Documents"
+    mkdir -p "$home/.claude/skills"
     ln -s "$SKILLS/crud-gen" "$home/.claude/skills/crud-gen"
     ln -s "$SKILLS/house-review" "$home/.claude/skills/house-review"
     ln -s "$REFERENCE" "$home/.claude/skills-reference"
     ln -s "$HOME/.claude/.credentials.json" "$home/.claude/.credentials.json"
     ln -s "$HOME/.m2" "$home/.m2"
-    ln -s "$SKILLS" "$home/Documents/claude-skills"
     [ -e "$HOME/.testcontainers.properties" ] && ln -s "$HOME/.testcontainers.properties" "$home/.testcontainers.properties"
     return 0
 }
 
-# Read-only commands, the build, git without -C (no write outside the copy), and the render the generator reads golden
-# files through. Edits need no rule: acceptEdits allows them inside the working directory only, and nothing else is
-# granted (--permission-prompts none denies the rest, recorded in the run's permission denials).
+# Read-only commands, the build and git without -C (no write outside the copy). The skills' own commands (the render
+# the generator reads golden files through, git -C on the skills repository) are granted by their frontmatter's
+# allowed-tools while they run. Edits need no rule: acceptEdits allows them inside the working directory only, and
+# nothing else is granted (--permission-prompts none denies the rest, recorded in the run's permission denials).
 READ_ONLY='Bash(ls *),Bash(ls),Bash(cat *),Bash(head *),Bash(tail *),Bash(grep *),Bash(rg *),Bash(wc *),Bash(diff *),Bash(sort *),Bash(uniq *),Bash(cut *),Bash(tr *),Bash(sed -n *),Bash(jq *),Bash(pwd),Bash(cd *),Bash(echo *),Bash(stat *),Bash(file *),Bash(tree *),Bash(which *),Bash(test *)'
-GIT_READ='Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git rev-parse*),Bash(git ls-files*),Bash(git branch*),Bash(git blame*),Bash(git -C ~/Documents/claude-skills rev-parse*),Bash(git -C ~/Documents/claude-skills log*),Bash(git -C ~/Documents/claude-skills diff*)'
-RENDER='Bash(~/Documents/claude-skills/scripts/bootstrap-copy.sh --render *),Bash(*/Documents/claude-skills/scripts/bootstrap-copy.sh --render *),Bash(bash ~/Documents/claude-skills/scripts/bootstrap-copy.sh --render *),Bash(bash */Documents/claude-skills/scripts/bootstrap-copy.sh --render *)'
-GEN_TOOLS="Bash(./mvnw *),$READ_ONLY,$GIT_READ,Bash(git add*),Bash(git commit*),$RENDER"
-REVIEW_TOOLS="Bash(./mvnw *),$READ_ONLY,$GIT_READ,$RENDER,Agent"
-# The allow lists above hold only outside the skills: both skills' frontmatter `allowed-tools` grants plain `Bash` while
-# the skill runs, so a skill run may run any command (the G1 calibration ran `python3 - <<EOF` edits and
-# `git checkout -b`). Deny rules win over that grant, so they are the fence: the login, scripts that write anywhere,
-# and edits outside /tmp (the copies, the isolated HOMEs and the snapshot all live under $TMPDIR; the owner's home,
-# the worktree included, doesn't).
+GIT_READ='Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git rev-parse*),Bash(git ls-files*),Bash(git branch*),Bash(git blame*)'
+GEN_TOOLS="Bash(./mvnw *),$READ_ONLY,$GIT_READ,Bash(git add*),Bash(git commit*)"
+REVIEW_TOOLS="Bash(./mvnw *),$READ_ONLY,$GIT_READ,Agent"
+# Both skills' frontmatter grants only the commands their steps run (their allowed-tools), so a skill run no longer
+# runs any command it likes (the G1 calibration, under a plain Bash grant, ran `python3 - <<EOF` edits and
+# `git checkout -b`). The deny rules stay as the fence behind that list, since they win over any grant: the login,
+# interpreters that write anywhere, and edits outside /tmp (the copies, the isolated HOMEs and the snapshot all live
+# under $TMPDIR; the owner's home, the worktree included, doesn't). AskUserQuestion is denied too: --unattended
+# already forbids it, and a question asked anyway would end the run unanswered.
 DENIED='AskUserQuestion,Edit(//home/**),Write(//home/**),Read(**/.credentials.json),Bash(*credentials*),Bash(python*),Bash(*python3 *),Bash(*python -*),Bash(perl *),Bash(*perl -*),Bash(node *),Bash(bash -c*),Bash(sh -c*),Bash(*rm -rf*)'
 
 # One headless model run: run_model <name> <case results> <work dir> <timeout s> <tools> <prompt> <system file> [schema]
@@ -290,7 +278,7 @@ review() {
     system="$results/house-review.system.md"
     BUILD="$summary" BUILD_LOG="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["log"])' "$build_json")" \
         perl -pe 's/\@([A-Z_]+)\@/exists $ENV{$1} ? $ENV{$1} : $&/ge' "$EVALS/lib/prompts/house-review.md" > "$system"
-    run_model house-review "$results" "$dir" "$REVIEW_TIMEOUT" "$REVIEW_TOOLS" "/house-review $scope" "$system" "$EVALS/lib/review-schema.json"
+    run_model house-review "$results" "$dir" "$REVIEW_TIMEOUT" "$REVIEW_TOOLS" "/house-review $scope --unattended" "$system" "$EVALS/lib/review-schema.json"
 }
 
 note() {
@@ -305,7 +293,7 @@ generation_case() {
     system="$results/crud-gen.system.md"
     RULES="$(section "$case_dir/case.md" "Business rules")" \
         perl -pe 's/\@([A-Z_]+)\@/exists $ENV{$1} ? $ENV{$1} : $&/ge' "$EVALS/lib/prompts/crud-gen.md" > "$system"
-    run_model crud-gen "$results" "$dir" "$GEN_TIMEOUT" "$GEN_TOOLS" "/crud-gen $entity" "$system"
+    run_model crud-gen "$results" "$dir" "$GEN_TIMEOUT" "$GEN_TOOLS" "/crud-gen $entity --unattended" "$system"
     echo "    gate 2: the paths changed since the baseline"
     "${GATES[@]}" gate2 "$dir" "$baseline" "$case_dir/allowed" "com/acme/$(basename "$case_dir" | cut -d- -f1)" "$results/gate2.json"
     git -C "$dir" commit -q -m "crud-gen's change, as it left the tree" || true

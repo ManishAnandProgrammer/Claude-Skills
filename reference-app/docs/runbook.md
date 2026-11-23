@@ -180,7 +180,8 @@ Secrets and hashes are never copied. The table refuses an UPDATE; rows leave it 
 A release whose changesets change existing rows (a backfill, a new `NOT NULL` column, a new unique key):
 its tests ran on the previous release's seeded database (`./mvnw verify
 -Dapp.test.upgrade.previous-release=<pieces>,<project>`, the highest changeset number production has in
-each range: the house pieces' below 0100, the project's own from 0100). Also run the
+each range: the house pieces' below 0100, the project's own from 0100; once the release is out, record its
+numbers as `shippedRelease` in `.claude/review-profile.md`, so no changeset it holds is edited). Also run the
 migration once against a restored copy of production (a recent backup, restored as the backup and
 restore section of your platform describes) and check what the backfills did there, and how long they
 held their tables: a backfill rewrites its table under a lock, so a big one runs in a quiet hour.

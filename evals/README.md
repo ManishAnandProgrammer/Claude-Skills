@@ -64,39 +64,45 @@ Every model run is `claude -p` with these settings:
 - **An isolated HOME.** It holds:
   - the snapshot's `crud-gen` and `house-review`, linked under `.claude/skills/`;
   - `.claude/skills-reference`;
-  - `Documents/claude-skills`, which the skills call for `bootstrap-copy.sh --render` and the release;
   - `~/.m2`;
   - the login, `.claude/.credentials.json`, a symlink that is never read.
 
+  The skills find the repository as their own directory's parent (`${CLAUDE_SKILL_DIR}/..`), which the links
+  resolve to the snapshot, so `bootstrap-copy.sh --render` and the release record come from the release under test.
   No other skill, plugin, memory or CLAUDE.md is loaded.
 - **Its flags:** `--output-format stream-json --verbose`. Its last line is the `json` result, with
   `total_cost_usd`, `permission_denials` and `structured_output`. It also takes:
   - `--no-session-persistence --permission-mode acceptEdits --permission-prompts none`;
   - `--allowedTools`, `--disallowedTools`;
   - `--max-budget-usd`;
-  - `--append-system-prompt`, with `lib/prompts/*.md`: the unattended rules, and for crud-gen the case's business
-    rules as the developer's answers;
+  - `--append-system-prompt`, with `lib/prompts/*.md`: what only the harness can say. For crud-gen, the case's
+    business rules as the developer's answers, that Step 8 is the harness's, and to stay in the project. For
+    house-review, the delegated build's result and the structured output's format;
   - `--json-schema` for house-review: `lib/review-schema.json`, `{findings: [{rule, file, line, severity, summary}]}`.
 
-  The prompt itself is the slash command alone: `/crud-gen <entity>` or `/house-review commit <range>`.
+  The prompt itself is the slash command alone, in the skills' unattended mode: `/crud-gen <entity> --unattended`
+  or `/house-review commit <range> --unattended`. The mode is the skills' own (each SKILL.md, *Unattended mode*):
+  no questions, defaults recorded as assumptions, the profiles taken as they stand; house-review report-only, with no
+  probe tests and no offers.
 - **Permissions:**
   - **Allowed:** `./mvnw *`, read-only commands, git reads, and `git add` / `git commit` for crud-gen, plus Edit and
     Write in the working directory (acceptEdits).
-  - **A caveat:** both skills' frontmatter grants plain `Bash` while the skill runs, so the allow list is not the
-    fence. The deny list is, because deny rules win:
-    - `AskUserQuestion`;
+  - **While a skill runs,** its frontmatter's `allowed-tools` adds the commands its steps run (the render, `git -C`
+    on the skills repository), never plain `Bash`.
+  - **Denied,** as the fence behind both lists, because deny rules win over any grant:
+    - `AskUserQuestion` (`--unattended` already forbids it);
     - the login;
     - `python`, `perl`, `node`, `bash -c` and `rm -rf`;
     - Edit and Write under `/home`.
 
     Every copy, HOME and snapshot lives under `$TMPDIR`.
-- **Profiles:** both profiles are written before the run from `lib/profiles/`, as bootstrap leaves them. The prompt
-  says the owner confirmed them.
+- **Profiles:** both profiles are written before the run from `lib/profiles/`, as bootstrap leaves them (the review
+  profile's `shippedRelease` is `none`: the copy never shipped). Unattended, the skills use them as they stand.
 
 **Generation case** (`generation/<id>/`). The harness renders a copy with the case's pieces and package
-`com.acme.<gN>`, through `bootstrap-copy.sh`, like `verify.sh`. It then:
+`com.acme.<gN>`, through `bootstrap-copy.sh --new-project`, like `verify.sh` and a user's new project: the pom
+arrives with the coverage minimums a bare copy of those pieces holds (`scripts/coverage-minimums`). It then:
 
-- writes `lib/coverage`'s minimums for those pieces into the pom;
 - commits that as `bootstrap`;
 - adds `fixture/` (the entity, its changeset in the master) and commits it as the baseline: the developer's
   entity, never applied anywhere;
@@ -115,7 +121,7 @@ Then the three gates:
    skipped when gate 1 is red; `--always-review` runs it anyway.
 
 **Review case** (`review/<id>/`). The harness renders one review copy per run: pieces `core,sign-in,example`,
-package `com.acme.review`, its minimums, committed. Then, for each case:
+package `com.acme.review`, through `--new-project` the same way, committed. Then, for each case:
 
 - it copies that copy;
 - it applies `defect.patch` as a commit of its own, with the message from the `## Commit message` section of
@@ -196,7 +202,8 @@ working on one rule.
 
 1. Create `generation/<gN-name>/`. The id's first segment becomes the package (`com.acme.gN`).
 2. Write these files:
-   - `pieces`: the bootstrap pieces, which must have a line in `lib/coverage`. Measure a bare copy for new pieces.
+   - `pieces`: the bootstrap pieces, which must have a row in `scripts/coverage-minimums` (and a `verify.sh` stage
+     that measures it). Without one the copy keeps the reference's minimums and may build red.
    - `module`: one line, `name: owner statement`.
    - `entity`: the entity's path under the root package.
    - `fixture/java/**`: the entity and its enums, rooted at the root package, with `@ROOT_PACKAGE@` in package

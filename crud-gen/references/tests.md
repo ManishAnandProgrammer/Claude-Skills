@@ -197,7 +197,8 @@ The test base's `PreviousReleaseDatabase` (core) builds that database for the wh
 `app.test.upgrade.previous-release` names the release in production (the highest changeset number of
 each range it shipped, `<pieces>[,<project>]`: the pieces own 0001-0099, the project 0100 and up, and a
 piece's changeset added since the release runs after the project's, so one number can't say what shipped;
-`28,105`, or `28` while the project has none of its own): Liquibase applies the changesets up to the
+`28,105`, or `28` while the project has none of its own; the review profile's `shippedRelease` records it,
+updated at each release, and both skills read it as what has shipped, DATA-13): Liquibase applies the changesets up to the
 first one the release didn't ship, `src/test/resources/db/upgrade/previous-release-seed.sql`
 fills them as a used database holds them, then the application's own run applies the newer changesets
 (schema per tenant: each provisioned tenant's schema at that release too, with

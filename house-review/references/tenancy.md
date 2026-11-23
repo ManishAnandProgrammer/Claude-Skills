@@ -5,7 +5,8 @@ only when the review profile says `tenancy: row` or `tenancy: schema`. Rules mar
 to schema-per-tenant only, **[row]** to row-based tenancy only; the others apply to both.
 
 Golden code: the skills repo's overlays, not the reference application (which runs without tenancy).
-The shared layer `~/Documents/claude-skills/overlays/tenancy/src/main/java/com/example/app/`:
+The shared layer `<skills>/overlays/tenancy/src/main/java/com/example/app/` (`<skills>`: the skills repository,
+SKILL.md):
 `common/tenancy/` (`TenantContext`, `TenantScope`, `TenantIdentifierResolver`, `TenantTaskDecorator`),
 `config/PlatformSecurityConfig` (the platform chain), the `tenant` module (`TenantService` with
 `approve`, `PlatformTenantController`, `PlatformAuditService`, `AllowAllSupportAccess`), `user/`
@@ -504,7 +505,7 @@ E1–E3 and the row tests named below, which run as the real application role.
     NULL: `RowIsolationIntegrationTest.anInsertNamesItsTenant`). A `current_setting` default would fill
     it from the transaction's tenant and hide the omission until a job or a platform path inserts with
     another tenant set. The golden changesets `0002`–`0011` were applied with such a default; the row
-    overlay's `0016-tenant-id-no-default` drops it (an applied changeset is never edited), and a new
+    overlay's `0016-tenant-id-no-default` drops it (a shipped changeset is never edited, DATA-13), and a new
     table never has one;
   - `ALTER TABLE <t> ENABLE ROW LEVEL SECURITY; ALTER TABLE <t> FORCE ROW LEVEL SECURITY;` (forced: the
     owner, which runs Liquibase, is bound too);
@@ -695,7 +696,7 @@ E1–E3 and the row tests named below, which run as the real application role.
   application's writes would fail the moment the publication exists. Use a unique key the table already
   has with `tenant_id` (the parent key of its composite references, `(tenant_id, key)`); a table without
   one gets `uq_<table>_id_tenant_id (id, tenant_id)`. The reference's tables got theirs in the row
-  overlay's `0019-replica-identity` (applied changesets are never edited). Guards:
+  overlay's `0019-replica-identity` (shipped changesets are never edited, DATA-13). Guards:
   `RowSecurityCatalogIntegrationTest.everyReplicaIdentityCarriesTheTenant` (proven to catch a table on
   its primary key) and `aTenantFilteredPublicationAcceptsUpdatesAndDeletes` (UPDATE and DELETE pass under
   a tenant-filtered publication, and fail on a table without the identity).

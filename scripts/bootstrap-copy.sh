@@ -2,11 +2,19 @@
 # Copies pieces of the house reference application (reference-app/) into a Spring Boot project,
 # renaming its root package. Used by /crud-gen bootstrap; safe on an existing project:
 # - a file that already exists in the target is never overwritten: it is skipped and reported;
-# - nothing outside src/, the project's root config files and docs/ is touched (pom.xml isn't:
-#   the dependencies each piece needs are printed, to be added after the owner approves them).
+# - nothing outside src/, the project's root config files and docs/ is touched (an existing pom.xml isn't:
+#   the dependencies each piece needs are printed, to be added after the owner approves them; --new-project
+#   writes one where there is none);
+# - a project without a .gitignore gets the reference's.
 #
 # Usage: bootstrap-copy.sh --target <project dir> --package <root package> [--with <pieces>] [--dry-run]
+#                          [--new-project <name> [--description <one line>]]
 #        bootstrap-copy.sh --render <none|row|schema> <golden file>
+#   --new-project starts a project that has no build file yet (bootstrap.md, "No project yet"): the reference's
+#   wrapper, .gitattributes and pom (groupId the package's parent, artifactId and name <name>, the description
+#   --description's or <name>), whose coverage
+#   minimums are a bare copy's of these pieces (scripts/coverage-minimums, which verify.sh keeps true), so the copy
+#   is green as rendered.
 #   --render prints one golden file (a path under reference-app/, or ~/.claude/skills-reference/) as a
 #   project of that tenancy mode with every other piece gets it: the mode's overlay version when there is
 #   one, the markers applied. Generators read golden files through it instead of reasoning about markers.
@@ -97,7 +105,7 @@ REFERENCE_PACKAGE="com.example.app"
 
 die() { echo "error: $*" >&2; exit 1; }
 
-target="" package="" pieces="core,sign-in" dry_run=false render_mode="" render_file=""
+target="" package="" pieces="core,sign-in" dry_run=false render_mode="" render_file="" new_project="" description=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --render) render_mode="${2:-}"; render_file="${3:-}"; shift $(( $# < 3 ? $# : 3 )) ;;
@@ -105,6 +113,8 @@ while [ $# -gt 0 ]; do
         --package) package="${2:-}"; shift 2 ;;
         --with) pieces="${2:-}"; shift 2 ;;
         --dry-run) dry_run=true; shift ;;
+        --new-project) new_project="${2:-}"; shift 2 ;;
+        --description) description="${2:-}"; shift 2 ;;
         -h|--help) sed -n '2,/^[^#]/{/^#/p}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown option: $1 (see --help)" ;;
     esac
@@ -125,7 +135,14 @@ else
     [ -n "$package" ] || die "--package is required"
     [[ "$package" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]] || die "--package must be a lower-case Java package such as com.acme.orders"
     target="$(cd "$target" 2>/dev/null && pwd)" || die "target $target doesn't exist"
-    [ -f "$target/pom.xml" ] || [ -f "$target/build.gradle" ] || [ -f "$target/build.gradle.kts" ] || die "$target has no build file"
+    has_build_file() { [ -f "$target/pom.xml" ] || [ -f "$target/build.gradle" ] || [ -f "$target/build.gradle.kts" ]; }
+    if [ -n "$new_project" ]; then
+        [[ "$new_project" =~ ^[a-z][a-z0-9-]*$ ]] || die "--new-project takes the artifact name, lower-case letters, digits and hyphens: $new_project"
+        has_build_file && die "--new-project starts a project without a build file; $target has one (drop --new-project)"
+    else
+        [ -z "$description" ] || die "--description goes with --new-project"
+        has_build_file || die "$target has no build file (a new project: --new-project <name>)"
+    fi
 fi
 
 reference_path="${REFERENCE_PACKAGE//.//}"
@@ -591,6 +608,52 @@ fi
 if chosen_piece tenancy-row; then
     echo "note: tenancy needs the database roles before the first start (docs/tenancy-runbook.md; compose.yaml creates them locally), and DB_OWNER_USER / DB_OWNER_PASSWORD" >&2
 fi
+# The coverage minimums a bare copy of these pieces holds, "<line> <branch>" (scripts/coverage-minimums, kept true by
+# verify.sh), or nothing for a set no stage measures.
+pieces_key="$(tr ',' '\n' <<< "$pieces" | sed '/^$/d' | sort -u | paste -sd, -)"
+minimums="$(awk -v key="$pieces_key" '!/^#/ && $1 == key { print $2, $3; exit }' "$REPO/scripts/coverage-minimums")"
+
+# A new project: the reference's wrapper and attribute file, and its pom under the project's names, with the coverage
+# minimums a bare copy of these pieces meets (the .gitignore follows below).
+if [ -n "$new_project" ]; then
+    for file in mvnw mvnw.cmd .mvn .gitattributes; do
+        if [ -e "$target/$file" ]; then
+            skipped+=("$file")
+        else
+            copied+=("$file")
+            $dry_run || cp -r "$REFERENCE/$file" "$target/$file"
+        fi
+    done
+    if [ -n "$minimums" ]; then
+        copied+=("pom.xml (the coverage minimums of a bare copy of $pieces_key: lines ${minimums% *}, branches ${minimums#* })")
+    else
+        copied+=("pom.xml (the reference's coverage minimums: no measured ones for $pieces_key)")
+        echo "warning: scripts/coverage-minimums has no row for the pieces $pieces_key: the pom keeps the reference's minimums," >&2
+        echo "         which a copy without the example may miss; measure three clean runs and set them (bootstrap.md, step 4)" >&2
+    fi
+    if ! $dry_run; then
+        NAME="$new_project" GROUP="${package%.*}" DESCRIPTION="${description:-$new_project}" PIECES="$pieces_key" \
+        LINE="${minimums% *}" BRANCH="${minimums#* }" perl -0pe '
+            BEGIN { ($description = $ENV{DESCRIPTION}) =~ s/&/&amp;/g; $description =~ s/</&lt;/g; $description =~ s/>/&gt;/g; }
+            s{<groupId>com\.example</groupId>}{<groupId>$ENV{GROUP}</groupId>};
+            s{<artifactId>reference-app</artifactId>}{<artifactId>$ENV{NAME}</artifactId>};
+            s{<name>reference-app</name>}{<name>$ENV{NAME}</name>};
+            s{<description>.*?</description>}{<description>$description</description>}s;
+            if ($ENV{LINE} ne "") {
+                s{<!-- The coverage gate .*?-->\s*<coverage\.line\.minimum>[^<]*</coverage\.line\.minimum>\s*<coverage\.branch\.minimum>[^<]*</coverage\.branch\.minimum>}{<!-- The coverage gate (house-review CFG-11): a bare copy of the pieces $ENV{PIECES}, measured by the skills
+\t\t     repository'"'"'s verify.sh (scripts/coverage-minimums: a full point below the lowest measured run, rounded down).
+\t\t     Only ever raised: once the project has code of its own, measure three clean runs and raise them by the same
+\t\t     rule (crud-gen references/bootstrap.md, step 4). -->
+\t\t<coverage.line.minimum>$ENV{LINE}</coverage.line.minimum>
+\t\t<coverage.branch.minimum>$ENV{BRANCH}</coverage.branch.minimum>}s;
+            }
+        ' "$REFERENCE/pom.xml" > "$target/pom.xml"
+        grep -q "<artifactId>$new_project</artifactId>" "$target/pom.xml" \
+            && { [ -z "$minimums" ] || grep -q "<coverage.line.minimum>${minimums% *}</coverage.line.minimum>" "$target/pom.xml"; } \
+            || die "could not write $target/pom.xml from the reference's (its names or coverage block moved?)"
+    fi
+fi
+
 # Every file any piece can name, whatever was chosen: a directory copy never takes another piece's file.
 all_pieces="core sign-in example metadata media tenancy-schema tenancy-row tenant-registration session-version change-history roles"
 with_reference_prefix() { sed -e '/^overlays\//!s|^|reference-app/|'; }
@@ -698,12 +761,18 @@ else
     fi
 fi
 
-# Initializr's .gitignore misses the local secrets: .env (what .env.example asks for) and the JVM's
-# diagnostics, which hold tokens and personal data (SEC-04). Appended, never overwritten.
-if chosen_piece core; then
+# A project without a .gitignore gets the reference's (the build output, the IDEs' files, the local secrets). Initializr's
+# misses the local secrets: .env (what .env.example asks for) and the JVM's diagnostics, which hold tokens and personal
+# data (SEC-04). Appended, never overwritten.
+if chosen_piece core || [ -n "$new_project" ]; then
     ignored=""
+    if [ ! -e "$target/.gitignore" ]; then
+        copied+=(".gitignore (the reference's)")
+        $dry_run || cp "$REFERENCE/.gitignore" "$target/.gitignore"
+    fi
+    # A dry run's .gitignore may not exist yet: the reference's holds every pattern.
     for pattern in .env '*.hprof' '*.jfr' 'hs_err_pid*.log'; do
-        grep -qxF "$pattern" "$target/.gitignore" 2>/dev/null || ignored+="$pattern"$'\n'
+        [ ! -e "$target/.gitignore" ] || grep -qxF "$pattern" "$target/.gitignore" || ignored+="$pattern"$'\n'
     done
     if [ -n "$ignored" ]; then
         copied+=(".gitignore (appended: $(echo -n "$ignored" | tr '\n' ' '))")
@@ -732,9 +801,19 @@ for piece in "${chosen[@]}"; do
 done
 echo "build plugins (the quality gates, house-review CFG-11; the reference pom's blocks and properties):"
 echo "  spotbugs-maven-plugin with findsecbugs-plugin, jacoco-maven-plugin; coverage.line.minimum and"
-echo "  coverage.branch.minimum are the project's own: measure three clean runs (bootstrap.md, step 4)"
-echo "then: add @ConfigurationPropertiesScan to the application class; set spring.application.name, and DB_NAME"
-echo "      in .env.example to the same name; delete Initializr's application.properties (application.yml"
-echo "      replaces it), its <App>ApplicationTests (a bare @SpringBootTest with no database: the copied"
-echo "      test base replaces it) and, before copying, its TestcontainersConfiguration; the project's own"
-echo "      changesets start at 0100 (the pieces own 0001-0099)."
+if [ -n "$minimums" ]; then
+    echo "  coverage.branch.minimum: a bare copy of these pieces holds lines ${minimums% *}, branches ${minimums#* }"
+    echo "  (scripts/coverage-minimums)$([ -n "$new_project" ] && echo ", set in the pom" || echo "; a project with code of its own measures three clean runs (bootstrap.md, step 4)")"
+else
+    echo "  coverage.branch.minimum are the project's own: measure three clean runs (bootstrap.md, step 4)"
+fi
+if [ -n "$new_project" ]; then
+    echo "then: set spring.application.name, and DB_NAME in .env.example, to the same name; the project's own"
+    echo "      changesets start at 0100 (the pieces own 0001-0099)."
+else
+    echo "then: add @ConfigurationPropertiesScan to the application class; set spring.application.name, and DB_NAME"
+    echo "      in .env.example to the same name; delete Initializr's application.properties (application.yml"
+    echo "      replaces it), its <App>ApplicationTests (a bare @SpringBootTest with no database: the copied"
+    echo "      test base replaces it) and, before copying, its TestcontainersConfiguration; the project's own"
+    echo "      changesets start at 0100 (the pieces own 0001-0099)."
+fi

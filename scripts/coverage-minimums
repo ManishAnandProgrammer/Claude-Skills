@@ -1,0 +1,37 @@
+# The coverage minimums of a bare bootstrap copy, per set of pieces: <pieces, sorted> <line minimum> <branch minimum>.
+# bootstrap-copy.sh --new-project writes a set's row into the new project's pom, so the copy is green as rendered.
+# Each minimum is a full point below the measured ratio, rounded down (house-review CFG-11, the reference pom's rule).
+# verify.sh builds every set below as a copy and fails when a row no longer matches its measurement: a build under
+# the row (a drop: the tests a piece lacks), or a row two or more steps under the rule (raise it; one step is left
+# to run-to-run noise). A full run also fails on a row no stage measured. Only ever raised.
+#
+# Stage 2 (2026-11-23: lines 88.94 %, branches 76.53 %).
+core,sign-in 0.88 0.75
+# Stage 2q (2026-11-23: lines 95.74 %, branches 84.74 %).
+core,example,sign-in 0.94 0.83
+# Stage 2b, on the upgraded database (2026-11-23: lines 95.86 %, branches 84.98 %).
+core,example,metadata,sign-in 0.94 0.83
+# Stage 2c (2026-11-23: lines 84.94 %, branches 75.07 %).
+core,metadata,sign-in 0.83 0.74
+# Stage 2e (2026-11-23: lines 83.34 %, branches 73.06 %).
+core,media,sign-in 0.82 0.72
+# Stage 2g (2026-11-23: lines 92.78 %, branches 79.23 %).
+core,sign-in,tenancy-schema 0.92 0.78
+# Stage 2h, on the upgraded database (2026-11-23: lines 96.14 %, branches 85.43 %).
+change-history,core,example,media,metadata,session-version,sign-in,tenancy-schema,tenant-registration 0.95 0.84
+# Stage 2i (2026-11-23: lines 92.34 %, branches 79.25 %).
+core,sign-in,tenancy-row 0.92 0.78
+# Stage 2j, on the upgraded database (2026-11-23: lines 96.15 %, branches 85.62 %).
+change-history,core,example,media,metadata,session-version,sign-in,tenancy-row,tenant-registration 0.95 0.84
+# Stage 2k (2026-11-23: lines 80.65 %, branches 71.86 %).
+change-history,core,media,metadata,session-version,sign-in 0.79 0.70
+# Stage 2l (2026-11-23: lines 86.55 %, branches 75.54 %).
+change-history,core,media,metadata,session-version,sign-in,tenancy-schema,tenant-registration 0.85 0.74
+# Stage 2m (2026-11-23: lines 85.45 %, branches 75.17 %).
+change-history,core,media,metadata,session-version,sign-in,tenancy-row,tenant-registration 0.84 0.74
+# Stage 2n, on the upgraded database (2026-11-23: lines 95.72 %, branches 85.19 %).
+change-history,core,example,media,metadata,roles,session-version,sign-in 0.94 0.84
+# Stage 2o, on the upgraded database (2026-11-23: lines 96.39 %, branches 86.29 %).
+change-history,core,example,media,metadata,roles,session-version,sign-in,tenancy-row,tenant-registration 0.95 0.85
+# Stage 2p, on the upgraded database (2026-11-23: lines 96.39 %, branches 86.00 %).
+change-history,core,example,media,metadata,roles,session-version,sign-in,tenancy-schema,tenant-registration 0.95 0.85

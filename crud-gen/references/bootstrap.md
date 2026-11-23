@@ -2,7 +2,8 @@
 
 One-time setup of the shared house infrastructure, **copied from the reference application**
 (`~/.claude/skills-reference`, the skills repo's `reference-app/`) by
-`~/Documents/claude-skills/scripts/bootstrap-copy.sh` (on a zip copy: `<copy>/scripts/…`). The
+`<skills>/scripts/bootstrap-copy.sh`, where `<skills>` is the skills repository as SKILL.md resolves it
+(`${CLAUDE_SKILL_DIR}/..`, written exactly as SKILL.md shows it: the pre-approved commands match that text). The
 reference builds and passes its tests, and `scripts/verify.sh` proves a fresh copy does too, so
 bootstrap copies tested code instead of writing it from a description. Claude only adapts what
 differs per project.
@@ -177,22 +178,20 @@ tenancy piece, the review profile's list keys name the piece's own lists too (RE
 
 ## 1. Copy the pieces
 **No project yet?** Start it from the reference rather than Initializr (same Boot version, the
-wrapper, the pom with every dependency the pieces can need; step 3 trims it to the approved ones):
-```bash
-mkdir -p <project>/src/main/java/<package path> && cd <project> && git init -b main
-cp -r ~/Documents/claude-skills/reference-app/{mvnw,mvnw.cmd,.mvn,.gitignore,.gitattributes} .
-sed -e 's|<groupId>com.example</groupId>|<groupId><group></groupId>|' \
-    -e 's|<artifactId>reference-app</artifactId>|<artifactId><app></artifactId>|' \
-    -e 's|<name>reference-app</name>|<name><app></name>|' -e 's|<description>.*</description>|<description><one line></description>|' \
-    ~/Documents/claude-skills/reference-app/pom.xml > pom.xml
-```
-Then write `<App>Application` (`@SpringBootApplication @ConfigurationPropertiesScan`, a `main`) in
-the root package, and copy the pieces. Step 2's Initializr clean-up doesn't apply.
+wrapper, the pom with every dependency the pieces can need; step 3 trims it to the approved ones).
+`git init -b main <project>`, write `<App>Application` (`@SpringBootApplication @ConfigurationPropertiesScan`, a
+`main`) in the root package with Write, then copy with `--new-project <app>` (lower-case, the artifact name): the
+script also writes the wrapper, `.gitattributes`, the reference's `.gitignore` and the pom under the project's
+names (groupId the root package's parent, `--description "<one line>"`), whose coverage minimums are the ones a
+bare copy of these pieces holds (`<skills>/scripts/coverage-minimums`, which the skills' `verify.sh` keeps true).
+The copy builds green as rendered. Step 2's Initializr clean-up doesn't apply.
 
 ```bash
-~/Documents/claude-skills/scripts/bootstrap-copy.sh --target <project> --package <rootPackage> --with core,sign-in --dry-run
-~/Documents/claude-skills/scripts/bootstrap-copy.sh --target <project> --package <rootPackage> --with core,sign-in
+<skills>/scripts/bootstrap-copy.sh --new-project <app> --target <project> --package <rootPackage> --with core,sign-in --dry-run
+<skills>/scripts/bootstrap-copy.sh --new-project <app> --target <project> --package <rootPackage> --with core,sign-in
 ```
+On an existing project (it has a build file) drop `--new-project`; a project without a `.gitignore` gets the
+reference's either way.
 | Piece | What it brings |
 |---|---|
 | `core` | `common/` (error contract with `ErrorCode`, mapper, `AppException`, RFC 9457 `errors` (`RequestError`, `JsonPointers`), transient-failure 503s; wrappers `Object`/`BoundedList`/`Map`/`Pagination`/`Cursor`; `PageFilter`, `CursorFilter`, `Paging`, `OffsetPages`, `Cursor`, `Seek`, `TextSearch`; `Limits` with `@MaxLength` / `@ConfiguredMax` and their OpenAPI customizer; the dropdown types; `AuditableEntity`; logging context and filters; admission control; `ProblemTypes`, `ProblemResponses`, `RetryAfterProperties`; `RateLimitExceededException` (429); `CurrentUser`, `PersonalDataHasher`; authorization: `Permission`, `Area`, `Reach`, `@Requires`, `@SignedIn`, `@Public`, `Decision`, `TokenPermissions`, `DropdownFor`; `@MultiInstanceSafe` and `Cron`, a job's schedule as a typed setting; `BusinessCalendar`, today in the organisation's configured zone); `config/` (security, JWT validation, messages, auditing, scheduling, OpenAPI, startup checks, pool readiness, clock, Liquibase's own connection with a `lock_timeout`); `application.yml` + `config/*.yml` split by concern with `-dev`/`-prod` variants; logback; messages; the test base, ArchUnit and contract tests; `compose.yaml`, `.env.example`; `lombok.config` (Lombok copies `@Qualifier` onto the constructors it generates, JAVA-26, and marks its code `@lombok.Generated` so coverage leaves it out); `spotbugs-exclude.xml` (the static-analysis gate's false positives, house-review CFG-11: each entry names a piece's class and arrives with its piece); `docs/runbook.md` (the incident runbook, OPS-10) |
@@ -259,7 +258,7 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
   holds: a piece turned on later (the session version) or a piece's new changeset in a later skills
   release brings its own number below 0100 without two files sharing one, appended to the master after
   the project's (the master's order is the order they run in, so a late 0027 runs after 0105). An
-  existing project whose own changesets already use numbers below 0100 keeps them (an applied changeset
+  existing project whose own changesets already use numbers below 0100 keeps them (a shipped changeset
   is never renamed) and numbers its next one 0100; a piece's file that would share a number with one of
   them is copied as is (different names, different ids: only the upgrade path reads the number, and it
   reads the ranges below).
@@ -287,8 +286,8 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
 - The upgrade path (core's `support/PreviousReleaseDatabase`) is inert until the project has a release in production: then it writes
   `src/test/resources/db/upgrade/previous-release-seed.sql` (with the example, the reference's is there to
   follow) and runs `./mvnw verify -Dapp.test.upgrade.previous-release=<pieces>,<project>` (the highest
-  number of each range in production, `26,105`) before each release that
-  changes existing rows (tests.md, *Upgrading a used database*).
+  number of each range in production, `26,105`: the review profile's `shippedRelease`, updated at each release)
+  before each release that changes existing rows (tests.md, *Upgrading a used database*).
 - `ErrorCode`: remove the sign-in codes if `sign-in` wasn't copied. Constraint mappings live in each
   module's `ConstraintErrorCodes` bean (`UserConstraintErrorCodes`, ...), which the handler
   aggregates, so they come and go with their module.
@@ -415,11 +414,14 @@ per class (`SPRING_ENDPOINT` per controller, `CRLF_INJECTION_LOGS` per class tha
 that adapted a deployed profile to text logs makes the second kind real. Core copies `spotbugs-exclude.xml`, and `lombok.config` carries
 `lombok.addLombokGeneratedAnnotation`; a project's own `lombok.config` gets that line too, or Lombok's
 code counts against the minimum. **The minimums are the project's own:** the reference's measure the
-reference's suite, so the copy measures its own level in step 4 and sets each by the same rule.
+reference's suite. A new project (`--new-project`) starts with the ones a bare copy of its pieces holds, when
+`scripts/coverage-minimums` has the set (the script warns when it hasn't); an existing project, a set the table
+lacks, or a copy step 2 adapted beyond its configuration measures its own level in step 4 and sets each by the same rule.
 
 ## 4. Verify
 1. Build, test and the gates (`{{buildCommand}}`, `verify`: green means that command, never the tests
-   alone). **The coverage minimums:** run it three times on the clean copy with
+   alone). **The coverage minimums** (skip on a new project whose pom took them from the table and passes):
+   run it three times on the clean copy with
    `-Djacoco.haltOnFailure=false` (each run's report: `target/site/jacoco/index.html`, the total's
    line and branch ratios) and set each minimum **a full point below the lowest run**, rounded down
    (lines 87.6 %, 87.9 %, 87.4 % give 0.86), with the pom comment saying how it was set and that it is
@@ -441,14 +443,15 @@ reference's suite, so the copy measures its own level in step 4 and sets each by
    `SecurityConfig` for an external IdP, the runbook): `/house-review <those files>`. The unmodified
    copy is the reference, which `verify.sh` builds and tests in the skills repository; reviewing
    the copied files again finds nothing new. Expected: no findings outside open business decisions.
-4. Record `pieces` and `skillsRelease` (`git -C ~/Documents/claude-skills rev-parse --short HEAD`) in the
-   crud profile. Report what was copied, what was skipped (with the differences proposed), and the decisions.
+4. Record `pieces` and `skillsRelease` (`git -C <skills> rev-parse --short HEAD`) in the
+   crud profile, and the review profile's `shippedRelease`: `none` on a new project; on an existing one, ask the
+   owner which changesets production holds (SKILL.md Step 2, *Shipped*). Report what was copied, what was skipped (with the differences proposed), and the decisions.
 
 ## 5. Upgrade to a later skills release
 On a project whose crud profile records `skillsRelease`. The copied files are the project's now, adapted
 and grown; a later release changed the reference under them. Never copy over them:
 1. **Render both releases** into scratch directories, each holding an empty `pom.xml`: a worktree of the
-   skills repository at `skillsRelease` (`git worktree add <scratch>/base <skillsRelease>`) and the current
+   skills repository at `skillsRelease` (`git -C <skills> worktree add <scratch>/base <skillsRelease>`) and the current
    one, each running `scripts/bootstrap-copy.sh --target <dir> --package <the root package> --with {{pieces}}`.
 2. **Three-way merge each file** (`git merge-file <project file> <base file> <current file>`): base = the
    old render, theirs = the new one, ours = the project's. A file the project deleted stays deleted;
@@ -456,7 +459,7 @@ and grown; a later release changed the reference under them. Never copy over the
    A hunk that brings a feature the project never took (a piece it doesn't have, a check its earlier
    adaptation left out on purpose): ask, never add silently.
 3. **Renames:** read the whole diff between the two releases, not only the commit messages
-   (`git -C ~/Documents/claude-skills diff <skillsRelease> HEAD -- reference-app overlays`), and grep
+   (`git -C <skills> diff <skillsRelease> HEAD -- reference-app overlays`), and grep
    the project for each renamed name: the project's own code calls the copied API too.
 4. **Changesets:** a piece's new changeset is **appended** to `db.changelog-master.yaml` after the
    project's own, never inserted at its number's place (*Numbers* above). With a release in production,
@@ -465,7 +468,7 @@ and grown; a later release changed the reference under them. Never copy over the
 5. **Settings:** the new release's `ConfigurationBaselineIntegrationTest` names the baseline (house-review
    CFG-04). A setting the project lacks is adopted, or kept off as a review-profile deviation with the
    owner's reason; never by deleting its row.
-6. **Rules that changed:** read `git -C ~/Documents/claude-skills diff <skillsRelease> HEAD -- house-review
+6. **Rules that changed:** read `git -C <skills> diff <skillsRelease> HEAD -- house-review
    crud-gen` and run `/house-review` over the project's own code for the rules that changed (a renamed
    convention, a new check): the copied files follow the reference, the project's own code does not yet.
 7. `{{buildCommand}}` green, then record the new `skillsRelease` and list the breaking changes (renamed

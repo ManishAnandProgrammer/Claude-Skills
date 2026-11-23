@@ -62,6 +62,7 @@ A project copied from the house reference application with the pieces @PIECES@ (
 | Key | Value |
 |---|---|
 | `idStrategy` | `uuidv7` |
+| `shippedRelease` | `none` |
 | `auditedTables` | `@AUDITED_TABLES@` |
 | `auditMechanism` | `pg-trigger` |
 | `retentionExceptions` | `none` |

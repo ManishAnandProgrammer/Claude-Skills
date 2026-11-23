@@ -1,13 +1,52 @@
 ---
 name: house-review
 description: Review Java / Spring Boot code against the house engineering standards (REST guidelines, code smells, Effective Java, persistence pitfalls, the eight lenses incl. required tests). Works on a branch diff, a commit, uncommitted changes, a path or module, or the whole codebase. Builds and runs the tests, verifies every serious finding, handles deliberate deviations (accept + mark, or fix), reports, then offers to fix. Project conventions come from .claude/review-profile.md, built from the codebase on first use.
-argument-hint: "[diff | commit <sha> | uncommitted | all | <path>] [--focus api|data|tests|security|config|arch]"
-allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
+argument-hint: "[diff | commit <sha> | uncommitted | all | <path>] [--focus api|data|tests|security|config|arch] [--unattended]"
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Agent
+  - AskUserQuestion
+  - Bash(./mvnw *)
+  - Bash(git status *)
+  - Bash(git diff *)
+  - Bash(git log *)
+  - Bash(git show *)
+  - Bash(git ls-files *)
+  - Bash(git rev-parse *)
+  - Bash(git blame *)
+  - Bash(git symbolic-ref *)
+  - Bash(git branch --show-current)
+  - Bash(git worktree *)
+  - Bash(unzip -l *)
+  - Bash(unzip -p *)
+  - Bash(ls *)
+  - Bash(cat *)
+  - Bash(head *)
+  - Bash(tail *)
+  - Bash(wc *)
+  - Bash(grep *)
+  - Bash(find *)
+  - Bash(diff *)
 ---
 
 # House Review
 
 Review scope: **$ARGUMENTS**
+
+**The skills repository** is `${CLAUDE_SKILL_DIR}/..`: this skill's own directory, which the installer links into
+the repository (or a zip copy's folder), so the path resolves through the link; `references/` write it `<skills>`
+(the tenancy overlays). The reference application is `~/.claude/skills-reference`. Never assume where the
+repository was cloned.
+
+**Tools.** The frontmatter pre-approves the build (`./mvnw`), git's reads, `git worktree` (Step 2's scratch worktree
+of a reviewed commit, the one git command here that writes, outside the project) and reads of the framework's source
+jars in `~/.m2` (`unzip -l`, `unzip -p`), plus read-only commands; nothing broad. Files (the profile, the report, a
+probe test, Step 8's fixes) are written with Write or Edit. Deleting a probe test (Step 5) asks for permission on
+purpose: a prefix rule for `rm` would match any path the command names.
 
 The rules are fixed and identical across projects. They live in `references/`:
 
@@ -41,6 +80,26 @@ Principles:
 - **Fewer, grouped findings beat many trivial ones.** One finding lists every location of the
   same problem.
 - Never change code before the report is shown (Step 6) and the user has chosen what to fix.
+
+### Unattended mode (`--unattended`)
+`--unattended` anywhere in the arguments, removed before the scope is parsed: a **report-only** review for a run
+nobody can answer (a generator's self-review, a scheduled job, an evaluation harness).
+- **No questions:** AskUserQuestion is never called and the run never ends on a question.
+- **No edits:** the report (and the structured output, when the caller asks for one) is the one thing written.
+  Nothing in the code, the profiles or a tracker changes.
+- **Step 0:** an existing profile is used as it stands, a stale row reported (Low), not corrected. A missing one is
+  built and written without the confirmation (the one write besides the report), its unanswered questions listed
+  under *Not investigated enough*.
+- **Step 1:** an empty scope is `uncommitted` when the tree has changes, else `diff`.
+- **Step 2:** a compile error doesn't stop the review: it is a finding, and the review continues on the sources and
+  says so in the header.
+- **Step 5: no probe tests.** A claim a probe would prove stays **possible**, the probe listed under *Runtime
+  experiments still to run*, the report saying why. A probe in the project writes into the tree under review, and
+  one in a scratch copy needs writes outside the project, a second build and a copy that lacks uncommitted code:
+  either way the review changes something it was asked only to read. Proof from the framework source in `~/.m2`
+  is still used.
+- **Steps 7 and 8 don't run:** *Decisions* says "unattended: none taken", and the fixes and the offers (ArchUnit
+  classes, the generator) are listed in the report as proposals. The run ends after Step 6.
 
 ---
 
@@ -78,7 +137,7 @@ review leans on it.
 
 ## Step 1: Choose the scope
 
-Parse `$ARGUMENTS`:
+Parse `$ARGUMENTS` (without `--unattended`):
 
 | Argument | Mode | Files |
 |---|---|---|
@@ -89,7 +148,7 @@ Parse `$ARGUMENTS`:
 | `uncommitted` | Uncommitted changes | `git diff --name-only HEAD` plus untracked files (`git ls-files --others --exclude-standard`) |
 | `all` | Whole codebase | Every source, test, resource and migration file |
 | a path | Path or module | Every file under the path |
-| empty | Ask | Use **AskUserQuestion** with the four modes. Show the changed-file count for diff and uncommitted, so the user can pick |
+| empty | Ask | Use **AskUserQuestion** with the four modes. Show the changed-file count for diff and uncommitted, so the user can pick (unattended: `uncommitted`, else `diff`) |
 | any of the above, then `--focus <area>` | The mode, narrowed | The mode's files; only the rules of `api`, `data`, `tests`, `security`, `config` or `arch` load (Step 3, Gate 3) |
 
 Then add the **related files** the rules need even when unchanged:
@@ -118,7 +177,8 @@ quality gates, CFG-11). **Delegated
 reviewer:** when the caller hands over the results of a build of exactly the reviewed code (one
 `target/` and one Testcontainers set per working tree: a second build collides with work running
 there), use them instead and say so in the report's header, with the commit they came from.
-- A compile error stops the review: report it and ask whether to continue on the sources only.
+- A compile error stops the review: report it and ask whether to continue on the sources only (unattended:
+  continue, Unattended mode).
 - Record compiler warnings in the scoped files as SMELL-18 / JAVA findings.
 - Record test failures as findings, with the test name and the assertion that failed. Don't
   diagnose them beyond reading the failure, unless they are in scope.
@@ -207,7 +267,8 @@ yourself, file by file.
 
 **Large scope** (any mode above the threshold, a diff included): split it by module into 3–5
 groups and start one reviewer per group with the **Agent** tool, all in one message so they
-run in parallel. Each reviewer must get:
+run in parallel, and wait for **every** reviewer's result (a background reviewer's notification included) before
+Step 5. Each reviewer must get:
 - the list of files;
 - the paths of the references this review loads and of the profile, with the instruction to read
   them first;
@@ -289,7 +350,8 @@ Also check any number you report (counts of endpoints, tests, files) by recomput
   experiment. Examples: what is ignored under virtual threads, default timeouts, what
   `cancel(true)` really does. The strongest proof is a **probe test**: a throwaway test class
   extending the project's test base that sends the real request (or reads the real bean) and
-  prints the result, deleted right after.
+  prints the result, deleted right after (the one deletion this skill runs, approved when it runs). Never in an
+  unattended run (Unattended mode).
 - **Static reading shows the mechanism, not the magnitude.** List each magnitude question under
   "Runtime experiments still to run", with the result that would change the severity. Don't run
   load tests unless asked.
@@ -316,6 +378,11 @@ Also check any number you report (counts of endpoints, tests, files) by recomput
 ---
 
 ## Step 6: Report
+
+**Report once, at the end.** The report, and any structured output the caller asked for, is written once, after
+every pass of Step 3 is in (each reviewer's result included) and Step 5 has verified the findings: never a partial
+report to complete later, never a structured result written before the verification that can still drop or
+downgrade a finding. Steps 7 and 8 add their decisions to that report afterwards.
 
 **Diff and uncommitted:** print the report in the terminal; when the call says it reviews one
 entity's generation (crud-gen Step 8), also write it as `<reportDir>/<yyyy-mm-dd>-<entity>.md`.
