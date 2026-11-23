@@ -21,6 +21,8 @@ class TimeEntryIndexIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    // The select list of the repository's projection: "select id" alone could be answered from an index only, a
+    // plan the real query never gets.
     private static final String ENTRY_ROW = """
             select id, todo_id, owner_id, minutes, spent_on, note, billable, created_at, updated_at, created_by, updated_by, version
               from time_entries""";

@@ -1,6 +1,5 @@
 package com.example.app.support;
 
-import com.example.app.common.exception.ErrorCode;
 import org.springframework.boot.webmvc.test.autoconfigure.MockMvcBuilderCustomizer;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
@@ -38,10 +37,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 public class ObservedOutcomes implements MockMvcBuilderCustomizer {
 
     private static final Pattern ERROR_CODE = Pattern.compile("\\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\\b");
-    private static final Map<ErrorCode, String> ANSWERED_BY_EVERY_OPERATION = Map.of(
-            ErrorCode.REQUEST_MEDIA_TYPE_UNSUPPORTED, "content negotiation refuses the body's type before the handler reads it",
-            ErrorCode.REQUEST_NOT_ACCEPTABLE, "content negotiation finds no converter for the Accept header",
-            ErrorCode.REQUEST_INVALID, "the security firewall refuses the path before any handler");
     private static final String API_DOCS = "/v3/api-docs";
     private static final String ACTUATOR = "/actuator";
     private static final String VERSION_VARIABLE = "version";
@@ -75,9 +70,6 @@ public class ObservedOutcomes implements MockMvcBuilderCustomizer {
         MockHttpServletResponse response = result.getResponse();
         String status = String.valueOf(response.getStatus());
         Optional<String> errorCode = errorCodeOf(response);
-        if (errorCode.isPresent() && isAnsweredByEveryOperation(errorCode.get())) {
-            return;
-        }
         String outcome = "%s %s answered %s%s".formatted(method.toUpperCase(Locale.ROOT), handled.get().documentedPath(),
                 status, errorCode.map(code -> " " + code).orElse(""));
         JsonNode documented = operation.path("responses").path(status);
@@ -88,10 +80,6 @@ public class ObservedOutcomes implements MockMvcBuilderCustomizer {
             throw new AssertionError(outcome + ", a code its " + status + " description doesn't name: "
                     + documented.path("description").asString(""));
         }
-    }
-
-    private static boolean isAnsweredByEveryOperation(String errorCode) {
-        return ANSWERED_BY_EVERY_OPERATION.keySet().stream().anyMatch(code -> code.name().equals(errorCode));
     }
 
     private static boolean isUndocumentedByDesign(String pattern) {

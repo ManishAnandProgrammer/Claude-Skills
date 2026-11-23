@@ -1,0 +1,1 @@
+{"expect": [{"rules": ["REST-08"], "file": "todo/repository/impl/TagRepositoryImpl.java"}]}

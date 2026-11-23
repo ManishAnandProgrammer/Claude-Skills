@@ -1238,3 +1238,33 @@ path. Decided while building it:
   column is among its arguments (each piece names its tables), the purge goes past one batch, and its batch is an
   init plan on `idx_audit_log_changed_at` (the statement takes named parameters so the test explains it).
 
+
+## A flag's permission proven equal to its endpoint's: `AllowedActionContract` (AUTHZ-07; 2026-11-23)
+
+A flag's permission is written twice: in its `toAllowedAction` call and in the endpoint's `@Requires`. The
+library-desk review found tests that checked one flag each, with the permission copied into the test, so a changed
+endpoint left both the flag and its test agreeing on the old permission.
+- **Decision:** the test base's `support/AllowedActionContract` (core, so it compiles without the example).
+  - A resource's test names each flag and its endpoint (`.flag("markDone", "PATCH /api/{version}/plans/{id}/status")`),
+    never the permission. The helper finds the handler in `RequestMappingHandlerMapping` by method and exact path
+    pattern and reads its `@Requires`.
+  - The rows must equal the record's `AllowedAction` components.
+  - Through the base's `holding()` (which works the same with the roles piece and with tenancy), a caller holding
+    every permission but the endpoint's must see `ACCESS_DENIED` alone. A caller holding one accepted permission,
+    its prerequisites and the read's must never see it.
+  - One readable test stays beside it: the message equals the endpoint's 403 `detail`.
+- **Coverage:** `archunit/AllowedActionContractArchTest` fails naming each record that main code builds and that has
+  an `AllowedAction` component, when no test passes it to `AllowedActionContract.of` on the call's own line.
+  - A record nothing builds is skipped, so a copy without the example passes with `SelectableDropdownItem` unused.
+  - The check is per record type: a second endpoint that answers a record already contracted elsewhere is not
+    forced into a second contract. That stays a review finding (tests.md row 28l).
+- **Rejected:**
+  - Per-flag tests that write the permission: they copy it a third time and drift with the other two.
+  - Deriving the flag's permission from `@Requires` at runtime: the service and its policy would depend on the web
+    layer's handlers.
+  - "The test class mentions both types" as the coverage check: an import or another assertion passes it. The
+    ArchUnit check pairs the class literal with the `of` call on the same line; the bytecode keeps no link between
+    an argument and its call, and a split line fails the test, never passes it wrongly.
+  - Spring's repackaged ASM, to read the exact argument: an internal package.
+  - Checking every main record with a flag whether or not it is built: it fails copies that keep a shared shape unused.
+- **Approximated:** whether a contract covers every endpoint answering the record (the check is by type).

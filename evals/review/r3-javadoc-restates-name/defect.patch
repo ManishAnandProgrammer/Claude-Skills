@@ -1,0 +1,43 @@
+diff --git a/src/main/java/com/acme/review/todo/service/TagService.java b/src/main/java/com/acme/review/todo/service/TagService.java
+index 841c8ba..e6f9df4 100644
+--- a/src/main/java/com/acme/review/todo/service/TagService.java
++++ b/src/main/java/com/acme/review/todo/service/TagService.java
+@@ -42,12 +42,24 @@ public class TagService {
+     private final CurrentUser currentUser;
+     private final Paging paging;
+ 
++    /**
++     * Creates a tag.
++     *
++     * @param request the create request
++     * @return the created tag
++     */
+     @Transactional
+     public ObjectWrapper<TagResponse> create(TagCreateRequest request) {
+         Tag saved = repository.saveAndFlush(mapper.toEntity(request, currentUser.id()));
+         return ObjectWrapper.withObject(mapper.toResponse(saved));
+     }
+ 
++    /**
++     * Finds a tag by its id.
++     *
++     * @param id the id of the tag
++     * @return the tag
++     */
+     public ObjectWrapper<TagResponse> findById(UUID id) {
+         return ObjectWrapper.withObject(mapper.toResponse(getOwnedTag(id, currentUser.id())));
+     }
+@@ -57,6 +69,13 @@ public class TagService {
+                 repository.findByFilter(filter, currentUser.id(), paging.offset(filter)));
+     }
+ 
++    /**
++     * Updates a tag.
++     *
++     * @param id the id of the tag
++     * @param request the update request
++     * @return the updated tag
++     */
+     @Transactional
+     public ObjectWrapper<TagResponse> update(UUID id, TagUpdateRequest request) {
+         Tag tag = getOwnedTag(id, currentUser.id());

@@ -1,0 +1,89 @@
+diff --git a/src/main/java/com/acme/review/common/exception/ErrorCode.java b/src/main/java/com/acme/review/common/exception/ErrorCode.java
+index bf70565..6102aac 100644
+--- a/src/main/java/com/acme/review/common/exception/ErrorCode.java
++++ b/src/main/java/com/acme/review/common/exception/ErrorCode.java
+@@ -62,4 +62,5 @@ public enum ErrorCode {
+     PLAN_DONE_ON_BEFORE_STARTS_ON,
+     PLAN_DONE,
+     PLAN_CANCELLED,
++    PLAN_ENDED,
+ }
+diff --git a/src/main/java/com/acme/review/common/exception/ErrorCodeHttpStatusMapper.java b/src/main/java/com/acme/review/common/exception/ErrorCodeHttpStatusMapper.java
+index 4e810a0..2b307c7 100644
+--- a/src/main/java/com/acme/review/common/exception/ErrorCodeHttpStatusMapper.java
++++ b/src/main/java/com/acme/review/common/exception/ErrorCodeHttpStatusMapper.java
+@@ -66,6 +66,7 @@ public final class ErrorCodeHttpStatusMapper {
+         MAPPING.put(ErrorCode.PLAN_DONE_ON_BEFORE_STARTS_ON, HttpStatus.BAD_REQUEST);
+         MAPPING.put(ErrorCode.PLAN_DONE, HttpStatus.CONFLICT);
+         MAPPING.put(ErrorCode.PLAN_CANCELLED, HttpStatus.CONFLICT);
++        MAPPING.put(ErrorCode.PLAN_ENDED, HttpStatus.CONFLICT);
+     }
+ 
+     private ErrorCodeHttpStatusMapper() {
+diff --git a/src/main/java/com/acme/review/planning/controller/api/PlanApi.java b/src/main/java/com/acme/review/planning/controller/api/PlanApi.java
+index c58f010..00910f2 100644
+--- a/src/main/java/com/acme/review/planning/controller/api/PlanApi.java
++++ b/src/main/java/com/acme/review/planning/controller/api/PlanApi.java
+@@ -123,7 +123,8 @@ public interface PlanApi {
+             the configured dates, at most a configured number of days, and free of your other plans (409 \
+             PLAN_OVERLAPS; the plan's own old days don't count). Its todo stays the same, and must still be open, \
+             as on the create (409 PLAN_TODO_DONE). A DONE or CANCELLED plan is final: 409 PLAN_DONE or \
+-            PLAN_CANCELLED, whatever the new days and its todo's state.""")
++            PLAN_CANCELLED, whatever the new days and its todo's state. A plan whose last day is past can't move: \
++            409 PLAN_ENDED.""")
+     @ApiResponse(responseCode = "200", description = "The plan with its new days and version")
+     @ApiResponse(responseCode = "400", description = """
+             VALIDATION_FAILED (a missing field, a date outside the configured earliest and latest ones, or \
+@@ -136,7 +137,8 @@ public interface PlanApi {
+             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+     @ApiResponse(responseCode = "409", description = """
+             OPTIMISTIC_LOCK_CONFLICT (the version is stale); PLAN_DONE, PLAN_CANCELLED (the plan is final); \
+-            PLAN_TODO_DONE (its todo is done); PLAN_OVERLAPS (the new days share one with another of your plans)""",
++            PLAN_TODO_DONE (its todo is done); PLAN_OVERLAPS (the new days share one with another of your plans); \
++            PLAN_ENDED (its last day is past)""",
+             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY",
+             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+diff --git a/src/main/java/com/acme/review/planning/service/PlanService.java b/src/main/java/com/acme/review/planning/service/PlanService.java
+index d87abea..cf00d00 100644
+--- a/src/main/java/com/acme/review/planning/service/PlanService.java
++++ b/src/main/java/com/acme/review/planning/service/PlanService.java
+@@ -32,6 +32,8 @@ import lombok.RequiredArgsConstructor;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
++import java.time.Clock;
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
+@@ -53,6 +55,7 @@ public class PlanService {
+     private final Todos todos;
+     private final CurrentUser currentUser;
+     private final Paging paging;
++    private final Clock clock;
+ 
+     /**
+      * The todo is locked, because no constraint can hold "only for an open todo" (it reads another module's
+@@ -110,6 +113,9 @@ public class PlanService {
+         UUID ownerId = currentUser.id();
+         Plan plan = getOwnedPlan(id, ownerId);
+         plan.checkVersion(request.version());
++        if (plan.getEndsOn().isBefore(LocalDate.now(clock))) {
++            throw AppException.of(ErrorCode.PLAN_ENDED, id, plan.getEndsOn());
++        }
+         TodoView todo = todos.getOwnedTodoViewForUpdate(plan.getTodoId(), ownerId);
+         policy.reschedule(plan.getId(), plan.getStatus(), todo).orThrow();
+         plan.reschedule(request.startsOn(), request.endsOn());
+diff --git a/src/main/resources/messages/message_en.properties b/src/main/resources/messages/message_en.properties
+index 3fb0b31..43a6ef0 100644
+--- a/src/main/resources/messages/message_en.properties
++++ b/src/main/resources/messages/message_en.properties
+@@ -56,6 +56,7 @@ PLAN_STATUS_CHANGE_INVALID=A {0} plan can''t become {1}.
+ PLAN_DONE_ON_BEFORE_STARTS_ON=A plan can''t be done on {0}, before its first day, {1}.
+ PLAN_DONE=Plan {0} is done: its days can''t change any more.
+ PLAN_CANCELLED=Plan {0} is cancelled: its days can''t change any more.
++PLAN_ENDED=Plan {0} ended on {1}: its days can''t change any more.
+ # The example's bean validation messages.
+ todo.due-filter-order=dueOnOrBefore needs sort DUE_DATE
+ time-entry.spent-on-range=spentOnFrom must not be after spentOnTo

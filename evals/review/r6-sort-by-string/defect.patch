@@ -1,0 +1,15 @@
+diff --git a/src/main/java/com/acme/review/todo/repository/impl/TagRepositoryImpl.java b/src/main/java/com/acme/review/todo/repository/impl/TagRepositoryImpl.java
+index 2570874..b790e69 100644
+--- a/src/main/java/com/acme/review/todo/repository/impl/TagRepositoryImpl.java
++++ b/src/main/java/com/acme/review/todo/repository/impl/TagRepositoryImpl.java
+@@ -66,8 +66,8 @@ class TagRepositoryImpl implements CustomTagRepository {
+     // owner's rows instead of the owner's index.
+     private static List<Order> orderOf(CriteriaBuilder builder, Root<Tag> root, TagSort sort) {
+         return switch (sort) {
+-            case NAME -> List.of(builder.asc(root.get(Tag_.name)), builder.asc(root.get(Tag_.id)));
+-            case NEWEST -> List.of(builder.desc(root.get(Tag_.createdAt)), builder.desc(root.get(Tag_.id)));
++            case NAME -> List.of(builder.asc(root.get("name")), builder.asc(root.get("id")));
++            case NEWEST -> List.of(builder.desc(root.get("createdAt")), builder.desc(root.get("id")));
+         };
+     }
+ 

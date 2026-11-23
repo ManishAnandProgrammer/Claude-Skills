@@ -3,6 +3,8 @@ package com.example.app.planning;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import com.example.app.common.security.Permission;
+import com.example.app.planning.dto.response.PlanAllowedActionsResponse;
+import com.example.app.support.AllowedActionContract;
 import com.example.app.support.CapturedLog;
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
@@ -12,15 +14,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
-import static org.hamcrest.Matchers.everyItem;
-import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -124,7 +123,7 @@ class PlanAllowedActionsIntegrationTest extends IntegrationTest {
     @Test
     @DisplayName("""
             A caller without the permission a write's endpoint requires sees its flag refused with ACCESS_DENIED alone, \
-            the message that endpoint's 403 answers, whatever the record's state; the availability's flag too""")
+            the message that endpoint's 403 answers, whatever the record's state""")
     void aPermissionNotHeldIsTheFlagsOnlyReason() throws Exception {
         Planned planned = cancelledWithItsTodoDone();
         Set<Permission> readOnly = Set.of(Permission.PLAN_READ_OWN);
@@ -138,20 +137,29 @@ class PlanAllowedActionsIntegrationTest extends IntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED")), "$.detail");
 
-        ResultActions detail = mvc.perform(get(PLANS + "/" + planned.planId())
+        mvc.perform(get(PLANS + "/" + planned.planId())
                         .with(holding(planned.user().accessToken(), readOnly))
                         .header(HttpHeaders.ACCEPT_LANGUAGE, LANGUAGE))
-                .andExpect(status().isOk());
-        for (String action : List.of("reschedule", "markDone", "cancel")) {
-            detail.andExpect(jsonPath("$.response.allowedActions.%s.allowed".formatted(action)).value(false))
-                    .andExpect(jsonPath("$.response.allowedActions.%s.reasons[*].errorCode".formatted(action), contains("ACCESS_DENIED")))
-                    .andExpect(jsonPath("$.response.allowedActions.%s.reasons[0].message".formatted(action)).value(forbidden));
-        }
-        mvc.perform(get(PLANS + "/availability?from=2026-03-09&to=2026-03-16")
-                        .with(holding(planned.user().accessToken(), readOnly)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response.spans[*].plannable.allowed", everyItem(is(false))))
-                .andExpect(jsonPath("$.response.spans[*].plannable.reasons[*].errorCode", everyItem(is("ACCESS_DENIED"))));
+                .andExpect(jsonPath("$.response.allowedActions.reschedule.allowed").value(false))
+                .andExpect(jsonPath("$.response.allowedActions.reschedule.reasons[*].errorCode", contains("ACCESS_DENIED")))
+                .andExpect(jsonPath("$.response.allowedActions.reschedule.reasons[0].message").value(forbidden));
+    }
+
+    @Test
+    @DisplayName("""
+            Each of a plan's flags is ACCESS_DENIED alone without its endpoint's permission and never with it, on the \
+            detail and its list row, whatever the plan's state""")
+    void everyPlanFlagIsItsEndpointsPermission() throws Exception {
+        Planned planned = cancelledWithItsTodoDone();
+
+        AllowedActionContract.of(PlanAllowedActionsResponse.class)
+                .flag("reschedule", "PUT /api/{version}/plans/{id}")
+                .flag("markDone", "PATCH /api/{version}/plans/{id}/status")
+                .flag("cancel", "PATCH /api/{version}/plans/{id}/status")
+                .readFrom("GET /api/{version}/plans/{id}", "$.response.allowedActions", planned.planId())
+                .readFrom("GET /api/{version}/plans?todoId={todoId}", "$.response[*].allowedActions", planned.todoId())
+                .verify(mvc, permissions -> holding(planned.user().accessToken(), permissions));
     }
 
     @Test

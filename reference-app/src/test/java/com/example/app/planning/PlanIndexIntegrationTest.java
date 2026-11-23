@@ -19,8 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PlanIndexIntegrationTest extends IntegrationTest {
 
+    // The select list of the repository's projection: "select id" alone could be answered from an index only, a
+    // plan the real query never gets.
     private static final String PLAN_ROW = """
-            select id, todo_id, owner_id, starts_on, ends_on, created_at, updated_at, created_by, updated_by, version
+            select id, todo_id, owner_id, starts_on, ends_on, status, done_on, created_at, updated_at, created_by, updated_by, version
               from plans""";
     // tenancy-row:begin
     // private static final String AND_TENANT = " and tenant_id = :tenantId";

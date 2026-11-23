@@ -15,12 +15,14 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -181,13 +183,15 @@ class MediaJobsIntegrationTest extends IntegrationTest {
 
     /**
      * Without SKIP LOCKED the second lease would wait for the first's held transaction past lock_timeout. The
-     * rows expired long before any other test's, so they head the queue.
+     * rows expired before any other test's (theirs from 2000 on), so they head the queue: the two batches are
+     * exactly these four.
      */
     @Test
     @DisplayName("Two instances leasing at the same time get disjoint batches")
     void concurrentLeasesAreDisjoint() throws Exception {
+        List<UUID> inserted = new ArrayList<>();
         for (int index = 0; index < 4; index++) {
-            insertFile("ATTACHED", "timestamptz '2000-01-01' + interval '%d seconds'".formatted(index), FUTURE);
+            inserted.add(insertFile("ATTACHED", "timestamptz '1990-01-01' + interval '%d seconds'".formatted(index), FUTURE).id());
         }
         CountDownLatch leased = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -210,6 +214,8 @@ class MediaJobsIntegrationTest extends IntegrationTest {
 
             assertThat(firstBatch).hasSize(2);
             assertThat(second).hasSize(2).doesNotContainAnyElementsOf(firstBatch);
+            assertThat(Stream.concat(firstBatch.stream(), second.stream()).map(MediaFileKey::id))
+                    .containsExactlyInAnyOrderElementsOf(inserted);
         }
     }
 

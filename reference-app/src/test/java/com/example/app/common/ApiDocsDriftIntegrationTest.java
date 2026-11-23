@@ -70,6 +70,22 @@ class ApiDocsDriftIntegrationTest extends IntegrationTest {
         assertThat(repeated).as("descriptions repeating a constraint the schema publishes").isEmpty();
     }
 
+    @Test
+    @DisplayName("No schema publishes Integer.MAX_VALUE as a bound: a constraint without its own end publishes none")
+    void noBoundIsIntegerMaxValue() throws Exception {
+        List<String> unbounded = new ArrayList<>();
+
+        eachNode(apiDocs(), "", (location, node) -> {
+            for (String bound : BOUNDS) {
+                if (node.path(bound).isNumber() && node.path(bound).asLong() == Integer.MAX_VALUE) {
+                    unbounded.add(location + " " + bound);
+                }
+            }
+        });
+
+        assertThat(unbounded).as("bounds published as Integer.MAX_VALUE").isEmpty();
+    }
+
     private JsonNode apiDocs() throws Exception {
         return JsonMapper.builder().build().readTree(getAs(null, "/v3/api-docs")
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());

@@ -1,0 +1,12 @@
+diff --git a/src/main/java/com/acme/review/todo/controller/TagController.java b/src/main/java/com/acme/review/todo/controller/TagController.java
+index 9b64f6e..bb9c192 100644
+--- a/src/main/java/com/acme/review/todo/controller/TagController.java
++++ b/src/main/java/com/acme/review/todo/controller/TagController.java
+@@ -50,7 +50,6 @@ class TagController implements TagApi {
+ 
+     @Override
+     @GetMapping(path = "/{id}", version = "v1+")
+-    @Requires(Permission.TAG_READ_OWN)
+     public ObjectWrapper<TagResponse> get(@PathVariable UUID id) {
+         return service.findById(id);
+     }

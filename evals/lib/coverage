@@ -1,0 +1,7 @@
+# <pieces> <line minimum> <branch minimum>: a bare copy's coverage, a full point below the lowest measured run, rounded
+# down (verify.sh's method, house-review CFG-11). The harness writes them into each copy's pom as bootstrap's step 4
+# has a project do; a generated module must keep the copy above them (crud-gen Step 7: no lowered minimum).
+# core,sign-in: verify.sh stage 2 (measured 2026-11-18 at lines 89.33 %, branches 76.52 %).
+core,sign-in 0.88 0.75
+# core,sign-in,example: measured 2026-11-23 at lines 95.74 %, branches 84.74 %.
+core,sign-in,example 0.94 0.83

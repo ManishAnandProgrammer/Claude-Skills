@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/acme/review/planning/service/PlanService.java b/src/main/java/com/acme/review/planning/service/PlanService.java
+index d87abea..7ccba49 100644
+--- a/src/main/java/com/acme/review/planning/service/PlanService.java
++++ b/src/main/java/com/acme/review/planning/service/PlanService.java
+@@ -163,7 +163,7 @@ public class PlanService {
+     private PlanAllowedActionsResponse allowedActions(UUID planId, PlanStatus status, TodoView todo) {
+         return new PlanAllowedActionsResponse(
+                 allowedActionMapper.toAllowedAction("reschedule", Permission.PLAN_EDIT_OWN, policy.reschedule(planId, status, todo)),
+-                allowedActionMapper.toAllowedAction("markDone", Permission.PLAN_EDIT_OWN, policy.changeStatus(status, PlanStatus.DONE)),
++                allowedActionMapper.toAllowedAction("markDone", Permission.PLAN_READ_OWN, policy.changeStatus(status, PlanStatus.DONE)),
+                 allowedActionMapper.toAllowedAction("cancel", Permission.PLAN_EDIT_OWN, policy.changeStatus(status, PlanStatus.CANCELLED)));
+     }
+ 

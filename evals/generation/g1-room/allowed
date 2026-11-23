@@ -1,0 +1,26 @@
+# The paths crud-gen may change for this case (gate 2), from SKILL.md's "files it writes": globs from the project
+# root, * matching across directories, @PKG@ the root package's path. Anything else changed fails the gate.
+# The entity's module and its tests (Step 4, Step 6)
+src/main/java/@PKG@/room/*
+src/test/java/@PKG@/room/*
+# Error codes, their statuses and messages (4.4)
+src/main/java/@PKG@/common/exception/ErrorCode.java
+src/main/java/@PKG@/common/exception/ErrorCodeHttpStatusMapper.java
+src/main/resources/messages/message_*.properties
+# Permissions, their menu area and each role's lines (Step 1, Permissions)
+src/main/java/@PKG@/common/security/Permission.java
+src/main/java/@PKG@/common/security/Area.java
+src/main/java/@PKG@/user/domain/Role.java
+# Limits (4.2) and the changelog: the entity's own changeset, a project changeset (0100 and up), the master (Step 2)
+src/main/resources/config/limits.yml
+src/main/resources/config/limits-prod.yml
+src/main/resources/db/changelog/db.changelog-master.yaml
+src/main/resources/db/changelog/changes/01[0-9][0-9]-*.sql
+# Shared test data the skill edits by design: the aggregates' list (4.8), the cursor text keys (4.2, the dropdown label)
+src/test/java/@PKG@/archunit/AggregateArchTest.java
+src/test/java/@PKG@/common/limits/LimitsIntegrationTest.java
+# The controller's SPRING_ENDPOINT entry (Step 7)
+spotbugs-exclude.xml
+# The profiles' decisions, aggregates and list kinds (Step 0, Step 3, the final checklist)
+.claude/crud-profile.md
+.claude/review-profile.md

@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule": {"type": "string", "description": "The rule id, such as AUTHZ-03"},
+          "file": {"type": "string", "description": "The first location's file, its path from the project root"},
+          "line": {"type": "integer", "description": "The first location's line; 0 when the finding has none"},
+          "severity": {"type": "string", "enum": ["Critical", "High", "Medium", "Low"]},
+          "summary": {"type": "string", "description": "One line"}
+        },
+        "required": ["rule", "file", "line", "severity", "summary"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["findings"],
+  "additionalProperties": false
+}

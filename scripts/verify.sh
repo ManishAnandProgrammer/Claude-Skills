@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Verifies the skills repository before a push (it is private: there is no CI):
 #   0. the overlays' replacement files were written against the reference's current files
-#      (scripts/overlay-replacements.sh --check);
+#      (scripts/overlay-replacements.sh --check), and every controller and logging class has its static-analysis
+#      exclude entry in each exclude file that serves it (scripts/spotbugs-entries.sh);
 #   1. reference-app builds and every test passes (Testcontainers: Docker must be reachable), and so do its
 #      quality gates: static analysis with security rules and the coverage minimum (verify, house-review CFG-11).
 #      Every copy below runs the same gates from the same pom and its piece's exclude entries (an overlay's
@@ -202,6 +203,9 @@ for exclude in $(find "$REFERENCE" "$REPO/overlays" -name spotbugs-exclude.xml -
             exit 1 unless $m =~ /<Class name=/ && $m =~ /<Bug pattern=/ && $m !~ /<(Package|Priority|Rank)\b|category=/ }' "$exclude" \
         || { echo "FAILED: a <Match> in $exclude without a class and a bug pattern, or with a package, category, priority or rank" >&2; exit 1; }
 done
+# Every controller and every class logging a parameter has its entry in each exclude file that serves it, before any
+# build: a copy's SpotBugs run would find the gap only at its stage.
+"$REPO/scripts/spotbugs-entries.sh"
 
 # Generators and reviewers read the skill texts, the guides, the design notes and the reference: they say why
 # in general terms, never which field test found what or when (house-review/DESIGN.md, the design log, is exempt).

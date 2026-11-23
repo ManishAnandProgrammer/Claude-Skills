@@ -1,0 +1,1 @@
+{"expect": [{"rules": ["AUTHZ-07"], "file": "planning/service/PlanService.java"}]}

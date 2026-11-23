@@ -1,5 +1,8 @@
 package com.example.app.planning;
 
+import com.example.app.common.dropdown.SelectableDropdownItem;
+import com.example.app.planning.dto.response.PlanAvailabilitySpan;
+import com.example.app.support.AllowedActionContract;
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -91,6 +94,28 @@ class PlanOptionsIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response[1].selectable.reasons.length()").value(1))
                 .andExpect(jsonPath("$.response[1].selectable.reasons[0].errorCode").value("PLAN_TODO_DONE"))
                 .andExpect(jsonPath("$.response[1].selectable.reasons[0].message").value(detail));
+    }
+
+    @Test
+    @DisplayName("""
+            The flags a new plan's options carry are its create's permission: a todo option's selectable and a span's \
+            plannable are never ACCESS_DENIED with it, and plannable is ACCESS_DENIED alone without it (the todo \
+            options themselves are 403 then)""")
+    void theOptionFlagsAreTheCreatesPermission() throws Exception {
+        TestUser user = newUser();
+        String list = createList(user);
+        createTodo(user, list, "Apples");
+        markDone(user, createTodo(user, list, "Bread"));
+        createPlan(user, createTodo(user, list, "Cheese"), "2026-03-10", "2026-03-11").andExpect(status().isCreated());
+
+        AllowedActionContract.of(SelectableDropdownItem.class)
+                .flag("selectable", "POST /api/{version}/plans")
+                .readFrom("GET /api/{version}/plans/todo-options?todoListId={listId}", "$.response[*]", list)
+                .verify(mvc, permissions -> holding(user.accessToken(), permissions));
+        AllowedActionContract.of(PlanAvailabilitySpan.class)
+                .flag("plannable", "POST /api/{version}/plans")
+                .readFrom("GET /api/{version}/plans/availability?from=2026-03-09&to=2026-03-16", "$.response.spans[*]")
+                .verify(mvc, permissions -> holding(user.accessToken(), permissions));
     }
 
     @Test

@@ -21,6 +21,8 @@ class TenantMemberIndexIntegrationTest extends IntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    // The select list of the repository's projection: "select id" alone could be answered from an index only, a
+    // plan the real query never gets.
     // roles:begin
     private static final String MEMBER_ROWS = """
             select u.id, u.email, u.full_name, m.created_at, m.updated_at, m.created_by, m.updated_by

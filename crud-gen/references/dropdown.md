@@ -74,7 +74,8 @@ the developer's choice per screen; record the answer in *Decisions per entity*. 
    are that write's rules, which the resource's module can't call. `@Requires(<the write's permission>)`, no
    `for` (it serves that one action); the reach is the write's (the caller's own records for `OWN`).
 2. **Shape:** `CursorWrapper<SelectableDropdownItem>`, each `{value, label, selectable}`, `selectable` an
-   `AllowedAction` from `AllowedActionMapper.toAllowedAction("<action>", <the write's permission>, policy.<write>(...))`: **the policy method
+   `AllowedAction` from `AllowedActionMapper.toAllowedAction("<action>", <the write's permission>, policy.<write>(...))`
+   (that permission proven the write endpoint's by an `AllowedActionContract` row, references/tests.md row 28l): **the policy method
    the write calls** (the write calls `policy.<write>(...).orThrow()` before its own guards), so a reason is the
    code and message the write answers. Never an optional `selectable` on `DropdownItem`: the plain dropdown stays
    exactly `{value, label}`.

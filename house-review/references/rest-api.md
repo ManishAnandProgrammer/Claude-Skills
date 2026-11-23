@@ -452,16 +452,19 @@ types.
   possible, and the rest is held by tests over the app's own `/v3/api-docs`:
   - constraints, required fields and enum values come from Bean Validation and the types, never repeated
     in a description: `ApiDocsDriftIntegrationTest` fails on a description stating a bound ("at least 8
-    characters", "up to 100") where its schema publishes one (`maxLength`, `minimum`, `maxItems`...);
+    characters", "up to 100") where its schema publishes one (`maxLength`, `minimum`, `maxItems`...), and on a
+    bound published as `Integer.MAX_VALUE` (a `@Size(min = …)` without a max, swagger's default: the real bound
+    is published instead, golden `common/validation/MaxUtf8BytesModelConverter` for a password's 72 bytes);
   - every error code a description names exists in `ErrorCode` (the same test: a renamed or removed code
     fails; a value the docs publish as an enum, a permission, is not a code);
   - every outcome the integration tests observe (method, path template, status, `errorCode`) is documented
     on that operation: a MockMvc hook every test context picks up (reference: `support/ObservedOutcomes`)
     fails the test whose response's status the operation doesn't list, or whose code that status's
-    description doesn't name. A response a filter wrote (401, 429, 503) counts too. Codes any operation
-    answers (content negotiation, the firewall) are a short allow-list in the hook, a why each; one a
-    client should see everywhere is documented by an `OpenApiCustomizer` instead (CORS, the version, the
-    permission). An outcome no test produces is a missing test (TEST lens), not a docs question;
+    description doesn't name. A response a filter wrote (401, 429, 503) counts too. The hook keeps no
+    allow-list: a code any operation answers is documented on every operation by an `OpenApiCustomizer`
+    (reference: `config/FrameworkRefusalsOpenApiCustomizer` for content negotiation's 406 and 415 and the
+    firewall's 400 `REQUEST_INVALID`; CORS, the version, the permission), so a client sees it too. An outcome no
+    test produces is a missing test (TEST lens), not a docs question;
   - descriptions say what the names can't: the business meaning and the permission.
   Also check the consumers in `{{publishedContracts}}` (frontend
   changelog, k6 scripts); non-OpenAPI contracts follow ARCH-13. In **diff mode**, a change to a request or response DTO, a

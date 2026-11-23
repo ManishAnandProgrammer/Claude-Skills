@@ -189,12 +189,14 @@ record, an amount and the module setting that bounds it; never a role's column).
 every reason, a reason the code and its existing message) made by `AllowedActionMapper.toAllowedAction(name,
 <the permission the action's endpoint @Requires>, policy.x(...))` from the same policy method the write calls (a
 caller holding none of that permission gets `allowed: false` with `ACCESS_DENIED` alone, the call's own 403:
-AUTHZ-07), on the detail and on the list's rows from the row's
+AUTHZ-07; the permission written there is proven equal to the endpoint's by an `AllowedActionContract` row per flag,
+references/tests.md row 28l), on the detail and on the list's rows from the row's
 own fields (a parent's state from the page's one facade lookup, golden `PlanService.withTodos`); a rule with several
 preconditions lists them all with plain `if`s into a `List<Decision.Refusal>` (golden `PlanPolicy.reschedule`), a
 reach refusal alone. Actions the permission alone decides, creates, and a delete only a foreign key refuses get no
 flag. Tests: the policy's table with each refusal's arguments (`PlanPolicyTest`), and the shape on the detail and a
-list row, a reason's message equal to the write's `detail` (`PlanAllowedActionsIntegrationTest`).
+list row, a reason's message equal to the write's `detail` (`PlanAllowedActionsIntegrationTest`), and the flags'
+contract (row 28l).
 **Options a rule can refuse, and free days.** For a write whose picker a domain rule can refuse an option of right
 now (a done todo for a plan, a booked room, an assigned driver), ask whether its screen shows the refused options
 disabled with their reasons (a write's selectable options, `GET /<write's resources>/<resource>-options`,
@@ -317,7 +319,7 @@ Check before generating:
 | Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is not applied**, ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
 | A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column; a `moveTo` brings its exclude entry (Step 7) | DATA-33, CFG-11 |
 | Accumulating rows (Step 1's *retention*): the column the purge reads is `NOT NULL`, or the purge's index is partial on its set rows (`WHERE finished_at IS NOT NULL`: running work is never purged); its index goes into the entity's changeset (4.12). A table that references it by a foreign key: ask whether its rows go first or keep the parent; no `ON DELETE CASCADE` added for the purge without the changeset saying so | OPS-03, DATA-10 |
-| `Instant` for moments, `LocalDate` for picked dates, no time zones | JAVA-25 |
+| `Instant` for moments (UTC), `LocalDate` for a date a person picks, stored as sent; the one zone `BusinessCalendar`'s, for a rule a date decides | JAVA-25 |
 | A display number comes from the metadata piece's gapless `Counters` (golden `Todo.number`: a fixed counter seeded by its changeset, after the highest number of the rows already there; with tenancy one per tenant, the TEN-18 row below), or without that piece from a sequence; a fixture inserting rows splices in a number (tests.md) | DATA-14 |
 
 Golden examples: `~/.claude/skills-reference/src/main/resources/db/changelog/changes/000{2,3,4,5}-*.sql`.
@@ -443,7 +445,8 @@ statement that locks, so a refused caller never takes the owner's lock), used by
 the parties and their actions. **Status moves by different parties** (a leave request approved or rejected by
 the manager, cancelled by the requester, revoked by HR; REST-03): each move is its own action endpoint
 (`PATCH {{urlPrefix}}/<resources>/{id}/<verb>`, `POST` for a move that creates or starts something), each with its
-own `@Requires`, policy method (the party's rule, then the status enum's `canBecome`) and `allowedActions` flag, and
+own `@Requires`, policy method (the party's rule, then the status enum's `canBecome`) and `allowedActions` flag (its
+contract row naming that endpoint, references/tests.md row 28l), and
 a body holding only what the move takes (the `version`, a reason); one `PATCH /<resources>/{id}/status` with the
 target, as golden `Plan`'s below, when one permission covers every move. **Money, exactly one current, month values** are use cases: no golden code,
 the house-review rules are the bar; ask. A **status workflow**
@@ -980,7 +983,8 @@ checklist's review item stays open until that reviewer's report is clean.
       `PermissionTest` and `EndpointContractIntegrationTest` green. With `authorization: roles-piece`, the grant
       changeset for the built-in roles the developer named (`ADMIN` among them), a new built-in role's seeding
       changeset, and `BuiltInRolesIntegrationTest` green. A detail several reaches read `@Requires` each reach's READ,
-      a list per reach (AUTHZ-03, AUTHZ-05); each `allowedActions` flag names its endpoint's permission (AUTHZ-07).
+      a list per reach (AUTHZ-03, AUTHZ-05); each `allowedActions` flag names its endpoint's permission, proven by
+      its `AllowedActionContract` row (AUTHZ-07, references/tests.md row 28l).
 - [ ] A convention changed during the run (what a role holds, what a permission means): the roles'
       grants and the profiles say the new rule, and no comment generated earlier still says the old one
       (grep them).

@@ -1,0 +1,1 @@
+{"expect": [{"rules": ["DATA-11", "PERF-01", "TEST-06", "ARCH-15"], "file": "planning/service/PlanService.java"}]}

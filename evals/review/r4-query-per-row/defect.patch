@@ -1,0 +1,36 @@
+diff --git a/src/main/java/com/acme/review/planning/service/PlanService.java b/src/main/java/com/acme/review/planning/service/PlanService.java
+index d87abea..715a7f4 100644
+--- a/src/main/java/com/acme/review/planning/service/PlanService.java
++++ b/src/main/java/com/acme/review/planning/service/PlanService.java
+@@ -34,12 +34,8 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ import java.util.ArrayList;
+ import java.util.List;
+-import java.util.Map;
+-import java.util.Objects;
+-import java.util.Set;
++import java.util.Optional;
+ import java.util.UUID;
+-import java.util.function.Function;
+-import java.util.stream.Collectors;
+ 
+ @Service
+ @RequiredArgsConstructor
+@@ -138,14 +134,11 @@ public class PlanService {
+ 
+     /** A plan whose todo the lookup misses was deleted with it between the two statements, so it is left out. */
+     private List<PlanResponse> withTodos(List<PlanRow> rows, UUID ownerId) {
+-        Set<UUID> todoIds = rows.stream().map(PlanRow::todoId).collect(Collectors.toSet());
+-        Map<UUID, TodoView> todosById = todos.getOwnedTodoViews(todoIds, ownerId).stream()
+-                .collect(Collectors.toMap(TodoView::id, Function.identity()));
+         List<PlanResponse> responses = new ArrayList<>();
+         for (PlanRow row : rows) {
+-            TodoView todo = todosById.get(row.todoId());
+-            if (Objects.nonNull(todo)) {
+-                responses.add(mapper.toResponse(row, todo, allowedActions(row.id(), row.status(), todo)));
++            Optional<TodoView> todo = todos.findOwnedTodoView(row.todoId(), ownerId);
++            if (todo.isPresent()) {
++                responses.add(mapper.toResponse(row, todo.get(), allowedActions(row.id(), row.status(), todo.get())));
+             }
+         }
+         return responses;

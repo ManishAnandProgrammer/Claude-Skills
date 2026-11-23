@@ -817,8 +817,8 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
   (`findEffectiveOn(<ref>Id, LocalDate on)`: `effective_from <= :on AND (effective_to > :on OR
   effective_to IS NULL)`), or reads the version the record already points at (DATA-36). Never "the
   current one".
-- **Not a finding when:** the record is created now and the as-of date is today, from the `Clock`
-  (JAVA-25); the lookup then still passes that date, not "current".
+- **Not a finding when:** the record is created now and the as-of date is today, the business's
+  (`BusinessCalendar.today()`, DATA-37); the lookup then still passes that date, not "current".
 - **Detect:** `find…Current…` / `findBy<Code>` on a `*_rate`, `*_price`, `*_fee`, `*_tier`,
   `*_terms` table called while computing or re-computing a stored record; a recompute or report
   query joining such a table without a date predicate.

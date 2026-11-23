@@ -1,0 +1,22 @@
+diff --git a/src/main/java/com/acme/review/todo/service/TagService.java b/src/main/java/com/acme/review/todo/service/TagService.java
+index 841c8ba..5f1e40a 100644
+--- a/src/main/java/com/acme/review/todo/service/TagService.java
++++ b/src/main/java/com/acme/review/todo/service/TagService.java
+@@ -84,7 +84,7 @@ public class TagService {
+         }
+         List<Tag> tags = repository.findByIdInAndOwnerId(ids, ownerId);
+         if (tags.size() < ids.size()) {
+-            throw AppException.of(ErrorCode.TAG_NOT_FOUND, lowestMissing(ids, tags));
++            throw AppException.of(ErrorCode.TAG_NOT_FOUND, lowestMissingId(ids, tags));
+         }
+         return tags;
+     }
+@@ -118,7 +118,7 @@ public class TagService {
+         return repository.findForUpdateByIdAndOwnerId(id, ownerId).orElseThrow(AppException.supply(ErrorCode.TAG_NOT_FOUND, id));
+     }
+ 
+-    private static UUID lowestMissing(Set<UUID> ids, List<Tag> found) {
++    private static UUID lowestMissingId(Set<UUID> ids, List<Tag> found) {
+         Set<UUID> foundIds = found.stream().map(Tag::getId).collect(Collectors.toSet());
+         return ids.stream().filter(id -> !foundIds.contains(id)).sorted().findFirst().orElseThrow();
+     }

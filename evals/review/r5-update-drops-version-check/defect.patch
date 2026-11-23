@@ -1,0 +1,12 @@
+diff --git a/src/main/java/com/acme/review/planning/service/PlanService.java b/src/main/java/com/acme/review/planning/service/PlanService.java
+index d87abea..60ff9cb 100644
+--- a/src/main/java/com/acme/review/planning/service/PlanService.java
++++ b/src/main/java/com/acme/review/planning/service/PlanService.java
+@@ -109,7 +109,6 @@ public class PlanService {
+     public ObjectWrapper<PlanResponse> update(UUID id, PlanUpdateRequest request) {
+         UUID ownerId = currentUser.id();
+         Plan plan = getOwnedPlan(id, ownerId);
+-        plan.checkVersion(request.version());
+         TodoView todo = todos.getOwnedTodoViewForUpdate(plan.getTodoId(), ownerId);
+         policy.reschedule(plan.getId(), plan.getStatus(), todo).orThrow();
+         plan.reschedule(request.startsOn(), request.endsOn());

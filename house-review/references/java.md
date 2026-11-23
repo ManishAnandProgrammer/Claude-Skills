@@ -187,13 +187,14 @@
   records.
 - **Severity:** Medium.
 
-### JAVA-25: Time without time zones
-The backend handles no time zone.
-- **Check:** moments are `Instant` (UTC; the client shows them in the user's zone); calendar dates the
-  user picks are `LocalDate`, stored and returned as sent, never converted through a zone; "now" and
-  "today" come from the injected `Clock` (UTC), also inside validators; a date compared with today
-  allows a configured tolerance (1 day: every zone is within +14 h of UTC), so no real user is
-  refused, and the client enforces the exact local rule;
+### JAVA-25: Moments in UTC, a person's dates as sent, one business zone
+Moments are UTC `Instant`s. A date a person records is theirs, stored as sent. The single configured zone is
+`BusinessCalendar`'s, for the rules a date decides.
+- **Check:** moments are `Instant` (UTC; the client shows them in the user's zone), "now" the injected `Clock`'s
+  (UTC); a calendar date a person picks or records is a `LocalDate`, stored and returned as sent, never converted
+  through a zone; a validator comparing it with today (`@NotAfterToday`) reads the `Clock` and allows a configured
+  tolerance (1 day: every zone is within +14 h of UTC), so no real user is refused, and the client enforces the
+  exact local rule;
 - **One configured zone, read in one place:** a business rule a date decides against today (a leave already
   taken, a deadline at midnight; DATA-37) takes the organisation's day from `BusinessCalendar.today()`
   (`common/time`, `app.business-calendar.zone`), never from the server's UTC day nor the client's; nothing else

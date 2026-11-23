@@ -20,7 +20,8 @@ todo-list and tag dropdowns and the todo dropdown under its list (the dependent 
 `ArchRuleScopeTest`, `common/EndpointContractIntegrationTest` (`everyRequiredPermissionIsChecked`,
 `everyPublicEndpointAnswersWithoutAToken`, `everyEndpointNeedsAToken`), `common/security/PermissionTest`,
 `user/domain/RoleTest`, `user/AccessIntegrationTest`, `todo/service/TodoPolicyTest`, `planning/service/PlanPolicyTest`,
-`common/security/DecisionTest`, `planning/PlanAllowedActionsIntegrationTest`, `todo/TodoRequesterIntegrationTest`,
+`common/security/DecisionTest`, `planning/PlanAllowedActionsIntegrationTest`, `todo/TodoRequesterIntegrationTest`
+(both with `support/AllowedActionContract`),
 `todo/RequiresAnyOfIntegrationTest` (a `@Requires` of two permissions, on the test-only `RequiresAnyOfProbeController`),
 `common/dropdown/DropdownForTest`, `todo/TodoListIntegrationTest` (the dropdown's `for`),
 `todo/TodoDropdownIntegrationTest` (the dependent dropdown: its out-of-reach parent, one statement). With tenancy:
@@ -223,9 +224,19 @@ and Policy.
     `ACCESS_DENIED` alone, the code and message that call answers, whatever the record's state or reach (the
     mapper checks `CurrentUser.holds`; golden `PlanService.allowedActions` with `PLAN_EDIT_OWN`,
     `TodoService.toResponse` with `TODO_EDIT_OWN`, the availability's and the options' flags with
-    `PLAN_CREATE_OWN`; tests `PlanAllowedActionsIntegrationTest.aPermissionNotHeldIsTheFlagsOnlyReason`,
-    `TodoRequesterIntegrationTest.aPermissionNotHeldIsTheEditFlagsOnlyReason`). A flag never says `allowed: true`
+    `PLAN_CREATE_OWN`). A flag never says `allowed: true`
     to a caller its endpoint refuses (a role with the read but not the edit; with the roles piece, a personal DENY);
+  - **the flag's permission proven equal to its endpoint's:** the permission is written twice, in the
+    `toAllowedAction` call and the endpoint's `@Requires`, so the resource's tests declare one row per flag of each
+    flag record, its name and its endpoint (`PATCH /api/{version}/plans/{id}/status`), never the permission, in a
+    `support/AllowedActionContract`, which reads the handler's `@Requires`, requires the rows to cover exactly the
+    record's `AllowedAction` components, and checks a caller holding every permission but the endpoint's sees the
+    flag `ACCESS_DENIED` alone and one holding only one of them never sees `ACCESS_DENIED` (golden
+    `PlanAllowedActionsIntegrationTest.everyPlanFlagIsItsEndpointsPermission`,
+    `PlanOptionsIntegrationTest.theOptionFlagsAreTheCreatesPermission`,
+    `TodoRequesterIntegrationTest.theEditFlagIsItsEndpointsPermission`; the message equal to the endpoint's 403
+    `detail` in `PlanAllowedActionsIntegrationTest.aPermissionNotHeldIsTheFlagsOnlyReason`); every flag record main
+    code builds needs one, enforced by `archunit/AllowedActionContractArchTest`;
   - the flags of a list's rows come from fields the row already has; a rule needing another table's data comes from
     the list's own query (an aggregate in the projection, DATA-26) or the page's one facade lookup (ARCH-04's
     `get<Parent>Views`, golden `PlanService.withTodos`), never a query per row;
@@ -252,7 +263,8 @@ and Policy.
     refused write writes its DEBUG line (`PlanAllowedActionsIntegrationTest.aRefusedWriteIsLoggedAtDebug`).
 - **Detect:** an `allowedActions` flag computed by its own condition (a copy of the policy), or a boolean flag
   with no reasons; a flag naming no permission, or another one than its endpoint's `@Requires` (allowed for a
-  caller that call answers 403); an option labelled or disabled by the client from its fields (`[withdrawn]` from a status); a reasons list cut to the first; a reason's message written for the flag instead of the code's
+  caller that call answers 403); a flag's permission not proven equal to its endpoint's (a flag record with no
+  `AllowedActionContract`, which `archunit/AllowedActionContractArchTest` fails on, or a flag without its row); an option labelled or disabled by the client from its fields (`[withdrawn]` from a status); a reasons list cut to the first; a reason's message written for the flag instead of the code's
   message; a client that shows a record's button by its status or fields; flags for actions the permission alone
   decides; a flag that reads another table per row; message arguments taken from another person's record, or a
   threshold in a message; an authorization log line with a message, a name or an email, or one written in a policy
