@@ -241,6 +241,8 @@ src/test/java/$reference_path/user
 src/test/java/$reference_path/common/ratelimit/RedisRateLimiterTest.java
 src/test/java/$reference_path/config/RedisClientIntegrationTest.java
 LIST
+            # The person picker's index: a tenant's members are picked another way.
+            tenancy_chosen || echo "src/main/resources/db/changelog/changes/0042-users-dropdown.sql"
             ;;
         example) cat <<LIST
 src/main/java/$reference_path/todo
@@ -659,16 +661,27 @@ all_pieces="core sign-in example metadata media tenancy-schema tenancy-row tenan
 with_reference_prefix() { sed -e '/^overlays\//!s|^|reference-app/|'; }
 named_files="$(pieces="${all_pieces// /,}"; for piece in $all_pieces; do files_for "$piece"; done | with_reference_prefix)"
 # Core files a tenancy mode replaces: its connection hook borrows lazily, so the lazy proxy goes; a person in
-# a tenant is a member (user.api.Members), so the accounts' facade goes too.
+# a tenant is a member (user.api.Members), so the accounts' facade and their picker go too.
 # With the roles piece a new account's first role is signup's (AccountCreated): a tenant's members get theirs when added.
 replaced_by_tenancy="reference-app/src/main/java/$reference_path/config/LazyConnectionConfig.java
 reference-app/src/test/java/$reference_path/config/LazyConnectionIntegrationTest.java
 reference-app/src/main/java/$reference_path/user/api/Users.java
+reference-app/src/main/java/$reference_path/user/api/NamedParty.java
+reference-app/src/main/java/$reference_path/user/api/PermissionHolders.java
+reference-app/src/main/java/$reference_path/user/service/NamedPartyService.java
+reference-app/src/main/java/$reference_path/user/repository/custom/CustomUserRepository.java
+reference-app/src/main/java/$reference_path/user/repository/impl/UserRepositoryImpl.java
+reference-app/src/test/java/$reference_path/user/PermissionHoldersIntegrationTest.java
+reference-app/src/test/java/$reference_path/todo/TodoRequesterPickerIntegrationTest.java
+overlays/roles/src/test/java/$reference_path/user/PermissionHoldersAccessIntegrationTest.java
 overlays/roles/src/main/java/$reference_path/user/dto/internal/AccountCreated.java"
 # Files the roles piece replaces: a member's role change becomes the assignment endpoints (one source of access), and
-# the members' tests about their role become TenantAccessIntegrationTest.
+# the members' tests about their role become TenantAccessIntegrationTest; the picker's holders are read from the
+# access tables (PersonAccessService), not by role.
 replaced_by_roles="overlays/tenancy/src/main/java/$reference_path/user/dto/request/TenantMemberUpdateRequest.java
-overlays/tenancy/src/test/java/$reference_path/user/TenantMemberIntegrationTest.java"
+overlays/tenancy/src/test/java/$reference_path/user/TenantMemberIntegrationTest.java
+reference-app/src/main/java/$reference_path/user/repository/custom/CustomUserRepository.java
+reference-app/src/main/java/$reference_path/user/repository/impl/UserRepositoryImpl.java"
 replaced() {
     { tenancy_chosen && grep -qxF "$1" <<< "$replaced_by_tenancy"; } || { chosen_piece roles && grep -qxF "$1" <<< "$replaced_by_roles"; }
 }

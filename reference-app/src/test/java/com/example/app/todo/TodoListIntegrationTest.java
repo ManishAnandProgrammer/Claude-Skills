@@ -391,12 +391,12 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Concurrent renames with one version apply exactly once; the others are 409 OPTIMISTIC_LOCK_CONFLICT")
+    @DisplayName("Concurrent renames that all read version 0 apply exactly once; the others are 409 OPTIMISTIC_LOCK_CONFLICT")
     void concurrentUpdatesWithOneVersionApplyOnce() throws Exception {
         TestUser user = newUser();
         String id = createList(user, "Contested");
 
-        List<Answer> answers = race(() -> putAs(user.accessToken(), LISTS + "/" + id, updatePayload("Renamed", 0)));
+        List<Answer> answers = writesHeldPastTheirReads("todo_lists", () -> putAs(user.accessToken(), LISTS + "/" + id, updatePayload("Renamed", 0)));
 
         assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).containsOnly(200, 409);
         assertRefusalsAre(answers, 409, "OPTIMISTIC_LOCK_CONFLICT");

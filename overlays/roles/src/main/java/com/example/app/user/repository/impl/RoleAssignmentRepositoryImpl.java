@@ -1,6 +1,15 @@
 package com.example.app.user.repository.impl;
 
 // tenancy:begin
+// tenancy:else
+// import com.example.app.common.dropdown.DropdownCandidate;
+// import com.example.app.common.dropdown.DropdownFilter;
+// import com.example.app.common.dropdown.DropdownItem;
+// import com.example.app.common.pagination.Cursor;
+// import com.example.app.common.pagination.CursorBatch;
+// import com.example.app.user.api.PermissionHolders;
+// tenancy:end
+// tenancy:begin
 import com.example.app.common.tenancy.TenantContext;
 // tenancy:end
 import com.example.app.user.domain.GrantEffect;
@@ -17,6 +26,10 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+// tenancy:begin
+// tenancy:else
+// import java.util.Locale;
+// tenancy:end
 import java.util.Objects;
 import java.util.UUID;
 
@@ -135,6 +148,39 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
     //          WHERE g.permission IN (:permissions) AND g.effect = 'ALLOW' AND g.valid_until IS NULL""";
     // tenancy:end
 
+    // tenancy:begin
+    // tenancy:else
+    //
+    // // Every needed permission held now (a role or an ALLOW) and none denied: EffectiveAccess's rule, prerequisites
+    // // included by the caller. The keyset runs on idx_users_full_name_id; the access is checked per row it reads.
+    // static final String HOLDERS = """
+    //         SELECT u.id, u.full_name
+    //           FROM users u
+    //          WHERE u.status = 'ACTIVE'
+    //            AND (SELECT count(DISTINCT held.permission)
+    //                   FROM (SELECT p.permission
+    //                           FROM user_roles a
+    //                           JOIN role_permissions p ON p.role_id = a.role_id
+    //                          WHERE a.user_id = u.id AND p.permission IN (:permissions)
+    //                            AND (a.valid_until IS NULL OR a.valid_until > :now)
+    //                         UNION ALL
+    //                         SELECT g.permission
+    //                           FROM user_permissions g
+    //                          WHERE g.user_id = u.id AND g.permission IN (:permissions) AND g.effect = 'ALLOW'
+    //                            AND (g.valid_until IS NULL OR g.valid_until > :now)) held) = :needed
+    //            AND NOT EXISTS (SELECT 1
+    //                              FROM user_permissions g
+    //                             WHERE g.user_id = u.id AND g.permission IN (:permissions) AND g.effect = 'DENY'
+    //                               AND (g.valid_until IS NULL OR g.valid_until > :now))
+    //            AND (CAST(:query AS text) IS NULL OR position(CAST(:query AS text) IN lower(u.full_name)) > 0)
+    //         """;
+    // static final String HOLDERS_ASC = HOLDERS + "ORDER BY u.full_name, u.id LIMIT :limit";
+    // static final String HOLDERS_ASC_AFTER = HOLDERS + "AND (u.full_name, u.id) > (:name, :id) ORDER BY u.full_name, u.id LIMIT :limit";
+    // static final String HOLDERS_DESC = HOLDERS + "ORDER BY u.full_name DESC, u.id DESC LIMIT :limit";
+    // static final String HOLDERS_DESC_AFTER = HOLDERS
+    //         + "AND (u.full_name, u.id) < (:name, :id) ORDER BY u.full_name DESC, u.id DESC LIMIT :limit";
+    // tenancy:end
+
     private final NamedParameterJdbcTemplate jdbc;
 
     @Override
@@ -186,6 +232,27 @@ class RoleAssignmentRepositoryImpl implements CustomRoleAssignmentRepository {
         // tenancy:end
         return jdbc.queryForList(HOLDERS_FOR_GOOD, parameters, UUID.class);
     }
+
+    // tenancy:begin
+    // tenancy:else
+    // @Override
+    // public CursorBatch<DropdownItem> findHolders(Collection<String> permissions, DropdownFilter filter, int size, Instant now) {
+    //     boolean descending = filter.getSortDirection() == DropdownCandidate.SortDirection.DESC;
+    //     String sort = PermissionHolders.sortOf(filter);
+    //     Cursor cursor = Cursor.read(filter.getAfter(), sort, PermissionHolders.CURSOR_KEYS);
+    //     MapSqlParameterSource parameters = new MapSqlParameterSource("permissions", permissions)
+    //             .addValue("needed", permissions.size()).addValue("now", Timestamp.from(now)).addValue("limit", size + 1)
+    //             .addValue("query", filter.requireQueryPredicate() ? filter.getQuery().strip().toLowerCase(Locale.ROOT) : null);
+    //     String statement = descending ? HOLDERS_DESC : HOLDERS_ASC;
+    //     if (cursor.hasPosition()) {
+    //         statement = descending ? HOLDERS_DESC_AFTER : HOLDERS_ASC_AFTER;
+    //         parameters.addValue("name", cursor.text(0)).addValue("id", cursor.uuid(1));
+    //     }
+    //     List<DropdownItem> rows = jdbc.query(statement, parameters,
+    //             (row, number) -> new DropdownItem(row.getObject("id", UUID.class), row.getString("full_name")));
+    //     return CursorBatch.of(rows, size, item -> Cursor.write(sort, item.label(), item.value()));
+    // }
+    // tenancy:end
 
     private static AccessRow accessRow(ResultSet row, int number) throws SQLException {
         String effect = row.getString("effect");

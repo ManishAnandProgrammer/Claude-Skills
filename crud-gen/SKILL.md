@@ -103,7 +103,7 @@ tell the user to run the skills installer.
 | `<ref>/todo/domain/Tag.java` + `TagService`, `TagFilter`, `TagColor` | A root with an **active flag** (dropdown `activeField`, list filter `status`), a **pattern field**, an offset list |
 | `<ref>/todo/domain/TodoTag.java` + `Todo.replaceTags`, `TodoTagsRequest`, `PUT /todos/{id}/tags`, `TodoService.withTags`, `0006-todo-tags.sql` | **Variant N**: a many-to-many between two aggregates |
 | `<ref>/todo/domain/TimeEntry.java` + the `*TimeEntry*` methods of `TodoApi` / `TodoController` / `TodoService` | **Variant M** (a member of the `Todo` aggregate), **range filters** (`@CrossField(reportedOn = "<x>To") boolean is<X>RangeOrdered()`), a bounded number, a calendar date (`@NotAfterToday`) |
-| `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getEditableTodoAtVersion`, `toResponse`), `TodoRepository.findWithTodoListById`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`; the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` whenever a write names someone new (an update only when the id changes); shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) and on list rows (`TodoListName`, `TodoService.withTodoLists`: a second statement per batch) |
+| `<ref>/todo/domain/Todo.java` (`number`, `requesterId`, `todoList`) + `TodoService` (`create`, `requireRequester`, `getEditableTodoAtVersion`, `toResponse`), `TodoRepository.findWithTodoListById`, `TodoResponse` (`todoList`, `number`, `requesterId`; with tenancy `requester`), `0025-todos-requester.sql`, `0026-todo-numbers.sql`, `<ref>/user/api/Users.java`, `NamedParty.java`, `PermissionHolders.java` (the picker `NamedPartyService`, `0042-users-dropdown.sql`); the tenancy overlay's `TodoRequesterResponse`, the row overlay's `TodoNumberSeed`; tests `TodoReferencesIntegrationTest`, the tenancy overlay's `TodoRequesterTenancyIntegrationTest`, the row overlay's `TodoSeedsBackfillIntegrationTest` | Three shapes added to an existing entity in update mode: a **display number** from a counter (`Counters.next` last in the create; one counter for the application, one per tenant with tenancy; the row-mode seed pair and the create's `createIfAbsent`; the backfill of the rows already there), a **reference to a person** of another module (an id with a foreign key to `users`, with tenancy to the tenant's `members`; checked through `Users` / `Members` whenever a write names someone new (an update only when the id changes), and a party who will act through `PermissionHolders` (active, holding the party's permission: 409 `TODO_REQUESTER_INELIGIBLE`; tests `TodoRequesterPickerIntegrationTest`, `PermissionHoldersIntegrationTest`); shown by name with tenancy, a former member by id alone), a **same-module parent's name** on the detail and every write's response (`todoList {id, name}`, read with the child in one statement where nothing locks the child) and on list rows (`TodoListName`, `TodoService.withTodoLists`: a second statement per batch) |
 | `<ref>/planning/**` (`Plan`, `PlanCreateRequest`, `PlanFilter`, `PlanRepositoryImpl`, `PlanService`, `PlanTodoResponse`, `PlanningConstraintErrorCodes`, `0011-plans.sql`) + `<ref>/todo/api/Todos.java`, `TodoView.java` | **A parent in another module** (an id with a database foreign key, reached through the owner's facade; its view mapped into a response record of the plan's own), whose **state the create checks under its lock** (a plan only for an open todo: `Todos.getOwnedTodoViewForUpdate`, the view's `open` boolean, 409 `PLAN_TODO_DONE`; the todo's completion and delete wait for the create), reads that **survive a parent vanished between their two statements** (`findOwnedTodoView`, `withTodos`), a **cursor list filtered by another module's id** (`todoId`) whose rows get the parent's title in one facade lookup per batch, **no overlapping ranges** (an exclusion constraint mapped to 409; overlapping creates for two of the owner's todos may answer 503: the lock queues one todo's writes, not the owner's), a **range in a body** (`isDateRangeOrdered`) of a **configured maximum length** (`getLengthInDays`, `plan.max-days`), an **overlap filter with a lower index bound** (`plannedFrom`/`plannedTo`: `ends_on >= from`, `starts_on <= to` and the derived `starts_on >= from - (max - 1)`), planned dates (`@EarliestDate` and `@LatestDate` only), an immutable resource (no PUT or PATCH: 405) |
 | `<ref>/todo/service/TagMergeManager.java` + `TagService.lockForMerge` / `finishMerge`, `TodoService.moveTagLinks`, `TagRepository.findForKeyUpdateByIdAndOwnerId`, `TodoRepository.lockAllCarryingTag`, `TodoTagRepository.addTargetWhereSourceIs`, `POST /tags/{id}/merge`; test `TagMergeIntegrationTest` | **A Manager** writing two aggregates in one transaction (`MANDATORY` halves, one lock order, a key lock, bulk statements, both rolled back on a failure) |
 | `<ref>/todo/service/TodoService.java` (`findById`, `lockEditableTodo`) + `TodoPolicy` (`read`, `edit`, `editScope`, `listScope`), `TodoAllowedActionsResponse` (an `AllowedAction` per action, `common/security`), `TodoApi.NOT_YOURS`; tests `TodoPolicyTest`, `TodoRequesterIntegrationTest` | **A record two parties see with different rights**: the owner does everything, the requester reads (403 `TODO_NOT_YOURS` on the rest), anyone else 404 |
@@ -316,7 +316,9 @@ the picker is the first screen that needs it. Whichever it is, check that the pi
 permission the writers don't hold (the tenancy piece's `GET /tenant-members`, `TENANT_MEMBERS_MANAGE`, which
 searches emails) is no picker for a rota every member writes. A dropdown is shared by every screen that picks
 the resource: the screen names the write in `for` (the child's `<CHILD>_CREATE[_OWN]`), and the dropdown lists that
-permission's reach (AUTHZ-08, references/dropdown.md). For a person reference with tenancy, a `Members`-backed members dropdown readable
+permission's reach (AUTHZ-08, references/dropdown.md). For a person reference without tenancy, the picker is the
+user module's `GET /users/dropdown?for=<the write's permission>` over the write's `user.api.NamedParty` constant (4.3,
+golden `NamedPartyService`). For a person reference with tenancy, a `Members`-backed members dropdown readable
 by every member is the fitting picker. It is a use case, not in the tenancy piece: a project that needs
 one generates it with this skill as a dropdown of the user module (`GET /tenant-members/dropdown`, label
 the full name, `query` on it, over `Members`, references/dropdown.md) and reviews it with house-review
@@ -340,12 +342,17 @@ request or the profile already says. Record each answer in the crud profile's *D
 - **text and collection limits**: each String field's maximum length (4.2's `@MaxLength` number); each
   collection's maximum size and whether it may be empty (4.2);
 - **date bounds**: each date's earliest and latest day (4.1's `@EarliestDate` / `@LatestDate` values);
+- **filter indexes**: per offered filter, whether it gets its own index (4.1: the developer's call, from the
+  table's size and the filter's selectivity; unattended, the business rules' answer, else none);
 - **dropdown**: per dropdown, whether it is searchable (`searchable`, the `query` parameter), its label,
   and whether it is cached (`cacheable`); per write whose options a rule can refuse now, selectable options or a
   plain filter (references/dropdown.md); per time-bound resource, whether an availability read is wanted and its
   longest range;
 - **parent by name**: whether the detail and the list rows show each referenced parent or person by name
   (4.3; without tenancy a person stays an id), or by id only;
+- **named parties**: per person a write names who will act (an approver, an assignee), "who may be named as
+  <party>?", default **an active account holding <ACTING_PERMISSION>** (the permission that party acts with), and
+  what happens when they lose it (default: the owner reassigns while the record is not final; 4.3);
 - **upload limits**: per upload purpose, the file sizes, file counts and content types (Step 5);
 - **overlap race**: with an exclusion constraint, whether DATA-35's rare 503 is accepted (the default) or
   the endpoint's traffic makes it normal, so the scope is serialised;
@@ -382,7 +389,7 @@ Check before generating:
 | An **email** field: stored as `Emails.normalize` gives it (the first shape, golden `users`: `ck_<table>_email_normalized`, plain unique); the request shape is 4.1's *Email* | DATA-05 |
 | A value the mapper normalises (an email lower-cased and trimmed) has a `CHECK` with the same expression (`email = lower(trim(email))`, golden `users`); trimming alone (a name the mapper `strip()`s) needs none, as its unique index's `lower(trim(…))` already covers it (golden `TodoList`, `Tag`) | DATA-05 |
 | A unique rule on an entity with a terminal status (WITHDRAWN, CANCELLED): **ask** whether it spans every row or only live ones (re-enrolling after a withdrawal); live only is a partial unique index `WHERE status = '<LIVE>'` with a test that the terminal row doesn't block a new one. Its "taken on update" test (tests.md row 11) means the writes that move a row **into** the live status or change the pair; when none does (the pair fixed at the create, no move back to live), the create's test is the whole duty: say so. When the entity also has a **date range**, ask the follow-up: "(a digits-only identifier, an ISBN, needs no `COLLATE "C"`: digits sort the same in every collation; a code with letters keeps it) does a finished record (past its `endsOn`, still `<LIVE>`) still block a new one?" (a student who completed a course retaking it). If not, the rule is either no overlapping live ranges, DATA-35's exclusion constraint `WHERE (status = '<LIVE>')`, or a decided terminal status (`COMPLETED`, set by a person or a job), never "live" read from the dates (DATA-37) | DATA-05, DATA-35, DATA-37 |
-| Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is unreleased** (*Shipped*, below), ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
+| Indexes: every FK; keyset sort keys non-null (a generated column for a nullable one). **While the entity's changeset is unreleased** (*Shipped*, below), ask the list's filters and orders now (Step 3's list kind, 4.1's filters, sorts and dropdown), and per offered filter **"index this filter?"** (4.1: the developer's call), so their indexes (4.1) go into that changeset, not into a second one that repeats its FK indexes | DATA-10 |
 | A child of an owned parent: the composite owner FK, `moveTo` or `updatable = false` on the parent column; a `moveTo` brings its exclude entry (Step 7) | DATA-33, CFG-11 |
 | Accumulating rows (Step 1's *retention*): the column the purge reads is `NOT NULL`, or the purge's index is partial on its set rows (`WHERE finished_at IS NOT NULL`: running work is never purged); its index goes into the entity's changeset (4.12). A table that references it by a foreign key: ask whether its rows go first or keep the parent; no `ON DELETE CASCADE` added for the purge without the changeset saying so | OPS-03, DATA-10 |
 | `Instant` for moments (UTC), `LocalDate` for a date a person picks, stored as sent; the one zone `BusinessCalendar`'s, for a rule a date decides | JAVA-25 |
@@ -590,13 +597,18 @@ filter doesn't implement `QueryFilter`.
 on any table (DATA-10, its trigram extension point included; golden: the tenancy overlay's `TenantFilter`,
 whose `query` works alone).
 
-**Then the indexes**, now that the orders and filters are chosen, by DATA-10's rules (one per offered order;
-one per offered equality filter and order, whatever its values: `(<scope>, <filter>, <sort keys>, id)`,
-golden `0031-filter-indexes.sql`; NEWEST's `(scope…, created_at, id)`; range and overlap filters under their
-own order only; an order index leading with a foreign key replaces the key's own index; the rare-value
-partial index is DATA-10's extension point, not generated), in a new changeset if the entity's own one is
-shipped (Step 2). Test row 28 checks that each one exists and that each list's first page is planned on its
-order's index (tests.md, *Index tests*).
+**Then the indexes**, now that the orders and filters are chosen, by DATA-10's rules: one per offered order
+(NEWEST's `(scope…, created_at, id)`; an order index leading with a foreign key replaces the key's own index),
+every foreign key's, and the unique and exclusion constraints the rules require. **A filter's own index is the
+developer's call** (the table's size, the filter's cardinality and selectivity: only they know them): ask per
+offered filter, with the list's filters and sorts, "index this filter?". A yes is `(<scope>, <filter>, <sort
+keys>, id)` per offered order (golden `0031-filter-indexes.sql`); a no, or no answer (unattended: the business
+rules' answer, else no index, **assumed**), leaves the filter to the order's index. Record each answer in
+*Decisions per entity*. Range and overlap filters are offered under their own order only; the rare-value partial
+index is DATA-10's extension point, not generated. They go in a new changeset if the entity's own one is
+shipped (Step 2). Test row 28 checks the indexes that exist: each one is there, each list's first page and a
+cursor list's batch after a cursor are planned on its order's index, and a requested filter index's first page
+on that index (tests.md, *Index tests*).
 
 **Every list gets `ids`** (REST-23; golden `TodoFilter.ids`, `TodoListFilter.ids`):
 `List<@NotNull ID> ids` with `@ConfiguredMaxSize("cursor-page.max-size")` (offset:
@@ -714,7 +726,10 @@ one per state action (`<Entity>Status{{requestSuffix}}`). **Every String carries
 elements of a String collection too (`Set<@NotBlank @MaxLength("…") String>`), and its
 number (the developer's, Step 1's *Ask, don't guess*) is added to `app.limits.text` in `config/limits.yml`; collections carry a configured size
 limit (`@ConfiguredMaxSize("<entity>.<field>")`) and `@NotNull` elements, plus `@NotEmpty` only when
-the developer says it may not be empty (an optional set of tags may be empty); a date carries `@LatestDate("<entity>.<field>")`
+the developer says it may not be empty (an optional set of tags may be empty); a configured upper bound of a number
+carries `@ConfiguredMax("<entity>.<field>")`, a money amount's too (`BigDecimal`: the core's decimal validator, the
+setting quoted, `max-amount: "10000.00"`; golden `LimitsIntegrationTest.decimalMaximumComesFromConfiguration`), never a
+validator of the module's own; a date carries `@LatestDate("<entity>.<field>")`
 (`app.limits.latest-date`) when the developer gives it a latest day or a sort sentinel lies above it. `@Schema` on every component. Golden:
 `TodoCreateRequest`. **A text field a cursor carries** (a cursor list's text sort key, a dropdown's
 label) sizes the cursor: `app.limits.text.cursor` must hold `(6 × its @MaxLength + 100) × 4/3`
@@ -760,7 +775,14 @@ parent (an id column and a facade). Three more shapes, golden on `Todo` (tests.m
   with tenancy to the tenant's `members`, which a removal marks left and never deletes), checked through
   the person's module **whenever a write names someone new** (`TodoService.requireRequester`: `Users`, with
   tenancy `Members.isMember`, 404 `TENANT_MEMBER_NOT_FOUND`): the create, and an update only when the id
-  changes. A PUT is a full replace and re-sends the person it read, who may have left since: checked again,
+  changes. **A party who will act** (Step 1's *named parties*) is checked too: a `user.api.NamedParty` constant
+  (the party, the permission it acts with, the writes that name it; golden `TODO_REQUESTER`), and
+  `PermissionHolders.holds(id, party.mustHold())` after `requireUser`, else 409 `<ENTITY>_<PARTY>_INELIGIBLE`
+  with the id (golden `TODO_REQUESTER_INELIGIBLE`; house-review AUTHZ-04). Its picker is the user module's
+  `GET /users/dropdown?for=<the write's permission>`, which reads the same constant: add the constant, never a
+  dropdown of your own (REST-13). Where the state freezes the update while the party still has to act (a
+  submitted claim), the owner's reassignment is its own endpoint (`PATCH /<resources>/{id}/<party>`, the owner's
+  EDIT permission, while the record is not final) with the same check. Tests: tests.md row 27e. A PUT is a full replace and re-sends the person it read, who may have left since: checked again,
   every record of a former member would refuse every later edit, so the one it already names is kept
   (and can be cleared with `null`), golden `TodoService.update`, `TodoUpdateRequest.requesterId`. List rows
   carry the person as the id (`requesterId`); when the developer wants the name on rows (Step 1's *Ask,
@@ -1018,7 +1040,9 @@ with the new table).
 ## Step 7: Build and test
 Run `{{buildCommand}}`, the full gate command (`verify`: every test, ArchUnit, the coverage minimum and
 static analysis with security rules, house-review CFG-11), never the tests alone: green means that command,
-at every commit a run makes (one per entity: each is built before it is committed). Fix every compile error,
+at every commit a run makes (one per entity: each is built before it is committed). Its output, when kept, goes
+under `target/` only (`{{buildCommand}} > target/crud-gen-verify.log 2>&1`), which the build owns and git ignores:
+never a new file in the project tree (a `build.log` at the root lands in the commit). Fix every compile error,
 test failure and gate failure in the generated code; never report done on a red build. Generated code passes
 the gates with **no new entry in the exclude file but the two kinds below, and no lowered minimum**: a SpotBugs
 finding in a file that follows the golden files is a reference bug, fixed in the reference (the precedence above), never excluded in
@@ -1063,7 +1087,8 @@ checklist's review item stays open until that reviewer's report is clean.
       the profiles (Step 1).
 - [ ] Permissions asked, never guessed (Step 1): the actions, reach, roles, area and prerequisites in *Decisions per
       entity*; the constants in `Permission` and each role's lines in `Role`; every handler `@Requires`/`@SignedIn`/
-      `@Public`; an owned entity's `<Entity>Policy` with its list scope and its table test; `RoleTest`,
+      `@Public`; an owned entity's `<Entity>Policy` with its list scope, its table test (every party × action × state,
+      each refusal's code and arguments, tests.md row 14) and its refused-write DEBUG log test (row 14b); `RoleTest`,
       `PermissionTest` and `EndpointContractIntegrationTest` green. With `authorization: roles-piece`, the grant
       changeset for the built-in roles the developer named (`ADMIN` among them), a new built-in role's seeding
       changeset, and `BuiltInRolesIntegrationTest` green. A detail several reaches read `@Requires` each reach's READ,
@@ -1077,8 +1102,13 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] Asked, and recorded: each picked parent's dropdown and Step 1's *Ask, don't guess* list (Step 1),
       whether a terminal status freezes the record (Step 3), a unique code's shape (Step 2).
 - [ ] A same-module parent's service changed (4.8): listed among the changed shared files.
-- [ ] Row 28: every offered filter and order names its index, which exists, and each list's first page
-      is planned on its order's index (4.1); a range filter offered under its own order only; row 18b:
+- [ ] A party a write names to act: its `NamedParty` constant, the check after `requireUser` (409
+      `<ENTITY>_<PARTY>_INELIGIBLE`), its picker the users dropdown (no dropdown of the module's own), the stale
+      party's reassignment, and tests.md row 27e (4.3, AUTHZ-04).
+- [ ] Per offered filter, "index this filter?" asked and recorded (unattended: the rules' answer, else no index,
+      assumed). Row 28: every offered order and each requested filter index names its index, which exists; each
+      list's first page and a cursor list's batch after a cursor are planned on its order's index (4.1); a range
+      filter offered under its own order only; row 18b:
       the `ids` filter's statement count.
 - [ ] A changeset that backfills existing rows, once the project has a release in production: row 30 on
       the upgraded database (until the first release the upgrade path is inert: record it; tests.md, *Upgrading a
@@ -1093,6 +1123,7 @@ checklist's review item stays open until that reviewer's report is clean.
       or enum, bounded in its record; the unit in the yml value, never in the key), and
       `ConventionArchTest.settingsAreTypedByWhatTheyMean` is green.
 - [ ] `{{buildCommand}}` green at each commit, gates included (no exclude entry but the relation method's and the
-      controllers' `SPRING_ENDPOINT`, no lowered minimum);
+      controllers' `SPRING_ENDPOINT`, no lowered minimum); the build's output, if kept, under `target/`, no new
+      file in the tree but the entity's own (Step 7);
       each guard test names the golden test it mirrors (Step 7).
 - [ ] house-review clean (Step 8).

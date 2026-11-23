@@ -15,6 +15,7 @@ import io.swagger.v3.core.converter.AnnotatedType;
 import io.swagger.v3.core.converter.ModelConverters;
 import io.swagger.v3.oas.models.media.ArraySchema;
 import io.swagger.v3.oas.models.media.IntegerSchema;
+import io.swagger.v3.oas.models.media.NumberSchema;
 import io.swagger.v3.oas.models.media.Schema;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
@@ -25,6 +26,7 @@ import org.springframework.core.env.Environment;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedParameterizedType;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +35,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,13 +43,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class LimitsIntegrationTest extends IntegrationTest {
 
-    private static final List<String> CURSOR_TEXT_KEYS = List.of(
+    private static final List<String> CURSOR_TEXT_KEYS = Stream.of(
+            // sign-in:begin
+            // tenancy:begin
+            // tenancy:else
+            List.of("user.full-name"),
+            // tenancy:end
+            // sign-in:end
             // example:begin
-            "todo-list.name",
-            "tag.name",
-            "todo.title"
+            List.of("todo-list.name", "tag.name", "todo.title"),
             // example:end
-    );
+            List.<String>of()).flatMap(List::stream).toList();
 
     private static final String LONGEST_SORT = "A_SORT_NAME_OF_THIRTY_LETTERS_";
 
@@ -82,7 +89,7 @@ class LimitsIntegrationTest extends IntegrationTest {
             if (field.isAnnotatedWith(ConfiguredMax.class)) {
                 checked++;
                 checkConfigured(missing, field.getAnnotationOfType(ConfiguredMax.class).value(),
-                        () -> limits.getLong(field.getAnnotationOfType(ConfiguredMax.class).value()));
+                        maximumOf(field.getRawType().isEquivalentTo(BigDecimal.class), field.getAnnotationOfType(ConfiguredMax.class)));
             }
             if (field.isAnnotatedWith(ConfiguredMaxSize.class)) {
                 checked++;
@@ -105,7 +112,7 @@ class LimitsIntegrationTest extends IntegrationTest {
             if (method.isAnnotatedWith(ConfiguredMax.class)) {
                 checked++;
                 checkConfigured(missing, method.getAnnotationOfType(ConfiguredMax.class).value(),
-                        () -> limits.getLong(method.getAnnotationOfType(ConfiguredMax.class).value()));
+                        maximumOf(method.getRawReturnType().isEquivalentTo(BigDecimal.class), method.getAnnotationOfType(ConfiguredMax.class)));
             }
         }
 
@@ -172,6 +179,10 @@ class LimitsIntegrationTest extends IntegrationTest {
             }
         }
         return found;
+    }
+
+    private Runnable maximumOf(boolean decimal, ConfiguredMax limit) {
+        return decimal ? () -> limits.getDecimal(limit.value()) : () -> limits.getLong(limit.value());
     }
 
     private void requireDate(String property) {
@@ -284,6 +295,32 @@ class LimitsIntegrationTest extends IntegrationTest {
         assertThat(collection.getMaxItems()).isEqualTo(100);
         assertThat(collection.getMaximum()).isNull();
         assertThat(element.getMaxItems()).as("swagger also passes the field's annotations for the items").isNull();
+    }
+
+    record SomeAmountRequest(@ConfiguredMax("probe.max-amount") BigDecimal amount) {
+    }
+
+    @Test
+    @DisplayName("""
+            A decimal at the configured maximum is valid at any scale; a hundredth more fails, naming the limit as \
+            configured""")
+    void decimalMaximumComesFromConfiguration() {
+        assertThat(validator.validate(new SomeAmountRequest(new BigDecimal("10000.50")))).isEmpty();
+        assertThat(validator.validate(new SomeAmountRequest(new BigDecimal("10000.5000")))).isEmpty();
+        assertThat(validator.validate(new SomeAmountRequest(null))).isEmpty();
+        assertThat(validator.validate(new SomeAmountRequest(new BigDecimal("10000.51"))))
+                .extracting(ConstraintViolation::getMessage).containsExactly("must be at most 10000.50");
+    }
+
+    @Test
+    @DisplayName("The API docs show a configured decimal maximum as the number's maximum")
+    void apiDocsShowTheConfiguredDecimalMaximum() throws Exception {
+        Annotation limit = SomeAmountRequest.class.getDeclaredField("amount").getAnnotation(ConfiguredMax.class);
+
+        Schema<?> amount = new LimitsOpenApiCustomizer(limits).customize(new NumberSchema(),
+                new AnnotatedType().ctxAnnotations(new Annotation[]{limit}));
+
+        assertThat(amount.getMaximum()).isEqualByComparingTo("10000.50");
     }
 
     /** A key every project has (search-query: 100). */

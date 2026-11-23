@@ -103,6 +103,10 @@ public final class ErrorCodeHttpStatusMapper {
         MAPPING.put(ErrorCode.TODO_LIST_DELETED_MEANWHILE, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TODO_NOT_FOUND, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TODO_NOT_YOURS, HttpStatus.FORBIDDEN);
+        // tenancy:begin
+        // tenancy:else
+        MAPPING.put(ErrorCode.TODO_REQUESTER_INELIGIBLE, HttpStatus.CONFLICT);
+        // tenancy:end
         MAPPING.put(ErrorCode.TODO_IN_USE, HttpStatus.CONFLICT);
         MAPPING.put(ErrorCode.TODO_DELETED_MEANWHILE, HttpStatus.NOT_FOUND);
         MAPPING.put(ErrorCode.TIME_ENTRY_NOT_FOUND, HttpStatus.NOT_FOUND);

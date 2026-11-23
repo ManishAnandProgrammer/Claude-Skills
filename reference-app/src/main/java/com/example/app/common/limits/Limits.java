@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+
 @Component
 @RequiredArgsConstructor
 public class Limits {
@@ -19,6 +21,10 @@ public class Limits {
 
     public long getLong(String key) {
         return environment.getRequiredProperty(PREFIX + key, Long.class);
+    }
+
+    public BigDecimal getDecimal(String key) {
+        return environment.getRequiredProperty(PREFIX + key, BigDecimal.class);
     }
 
     public int maxLength(String key) {

@@ -1,5 +1,9 @@
 package com.example.app.user.domain;
 
+// tenancy:begin
+// tenancy:else
+import com.example.app.common.dropdown.DropdownCandidate;
+// tenancy:end
 import com.example.app.common.persistence.AuditableEntity;
 import com.example.app.common.validation.Emails;
 import jakarta.persistence.Column;
@@ -14,6 +18,10 @@ import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "users")
+// tenancy:begin
+// tenancy:else
+@DropdownCandidate(label = "Account", displayField = "fullName", searchable = true)
+// tenancy:end
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

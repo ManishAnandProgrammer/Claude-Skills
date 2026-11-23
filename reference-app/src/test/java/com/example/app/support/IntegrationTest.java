@@ -44,6 +44,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 // media:begin
 import java.util.Arrays;
 // media:end
@@ -439,6 +440,48 @@ public abstract class IntegrationTest {
                 }
                 awaitLockWaiters(HELD_CREATES, null);
                 meanwhile.call();
+            } finally {
+                openGate.countDown();
+            }
+            awaitResult(gate);
+        }
+        List<Answer> answers = new ArrayList<>();
+        for (Future<Answer> answer : pending) {
+            answers.add(awaitResult(answer));
+        }
+        return answers;
+    }
+
+    /**
+     * Each of {@code writes} is held at its write to {@code table} (a SHARE lock, as {@link #createsHeldAtTheirInsert})
+     * until every one waits there, so each has read the row before any of them writes: a write that sent the version
+     * it read is refused only by the database's version check (the {@code @Version} condition of its UPDATE or
+     * DELETE). Without the gate a racer that reads after the first commit is refused by the version it sent, and the
+     * test passes with the condition gone.
+     */
+    protected List<Answer> writesHeldPastTheirReads(String table, Callable<ResultActions> write) throws Exception {
+        return writesHeldPastTheirReads(table, Collections.nCopies(HELD_CREATES, write));
+    }
+
+    protected List<Answer> writesHeldPastTheirReads(String table, List<Callable<ResultActions>> writes) throws Exception {
+        assertThat(writes).as("held writes, within the pool").hasSizeBetween(2, HELD_CREATES);
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch gateClosed = new CountDownLatch(1);
+        CountDownLatch openGate = new CountDownLatch(1);
+        List<Future<Answer>> pending = new ArrayList<>();
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> gate = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                jdbc.execute("lock table " + table + " in share mode");
+                gateClosed.countDown();
+                awaitQuietly(openGate);
+            }));
+            awaitLatch(gateClosed);
+            try {
+                for (Callable<ResultActions> write : writes) {
+                    Callable<Answer> once = () -> answerOf(write.call());
+                    pending.add(executor.submit(once));
+                }
+                awaitLockWaiters(writes.size(), null);
             } finally {
                 openGate.countDown();
             }

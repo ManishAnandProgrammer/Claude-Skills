@@ -496,13 +496,13 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Concurrent updates of one plan with one version apply once: one 200, the rest 409, the version advanced once")
+    @DisplayName("Concurrent updates of one plan that all read version 0 apply once: one 200, the rest 409, the version advanced once")
     void concurrentUpdatesWithOneVersionApplyOnce() throws Exception {
         TestUser user = newUser();
         String id = createPlan(user, createTodo(user, "Raced"), "2026-11-20", "2026-11-22");
         AtomicInteger racer = new AtomicInteger();
 
-        List<Answer> answers = race(() -> {
+        List<Answer> answers = writesHeldPastTheirReads("plans", () -> {
             int day = 1 + racer.getAndIncrement();
             String date = LocalDate.of(2027, 1, day).toString();
             return update(user, id, date, date, 0);

@@ -2,7 +2,10 @@ package com.example.app.user.domain;
 
 import com.example.app.common.security.Permission;
 
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 // roles:begin
 // /**
@@ -60,5 +63,10 @@ public enum Role {
 
     public boolean grants(Permission permission) {
         return permissions.contains(permission);
+    }
+
+    public static Set<Role> holding(Permission permission) {
+        return Arrays.stream(values()).filter(role -> role.grants(permission))
+                .collect(Collectors.toCollection(() -> EnumSet.noneOf(Role.class)));
     }
 }

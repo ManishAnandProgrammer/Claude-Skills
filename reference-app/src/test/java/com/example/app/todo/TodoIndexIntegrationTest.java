@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.transaction.PlatformTransactionManager;
 
+import java.time.LocalDate;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -96,5 +97,42 @@ class TodoIndexIntegrationTest extends IntegrationTest {
 
         assertThat(plan).as(list).doesNotContain("Seq Scan");
         assertThat(QueryPlan.indexesScanned(plan)).as(plan).contains(index);
+    }
+
+    static Stream<Arguments> laterBatches() {
+        return Stream.of(
+                Arguments.of("todos, DUE_DATE", "idx_todos_owner_id_due_sort_id", "ROW(due_sort, id) > ",
+                        TODO_SUMMARY + " where owner_id = :owner" + AND_TENANT
+                                + " and (due_sort, id) > (:day, :id) order by due_sort, id limit 21"),
+                Arguments.of("todo list dropdown", "idx_todo_lists_owner_id_name_id", "ROW(name, id) > ",
+                        DROPDOWN_ITEM + " where owner_id = :owner" + AND_TENANT
+                                + " and (name, id) > (:text, :id) order by name, id limit 21"),
+                Arguments.of("todo list dropdown, DESC", "idx_todo_lists_owner_id_name_id", "ROW(name, id) < ",
+                        DROPDOWN_ITEM + " where owner_id = :owner" + AND_TENANT
+                                + " and (name, id) < (:text, :id) order by name desc, id desc limit 21"),
+                Arguments.of("todo dropdown", "idx_todos_todo_list_id_owner_id_title_id", "ROW(title, id) > ",
+                        TODO_DROPDOWN_ITEM + " where todo_list_id = :list and owner_id = :owner" + AND_TENANT
+                                + " and (title, id) > (:text, :id) order by title, id limit 21"));
+    }
+
+    @ParameterizedTest(name = "{0}: {1}")
+    @MethodSource("laterBatches")
+    @DisplayName("Each cursor list's batch after a cursor starts at the cursor on its order's index: the seek is an index condition")
+    void aLaterBatchSeeksOnItsOrdersIndex(String list, String index, String seek, String statement) {
+        MapSqlParameterSource parameters = new MapSqlParameterSource("owner", UUID.randomUUID())
+                .addValue("list", UUID.randomUUID())
+                .addValue("day", LocalDate.of(2026, 11, 1))
+                .addValue("text", "Groceries")
+                .addValue("id", UUID.randomUUID());
+        // tenancy-row:begin
+        // parameters.addValue("tenantId", testTenant().id());
+        // tenancy-row:end
+
+        String plan = QueryPlan.explain(jdbc, transactionManager, statement, parameters);
+
+        assertThat(plan).as(list).doesNotContain("Seq Scan");
+        assertThat(QueryPlan.indexesScanned(plan)).as(plan).contains(index);
+        assertThat(plan.lines().filter(line -> line.contains("Index Cond")).toList()).as(plan)
+                .anySatisfy(condition -> assertThat(condition).contains(seek));
     }
 }

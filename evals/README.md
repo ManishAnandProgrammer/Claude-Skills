@@ -71,7 +71,8 @@ Every model run is `claude -p` with these settings:
   resolve to the snapshot, so `bootstrap-copy.sh --render` and the release record come from the release under test.
   No other skill, plugin, memory or CLAUDE.md is loaded.
 - **Its flags:** `--output-format stream-json --verbose`. Its last line is the `json` result, with
-  `total_cost_usd`, `permission_denials` and `structured_output`. It also takes:
+  `total_cost_usd`, `permission_denials` and `structured_output` (a run that ends on a short turn of its own after
+  its background passes carries none there: the harness keeps the last result's that had one). It also takes:
   - `--no-session-persistence --permission-mode acceptEdits --permission-prompts none`;
   - `--allowedTools`, `--disallowedTools`;
   - `--max-budget-usd`;
@@ -107,6 +108,10 @@ arrives with the coverage minimums a bare copy of those pieces holds (`scripts/c
 - adds `fixture/` (the entity, its changeset in the master) and commits it as the baseline: the developer's
   entity, never applied anywhere;
 - runs `/crud-gen` with a 3-hour timeout. Step 8 (the self-review) is skipped: the harness reviews instead.
+- replays the profile edits Claude Code refused: a headless run may not write under `.claude/` (no allow rule
+  lifts that), where a developer would approve the skill's own edit of its profiles. `lib/gates.py replay` applies
+  the refused Edits and Writes of the two profiles in the run's order, skips one whose text is gone, and records
+  them in `profile-replay.json`.
 
 Then the three gates:
 

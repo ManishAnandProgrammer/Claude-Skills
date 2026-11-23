@@ -154,10 +154,23 @@ and Policy.
     caller never takes the owner's lock (DATA-29), and on an empty result reads the record unlocked for the policy
     to say why (`TodoService.lockEditableTodo`); the policy never picks an HTTP status: the error contract's mapper does, and where the house
     answers another owner's record with 404 (REST-16) the policy refuses with the `<ENTITY>_NOT_FOUND` code;
+  - **a write that names the party who will act** (an approver, an assignee, a requester) checks the named
+    account at the write: it exists (404 `USER_NOT_FOUND`), and it is active and holds the permission that party
+    acts with now (409 `<ENTITY>_<PARTY>_INELIGIBLE`), through the user module's `PermissionHolders.holds` (Level 1
+    the role, the roles piece the effective access), never "any account". The party and that permission are one
+    `user.api.NamedParty` constant, read by the check and by the write's picker (REST-13): golden
+    `TodoService.requireRequester`, `NamedParty.TODO_REQUESTER`. A stored party is checked again only when a write
+    changes it, so an edit keeping a party who has since lost the permission passes; that party can't act (every
+    call checks the permission at the request), and the house answer to a stale party is the owner's
+    reassignment while the record is not final (the update, or a reassign endpoint of its own where the state
+    freezes the update); golden `TodoRequesterPickerIntegrationTest`. With tenancy the facade is `Members`
+    (membership alone: the holder check is not golden there yet);
   - no rule engine, expression strings, reflection or rules as data.
 - **Detect:** a record locked by id before its policy decides; ownership compared in the controller or the mapper; an `if (role == ...)` in a service; a limit
   read from the role; the same "is it theirs" written in two services; a policy that throws an HTTP status or
-  a Spring exception; a record rule inside a `@PreAuthorize` expression.
+  a Spring exception; a record rule inside a `@PreAuthorize` expression; a named party checked for existence alone
+  (`requireUser`), so a record can name someone who may never act on it; a final state reachable while its only
+  party can't act and nobody may reassign it.
 - **Not a finding when:** a resource whose only rule about the caller is the owner's reach, and no action whose
   answer differs between its records (AUTHZ-07), keeps the owner id in its queries (`TodoListService`,
   `TagService`; `PlanService` keeps its owner condition in its queries too, and its state rules are
@@ -316,9 +329,12 @@ and Policy.
     authorities are chosen (`IntegrationTest.holding`), so a new endpoint is covered without anyone writing a
     test (`EndpointContractIntegrationTest.everyRequiredPermissionIsChecked`);
   - `@Public` against the chain's public paths, both ways (AUTHZ-03);
-  - **a table-driven unit test per policy**: one row per rule × caller (owner, second party, stranger) × state,
-    with every refusal in order, each code with its arguments (`TodoPolicyTest`, `PlanPolicyTest`); `Decision`'s
-    own test keeps two refusals' order and `orThrow` throws the first (`DecisionTest`);
+  - **a table-driven unit test per policy**: one row per rule × caller (owner, each second party, stranger, a
+    party without the READ) × state (every status, the final ones included), with every refusal in order, each
+    code with its arguments (`TodoPolicyTest`, `PlanPolicyTest`); `Decision`'s own test keeps two refusals' order
+    and `orThrow` throws the first (`DecisionTest`);
+  - **the refused write's log**, per policy: with the authorization logger at DEBUG, a write the policy refuses
+    logs `Write refused: [<codes>]`, the codes alone (`PlanAllowedActionsIntegrationTest.aRefusedWriteIsLoggedAtDebug`);
   - **the allowed actions' shape**: an integration test per resource with flags, on the detail and a list row,
     asserting `allowed`, every reason's `errorCode` and that a reason's `message` equals the write's `detail`
     under the same `Accept-Language` (`PlanAllowedActionsIntegrationTest`, `TodoRequesterIntegrationTest`);
@@ -332,7 +348,8 @@ and Policy.
   - the dropdown's `for`: missing, unknown, not held (403, no statement), an unsupported reach (400), one
     statement per call.
 - **Detect:** a per-endpoint 403 test where the generated one would do (it drifts); a policy tested only
-  through HTTP; a converter test that checks containment instead of equality.
+  through HTTP; a policy table that asserts codes without their arguments, or lacks a party × action × state row; a
+  policy with no refused-write log test; a converter test that checks containment instead of equality.
 - **Severity:** Medium (TEST-01).
 
 ### AUTHZ-10: A permission the request names, and a change of access

@@ -15,11 +15,10 @@ src/main/java/@PKG@/user/domain/Role.java
 # (below, 0100 and up), the test base's newFinance() beside newAdmin(), the runbook's operator tasks naming its code
 src/test/java/@PKG@/support/IntegrationTest.java
 docs/runbook.md
-# The approver is a person of the user module, checked through its facade (Step 1: a module without the method
-# gets it in the same change, implemented by its service)
-src/main/java/@PKG@/user/api/*
-src/main/java/@PKG@/user/service/UserService.java
-src/main/java/@PKG@/user/repository/UserRepository.java
+# The new role's line beside the first admin's (bootstrap.md: local-dev step 4 and the runbook's Operator tasks)
+docs/local-dev.md
+# The approver is a named party of the user module: its NamedParty constant (the facades and the picker are golden)
+src/main/java/@PKG@/user/api/NamedParty.java
 # Limits and settings (4.2; the approval window, a Period) and the changelog (Step 2)
 src/main/resources/config/limits.yml
 src/main/resources/config/limits-prod.yml

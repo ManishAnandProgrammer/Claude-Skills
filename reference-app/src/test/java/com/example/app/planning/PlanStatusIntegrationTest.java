@@ -7,12 +7,18 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
@@ -28,6 +34,9 @@ class PlanStatusIntegrationTest extends IntegrationTest {
 
     @Autowired
     private Clock clock;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private String createPlan(TestUser user, String startsOn, String endsOn) throws Exception {
         String listId = read(postAs(user.accessToken(), "/api/v1/todo-lists", """
@@ -220,16 +229,55 @@ class PlanStatusIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Concurrent status changes with one version apply once: one 200, the rest 409, the version advanced once")
+    @DisplayName("Concurrent status changes that all read version 0 apply once: one 200, the rest 409, the version advanced once")
     void concurrentStatusChangesApplyOnce() throws Exception {
         TestUser user = newUser();
         String id = createPlan(user, STARTS_ON, "2026-01-12");
 
-        List<Answer> answers = race(() -> changeStatus(user, id, "CANCELLED", null, 0));
+        List<Answer> answers = writesHeldPastTheirReads("plans", () -> changeStatus(user, id, "CANCELLED", null, 0));
 
         assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).isSubsetOf(200, 409);
         assertRefusalsAre(answers, 409, "OPTIMISTIC_LOCK_CONFLICT");
         assertThat(jdbc.queryForObject("select version from plans where id = ?::uuid", Long.class, id)).isOne();
+    }
+
+    @Test
+    @DisplayName("""
+            A delete that read the plan before a status change committed is 409 OPTIMISTIC_LOCK_CONFLICT: it deletes \
+            only the version it read, so the changed plan stays""")
+    void aDeleteRacingAStatusChangeRemovesNoChangedPlan() throws Exception {
+        TestUser user = newUser();
+        String id = createPlan(user, STARTS_ON, "2026-01-12");
+
+        Answer delete = whileAStatusChangeIsInFlight(id, "CANCELLED", () -> answerOf(deleteAs(user.accessToken(), PLANS + "/" + id)));
+
+        assertThat(delete.status()).as(delete.body()).isEqualTo(409);
+        assertRefusalsAre(List.of(delete), 409, "OPTIMISTIC_LOCK_CONFLICT");
+        assertThat(jdbc.queryForMap("select status, version from plans where id = ?::uuid", id))
+                .containsEntry("status", "CANCELLED").containsEntry("version", 1L);
+    }
+
+    /** The change is the test's own, held uncommitted, so the request reads the plan as it was and then waits on its row. */
+    private Answer whileAStatusChangeIsInFlight(String planId, String target, Callable<Answer> request) throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch changed = new CountDownLatch(1);
+        CountDownLatch commit = new CountDownLatch(1);
+        try (ExecutorService executor = newExecutor()) {
+            Future<?> change = executor.submit(() -> transaction.executeWithoutResult(status -> {
+                assertThat(jdbc.update("update plans set status = ?, version = version + 1 where id = ?::uuid", target, planId)).isOne();
+                changed.countDown();
+                awaitQuietly(commit);
+            }));
+            awaitLatch(changed);
+            Future<Answer> answer = executor.submit(request);
+            try {
+                awaitLockWaiters(1, answer);
+            } finally {
+                commit.countDown();
+            }
+            awaitResult(change);
+            return awaitResult(answer);
+        }
     }
 
     @ParameterizedTest(name = "{0}")

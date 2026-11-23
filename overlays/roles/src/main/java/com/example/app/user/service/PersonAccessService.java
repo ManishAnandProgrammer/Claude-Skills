@@ -1,7 +1,16 @@
 package com.example.app.user.service;
 
+// tenancy:begin
+// tenancy:else
+// import com.example.app.common.dropdown.DropdownFilter;
+// import com.example.app.common.dropdown.DropdownItem;
+// tenancy:end
 import com.example.app.common.exception.AppException;
 import com.example.app.common.exception.ErrorCode;
+// tenancy:begin
+// tenancy:else
+// import com.example.app.common.pagination.CursorBatch;
+// tenancy:end
 import com.example.app.common.security.Permission;
 // tenancy:begin
 import com.example.app.common.tenancy.TenantContext;
@@ -9,6 +18,8 @@ import com.example.app.common.tenancy.TenantContext;
 import com.example.app.common.wrapper.ObjectWrapper;
 // tenancy:begin
 import com.example.app.tenant.api.Tenants;
+// tenancy:else
+// import com.example.app.user.api.PermissionHolders;
 // tenancy:end
 import com.example.app.user.domain.AccessRole;
 import com.example.app.user.domain.EffectiveAccess;
@@ -58,7 +69,11 @@ import java.util.stream.Collectors;
 @Slf4j
 @RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 @Transactional(readOnly = true)
+// tenancy:begin
 public class PersonAccessService {
+// tenancy:else
+// public class PersonAccessService implements PermissionHolders {
+// tenancy:end
 
     private static final Logger AUTHORIZATION_LOG = LoggerFactory.getLogger("com.example.app.authorization");
 
@@ -369,6 +384,32 @@ public class PersonAccessService {
     EffectiveAccess accessOf(UUID userId) {
         return EffectiveAccess.of(assignments.findAccessRows(List.of(userId), clock.instant()));
     }
+    // tenancy:begin
+    // tenancy:else
+    //
+    // @Override
+    // public boolean holds(UUID userId, Permission permission) {
+    //     return accessOf(userId).holds(permission);
+    // }
+    //
+    // /** The SQL twin of {@link EffectiveAccess}: each of these held, by a role or an ALLOW, and none denied. */
+    // @Override
+    // public CursorBatch<DropdownItem> findHolders(Permission permission, DropdownFilter filter, int size) {
+    //     return assignments.findHolders(names(withPrerequisites(permission)), filter, size, clock.instant());
+    // }
+    //
+    // private static Set<Permission> withPrerequisites(Permission permission) {
+    //     Set<Permission> needed = EnumSet.of(permission);
+    //     boolean grew = true;
+    //     while (grew) {
+    //         grew = false;
+    //         for (Permission each : EnumSet.copyOf(needed)) {
+    //             grew |= needed.addAll(each.prerequisites());
+    //         }
+    //     }
+    //     return needed;
+    // }
+    // tenancy:end
 
     private PersonAccessResponse view(UUID userId) {
         return mapper.toResponse(userId, assignments.findByUserId(userId), grants.findByUserIdOrderByPermission(userId),

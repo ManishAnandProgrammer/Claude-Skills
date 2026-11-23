@@ -1,5 +1,11 @@
 package com.example.app.user.repository.custom;
 
+// tenancy:begin
+// tenancy:else
+// import com.example.app.common.dropdown.DropdownFilter;
+// import com.example.app.common.dropdown.DropdownItem;
+// import com.example.app.common.pagination.CursorBatch;
+// tenancy:end
 import com.example.app.user.domain.AccessRow;
 
 import java.time.Instant;
@@ -23,4 +29,10 @@ public interface CustomRoleAssignmentRepository {
 
     /** Candidates only: their DENYs are read with their rows. */
     List<UUID> findHoldersForGood(Collection<String> permissions);
+    // tenancy:begin
+    // tenancy:else
+    //
+    // /** Active accounts holding every one of {@code permissions} now, none of them denied. */
+    // CursorBatch<DropdownItem> findHolders(Collection<String> permissions, DropdownFilter filter, int size, Instant now);
+    // tenancy:end
 }

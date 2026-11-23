@@ -1,9 +1,8 @@
 --liquibase formatted sql
 
--- Every offered equality filter gets its own index per offered order: the scope first, then the filter,
--- then the order's keys, the id last (house-review DATA-10). How many rows a filter value holds is a fact
--- about the data, which the schema can't know, so no filter is left to an order's index. The todos'
--- priority filter and the time entries' billable filter get theirs here.
+-- The filter indexes the example's developer asked for (a filter's own index is the developer's call, house-review
+-- DATA-10): the todos' priority and the time entries' billable filter, each per offered order: the scope first,
+-- then the filter, then the order's keys, the id last.
 -- bootstrap-copy.sh copies this file with the example piece.
 
 --changeset dev:0031-filter-indexes

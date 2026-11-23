@@ -294,6 +294,8 @@ generation_case() {
     RULES="$(section "$case_dir/case.md" "Business rules")" \
         perl -pe 's/\@([A-Z_]+)\@/exists $ENV{$1} ? $ENV{$1} : $&/ge' "$EVALS/lib/prompts/crud-gen.md" > "$system"
     run_model crud-gen "$results" "$dir" "$GEN_TIMEOUT" "$GEN_TOOLS" "/crud-gen $entity --unattended" "$system"
+    # A headless run may not write under .claude/: apply the profile edits a developer would approve.
+    "${GATES[@]}" replay "$results/crud-gen.jsonl" "$dir" "$results/profile-replay.json"
     echo "    gate 2: the paths changed since the baseline"
     "${GATES[@]}" gate2 "$dir" "$baseline" "$case_dir/allowed" "com/acme/$(basename "$case_dir" | cut -d- -f1)" "$results/gate2.json"
     git -C "$dir" commit -q -m "crud-gen's change, as it left the tree" || true

@@ -7,8 +7,22 @@ import com.example.app.common.validation.Emails;
 import com.example.app.common.wrapper.ObjectWrapper;
 // tenancy:begin
 // tenancy:else
+// roles:begin
+// roles:else
+import com.example.app.common.dropdown.DropdownFilter;
+import com.example.app.common.dropdown.DropdownItem;
+import com.example.app.common.pagination.CursorBatch;
+import com.example.app.user.api.PermissionHolders;
+// roles:end
 import com.example.app.user.api.Users;
 // tenancy:end
+// roles:begin
+// roles:else
+// tenancy:begin
+// tenancy:else
+import com.example.app.user.domain.Role;
+// tenancy:end
+// roles:end
 import com.example.app.user.domain.User;
 import com.example.app.user.domain.UserStatus;
 // roles:begin
@@ -67,7 +81,11 @@ import java.util.UUID;
 // tenancy:begin
 // public class UserService {
 // tenancy:else
-public class UserService implements Users {
+// roles:begin
+// public class UserService implements Users {
+// roles:else
+public class UserService implements Users, PermissionHolders {
+// roles:end
 // tenancy:end
 
     private final UserRepository repository;
@@ -143,6 +161,19 @@ public class UserService implements Users {
             throw AppException.of(ErrorCode.USER_NOT_FOUND);
         }
     }
+    // roles:begin
+    // roles:else
+
+    @Override
+    public boolean holds(UUID userId, Permission permission) {
+        return repository.findById(userId).filter(User::isActive).map(user -> user.getRole().grants(permission)).orElse(false);
+    }
+
+    @Override
+    public CursorBatch<DropdownItem> findHolders(Permission permission, DropdownFilter filter, int size) {
+        return repository.findActiveWithRoleIn(Role.holding(permission), filter, size);
+    }
+    // roles:end
 
     // tenancy:end
     Optional<User> findByEmail(String email) {

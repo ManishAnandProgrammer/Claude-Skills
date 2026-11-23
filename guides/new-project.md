@@ -72,7 +72,7 @@ secrets in `.env`: `JWT_SECRET` and `PERSONAL_DATA_PEPPER`.
 Like the reference application's `todo` module (`~/.claude/skills-reference`): request records
 with configurable `@MaxLength` limits (`config/limits.yml`), projections for lists, cursor paging
 by default (offset only for an admin screen that needs page numbers or a total, or complex filters),
-`text` columns, an index per list order and filter.
+`text` columns, an index per list order (and per filter where you ask for one: the skill asks).
 
 ### What a finding means
 - **Critical / High**: fix before merging. The verdict says NOT READY.

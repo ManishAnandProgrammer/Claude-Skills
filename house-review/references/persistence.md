@@ -498,13 +498,14 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
   - **one index per offered list order**, leading with the scope columns (owner, tenant), then the
     sort keys, **ending with the id** tie-breaker; filtered columns covered (composite or partial).
     With row tenancy `tenant_id` joins the leading equality columns, in TEN-33's order;
-  - **also per offered equality filter on the list's own columns** (a parent id, a status, a priority, a
-    flag), whatever its values: `(scope…, filter, sort keys…, id)` per offered order (`(parent_id,
-    owner_id, sort keys…, id)` also serves the foreign key). How many rows a value holds is a fact about
-    the data, which the review can't know, so no filter is left to an order's index. A filter through a
-    link table (a tag on a todo) is served by the link's key. On a table without a leading scope column the
-    planner may still walk the order's index for a rare value; that plan is a use case, not a finding
-    against the composite. **Extension point:** a project that knows a value is rare adds a partial index
+  - **an offered filter's own index is the developer's call**: the table's size and the filter's cardinality
+    and selectivity decide it, and only the developer knows them. crud-gen asks per offered filter and records
+    the answer in the crud profile's *Decisions per entity* (no index when nobody could be asked, marked
+    assumed). A "yes" is `(scope…, filter, sort keys…, id)` per offered order (golden
+    `0031-filter-indexes.sql`; `(parent_id, owner_id, sort keys…, id)` also serves the foreign key). A filter
+    through a link table (a tag on a todo) is served by the link's key, which exists anyway. **An unindexed
+    filter is not a finding**; a recorded "index it" without that index in the changesets, or without its plan
+    test, is. **Extension point:** a project that knows a value is rare adds a partial index
     (`WHERE status = '<VALUE>'`), proven with its own `EXPLAIN (ANALYZE, BUFFERS)` test. The query names
     the value as a literal too (a JPQL enum literal, `where r.status = com.x.RunStatus.IN_PROGRESS`), never
     a bind parameter: after five executions PostgreSQL may switch to a generic plan, which can't prove a
@@ -549,14 +550,18 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
     filter refuses that sort with a 400 naming each bound sent (golden
     `TodoFilter.isDueOnOrBeforeSortedByDueDate`, `TimeEntryFilter.isSpentOnFromSortedBySpentOn`), with no
     exception for a scope;
-  - **every list has its index test** (crud-gen tests.md, *Index tests*): each offered filter and order,
-    the `ids` lookup, the second steps, the delete-side key checks and the job leases name their index,
-    and the test asserts it exists; each list's first page, as the repository issues it, is planned on its
-    order's index (`QueryPlan`: plan nodes and index names, never a cost or a row count). Measured read
-    costs are a project's own `EXPLAIN (ANALYZE, BUFFERS)` tests, where it knows its data (a use case);
-- **Detect:** an offered equality filter without its index per offered order (a "few values" or "small
-  scope" note is no reason: the data decides, not the schema); a list's offered filter or order with no
-  index named in its index test, or a list without the first-page plan check; **an index test that asserts
+  - **every list has its index test** (crud-gen tests.md, *Index tests*), over **the indexes that exist**,
+    never a plan per filter combination: each order's index, each filter index the developer asked for, the
+    second steps, the delete-side key checks, the job leases and the constraints the rules require name
+    their index, and the test asserts it exists; each list's first page in its default order, and a cursor
+    list's batch after a cursor (the seek an index condition), as the repository issues them, are planned on
+    the order's index, and a requested filter index's first page on that index (`QueryPlan`: plan nodes and
+    index names, never a cost or a row count). The `ids` lookup rides the primary key and needs no test of
+    its own. Measured read costs are a project's own `EXPLAIN (ANALYZE, BUFFERS)` tests, where it knows its
+    data (a use case);
+- **Detect:** an index the crud profile records for a filter that no changeset creates; an offered order
+  without its index; an existing order or requested filter index not named in its index test, or a list
+  without the first-page plan check; **an index test that asserts
   a cost or a row count** (a read bound, buffers) or makes a claim it doesn't assert (a javadoc saying a
   cell "fails without its index", a seed shaped to make it so): costs turn on the data, which is a
   project's own measured test;

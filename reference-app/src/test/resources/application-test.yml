@@ -28,6 +28,9 @@ app:
       probe.day: "1900-01-01"
     latest-date:
       probe.day: "2999-12-31"
+    # A decimal maximum for LimitsIntegrationTest's amount record, quoted so YAML keeps its scale.
+    probe:
+      max-amount: "10000.50"
   # sign-in:begin
   # The sign-in limits are production's (config/limits.yml). Each MockMvc request comes from its own
   # client address (support/DistinctClientAddresses), as each test uses its own accounts, so no test

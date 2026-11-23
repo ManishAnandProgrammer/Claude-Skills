@@ -189,11 +189,11 @@ class MetadataIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Concurrent PUTs with one version apply exactly once; the others are 409 OPTIMISTIC_LOCK_CONFLICT")
+    @DisplayName("Concurrent PUTs that all read version 0 apply exactly once; the others are 409 OPTIMISTIC_LOCK_CONFLICT")
     void concurrentUpdatesWithOneVersionApplyOnce() throws Exception {
         TestUser admin = newAdmin();
 
-        List<Answer> answers = race(() -> putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
+        List<Answer> answers = writesHeldPastTheirReads("configuration_metadata", () -> putAs(admin.accessToken(), DEFAULTS_PATH, updatePayload("""
                 {"reminderMinutesBefore": 45}""", 0)));
 
         assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).containsOnly(200, 409);

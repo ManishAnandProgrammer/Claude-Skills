@@ -42,10 +42,14 @@ class TodoPolicyTest {
                 Arguments.of(Rule.READ, TODO, OWNER, null),
                 Arguments.of(Rule.READ, TODO, REQUESTER, null),
                 Arguments.of(Rule.READ, TODO, STRANGER, ErrorCode.TODO_NOT_FOUND),
+                Arguments.of(Rule.READ, UNREQUESTED, OWNER, null),
+                Arguments.of(Rule.READ, UNREQUESTED, REQUESTER, ErrorCode.TODO_NOT_FOUND),
                 Arguments.of(Rule.READ, UNREQUESTED, STRANGER, ErrorCode.TODO_NOT_FOUND),
                 Arguments.of(Rule.EDIT, TODO, OWNER, null),
                 Arguments.of(Rule.EDIT, TODO, REQUESTER, ErrorCode.TODO_NOT_YOURS),
                 Arguments.of(Rule.EDIT, TODO, STRANGER, ErrorCode.TODO_NOT_FOUND),
+                Arguments.of(Rule.EDIT, UNREQUESTED, OWNER, null),
+                Arguments.of(Rule.EDIT, UNREQUESTED, REQUESTER, ErrorCode.TODO_NOT_FOUND),
                 Arguments.of(Rule.EDIT, UNREQUESTED, STRANGER, ErrorCode.TODO_NOT_FOUND));
     }
 

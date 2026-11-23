@@ -173,7 +173,8 @@ Architecture:
 ## Step 2: Build and test
 
 Run the profile's `buildCommand` and `testCommand` (normally one `verify` run: the tests, ArchUnit and the
-quality gates, CFG-11). **Delegated
+quality gates, CFG-11); its output, when kept, under `target/` only (`> target/house-review-verify.log 2>&1`),
+never a new file in the project tree. **Delegated
 reviewer:** when the caller hands over the results of a build of exactly the reviewed code (one
 `target/` and one Testcontainers set per working tree: a second build collides with work running
 there), use them instead and say so in the report's header, with the commit they came from.
@@ -243,7 +244,7 @@ When a file's kind, or whether a rule applies to it, is unclear, load the refere
 
 | Focus | Loads |
 |---|---|
-| `api` | rest-api.md, error-contract.md, REL-10, ARCH-13, DATA-10 (the indexes a new sort, filter or dropdown needs) |
+| `api` | rest-api.md, error-contract.md, REL-10, ARCH-13, DATA-10 (the indexes a new sort or dropdown needs, a filter's where the crud profile records one) |
 | `data` | persistence.md; lenses.md's section *Lens 8: Concurrency (CONC)*; REST-08, REST-09, ERR-03, OPS-03 |
 | `tests` | lenses.md's section *Tests (TEST)*; ERR-06, ERR-07, DATA-06, DATA-10 and DATA-19 (their **Detect** hints name test defects); CFG-11 (the coverage gate) |
 | `security` | authorization.md; REST-09, REST-14 to REST-18, REST-22, REST-25; TEST-02, TEST-03, TEST-04 |

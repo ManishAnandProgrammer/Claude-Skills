@@ -641,7 +641,9 @@ text copies them as a claim. Each was one run on the reference's shapes, not a b
 
 - DATA-10, a status filter left to the order's index: an order under which the wanted rows come last walked
   the owner's rows past every other one, 165–202 ms against under 0.1 ms with the filter's own index
-  (crud-gen 4.1 quoted 165 ms against 0.06 ms).
+  (crud-gen 4.1 quoted 165 ms against 0.06 ms). Since 2026-11-23 a filter's own index is the developer's call
+  (the owner's decision: only they know the table's size and the filter's selectivity); this is the cost they
+  weigh, not a rule.
 - DATA-10, a seek in OR form inside a tie group: 172 rows read for a page of 21.
 - DATA-10, an index on `updated_at` or `version` (2026-11-14, a todos-shaped table): 0% HOT updates with the
   index, about 72% without it at the default fillfactor, 97% at fillfactor 80.

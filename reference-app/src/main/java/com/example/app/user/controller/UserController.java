@@ -1,5 +1,11 @@
 package com.example.app.user.controller;
 
+// tenancy:begin
+// tenancy:else
+import com.example.app.common.dropdown.DropdownFilter;
+import com.example.app.common.dropdown.DropdownFor;
+import com.example.app.common.dropdown.DropdownItem;
+// tenancy:end
 import com.example.app.common.security.CurrentUser;
 // tenancy:begin
 // tenancy:else
@@ -10,6 +16,7 @@ import com.example.app.common.security.SignedIn;
 // tenancy:begin
 // tenancy:else
 import com.example.app.common.wrapper.BoundedListWrapper;
+import com.example.app.common.wrapper.CursorWrapper;
 // tenancy:end
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.controller.api.UserApi;
@@ -27,6 +34,10 @@ import com.example.app.user.dto.response.UserResponse;
 import com.example.app.user.service.AccountStatusService;
 // tenancy:end
 import com.example.app.user.service.AuthService;
+// tenancy:begin
+// tenancy:else
+import com.example.app.user.service.NamedPartyService;
+// tenancy:end
 import com.example.app.user.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -48,6 +59,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+// tenancy:begin
+// tenancy:else
+import org.springframework.web.bind.annotation.RequestParam;
+// tenancy:end
 // session-version:begin
 import org.springframework.web.bind.annotation.ResponseStatus;
 // session-version:end
@@ -69,6 +84,7 @@ class UserController implements UserApi {
     // tenancy:begin
     // tenancy:else
     private final AccountStatusService accountStatus;
+    private final NamedPartyService namedParties;
     // tenancy:end
 
     @Override
@@ -116,6 +132,14 @@ class UserController implements UserApi {
     @Requires(Permission.ACCOUNT_STATUS_CHANGE)
     public ObjectWrapper<UserResponse> changeStatus(@PathVariable UUID id, @RequestBody @Valid UserStatusRequest request) {
         return accountStatus.changeStatus(currentUser.id(), id, request);
+    }
+
+    @Override
+    @GetMapping(path = "/dropdown", version = "v1+")
+    @SignedIn
+    public CursorWrapper<DropdownItem> dropdown(@RequestParam(DropdownFor.PARAMETER) Permission action,
+                                                @Valid DropdownFilter filter) {
+        return namedParties.dropdown(action, filter);
     }
     // tenancy:end
 }

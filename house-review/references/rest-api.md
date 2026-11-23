@@ -193,7 +193,9 @@ the path.
 - **Detect:** a `PageRequest` from raw client values; an unbounded `findAll()` behind an endpoint; a list
   whose rows depend on which reach the caller holds (`ALL` for HR, `ASSIGNED` for a manager) behind one path;
   a sort as a free String; `Sort.Order.asc("<field>")` or `Sort.by("<field>")` with a property string
-  anywhere (a rename of the field compiles and answers 500); a list whose kind doesn't follow the rule for its recorded consumer, or a list
+  anywhere (a rename of the field compiles and answers 500); a string attribute path in a repository's order or
+  criteria, `root.get("name")` / `join.get("…")` where the metamodel has the attribute (`Tag_.name`): the same
+  failure as a `Sort` string, so REST-08, never SMELL-06; a list whose kind doesn't follow the rule for its recorded consumer, or a list
   with no consumer recorded; a count on a cursor list; a cursor
   limit below `(6 × max + 100) × 4/3` for a text sort key or a dropdown label; a cursor key parsed by
   `java.time` with no range check, by `UUID.fromString`/`Integer.valueOf` without comparing with what was
@@ -327,6 +329,11 @@ types.
   refuse an option right now and the screen shows it disabled with its reasons, the write serves its own options
   (`GET /<write's resources>/<resource>-options`, `CursorWrapper<SelectableDropdownItem>`, `{value, label,
   selectable}`, the same batching and `query`; AUTHZ-08), never a flag added to `{value, label}`.
+- **Also:** a write that names a person (AUTHZ-04) picks from the user module's dropdown, `GET
+  {{urlPrefix}}/users/dropdown?for=<the write's permission>` (golden `NamedPartyService`): the active accounts
+  holding the permission the write's `user.api.NamedParty` constant names, `{value: id, label: full name}`, keyset
+  on `idx_users_full_name_id`; a `for` whose write names nobody is 400 at `for`. A module never lists people
+  itself, and `GET /users` (`ACCOUNT_READ`) is no picker.
 - **Also:** a screen that needs a picker has its dropdown (an assignee picker for "reassign"); a
   resource other screens pick from (another entity references it) without `@DropdownCandidate` is
   worth asking about.

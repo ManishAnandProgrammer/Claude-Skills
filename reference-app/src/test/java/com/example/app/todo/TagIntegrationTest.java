@@ -358,12 +358,12 @@ class TagIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Concurrent updates with one version apply exactly once; the others are 409 OPTIMISTIC_LOCK_CONFLICT")
+    @DisplayName("Concurrent updates that all read version 0 apply exactly once; the others are 409 OPTIMISTIC_LOCK_CONFLICT")
     void concurrentUpdatesWithOneVersionApplyOnce() throws Exception {
         TestUser user = newUser();
         String id = createTag(user, "Contested");
 
-        List<Answer> answers = race(() -> putAs(user.accessToken(), TAGS + "/" + id, updatePayload("Renamed", null, false, 0)));
+        List<Answer> answers = writesHeldPastTheirReads("tags", () -> putAs(user.accessToken(), TAGS + "/" + id, updatePayload("Renamed", null, false, 0)));
 
         assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).containsOnly(200, 409);
         assertRefusalsAre(answers, 409, "OPTIMISTIC_LOCK_CONFLICT");

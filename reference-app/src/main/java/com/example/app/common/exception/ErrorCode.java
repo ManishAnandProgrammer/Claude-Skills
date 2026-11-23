@@ -101,6 +101,10 @@ public enum ErrorCode {
 
     TODO_NOT_FOUND,
     TODO_NOT_YOURS,
+    // tenancy:begin
+    // tenancy:else
+    TODO_REQUESTER_INELIGIBLE,
+    // tenancy:end
     TODO_IN_USE,
     TODO_DELETED_MEANWHILE,
 

@@ -80,13 +80,17 @@ class PlanPolicyTest {
                 Arguments.of(PlanStatus.PLANNED, PlanStatus.DONE, true),
                 Arguments.of(PlanStatus.PLANNED, PlanStatus.CANCELLED, true),
                 Arguments.of(PlanStatus.PLANNED, PlanStatus.PLANNED, false),
+                Arguments.of(PlanStatus.DONE, PlanStatus.PLANNED, false),
+                Arguments.of(PlanStatus.DONE, PlanStatus.DONE, false),
                 Arguments.of(PlanStatus.DONE, PlanStatus.CANCELLED, false),
-                Arguments.of(PlanStatus.CANCELLED, PlanStatus.DONE, false));
+                Arguments.of(PlanStatus.CANCELLED, PlanStatus.PLANNED, false),
+                Arguments.of(PlanStatus.CANCELLED, PlanStatus.DONE, false),
+                Arguments.of(PlanStatus.CANCELLED, PlanStatus.CANCELLED, false));
     }
 
     @ParameterizedTest(name = "{0} -> {1}: {2}")
     @MethodSource("statusChanges")
-    @DisplayName("A status change: the lifecycle's moves; any other refused naming both statuses")
+    @DisplayName("A status change, from every status to every status: the lifecycle's moves; any other refused naming both")
     void changeStatus(PlanStatus status, PlanStatus target, boolean allowed) {
         Decision decision = POLICY.changeStatus(status, target);
 

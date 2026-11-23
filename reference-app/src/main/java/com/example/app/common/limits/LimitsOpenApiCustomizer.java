@@ -10,7 +10,6 @@ import org.springframework.core.MethodParameter;
 import org.springframework.stereotype.Component;
 
 import java.lang.annotation.Annotation;
-import java.math.BigDecimal;
 import java.util.Objects;
 
 @Component
@@ -43,7 +42,7 @@ class LimitsOpenApiCustomizer implements PropertyCustomizer, ParameterCustomizer
         if (annotation instanceof MaxLength maxLength) {
             schema.setMaxLength(limits.maxLength(maxLength.value()));
         } else if (annotation instanceof ConfiguredMax configuredMax) {
-            schema.setMaximum(BigDecimal.valueOf(limits.getLong(configuredMax.value())));
+            schema.setMaximum(limits.getDecimal(configuredMax.value()));
         } else if (annotation instanceof ConfiguredMaxSize configuredMaxSize && Objects.nonNull(schema.getItems())) {
             // Swagger also calls this for the collection's items with the field's annotations: the
             // size belongs on the collection only.

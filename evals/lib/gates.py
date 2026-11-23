@@ -28,6 +28,7 @@ def run_record(transcript, out, exit_code):
     """One headless run, from its stream-json transcript: cost, time, turns, tools, the friction of running unattended."""
     result, tools, asks, denied_tools, texts, stamps = None, {}, 0, [], [], []
     lines = pathlib.Path(transcript).read_text(errors="replace").splitlines() if pathlib.Path(transcript).is_file() else []
+    structured = None
     for line in lines:
         try:
             message = json.loads(line)
@@ -36,6 +37,11 @@ def run_record(transcript, out, exit_code):
         if message.get("timestamp"):
             stamps.append(message["timestamp"])
         if message.get("type") == "result":
+            # A run with background passes ends on a short turn of its own (stopping its wake-up) whose result
+            # carries no structured output: the findings stay those of the last result that had them.
+            if structured is not None and message.get("structured_output") is None:
+                message = dict(message, structured_output=structured)
+            structured = message.get("structured_output")
             result = message
         if message.get("type") != "assistant":
             continue
@@ -73,6 +79,51 @@ def run_record(transcript, out, exit_code):
                 re.search(r"(?i)\b(shall I|should I|would you like|do you want|please confirm|let me know)\b", final[-1500:])),
         })
     save(out, record)
+
+
+PROFILES = (".claude/crud-profile.md", ".claude/review-profile.md")
+
+
+def replay_profiles(transcript, workdir, out):
+    """Applies the profile edits the run asked for and Claude Code refused: a headless run may not write under
+    .claude/ (no allow rule lifts that), where a developer would approve the skill's own profile edit. Only the
+    two profiles, in the run's order; an edit whose text is no longer there (a retry of one already applied) is
+    skipped and recorded."""
+    workdir = pathlib.Path(workdir).resolve()
+    targets = {str(workdir / name) for name in PROFILES}
+    asked, refused = {}, []
+    for line in pathlib.Path(transcript).read_text(errors="replace").splitlines():
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        body = message.get("message") if isinstance(message, dict) else None
+        content = body.get("content") if isinstance(body, dict) else None
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if message.get("type") == "assistant" and block.get("type") == "tool_use" \
+                    and block.get("name") in ("Edit", "Write") and block.get("input", {}).get("file_path") in targets:
+                asked[block["id"]] = (block["name"], block["input"])
+            elif message.get("type") == "user" and block.get("type") == "tool_result" \
+                    and block.get("tool_use_id") in asked and block.get("is_error") \
+                    and "Permission for this tool use was denied" in str(block.get("content")):
+                refused.append(asked[block["tool_use_id"]])
+    applied = []
+    for name, edit in refused:
+        path = pathlib.Path(edit["file_path"])
+        text = path.read_text() if path.is_file() else ""
+        if name == "Write":
+            path.write_text(edit.get("content", ""))
+        elif edit.get("old_string") and edit["old_string"] in text:
+            new = edit.get("new_string", "")
+            path.write_text(text.replace(edit["old_string"], new) if edit.get("replace_all")
+                            else text.replace(edit["old_string"], new, 1))
+        else:
+            applied.append({"file": path.name, "tool": name, "applied": False, "why": "its text is not in the file"})
+            continue
+        applied.append({"file": path.name, "tool": name, "applied": True})
+    save(out, {"refused": len(refused), "edits": applied})
 
 
 def wall(stamps):
@@ -258,5 +309,5 @@ def verdict(case_dir, kind):
 
 if __name__ == "__main__":
     command, args = sys.argv[1], sys.argv[2:]
-    {"run": run_record, "gate2": gate2, "gate3": gate3, "score": score_review, "summary": summary,
+    {"run": run_record, "replay": replay_profiles, "gate2": gate2, "gate3": gate3, "score": score_review, "summary": summary,
      "verdict": verdict}[command](*args)

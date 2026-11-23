@@ -57,6 +57,8 @@ Lines are counted without blank or comment lines.
   outcomes and statuses compared as strings (`"FAILED".equals(x)`).
 - **Fix:** an enum for closed sets; a value type that validates and normalises (email
   lower-cased, phone in E.164) for open ones.
+- **Not this rule:** a Criteria attribute named by a string (`root.get("name")`) where the metamodel has it is
+  REST-08 (sorts and criteria over the metamodel).
 - **Severity:** Medium when a string is a contract between two classes; otherwise Low.
 
 ### SMELL-07: Switch on type code

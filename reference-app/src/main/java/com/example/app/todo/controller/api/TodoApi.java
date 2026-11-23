@@ -40,6 +40,11 @@ public interface TodoApi {
     // tenancy:else
     String REQUESTER_NOT_FOUND = "USER_NOT_FOUND (requesterId is no account); ";
     // tenancy:end
+    // tenancy:begin
+    // String REQUESTER_INELIGIBLE = "";
+    // tenancy:else
+    String REQUESTER_INELIGIBLE = "TODO_REQUESTER_INELIGIBLE (requesterId is suspended, or can't read todos); ";
+    // tenancy:end
     String NOT_YOURS = "TODO_NOT_YOURS (you are its requester: you may read the todo, only its owner acts on it)";
 
     @Operation(summary = "Your todos, in batches", description = """
@@ -113,10 +118,16 @@ public interface TodoApi {
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:end
     // media:begin
-    @ApiResponse(responseCode = "409", description = """
+    @ApiResponse(responseCode = "409", description = REQUESTER_INELIGIBLE + """
             UPLOAD_NOT_AVAILABLE (an attachment key is unknown, another user's or purpose's, already attached \
             or expired: upload the file again)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // media:else
+    // // tenancy:begin
+    // // tenancy:else
+    // @ApiResponse(responseCode = "409", description = "TODO_REQUESTER_INELIGIBLE (requesterId is suspended, or can't read todos)",
+    //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    // // tenancy:end
     // media:end
     // media:begin
     @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, DATABASE_CONTENTION, QUERY_TIMEOUT, SERVER_BUSY, MEDIA_STORAGE_UNAVAILABLE (the files' read URLs)",
@@ -169,12 +180,12 @@ public interface TodoApi {
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:end
     // media:begin
-    @ApiResponse(responseCode = "409", description = """
+    @ApiResponse(responseCode = "409", description = REQUESTER_INELIGIBLE + """
             OPTIMISTIC_LOCK_CONFLICT, UPLOAD_NOT_AVAILABLE (an addAttachmentKeys entry can't be attached: upload \
             the file again)""",
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:else
-    // @ApiResponse(responseCode = "409", description = "OPTIMISTIC_LOCK_CONFLICT",
+    // @ApiResponse(responseCode = "409", description = REQUESTER_INELIGIBLE + "OPTIMISTIC_LOCK_CONFLICT",
     //         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // media:end
     // media:begin

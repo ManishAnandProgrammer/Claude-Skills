@@ -876,12 +876,12 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Concurrent status changes with one version apply exactly once; the others are 409 OPTIMISTIC_LOCK_CONFLICT")
+    @DisplayName("Concurrent status changes that all read version 0 apply exactly once; the others are 409 OPTIMISTIC_LOCK_CONFLICT")
     void concurrentStatusChangesWithOneVersionApplyOnce() throws Exception {
         TestUser user = newUser();
         String id = createTodo(user, createList(user, "Race"), "Contested", "LOW", null);
 
-        List<Answer> answers = race(() -> patchAs(user.accessToken(), TODOS + "/" + id + "/status", statusPayload("DONE", 0)));
+        List<Answer> answers = writesHeldPastTheirReads("todos", () -> patchAs(user.accessToken(), TODOS + "/" + id + "/status", statusPayload("DONE", 0)));
 
         assertThat(answers).extracting(Answer::status).containsOnlyOnce(200).containsOnly(200, 409);
         assertRefusalsAre(answers, 409, "OPTIMISTIC_LOCK_CONFLICT");

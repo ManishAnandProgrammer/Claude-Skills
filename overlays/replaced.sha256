@@ -16,7 +16,7 @@ cbe803fe30abef8e520df65157543d894f1908361b5f85c65c1df080de05f25e  reference-app/
 0c0daec9a5075c1551bfd9c21576730ee0b2bb5d771ee989d5fd8fc4c996e56e  reference-app/src/main/java/com/example/app/user/service/AuthService.java
 ee88b6fdb62e762139a26913a02e35da0e55139bd77e7d2bf6f117d9dfeae695  reference-app/src/main/java/com/example/app/user/service/RolePermissions.java
 9022ebbaa3d0c3700f33d42d758e3acc0ddbbccd6d8241c29cfca25a32ada41a  reference-app/src/main/java/com/example/app/user/service/TokenService.java
-281a671fc4fbc0881e1713557b6d9cfd5e08a67996415fde7dba7da1c0056bcb  reference-app/src/test/java/com/example/app/support/IntegrationTest.java
+95b480aa7675cbc8822fc9f7b8e45cec87e241f16961a2b0f02e35a97bf68b87  reference-app/src/test/java/com/example/app/support/IntegrationTest.java
 ee406ab209fb552076bfff8a80c7746e84e276f44cad53519269daf8743a7d7f  reference-app/src/test/java/com/example/app/support/PreviousReleaseDatabase.java
 6cb8182688ebcaa5d830382187d1555622930b6bfa48704bbd8fcbb63c376096  reference-app/src/test/java/com/example/app/TestcontainersConfiguration.java
 e866347a33442f4fed7316e76543222c078a775de0f33cae539468e7642b028f  reference-app/src/test/java/com/example/app/todo/UpgradeFromPreviousReleaseIntegrationTest.java

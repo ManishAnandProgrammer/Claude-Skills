@@ -2,7 +2,12 @@ package com.example.app.user.controller.api;
 
 // tenancy:begin
 // tenancy:else
+import com.example.app.common.dropdown.DropdownFilter;
+import com.example.app.common.dropdown.DropdownFor;
+import com.example.app.common.dropdown.DropdownItem;
+import com.example.app.common.security.Permission;
 import com.example.app.common.wrapper.BoundedListWrapper;
+import com.example.app.common.wrapper.CursorWrapper;
 // tenancy:end
 import com.example.app.common.wrapper.ObjectWrapper;
 import com.example.app.user.dto.request.PasswordChangeRequest;
@@ -21,6 +26,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+// tenancy:begin
+// tenancy:else
+import org.springdoc.core.annotations.ParameterObject;
+// tenancy:end
 import org.springframework.http.ProblemDetail;
 // tenancy:begin
 // tenancy:else
@@ -36,6 +45,14 @@ public interface UserApi {
     // session-version:else
     // String ACCESS_TOKENS_END = "every access token already issued expires within its 15 minutes";
     // session-version:end
+    // tenancy:begin
+    // tenancy:else
+    // example:begin
+    String NAMED_BY_EXAMPLE = "TODO_CREATE_OWN";
+    // example:else
+    // String NAMED_BY_EXAMPLE = "ACCOUNT_STATUS_CHANGE";
+    // example:end
+    // tenancy:end
 
     @Operation(summary = "The signed-in user's account")
     @ApiResponse(responseCode = "200", description = "The account")
@@ -168,5 +185,30 @@ public interface UserApi {
             content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     // roles:end
     ObjectWrapper<UserResponse> changeStatus(@Parameter(description = "The account's id") UUID id, UserStatusRequest request);
+
+    @Operation(summary = "Options for a person picker: the accounts a write may name", description = """
+            The accounts the write for names may name (user.api.NamedParty): active, and holding the \
+            permission that party acts with, as {value: id, label: full name}, ordered by name (sortDirection DESC reverses it), in batches: pageInfo.nextCursor goes back as \
+            after for the next batch; size sets the batch (default and maximum from configuration). Narrow it \
+            with query. Only active accounts are listed, so a status other than ACTIVE is refused with \
+            REQUEST_PARAMETER_INVALID. The write checks its named account again.""")
+    @ApiResponse(responseCode = "200", description = "The options")
+    @ApiResponse(responseCode = "400", description = """
+            REQUEST_PARAMETER_MISSING or REQUEST_PARAMETER_INVALID at for (none, no permission, or a write that \
+            names nobody); VALIDATION_FAILED (size, query or after out of range); REQUEST_PARAMETER_INVALID (a \
+            status other than ACTIVE, an unknown sortDirection, a non-numeric size, or an after that is tampered \
+            or from the other direction; see errors)""",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "401", description = "AUTHENTICATION_REQUIRED",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "ACCESS_DENIED (you don't hold the permission for names)",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "DATABASE_UNAVAILABLE, QUERY_TIMEOUT, SERVER_BUSY",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    CursorWrapper<DropdownItem> dropdown(
+            @Parameter(name = DropdownFor.PARAMETER, required = true, example = NAMED_BY_EXAMPLE, description = """
+                    The permission of the write the picked account is named by: 403 ACCESS_DENIED unless you hold \
+                    it""") Permission action,
+            @ParameterObject DropdownFilter filter);
     // tenancy:end
 }

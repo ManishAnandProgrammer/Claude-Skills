@@ -10,7 +10,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 @Documented
-@Constraint(validatedBy = {ConfiguredMaxValidator.class, ConfiguredMaxLongValidator.class})
+@Constraint(validatedBy = {ConfiguredMaxValidator.class, ConfiguredMaxLongValidator.class, ConfiguredMaxDecimalValidator.class})
 @Target({ElementType.FIELD, ElementType.PARAMETER, ElementType.RECORD_COMPONENT, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ConfiguredMax {

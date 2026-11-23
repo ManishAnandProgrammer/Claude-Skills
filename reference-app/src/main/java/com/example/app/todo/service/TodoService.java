@@ -60,6 +60,8 @@ import com.example.app.todo.repository.TodoTagRepository;
 // import com.example.app.user.api.MemberView;
 // import com.example.app.user.api.Members;
 // tenancy:else
+import com.example.app.user.api.NamedParty;
+import com.example.app.user.api.PermissionHolders;
 import com.example.app.user.api.Users;
 // tenancy:end
 import lombok.RequiredArgsConstructor;
@@ -103,6 +105,7 @@ public class TodoService implements Todos {
     // private final Members members;
     // tenancy:else
     private final Users users;
+    private final PermissionHolders holders;
     // tenancy:end
     // metadata:begin
     private final Counters counters;
@@ -406,6 +409,9 @@ public class TodoService implements Todos {
         // }
         // tenancy:else
         users.requireUser(requesterId);
+        if (!holders.holds(requesterId, NamedParty.TODO_REQUESTER.mustHold())) {
+            throw AppException.of(ErrorCode.TODO_REQUESTER_INELIGIBLE, requesterId);
+        }
         // tenancy:end
     }
 

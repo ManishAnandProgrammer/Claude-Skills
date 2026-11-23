@@ -1,6 +1,13 @@
 package com.example.app.user.repository;
 
 import com.example.app.user.domain.User;
+// roles:begin
+// roles:else
+// tenancy:begin
+// tenancy:else
+import com.example.app.user.repository.custom.CustomUserRepository;
+// tenancy:end
+// roles:end
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -18,7 +25,15 @@ import java.util.Optional;
 import java.util.UUID;
 
 /** Emails are stored normalised ({@code ck_users_email_normalized}): look one up by {@code Emails.normalize}'s result. */
-public interface UserRepository extends JpaRepository<User, UUID> {
+// roles:begin
+// public interface UserRepository extends JpaRepository<User, UUID> {
+// roles:else
+// tenancy:begin
+// public interface UserRepository extends JpaRepository<User, UUID> {
+// tenancy:else
+public interface UserRepository extends JpaRepository<User, UUID>, CustomUserRepository {
+// tenancy:end
+// roles:end
 
     Optional<User> findByEmail(String email);
 

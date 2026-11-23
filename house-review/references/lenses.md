@@ -595,6 +595,11 @@ resilience or failure-injection test is Medium).
 - **Racers on different rows that share one global row**, and **a write guarded by another row's state**
   (checked under that row's lock, DATA-29): crud-gen tests.md rows 13b and 23b say what each asserts (the
   invariant, never "exactly one 200"; "the change is still waiting while the gate holds").
+- **A versioned write without a lock** (read, compare the sent version, write): its race holds every racer past its
+  read (`writesHeldPastTheirReads`), so the `@Version` condition of the UPDATE is what refuses the losers (tests.md
+  row 13); a latch race alone lets the losers read the winner's commit. **A delete the state refuses** is raced
+  against the move into that state, the move held uncommitted: exactly 409 `OPTIMISTIC_LOCK_CONFLICT`, the record
+  kept (row 13d).
 
 ### TEST-06: Query count
 - **Check:** new lists and dropdowns assert a constant statement count, for 1 row and for page size + 1
@@ -670,7 +675,8 @@ resilience or failure-injection test is Medium).
 - **A layered guard** (a row lock, `@Version` and a conflict retry, each enough on some path) stays green
   with one layer off, by design: prove each layer with a test the others don't cover (the retry with a
   forced conflict, the lock with a gate), or the red-proof names the layers switched off together and why
-  one alone stays green.
+  one alone stays green. A version race whose racers may read after the winner's commit proves the comparison with
+  the sent version, never the UPDATE's `@Version` condition behind it: hold them past their reads (tests.md row 13).
 - **Detect:** an assertion that holds whatever the code does: two bcrypt hashes of one value differ
   (every `encode` is salted: compare with `matches`), a fresh random id is unique.
 
