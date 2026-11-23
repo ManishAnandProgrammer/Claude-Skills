@@ -496,7 +496,7 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
 - **Check:**
   - every foreign key column is indexed;
   - **one index per offered list order**, leading with the scope columns (owner, tenant), then the
-    sort keys, **ending with the id** tie-breaker; filtered columns covered (composite or partial).
+    sort keys, **ending with the id** tie-breaker; a requested filter's index per the next point.
     With row tenancy `tenant_id` joins the leading equality columns, in TEN-33's order;
   - **an offered filter's own index is the developer's call**: the table's size and the filter's cardinality
     and selectivity decide it, and only the developer knows them. crud-gen asks per offered filter and records
@@ -505,7 +505,9 @@ Golden: the `change-history` piece (`common/persistence/ChangeHistoryActor`, `Ch
     `0031-filter-indexes.sql`; `(parent_id, owner_id, sort keys…, id)` also serves the foreign key). A filter
     through a link table (a tag on a todo) is served by the link's key, which exists anyway. **An unindexed
     filter is not a finding**; a recorded "index it" without that index in the changesets, or without its plan
-    test, is. **Extension point:** a project that knows a value is rare adds a partial index
+    test, is. **Not a finding either: a scope's fixed condition** (a reach that leaves out the drafts, `status <>
+    'DRAFT'` in a team or finance scope) without a partial index: it is a filter like any other, the developer's
+    call, and the list's order index serves it (crud-gen 4.1). **Extension point:** a project that knows a value is rare adds a partial index
     (`WHERE status = '<VALUE>'`), proven with its own `EXPLAIN (ANALYZE, BUFFERS)` test. The query names
     the value as a literal too (a JPQL enum literal, `where r.status = com.x.RunStatus.IN_PROGRESS`), never
     a bind parameter: after five executions PostgreSQL may switch to a generic plan, which can't prove a

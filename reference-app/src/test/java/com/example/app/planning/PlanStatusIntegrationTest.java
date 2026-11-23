@@ -211,7 +211,9 @@ class PlanStatusIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A stale version is 409 OPTIMISTIC_LOCK_CONFLICT; another user's plan or an unknown one 404 PLAN_NOT_FOUND")
+    @DisplayName("""
+            A stale version is 409 OPTIMISTIC_LOCK_CONFLICT; another user's plan, with its version or a stale one, or an \
+            unknown one 404 PLAN_NOT_FOUND: who may write is decided before the version""")
     void staleVersionsAndStrangers() throws Exception {
         TestUser user = newUser();
         String id = createPlan(user, STARTS_ON, "2026-01-12");
@@ -219,7 +221,11 @@ class PlanStatusIntegrationTest extends IntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("OPTIMISTIC_LOCK_CONFLICT"));
 
-        changeStatus(newUser(), id, "CANCELLED", null, 0)
+        TestUser stranger = newUser();
+        changeStatus(stranger, id, "CANCELLED", null, 0)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+        changeStatus(stranger, id, "CANCELLED", null, 1)
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
         changeStatus(user, UUID.randomUUID().toString(), "CANCELLED", null, 0)
@@ -308,6 +314,21 @@ class PlanStatusIntegrationTest extends IntegrationTest {
                 {"startsOn": "2026-05-02", "endsOn": "2026-05-03", "version": 0}
                 """).andExpect(status().isOk());
         deleteAs(user.accessToken(), PLANS + "/" + id).andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("A stale version on a final plan is 409 OPTIMISTIC_LOCK_CONFLICT, not its status's code: the version comes before the status")
+    void aStaleVersionIsRefusedBeforeTheFinalStatus() throws Exception {
+        TestUser user = newUser();
+        String id = createPlan(user, STARTS_ON, "2026-01-12");
+        changeStatus(user, id, "DONE", dayFor("DONE")).andExpect(status().isOk());
+
+        putAs(user.accessToken(), PLANS + "/" + id, """
+                {"startsOn": "2026-04-02", "endsOn": "2026-04-03", "version": 0}
+                """)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("OPTIMISTIC_LOCK_CONFLICT"));
+        getAs(user.accessToken(), PLANS + "/" + id).andExpect(jsonPath("$.response.version").value(1));
     }
 
     @Test

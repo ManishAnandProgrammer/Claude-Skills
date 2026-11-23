@@ -339,7 +339,8 @@ entities, so a crud-gen'd table reads like its golden file in both modes.
      wrapped as `newManager()` beside `newAdmin()`; a role a test builds itself goes through
      `RolesFixtures.newUserHolding(...)`;
   4. people get it through `PUT /users/{id}/roles/{roleId}` (`ACCESS_GRANT`, from an admin who holds all of it);
-     signup still gives `USER`; the runbook's *Operator tasks* names its code beside `ADMIN`.
+     signup still gives `USER`; the runbook's *Operator tasks* names its code beside `ADMIN`, with what it reads and
+     does in the recorded answers' words (SKILL.md Step 1: from which state each reach sees the record; OPS-07).
 - **Data for local demos and manual testing** (an account per role, sample records) lives in `scripts/`, never
   in a Liquibase changeset, a `dev` context's included (a run without the context set runs it too): a changeset
   runs in production and in every test database, where demo rows become accounts nobody owns and rows every test

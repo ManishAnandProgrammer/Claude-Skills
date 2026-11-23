@@ -228,7 +228,9 @@ permission could guard it (AUTHZ-03). Its lists are one per reach (REST-08: the 
 (AUTHZ-05). **A state its owner releases** (a draft before its submit): ask, per other reach, from which state it
 sees the record (an approver from the submit on? finance?); unattended, from the release on (a draft is the owner's
 alone), recorded **assumed**. That reach's list scope and the policy's `read` carry the one condition (`status <>
-DRAFT` in both, AUTHZ-05), and tests.md row 14c proves it; (3) **which roles get each**, role by role (roles
+DRAFT` in both, AUTHZ-05), and tests.md row 14c proves it; a runbook line naming what that reach reads (a new role's
+*Operator tasks* line) says the recorded answer itself, "every claim past its draft" (the decided ones included),
+never a narrower "every submitted claim" (OPS-07); (3) **which roles get each**, role by role (roles
 don't include each other, so a permission two roles hold is on both lists; a role the developer names that doesn't exist yet is a new built-in
 role: references/bootstrap.md, *A new built-in role*); (4) **its menu `Area`** (an existing one, or a new constant: ask its
 name); (5) **the prerequisites** (an edit needs the read that opens the record: offer `EDIT`/`DELETE`/`CREATE` →
@@ -623,8 +625,10 @@ developer's call** (the table's size, the filter's cardinality and selectivity: 
 offered filter, with the list's filters and sorts, "index this filter?". A yes is `(<scope>, <filter>, <sort
 keys>, id)` per offered order (golden `0031-filter-indexes.sql`); a no, or no answer (unattended: the business
 rules' answer, else no index, **assumed**), leaves the filter to the order's index. Record each answer in
-*Decisions per entity*. Range and overlap filters are offered under their own order only; the rare-value partial
-index is DATA-10's extension point, not generated. They go in a new changeset if the entity's own one is
+*Decisions per entity*. **A scope's fixed condition** (a reach that leaves out the drafts, `status <> 'DRAFT'` in a team
+or finance scope) is a filter like any other: no partial index for it by default, asked with the filters; the list's
+order index serves it, as the first-page plan test shows (DATA-10). Range and overlap filters are offered under their
+own order only; the rare-value partial index is DATA-10's extension point, not generated. They go in a new changeset if the entity's own one is
 shipped (Step 2). Test row 28 checks the indexes that exist: each one is there, each list's first page and a
 cursor list's batch after a cursor are planned on its order's index, and a requested filter index's first page
 on that index (tests.md, *Index tests*).
@@ -808,7 +812,9 @@ parent (an id column and a facade). Three more shapes, golden on `Todo` (tests.m
   the caller out for `Owner.NEVER_NAMED` (golden `NamedPartyService`): add the constant, never a dropdown of your
   own (REST-13). Where the state freezes the update while the party still has to act (a
   submitted claim), the owner's reassignment is its own endpoint (`PATCH /<resources>/{id}/<party>`, the owner's
-  EDIT permission, while the record is not final) with the same check. Tests: tests.md row 27e. A PUT is a full replace and re-sends the person it read, who may have left since: checked again,
+  EDIT permission, while the record is not final) with the same check; its docs say when it is open as the policy
+decides it (a stale party is an example, "for example when the approver left", never a condition the code doesn't
+check). Tests: tests.md row 27e. A PUT is a full replace and re-sends the person it read, who may have left since: checked again,
   every record of a former member would refuse every later edit, so the one it already names is kept
   (and can be cleared with `null`), golden `TodoService.update`, `TodoUpdateRequest.requesterId`. List rows
   carry the person as the id (`requesterId`); when the developer wants the name on rows (Step 1's *Ask,
@@ -923,7 +929,10 @@ writes several aggregates goes in a `<UseCase>Manager` that owns the transaction
 `TagMergeManager`, Step 3). Class
 `@Transactional(readOnly = true)`, `@Transactional`
 writes; create `saveAndFlush`; update/actions change the managed entity after
-`entity.checkVersion(request.version())` (409 `OPTIMISTIC_LOCK_CONFLICT`), then `flush()`; a write
+`entity.checkVersion(request.version())` (409 `OPTIMISTIC_LOCK_CONFLICT`), then `flush()`. **One order of checks** on
+every write (golden `PlanService.update`, `changeStatus`, `TodoService.getEditableTodoAtVersion`): who may write (the
+scoped lookup's 404, the policy's 403 for a second party outside their part), then the version, then the state's rules
+(a frozen status, a window, a parent's state); tests.md row 4 pins both seams. A write
 that changes member rows (files, links) or deletes the root loads it `findForUpdateBy…` first
 (golden `TodoService.update`, `replaceTags`, `delete`); member rows that another aggregate's delete
 can remove by cascade (a tag's delete removes its `todo_tags` rows) are deleted with one statement
@@ -993,7 +1002,11 @@ to every operation; error `@Content` needs no `mediaType`, a customizer publishe
 `TodoListApi`, `PlanApi`); a delete that loads its row `findForUpdateBy…`, takes no version and
 removes its cascadable member rows set-based can't (golden `TodoApi`; the race test
 `TodoTagsIntegrationTest.todoDeleteRacingATagDeleteSucceeds`). A write whose member rows another
-aggregate's delete may remove meanwhile documents the 409 for that case (golden `replaceTags`). An `@Schema` states exactly what the validation does ("unique ignoring case" for a
+aggregate's delete may remove meanwhile documents the 409 for that case (golden `replaceTags`). **A named party's write**
+(an approver's approve and reject) documents each case by the order of the checks (4.8): once a reassignment has
+committed, the former party gets the stranger's 404 (or the reader's 403 `<ENTITY>_NOT_YOURS`), said in that
+code's description ("or no longer yours to decide"); the 409 `OPTIMISTIC_LOCK_CONFLICT` is a stale version, a
+reassignment racing the call among them, never "after a reassignment". An `@Schema` states exactly what the validation does ("unique ignoring case" for a
 format-validated field, whose surrounding spaces are a 400).
 List descriptions explain the paging (cursor: `after` / `pageInfo.nextCursor`; offset: `page` /
 `size`, limits from configuration). Filters are `@ParameterObject`. A description that is exactly one
@@ -1064,7 +1077,15 @@ Golden: the todo attachments (`TodoAttachment`, `TodoService`). Without the piec
 `/crud-gen bootstrap` (never hand-write an upload flow).
 
 ## Step 6: Integration tests (always)
-Read `references/tests.md` and follow the golden test classes. With `{{tenancy}}` not `none`, also
+Read `references/tests.md` and follow the golden test classes. **The test plan, before the first test class:** every
+tests.md row that applies to the entity, one line per row and per variant the row multiplies over (each write, each
+list, each reach, each party, each state, each bounded, normalised or decimal field), each naming the test method that
+will cover it: `4 · approve · stale version → approveWithAStaleVersionIs409`, `25g · create · amount → the 201's body
+in amountsAnswerTheColumnsScale`. A row that applies only in part still gets its line (a NEWEST sort: row 16's tie).
+After Step 7's green build, tick each line against the written test: the method exists and asserts what the row's
+*Asserts* column says, on the response and at the variant the line names; a gap is fixed and rebuilt before the line
+is ticked. The ticked plan goes into the report (unattended too); a file, if one helps, only under `target/` (Step 7).
+With `{{tenancy}}` not `none`, also
 generate `EntityNameTenantIsolationIntegrationTest` (golden: the skills repo's
 `overlays/tenancy/src/test/java/com/example/app/todo/TodoTenantIsolationIntegrationTest.java`):
 another tenant's member holding the role that writes the record (`newUserIn(newTenant())`, or
@@ -1123,21 +1144,19 @@ checklist's review item stays open until that reviewer's report is clean.
       the profiles (Step 1).
 - [ ] Permissions asked, never guessed (Step 1): the actions, reach, roles, area and prerequisites in *Decisions per
       entity*; the constants in `Permission` and each role's lines in `Role`; every handler `@Requires`/`@SignedIn`/
-      `@Public`; an owned entity's `<Entity>Policy` with its list scope, its table test (every party × action × state,
-      each refusal's code and arguments, tests.md row 14) and its refused-write DEBUG log test (row 14b); `RoleTest`,
+      `@Public`; an owned entity's `<Entity>Policy` with its list scope; `RoleTest`,
       `PermissionTest` and `EndpointContractIntegrationTest` green. With `authorization: roles-piece`, the grant
       changeset for the built-in roles the developer named (`ADMIN` among them), a new built-in role's seeding
       changeset, and `BuiltInRolesIntegrationTest` green. A detail several reaches read `@Requires` each reach's READ,
-      a list per reach (AUTHZ-03, AUTHZ-05); each `allowedActions` flag names its endpoint's permission, proven by
-      its `AllowedActionContract` row (AUTHZ-07, references/tests.md row 28l).
+      a list per reach (AUTHZ-03, AUTHZ-05); each `allowedActions` flag names its endpoint's permission (AUTHZ-07).
 - [ ] Each POST's REL-11 verdict in *Decisions per entity* (refused twice by a key or version; or none of
       money, outside effects, counted things, another person, legal weight; or the open item reported).
-- [ ] Every 409 and 500 a test reaches asserts its code and no internals (tests.md row 22b); each date filter
-      parameter has its bound and `-300000-01-01` tests (row 25c).
+- [ ] **The test plan** (Step 6): every applicable tests.md row, per variant, against its method, each line ticked
+      against the written test after the green build, and the ticked plan in the report. The rows themselves stay in
+      tests.md; this list doesn't repeat them.
 - [ ] Every absence assertion (a stranger's empty `?ids=`, a row left out) follows, in the same test, the same
       call showing the record to its party (TEST-16); every 400 a service raises about a request field carries its
       `errors` pointer (`#/approverId`, ERR-07).
-- [ ] A record listed at several reaches: every list row per list (tests.md, before *Required tests*).
 - [ ] A convention changed during the run (what a role holds, what a permission means): the roles'
       grants and the profiles say the new rule, and no comment generated earlier still says the old one
       (grep them).
@@ -1149,20 +1168,16 @@ checklist's review item stays open until that reviewer's report is clean.
 - [ ] A party a write names to act: its `NamedParty` constant with the owner's answer to "may the owner name
       themselves?" (`Owner`, recorded), the check after `requireUser` (409 `<ENTITY>_<PARTY>_INELIGIBLE`) and, for
       `NEVER_NAMED`, the 400 `<ENTITY>_<PARTY>_IS_OWNER` before it, its picker the users dropdown (no dropdown of the
-      module's own; it leaves the caller out for `NEVER_NAMED`), the stale party's reassignment, tests.md row 27e, and
-      each of the party's writes raced against the change of party (row 13e) (4.3, AUTHZ-04, REST-13, TEST-05).
+      module's own; it leaves the caller out for `NEVER_NAMED`), the stale party's reassignment, its docs by the order of
+      the checks (4.9) (4.3, AUTHZ-04, REST-13).
 - [ ] A state the owner releases (a draft): from which state each other reach sees the record, asked and recorded
-      (unattended: from the release on, assumed), one condition in the reach's list scope and the policy's `read`,
-      tests.md row 14c (AUTHZ-05).
+      (unattended: from the release on, assumed), one condition in the reach's list scope and the policy's `read`
+      (AUTHZ-05), and every runbook line about that reach in the recorded answer's words.
 - [ ] Each flag and its write decide the caller's permission from the request alone (`@Requires`,
       `CurrentUser.holds`): no write re-reads the caller's own permission from the database (AUTHZ-07). The status
-      enum carries no method the code doesn't call (SMELL-18). Each decimal stored at its column's scale, tests.md
-      row 25g (JAVA-15).
+      enum carries no method the code doesn't call (SMELL-18). Each decimal stored at its column's scale (JAVA-15).
 - [ ] Per offered filter, "index this filter?" asked and recorded (unattended: the rules' answer, else no index,
-      assumed). Row 28: every offered order and each requested filter index names its index, which exists; each
-      list's first page and a cursor list's batch after a cursor are planned on its order's index (4.1); a range
-      filter offered under its own order only; row 18b:
-      the `ids` filter's statement count.
+      assumed), a scope's fixed condition among them (4.1); a range filter offered under its own order only.
 - [ ] A changeset that backfills existing rows, once the project has a release in production: row 30 on
       the upgraded database (until the first release the upgrade path is inert: record it; tests.md, *Upgrading a
       used database*).

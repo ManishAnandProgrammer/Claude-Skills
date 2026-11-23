@@ -587,7 +587,8 @@ resilience or failure-injection test is Medium).
 - **Check:** every new or changed behaviour covers:
   - the happy path **and** its refusals (400 / 404 / 409 / state);
   - the edges: empty, max size, boundaries, each bounded field **on create and on update** (both
-    sides of the bound, on both paths);
+    sides of the bound, on both paths), and every other rule of a field (required, stripped, blank stored as
+    `null`) on each write that takes the field;
   - the list sizes 0, 1 and more than one page;
   - every member of a closed set (TEST-15);
   - the illegal transition and the overrun (TEST-12);

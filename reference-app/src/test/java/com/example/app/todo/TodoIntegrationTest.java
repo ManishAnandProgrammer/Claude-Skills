@@ -16,9 +16,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -84,6 +87,8 @@ class TodoIntegrationTest extends IntegrationTest {
             assertThat(batches).hasSizeLessThan(20);
             ResultActions batch = getAs(user.accessToken(), next).andExpect(status().isOk());
             batches.add(read(batch, "$.response[*].title"));
+            Map<String, Object> pageInfo = read(batch, "$.pageInfo");
+            assertThat(pageInfo.keySet()).isSubsetOf("nextCursor", "hasMore");
             if (Boolean.TRUE.equals(read(batch, "$.pageInfo.hasMore"))) {
                 next = firstBatch + "&after=" + read(batch, "$.pageInfo.nextCursor");
             } else {
@@ -155,13 +160,13 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Update edits the todo, can move it to another list, and increments the version")
+    @DisplayName("Update edits the todo (its title stripped, as on create), can move it to another list, and increments the version")
     void updateChangesTheFieldsAndBumpsTheVersion() throws Exception {
         TestUser user = newUser();
         String id = createTodo(user, createList(user, "First"), "Draft", "LOW", null);
         String secondList = createList(user, "Second");
 
-        putAs(user.accessToken(), TODOS + "/" + id, updatePayload(secondList, "Final", 0))
+        putAs(user.accessToken(), TODOS + "/" + id, updatePayload(secondList, "  Final  ", 0))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response.title").value("Final"))
                 .andExpect(jsonPath("$.response.todoListId").value(secondList))
@@ -391,14 +396,35 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A blank title is 400 VALIDATION_FAILED naming title")
-    void createWithABlankTitleIs400() throws Exception {
+    @DisplayName("An update without a list, title, priority or version is 400 naming each field")
+    void updateWithoutRequiredFieldsIs400() throws Exception {
         TestUser user = newUser();
+        String id = createTodo(user, createList(user, "Required"), "Task", "LOW", null);
 
-        postAs(user.accessToken(), TODOS, todoPayload(createList(user, "Blank"), "   ", "LOW", null))
+        putAs(user.accessToken(), TODOS + "/" + id, "{}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[*].pointer", containsInAnyOrder("#/todoListId", "#/title", "#/priority", "#/version")));
+    }
+
+    @Test
+    @DisplayName("A blank title is 400 VALIDATION_FAILED naming title, on create and on update; nothing changes")
+    void aBlankTitleIs400OnCreateAndUpdate() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user, "Blank");
+        String id = createTodo(user, listId, "Kept", "LOW", null);
+
+        postAs(user.accessToken(), TODOS, todoPayload(listId, "   ", "LOW", null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[0].pointer").value("#/title"));
+        putAs(user.accessToken(), TODOS + "/" + id, updatePayload(listId, "   ", 0))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/title"));
+        getAs(user.accessToken(), TODOS + "/" + id)
+                .andExpect(jsonPath("$.response.title").value("Kept"))
+                .andExpect(jsonPath("$.response.version").value(0));
     }
 
     @Test
@@ -455,7 +481,7 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Blank notes are stored as none (null), so \"no notes\" has one representation")
+    @DisplayName("Blank notes are stored as none (null), on create and on update, so \"no notes\" has one representation")
     void blankNotesAreStoredAsNone() throws Exception {
         TestUser user = newUser();
         String listId = createList(user, "Blank notes");
@@ -463,9 +489,14 @@ class TodoIntegrationTest extends IntegrationTest {
                 {"todoListId": "%s", "title": "Blank notes", "notes": "%s", "priority": "LOW"}
                 """;
 
-        postAs(user.accessToken(), TODOS, notesPayload.formatted(listId, "Kept"))
+        String id = read(postAs(user.accessToken(), TODOS, notesPayload.formatted(listId, "Kept"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.response.notes").value("Kept"));
+                .andExpect(jsonPath("$.response.notes").value("Kept")), "$.response.id");
+        putAs(user.accessToken(), TODOS + "/" + id, """
+                {"todoListId": "%s", "title": "Blank notes", "notes": "   ", "priority": "LOW", "version": 0}
+                """.formatted(listId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.notes").value(nullValue()));
         postAs(user.accessToken(), TODOS, notesPayload.formatted(listId, "   "))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.response.notes").value(nullValue()));
@@ -642,6 +673,23 @@ class TodoIntegrationTest extends IntegrationTest {
 
         assertThat(titlesOfEveryBatch(user, TODOS + "?sort=NEWEST&size=2")).containsExactly(
                 List.of("Fifth", "Fourth"), List.of("Third", "Second"), List.of("First"));
+    }
+
+    @Test
+    @DisplayName("NEWEST batches split inside a tie on the creation time: the id breaks it, every todo once")
+    void newestBatchesSplitInsideATieOnTheCreationTime() throws Exception {
+        TestUser user = newUser();
+        String listId = createList(user, "Created together");
+        Map<String, String> titlesById = new TreeMap<>(Comparator.reverseOrder());
+        for (String title : List.of("One", "Two", "Three", "Four", "Five")) {
+            titlesById.put(createTodo(user, listId, title, "LOW", null), title);
+        }
+        assertThat(sql("update todos set created_at = timestamptz '2026-01-05 09:00:00+00' where todo_list_id = ?",
+                UUID.fromString(listId))).isEqualTo(5);
+        List<String> byIdDescending = List.copyOf(titlesById.values());
+
+        assertThat(titlesOfEveryBatch(user, TODOS + "?sort=NEWEST&size=2")).containsExactly(
+                byIdDescending.subList(0, 2), byIdDescending.subList(2, 4), byIdDescending.subList(4, 5));
     }
 
     @Test

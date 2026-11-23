@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -76,16 +77,19 @@ class PlanAllowedActionsIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("A PLANNED plan of an open todo allows every action, with no reasons")
+    @DisplayName("A PLANNED plan of an open todo allows every action, with no reasons, on the detail and its list row")
     void aPlannedPlanAllowsEverything() throws Exception {
         Planned planned = planned();
 
-        getAs(planned.user().accessToken(), PLANS + "/" + planned.planId())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response.allowedActions.reschedule.allowed").value(true))
-                .andExpect(jsonPath("$.response.allowedActions.reschedule.reasons", empty()))
-                .andExpect(jsonPath("$.response.allowedActions.markDone.allowed").value(true))
-                .andExpect(jsonPath("$.response.allowedActions.cancel.allowed").value(true));
+        for (String[] read : new String[][] {
+                {PLANS + "/" + planned.planId(), "$.response.allowedActions"},
+                {PLANS + "?todoId=" + planned.todoId(), "$.response[0].allowedActions"}}) {
+            ResultActions answer = getAs(planned.user().accessToken(), read[0]).andExpect(status().isOk());
+            for (String flag : List.of("reschedule", "markDone", "cancel")) {
+                answer.andExpect(jsonPath(read[1] + "." + flag + ".allowed").value(true))
+                        .andExpect(jsonPath(read[1] + "." + flag + ".reasons", empty()));
+            }
+        }
     }
 
     @Test

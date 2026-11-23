@@ -359,7 +359,10 @@ and Policy.
     logs `Write refused: [<codes>]`, the codes alone (`PlanAllowedActionsIntegrationTest.aRefusedWriteIsLoggedAtDebug`);
   - **the allowed actions' shape**: an integration test per resource with flags, on the detail and a list row,
     asserting `allowed`, every reason's `errorCode` and that a reason's `message` equals the write's `detail`
-    under the same `Accept-Language` (`PlanAllowedActionsIntegrationTest`, `TodoRequesterIntegrationTest`);
+    under the same `Accept-Language` (`PlanAllowedActionsIntegrationTest`, `TodoRequesterIntegrationTest`); per
+    party that may act, every flag it may use allowed with no reasons (`aPlannedPlanAllowsEverything`), and a
+    refusal at an edge (a window in days, a configured limit) through the flag on both sides of it (crud-gen
+    tests.md row 28m);
   - **the converter**: each role's token becomes exactly its permissions and nothing else, an unknown role or
     none grants nothing (`AccessIntegrationTest`);
   - every role holds its permissions' prerequisites (`RoleTest`); reach and name agree, every area is used
