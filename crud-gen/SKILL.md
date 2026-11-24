@@ -251,10 +251,18 @@ row's tenant (`SELECT uuidv7(), r.tenant_id, r.id, ...`) and lifts `FORCE` on `r
 transaction, its rollback too (TEN-34); schema per tenant's is a tenant changeset (it runs in every schema); a new
 tenant gets the permission from the enum (row mode) or the changeset (schema per tenant) at its provisioning. Roles an
 admin built stay as they are: the admin gives the new permission to them. **An owned entity** (a reach other than none, or a second party such as a requester) gets a
-`<Entity>Policy` in its service package (golden `TodoPolicy`, tested by a table like `TodoPolicyTest`): a `Decision`
-per rule (`read`, `edit`, an action's own), the list's condition (`listScope`, a `PredicateSpecification` its
-Criteria list adds), and the rules Step 1 and Step 3 found (a second party's rights, a terminal status that freezes the
-record, an amount and the module setting that bounds it; never a role's column). A response carries
+`<Entity>Policy` in its service package (golden `TodoPolicy`, `PlanPolicy`, tested by a table like `TodoPolicyTest`): a `Decision`
+per rule (an action's own; `read` and `edit` when anyone besides the owner sees the record) and the rules Step 1 and
+Step 3 found (a second party's rights, a terminal status that freezes the record, an amount and the module setting
+that bounds it; never a role's column). **"Own" is defined once, in one of two shapes, never mixed** (AUTHZ-05):
+**the owner alone** (the `_OWN` reach, no second party, no other reach; golden `PlanService`, `PlanPolicy`) puts the
+owner's id in every query, the list's Criteria query taking `ownerId` and the detail and each write loading
+`findByIdAndOwnerId` (`findForUpdateByIdAndOwnerId` when locked), its policy holding the state's rules only, no
+`listScope` or `read`; **anyone else too** (a second party, another reach; golden `TodoService`, `TodoPolicy`) lets
+the policy say who sees what: the lists add its `listScope(callerId)` (a `PredicateSpecification` the Criteria list
+adds; one per reach), the detail and each write load by id and ask `policy.read` / `policy.edit` (the not-found
+refusal for a stranger), a locking load takes its `editScope`. A `listScope` beside a `findByIdAndOwnerId` load is
+"own" defined twice. A response carries
 `allowedActions` for every action whose answer can differ between records the caller sees, state rules included
 (AUTHZ-07; golden `TodoAllowedActionsResponse`, `PlanAllowedActionsResponse`): each an `AllowedAction` (allowed and
 every reason, a reason the code and its existing message) made by `AllowedActionMapper.toAllowedAction(name,
@@ -876,8 +884,8 @@ resolvedParents…)` (only mutable fields; moves through the entity method), `to
 
 ### 4.6 Repository
 `<Entity>Repository extends {{BaseRepository}}<Entity, ID>, Custom<Entity>Repository`, plus
-`findByIdAndOwnerId` when owned by its owner alone (an owned entity with a policy loads by id and asks it:
-golden `TodoService`), and a lock only for a rule no constraint, foreign key or
+`findByIdAndOwnerId` when the owner alone sees it (golden `PlanRepository`); an entity whose policy has a `listScope`
+loads by id and asks the policy instead (golden `TodoService`): one shape per entity, Step 1's *An owned entity*, AUTHZ-05; and a lock only for a rule no constraint, foreign key or
 `@Version` holds (DATA-29), with a one-line javadoc naming that rule: a
 `@Lock(PESSIMISTIC_WRITE) findForUpdateBy…` when a write changes its member rows (files, links) or
 deletes it (golden `TodoRepository`), also taken on a parent before a cap, a multi-row rule or a check
@@ -939,8 +947,9 @@ can remove by cascade (a tag's delete removes its `todo_tags` rows) are deleted 
 before the root's own delete (golden `TodoTagRepository.deleteAllOfTodo`), since a versioned delete
 per row misses the removed ones (409); delete loads (404) then flushes; a state change on an entity
 goes through a method that guards the state (an `edit(...)` calling `requirePending()`; golden
-`Plan.reschedule` calling `requirePlanned()`, `Plan.changeStatus` through `PlanStatus.canBecome`), never public setters a later caller can use in the wrong state; ownership through
-`findByIdAndOwnerId` (another user's record is 404); parents written into are read with the plain
+`Plan.reschedule` calling `requirePlanned()`, `Plan.changeStatus` through `PlanStatus.canBecome`), never public setters a later caller can use in the wrong state; ownership in the entity's one shape (Step 1's
+*An owned entity*: `findByIdAndOwnerId` for the owner alone, a load by id and the policy's `read`/`edit` beside a
+`listScope`; another user's record is 404); parents written into are read with the plain
 owned lookup (`getOwned<Parent>`, not locked, unless the write checks the parent's state: Step 1); list sizes from `{{Paging}}`. **A parent in the same
 module** is reached through its service, public once a child needs it: `getOwned<Parent>(id)` returns
 the entity (golden `TodoListService.getOwnedTodoList`); a batch lookup for a write needs every id
@@ -1007,7 +1016,9 @@ aggregate's delete may remove meanwhile documents the 409 for that case (golden 
 committed, the former party gets the stranger's 404 (or the reader's 403 `<ENTITY>_NOT_YOURS`), said in that
 code's description ("or no longer yours to decide"); the 409 `OPTIMISTIC_LOCK_CONFLICT` is a stale version, a
 reassignment racing the call among them, never "after a reassignment". An `@Schema` states exactly what the validation does ("unique ignoring case" for a
-format-validated field, whose surrounding spaces are a 400).
+format-validated field, whose surrounding spaces are a 400), and its `example` passes the field's own rules (its
+length, pattern and bounds): a date bounded by today (`@NotAfterToday`, its `<day>To` filter too) a day already past
+(golden `TimeEntryUpdateRequest.spentOn`), never one after today, which the field refuses until that day comes.
 List descriptions explain the paging (cursor: `after` / `pageInfo.nextCursor`; offset: `page` /
 `size`, limits from configuration). Filters are `@ParameterObject`. A description that is exactly one
 error code (`"AUTHENTICATION_REQUIRED"`, `"TODO_LIST_NAME_TAKEN"`) is fine: the reference's
@@ -1079,9 +1090,9 @@ Golden: the todo attachments (`TodoAttachment`, `TodoService`). Without the piec
 ## Step 6: Integration tests (always)
 Read `references/tests.md` and follow the golden test classes. **The test plan, before the first test class:** every
 tests.md row that applies to the entity, one line per row and per variant the row multiplies over (each write, each
-list, each reach, each party, each state, each bounded, normalised or decimal field), each naming the test method that
+list and each of its filter values, each reach, each party, each state, each bounded, normalised or decimal field), each naming the test method that
 will cover it: `4 · approve · stale version → approveWithAStaleVersionIs409`, `25g · create · amount → the 201's body
-in amountsAnswerTheColumnsScale`. A row that applies only in part still gets its line (a NEWEST sort: row 16's tie).
+in amountsAnswerTheColumnsScale`. A row that applies only in part still gets its line (a NEWEST sort: row 16's times set against the ids, and its tie).
 After Step 7's green build, tick each line against the written test: the method exists and asserts what the row's
 *Asserts* column says, on the response and at the variant the line names; a gap is fixed and rebuilt before the line
 is ticked. The ticked plan goes into the report (unattended too); a file, if one helps, only under `target/` (Step 7).
@@ -1144,7 +1155,8 @@ checklist's review item stays open until that reviewer's report is clean.
       the profiles (Step 1).
 - [ ] Permissions asked, never guessed (Step 1): the actions, reach, roles, area and prerequisites in *Decisions per
       entity*; the constants in `Permission` and each role's lines in `Role`; every handler `@Requires`/`@SignedIn`/
-      `@Public`; an owned entity's `<Entity>Policy` with its list scope; `RoleTest`,
+      `@Public`; an owned entity's `<Entity>Policy` and "own" in one shape (the owner's id in every query and no
+      list scope, or a list scope beside loads by id that ask the policy; AUTHZ-05); `RoleTest`,
       `PermissionTest` and `EndpointContractIntegrationTest` green. With `authorization: roles-piece`, the grant
       changeset for the built-in roles the developer named (`ADMIN` among them), a new built-in role's seeding
       changeset, and `BuiltInRolesIntegrationTest` green. A detail several reaches read `@Requires` each reach's READ,

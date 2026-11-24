@@ -329,22 +329,6 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Another user's plan is 404 on get and delete, and stays")
-    void anotherUsersPlanIs404() throws Exception {
-        TestUser owner = newUser();
-        String id = createPlan(owner, createTodo(owner, "Mine"), "2026-11-20", "2026-11-22");
-        TestUser stranger = newUser();
-
-        getAs(stranger.accessToken(), PLANS + "/" + id)
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
-        deleteAs(stranger.accessToken(), PLANS + "/" + id)
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
-        getAs(owner.accessToken(), PLANS + "/" + id).andExpect(status().isOk());
-    }
-
-    @Test
     @DisplayName("Every plan endpoint needs a token: 401 AUTHENTICATION_REQUIRED")
     void everyEndpointNeedsAToken() throws Exception {
         String id = UUID.randomUUID().toString();
@@ -774,13 +758,6 @@ class PlanIntegrationTest extends IntegrationTest {
         return List.of(ids);
     }
 
-    private static List<String> newestFirst(List<String> calendarOrder) {
-        List<String> newest = new ArrayList<>(calendarOrder.subList(0, calendarOrder.size() - 1));
-        Collections.reverse(newest);
-        newest.add(calendarOrder.getLast());
-        return newest;
-    }
-
     private List<List<String>> idsOfEveryBatch(TestUser user, String firstBatch) throws Exception {
         List<List<String>> batches = new ArrayList<>();
         String next = firstBatch;
@@ -820,12 +797,21 @@ class PlanIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("NEWEST walks your plans newest first, every plan once")
+    @DisplayName("""
+            NEWEST walks your plans by their creation time, the id only breaking a tie: batches split inside the tie, \
+            every plan once, red under an order by the id alone, by the time alone or oldest first""")
     void newestWalksNewestFirst() throws Exception {
         TestUser user = newUser();
-        List<String> ids = newestFirst(planDays(user, LocalDate.parse("2026-04-01"), 5));
+        List<String> ids = planDays(user, LocalDate.parse("2026-04-01"), 5).stream().sorted().toList();
+        // UUIDv7 ids rise with creation, so the times are set against them: the lowest id the newest, three tied.
+        int[] daysAfterTheOldest = {2, 0, 1, 1, 1};
+        for (int rank = 0; rank < ids.size(); rank++) {
+            assertThat(sql("update plans set created_at = timestamptz '2026-01-05 09:00:00+00' + make_interval(days => ?) where id = ?",
+                    daysAfterTheOldest[rank], UUID.fromString(ids.get(rank)))).isOne();
+        }
 
-        assertThat(flatten(idsOfEveryBatch(user, PLANS + "?sort=NEWEST&size=2"))).containsExactlyElementsOf(ids);
+        assertThat(idsOfEveryBatch(user, PLANS + "?sort=NEWEST&size=2")).containsExactly(
+                List.of(ids.get(0), ids.get(4)), List.of(ids.get(3), ids.get(2)), List.of(ids.get(1)));
     }
 
     @Test

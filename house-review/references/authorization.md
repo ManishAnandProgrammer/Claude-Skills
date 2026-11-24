@@ -197,12 +197,17 @@ and Policy.
   sees the record is the owner's decision, recorded in the crud profile's *Decisions per entity* (crud-gen asks it;
   unattended, from the release on, a draft the owner's alone, recorded assumed); that reach's list scope and the
   detail's rule carry the one condition (`status <> DRAFT` in both).
-- **Detect:** a list query with its own owner condition next to a policy with another; a list filtered in
-  memory after the query; a scope that needs a second statement per page; another reach shown a record in a state
+- **Detect:** a list query with its own owner condition next to a policy with another; "own" defined twice, a
+  policy's `listScope` for the lists beside a detail or write that loads by its own owner condition
+  (`findByIdAndOwnerId`), or the reverse (one shape per entity, crud-gen Step 1's *An owned entity*: the owner alone
+  in every query and no `listScope`, golden `PlanService`; or a load by id asking the policy beside its `listScope`,
+  golden `TodoService`); a list filtered in memory after the query; a scope that needs a second statement per page; another reach shown a record in a state
   its owner hasn't released (a draft in the approver's or finance's list or detail), or kept from it, with no
   recorded answer: the unrecorded answer is the finding, whichever way the code went.
-- **Not a finding when:** a facade's batch lookup for another module states that it is the scope's condition
-  written as its own query (`TodoRepository.findViewsByIdInAndOwnerId`); another reach sees a released state by a
+- **Not a finding when:** a record only its owner sees has the owner's id in every query, the list's and the
+  loads' alike, and no policy scope (golden `PlanService`: the one condition is the owner's id); a facade's batch
+  lookup for another module states that it is the scope's condition written as its own query
+  (`TodoRepository.findViewsByIdInAndOwnerId`); another reach sees a released state by a
   recorded decision (either answer), its scope and detail on the one condition.
 - **Severity:** High when the list shows what the detail refuses; Medium otherwise.
 

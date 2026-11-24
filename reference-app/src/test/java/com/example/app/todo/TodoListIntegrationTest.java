@@ -598,19 +598,20 @@ class TodoListIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("sort=NAME (the default) is alphabetical; NEWEST is newest first")
+    @DisplayName("sort=NAME (the default) is alphabetical; NEWEST follows the creation time, not the id")
     void sortOrdersThePage() throws Exception {
         TestUser user = newUser();
-        createList(user, "Alpha");
+        String alpha = createList(user, "Alpha");
         createList(user, "Charlie");
         createList(user, "Bravo");
+        assertThat(sql("update todo_lists set created_at = created_at + interval '1 hour' where id = ?", UUID.fromString(alpha))).isOne();
 
         getAs(user.accessToken(), LISTS)
                 .andExpect(jsonPath("$.response[*].name", contains("Alpha", "Bravo", "Charlie")));
         getAs(user.accessToken(), LISTS + "?sort=NAME")
                 .andExpect(jsonPath("$.response[*].name", contains("Alpha", "Bravo", "Charlie")));
         getAs(user.accessToken(), LISTS + "?sort=NEWEST")
-                .andExpect(jsonPath("$.response[*].name", contains("Bravo", "Charlie", "Alpha")));
+                .andExpect(jsonPath("$.response[*].name", contains("Alpha", "Bravo", "Charlie")));
     }
 
     @Test

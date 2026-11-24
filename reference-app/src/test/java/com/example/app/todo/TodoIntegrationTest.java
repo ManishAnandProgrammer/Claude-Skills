@@ -16,7 +16,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -661,35 +660,27 @@ class TodoIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("NEWEST batches walk to the end, newest first")
-    void newestBatchesWalkToTheEnd() throws Exception {
+    @DisplayName("""
+            NEWEST follows the creation time, the id only breaking a tie: batches split inside the tie, every todo \
+            once, red under an order by the id alone, by the time alone or oldest first""")
+    void newestFollowsTheCreationTimeThenTheId() throws Exception {
         TestUser user = newUser();
-        String listId = createList(user, "Newest");
-        createTodo(user, listId, "First", "LOW", "2026-12-03");
-        createTodo(user, listId, "Second", "LOW", null);
-        createTodo(user, listId, "Third", "LOW", "2026-12-01");
-        createTodo(user, listId, "Fourth", "LOW", "2026-12-05");
-        createTodo(user, listId, "Fifth", "LOW", "2026-12-02");
-
-        assertThat(titlesOfEveryBatch(user, TODOS + "?sort=NEWEST&size=2")).containsExactly(
-                List.of("Fifth", "Fourth"), List.of("Third", "Second"), List.of("First"));
-    }
-
-    @Test
-    @DisplayName("NEWEST batches split inside a tie on the creation time: the id breaks it, every todo once")
-    void newestBatchesSplitInsideATieOnTheCreationTime() throws Exception {
-        TestUser user = newUser();
-        String listId = createList(user, "Created together");
-        Map<String, String> titlesById = new TreeMap<>(Comparator.reverseOrder());
+        String listId = createList(user, "Created out of id order");
+        Map<String, String> titlesById = new TreeMap<>();
         for (String title : List.of("One", "Two", "Three", "Four", "Five")) {
             titlesById.put(createTodo(user, listId, title, "LOW", null), title);
         }
-        assertThat(sql("update todos set created_at = timestamptz '2026-01-05 09:00:00+00' where todo_list_id = ?",
-                UUID.fromString(listId))).isEqualTo(5);
-        List<String> byIdDescending = List.copyOf(titlesById.values());
+        List<String> ids = List.copyOf(titlesById.keySet());
+        List<String> byId = List.copyOf(titlesById.values());
+        // UUIDv7 ids rise with creation, so the times are set against them: the lowest id the newest, three tied.
+        int[] daysAfterTheOldest = {2, 0, 1, 1, 1};
+        for (int rank = 0; rank < ids.size(); rank++) {
+            assertThat(sql("update todos set created_at = timestamptz '2026-01-05 09:00:00+00' + make_interval(days => ?) where id = ?",
+                    daysAfterTheOldest[rank], UUID.fromString(ids.get(rank)))).isOne();
+        }
 
         assertThat(titlesOfEveryBatch(user, TODOS + "?sort=NEWEST&size=2")).containsExactly(
-                byIdDescending.subList(0, 2), byIdDescending.subList(2, 4), byIdDescending.subList(4, 5));
+                List.of(byId.get(0), byId.get(4)), List.of(byId.get(3), byId.get(2)), List.of(byId.get(1)));
     }
 
     @Test

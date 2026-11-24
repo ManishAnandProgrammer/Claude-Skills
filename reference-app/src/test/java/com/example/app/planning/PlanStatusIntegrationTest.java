@@ -1,10 +1,12 @@
 package com.example.app.planning;
 
+import com.example.app.planning.domain.PlanStatus;
 import com.example.app.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -232,6 +234,42 @@ class PlanStatusIntegrationTest extends IntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
         getAs(user.accessToken(), PLANS + "/" + id).andExpect(jsonPath("$.response.status").value("PLANNED"));
+    }
+
+    @ParameterizedTest
+    @EnumSource(PlanStatus.class)
+    @DisplayName("""
+            A stranger's read and every write of a plan in each status, the final ones included, are 404 PLAN_NOT_FOUND, \
+            never the status's 409, which would tell them the plan exists and its status; the plan unchanged""")
+    void aStrangersEveryCallIs404InEveryStatus(PlanStatus planStatus) throws Exception {
+        TestUser owner = newUser();
+        String id = createPlan(owner, STARTS_ON, "2026-01-12");
+        if (planStatus != PlanStatus.PLANNED) {
+            changeStatus(owner, id, planStatus.name(), dayFor(planStatus.name())).andExpect(status().isOk());
+        }
+        long version = versionOf(owner, id);
+        TestUser stranger = newUser();
+
+        getAs(stranger.accessToken(), PLANS + "/" + id)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+        putAs(stranger.accessToken(), PLANS + "/" + id, """
+                {"startsOn": "2026-01-13", "endsOn": "2026-01-14", "version": %d}
+                """.formatted(version))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+        for (PlanStatus target : PlanStatus.values()) {
+            changeStatus(stranger, id, target.name(), dayFor(target.name()), version)
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+        }
+        deleteAs(stranger.accessToken(), PLANS + "/" + id)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_NOT_FOUND"));
+        getAs(owner.accessToken(), PLANS + "/" + id)
+                .andExpect(jsonPath("$.response.status").value(planStatus.name()))
+                .andExpect(jsonPath("$.response.startsOn").value(STARTS_ON))
+                .andExpect(jsonPath("$.response.version").value(version));
     }
 
     @Test

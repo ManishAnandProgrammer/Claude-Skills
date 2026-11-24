@@ -601,7 +601,10 @@ resilience or failure-injection test is Medium).
   - a 403 for a lower or sibling role;
   - a 401 with no token;
   - a 404 for another user's or tenant's record (403 when it's visible but the action is
-    refused);
+    refused), on every write **in every state** of the record, the frozen and final ones included: a stranger's
+    write tested on a draft alone passes a check of the state moved before the scope's, whose 409 tells them the
+    record exists and its status (crud-gen tests.md row 15; golden
+    `PlanStatusIntegrationTest.aStrangersEveryCallIs404InEveryStatus`);
   - *profile-optional:* the positive escape-valve test, where a role that may cross the boundary
     really succeeds.
 
@@ -721,7 +724,10 @@ resilience or failure-injection test is Medium).
   transaction is rolled back when its connection returns: the test silently runs on data that isn't
   there. Fixture writes go through a helper that commits (`sql(...)` on the test base).
 - **Also:** an order test whose fixtures already come out in the expected order passes with the
-  sort ignored: fixtures must give a different result under every order and direction.
+  sort ignored: fixtures must give a different result under every order and direction. A creation-time order
+  (NEWEST) over UUIDv7 ids is one: rows created one by one come out in id order, so an order by the id alone passes,
+  and a tie forced on every row leaves the id to decide; the fixtures' `created_at` is set against their id order,
+  with a tie a batch splits (crud-gen tests.md row 16).
 
 ### TEST-11: A collection needs a bound (`COLLECTION-WITHOUT-A-BOUND`)
 - **Check:** `contains(x)` is never the only assertion on a list endpoint. With a shared database,
@@ -757,7 +763,9 @@ resilience or failure-injection test is Medium).
 ### TEST-15: Every member of a closed set; one payload, one parser
 - **Check:**
   - features taking an enum value test every member through the real seam (`@EnumSource`,
-    `SAMPLE-OF-A-CLOSED-SET`);
+    `SAMPLE-OF-A-CLOSED-SET`); an enum filter, on **every list that takes it** (each reach's list, the bare
+    collection included): a member that list's scope leaves out (a DRAFT on `/team`) sent as its filter answers an
+    empty batch after a presence check, or the decided refusal, never the hidden records (crud-gen tests.md row 19);
   - every hand-built `ObjectMapper` / `JsonMapper` reading what the web layer reads is configured
     the same way;
   - Jackson 2 and Jackson 3 are not mixed.

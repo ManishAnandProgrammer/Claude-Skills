@@ -452,7 +452,9 @@ types.
 - **Check:**
   - each controller implements an API interface `controller/api/<Name>Api` that carries
     `@Tag`, and `@Operation` + `@ApiResponse` for every status the endpoint can return;
-  - request and response DTO fields carry `@Schema` (description, example, constraints);
+  - request and response DTO fields carry `@Schema` (description, example, constraints), each `example` one the
+    field's own rules accept (a date on a `@NotAfterToday` field already past, never after today; a value within
+    its `@MaxLength` and pattern);
   - multi-line descriptions are text blocks (JAVA-13).
 - **Doc drift:** for every endpoint in scope, compare code and docs:
   - parameters and body fields: names, required, constraints;
@@ -488,11 +490,13 @@ types.
   once truncated now refused): an entry marked *breaking* in the changelog, and a check of the stored
   values (a query, or a changeset that fixes or fails on them): a stored value the new rule refuses fails
   every later PUT that sends it back.
-- **Detect:** a code-only description (`description = "AUTHENTICATION_REQUIRED"`) while springdoc's
+- **Detect:** an `example` the field's own validation refuses (a `spentOnTo` documented as a day after today
+  under `@NotAfterToday`): Low, a wrong example. A code-only description
+  (`description = "AUTHENTICATION_REQUIRED"`) while springdoc's
   i18n is on (no `springdoc.disable-i18n: true`): springdoc resolves it as a message key, and the
   published docs show the code's message, never the code a client switches on. Fix the setting (the
   reference's `config/server.yml`) and assert one code in the api-docs test.
-- **Severity:** Medium (Low for missing examples).
+- **Severity:** Medium (Low for a missing or refused example).
 - **Fix:** update the interface and `@Schema` in the same change.
 
 ### REST-21: Thin controllers

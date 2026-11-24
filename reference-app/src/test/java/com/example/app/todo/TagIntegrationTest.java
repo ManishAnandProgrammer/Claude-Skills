@@ -548,19 +548,20 @@ class TagIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("sort=NAME (the default) is alphabetical; NEWEST is newest first")
+    @DisplayName("sort=NAME (the default) is alphabetical; NEWEST follows the creation time, not the id")
     void sortOrdersThePage() throws Exception {
         TestUser user = newUser();
-        createTag(user, "Alpha");
+        String alpha = createTag(user, "Alpha");
         createTag(user, "Charlie");
         createTag(user, "Bravo");
+        assertThat(sql("update tags set created_at = created_at + interval '1 hour' where id = ?", UUID.fromString(alpha))).isOne();
 
         getAs(user.accessToken(), TAGS)
                 .andExpect(jsonPath("$.response[*].name", contains("Alpha", "Bravo", "Charlie")));
         getAs(user.accessToken(), TAGS + "?sort=NAME")
                 .andExpect(jsonPath("$.response[*].name", contains("Alpha", "Bravo", "Charlie")));
         getAs(user.accessToken(), TAGS + "?sort=NEWEST")
-                .andExpect(jsonPath("$.response[*].name", contains("Bravo", "Charlie", "Alpha")));
+                .andExpect(jsonPath("$.response[*].name", contains("Alpha", "Bravo", "Charlie")));
     }
 
     @Test
