@@ -589,7 +589,9 @@ resilience or failure-injection test is Medium).
   - the edges: empty, max size, boundaries, each bounded field **on create and on update** (both
     sides of the bound, on both paths), and every other rule of a field (required, stripped, blank stored as
     `null`) on each write that takes the field;
-  - the list sizes 0, 1 and more than one page;
+  - the list sizes 0, 1 and more than one page, and each list's row equal to its record's detail field by field
+    (a projection's same-typed arguments swap unseen otherwise; crud-gen tests.md row 16c);
+  - a configured cap a write checks on every call, with a stored value above it re-sent (row 25f);
   - every member of a closed set (TEST-15);
   - the illegal transition and the overrun (TEST-12);
   - an immutable resource (no PUT, PATCH or DELETE) answers 405 to each, tested.

@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -223,6 +224,39 @@ class PlanIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.errors[*].pointer", containsInAnyOrder("#/startsOn", "#/endsOn")))
                 .andExpect(jsonPath("$.errors[*].detail", containsInAnyOrder("must be on or after 1900-01-01", "must be on or after 1900-01-01")));
         assertThat(plansOf(user)).isOne();
+    }
+
+    @Test
+    @DisplayName("""
+            A list row is its plan's detail field by field, allowedActions aside: each field of the projection in its \
+            place, the audit fields told apart from the others of their type""")
+    void aListRowIsItsDetail() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user, "Row");
+        String id = createPlan(user, todoId, "2026-04-01", "2026-04-03");
+        patchAs(user.accessToken(), PLANS + "/" + id + "/status", """
+                {"status": "DONE", "doneOn": "2026-04-02", "version": 0}
+                """).andExpect(status().isOk());
+        UUID creator = UUID.randomUUID();
+        UUID editor = UUID.randomUUID();
+        assertThat(sql("""
+                update plans set created_at = timestamptz '2026-04-01 08:00:00+00', updated_at = timestamptz '2026-04-02 17:30:00+00',
+                       created_by = ?, updated_by = ? where id = ?""", creator, editor, UUID.fromString(id))).isOne();
+
+        Map<String, Object> detail = read(getAs(user.accessToken(), PLANS + "/" + id).andExpect(status().isOk()), "$.response");
+        Map<String, Object> row = read(getAs(user.accessToken(), PLANS + "?todoId=" + todoId).andExpect(status().isOk()), "$.response[0]");
+        detail.remove("allowedActions");
+        row.remove("allowedActions");
+
+        assertThat(detail)
+                .containsEntry("id", id).containsEntry("ownerId", user.id().toString())
+                .containsEntry("startsOn", "2026-04-01").containsEntry("endsOn", "2026-04-03")
+                .containsEntry("status", "DONE").containsEntry("doneOn", "2026-04-02")
+                .containsEntry("createdAt", "2026-04-01T08:00:00Z").containsEntry("updatedAt", "2026-04-02T17:30:00Z")
+                .containsEntry("createdBy", creator.toString()).containsEntry("updatedBy", editor.toString())
+                .containsEntry("version", 1)
+                .containsEntry("todo", Map.of("id", todoId, "title", "Row"));
+        assertThat(row).isEqualTo(detail);
     }
 
     @Test

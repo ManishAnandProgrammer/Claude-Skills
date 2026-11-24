@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -76,6 +77,36 @@ class PlanAllowedActionsIntegrationTest extends IntegrationTest {
                         """));
     }
 
+    private String refusedStatusChange(Planned planned, String target) throws Exception {
+        String day = target.equals("DONE") ? ", \"doneOn\": \"2026-03-11\"" : "";
+        return read(mvc.perform(patch(PLANS + "/" + planned.planId() + "/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + planned.user().accessToken())
+                        .header(HttpHeaders.ACCEPT_LANGUAGE, LANGUAGE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"status": "%s"%s, "version": 1}
+                                """.formatted(target, day)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_STATUS_CHANGE_INVALID")), "$.detail");
+    }
+
+    private record Refused(String flag, List<String> codes, String message) {
+    }
+
+    private void assertEveryFlagRefused(Planned planned, List<Refused> refusals) throws Exception {
+        for (String[] read : new String[][] {
+                {PLANS + "/" + planned.planId(), "$.response.allowedActions"},
+                {PLANS + "?todoId=" + planned.todoId(), "$.response[0].allowedActions"}}) {
+            ResultActions answer = getInLanguage(planned.user(), read[0]).andExpect(status().isOk());
+            for (Refused refused : refusals) {
+                String flag = read[1] + "." + refused.flag();
+                answer.andExpect(jsonPath(flag + ".allowed").value(false))
+                        .andExpect(jsonPath(flag + ".reasons[*].errorCode", contains(refused.codes().toArray())))
+                        .andExpect(jsonPath(flag + ".reasons[0].message").value(refused.message()));
+            }
+        }
+    }
+
     @Test
     @DisplayName("A PLANNED plan of an open todo allows every action, with no reasons, on the detail and its list row")
     void aPlannedPlanAllowsEverything() throws Exception {
@@ -94,34 +125,40 @@ class PlanAllowedActionsIntegrationTest extends IntegrationTest {
 
     @Test
     @DisplayName("""
-            A cancelled plan of a done todo lists both reasons against new days, on the detail and its list row, each \
-            the message the PUT itself answers with the first; the status changes name the move refused""")
+            A cancelled plan of a done todo refuses every action, on the detail and its list row: both reasons against \
+            new days, each refused status change its move, every first message the one its write answers""")
     void everyReasonAtOnce() throws Exception {
         Planned planned = cancelledWithItsTodoDone();
-
-        String detail = read(rescheduleInLanguage(planned)
+        String rescheduled = read(rescheduleInLanguage(planned)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("PLAN_CANCELLED")), "$.detail");
 
+        assertEveryFlagRefused(planned, List.of(
+                new Refused("reschedule", List.of("PLAN_CANCELLED", "PLAN_TODO_DONE"), rescheduled),
+                new Refused("markDone", List.of("PLAN_STATUS_CHANGE_INVALID"), refusedStatusChange(planned, "DONE")),
+                new Refused("cancel", List.of("PLAN_STATUS_CHANGE_INVALID"), refusedStatusChange(planned, "CANCELLED"))));
         getInLanguage(planned.user(), PLANS + "/" + planned.planId())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response.allowedActions.reschedule.allowed").value(false))
-                .andExpect(jsonPath("$.response.allowedActions.reschedule.reasons[*].errorCode",
-                        contains("PLAN_CANCELLED", "PLAN_TODO_DONE")))
-                .andExpect(jsonPath("$.response.allowedActions.reschedule.reasons[0].message").value(detail))
                 .andExpect(jsonPath("$.response.allowedActions.reschedule.reasons[1].message")
-                        .value("Todo %s is done: plan days only for an open todo.".formatted(planned.todoId())))
-                .andExpect(jsonPath("$.response.allowedActions.markDone.allowed").value(false))
-                .andExpect(jsonPath("$.response.allowedActions.markDone.reasons[0].errorCode").value("PLAN_STATUS_CHANGE_INVALID"))
-                .andExpect(jsonPath("$.response.allowedActions.markDone.reasons[0].message").value("A CANCELLED plan can't become DONE."))
-                .andExpect(jsonPath("$.response.allowedActions.cancel.reasons[0].message")
-                        .value("A CANCELLED plan can't become CANCELLED."));
-        getInLanguage(planned.user(), PLANS + "?todoId=" + planned.todoId())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response[0].id").value(planned.planId()))
-                .andExpect(jsonPath("$.response[0].allowedActions.reschedule.reasons[*].errorCode",
-                        contains("PLAN_CANCELLED", "PLAN_TODO_DONE")))
-                .andExpect(jsonPath("$.response[0].allowedActions.reschedule.reasons[0].message").value(detail));
+                        .value("Todo %s is done: plan days only for an open todo.".formatted(planned.todoId())));
+    }
+
+    @Test
+    @DisplayName("""
+            A DONE plan of an open todo refuses every action, on the detail and its list row, each for the one reason \
+            its write answers, with that write's message""")
+    void aDonePlanRefusesEveryAction() throws Exception {
+        Planned planned = planned();
+        patchAs(planned.user().accessToken(), PLANS + "/" + planned.planId() + "/status", """
+                {"status": "DONE", "doneOn": "2026-03-11", "version": 0}
+                """).andExpect(status().isOk());
+        String rescheduled = read(rescheduleInLanguage(planned)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("PLAN_DONE")), "$.detail");
+
+        assertEveryFlagRefused(planned, List.of(
+                new Refused("reschedule", List.of("PLAN_DONE"), rescheduled),
+                new Refused("markDone", List.of("PLAN_STATUS_CHANGE_INVALID"), refusedStatusChange(planned, "DONE")),
+                new Refused("cancel", List.of("PLAN_STATUS_CHANGE_INVALID"), refusedStatusChange(planned, "CANCELLED"))));
     }
 
     @Test

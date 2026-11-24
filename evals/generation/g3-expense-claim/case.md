@@ -7,7 +7,8 @@ move, each with its own permission (REST-03); a list per reach (`/mine`, `/team`
 `BusinessCalendar.today()`. A new built-in role (Level 1). Golden twins: `TodoPolicy` and `TodoRequesterIntegrationTest`
 (two parties), `PlanPolicy` and `PlanAllowedActionsIntegrationTest` (flags with every reason), `PlanStatus` (the
 workflow), `RequiresAnyOfIntegrationTest` (any-of), `todo.api.Todos` / `user.api.Users` (a person checked through a
-facade), `user.api.NamedParty` / `PermissionHolders` and `TodoRequesterPickerIntegrationTest` (a party who acts, its picker), `BusinessCalendar` (core).
+facade), `user.api.NamedParty` / `PermissionHolders` and `TodoRequesterPickerIntegrationTest` (a party who acts; its picker's
+contract the copied `NamedPartyPickerIntegrationTest`), `BusinessCalendar` (core).
 
 **Run:** `/crud-gen src/main/java/com/acme/g3/claim/domain/ExpenseClaim.java` on a `core,sign-in` copy whose
 baseline holds `ExpenseClaim`, `ExpenseClaimStatus` and `0100-expense-claims.sql` (fixture/). The roles piece isn't

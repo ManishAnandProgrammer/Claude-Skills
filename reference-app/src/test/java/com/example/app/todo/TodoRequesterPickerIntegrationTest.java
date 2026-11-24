@@ -130,24 +130,4 @@ class TodoRequesterPickerIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.response.version").value(1))
                 .andExpect(jsonPath("$.response.requesterId").value(asker.id().toString()));
     }
-
-    @Test
-    @DisplayName("""
-            The picker refuses a for you don't hold (403 ACCESS_DENIED), a for whose write names nobody and a status \
-            other than ACTIVE (400 REQUEST_PARAMETER_INVALID at the parameter)""")
-    void thePickerRefusesWhatItCantServe() throws Exception {
-        TestUser user = newUser();
-
-        getAs(user.accessToken(), PICKER + "?for=ACCOUNT_READ")
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
-        getAs(user.accessToken(), PICKER + "?for=TODO_LIST_CREATE_OWN")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.errors[0].parameter").value("for"));
-        getAs(user.accessToken(), PICKER + "?for=TODO_CREATE_OWN&status=ALL")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("REQUEST_PARAMETER_INVALID"))
-                .andExpect(jsonPath("$.errors[0].parameter").value("status"));
-    }
 }

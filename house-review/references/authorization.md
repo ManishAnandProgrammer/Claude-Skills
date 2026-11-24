@@ -168,8 +168,9 @@ and Policy.
     changes it, so an edit keeping a party who has since lost the permission passes; that party can't act (every
     call checks the permission at the request), and the house answer to a stale party is the owner's
     reassignment while the record is not final (the update, or a reassign endpoint of its own where the state
-    freezes the update); golden `TodoRequesterPickerIntegrationTest`. With tenancy the facade is `Members`
-    (membership alone: the holder check is not golden there yet);
+    freezes the update); golden `TodoRequesterPickerIntegrationTest`, the picker's own
+    `NamedPartyPickerIntegrationTest`. With tenancy the facade is `Members` (membership alone: the holder check is
+    not golden there yet);
   - no rule engine, expression strings, reflection or rules as data.
 - **Detect:** a record locked by id before its policy decides; ownership compared in the controller or the mapper; an `if (role == ...)` in a service; a limit
   read from the role; the same "is it theirs" written in two services; a policy that throws an HTTP status or
@@ -357,17 +358,20 @@ and Policy.
     test (`EndpointContractIntegrationTest.everyRequiredPermissionIsChecked`);
   - `@Public` against the chain's public paths, both ways (AUTHZ-03);
   - **a table-driven unit test per policy**: one row per rule × caller (owner, each second party, stranger, a
-    party without the READ) × state (every status, the final ones included), with every refusal in order, each
-    code with its arguments (`TodoPolicyTest`, `PlanPolicyTest`); `Decision`'s own test keeps two refusals' order
-    and `orThrow` throws the first (`DecisionTest`);
+    party without the READ, an owner who holds another reach too) × state (every status, the final ones included),
+    with every refusal in order, each code with its arguments (`TodoPolicyTest`, `PlanPolicyTest`); `Decision`'s own
+    test keeps two refusals' order and `orThrow` throws the first (`DecisionTest`);
   - **the refused write's log**, per policy: with the authorization logger at DEBUG, a write the policy refuses
     logs `Write refused: [<codes>]`, the codes alone (`PlanAllowedActionsIntegrationTest.aRefusedWriteIsLoggedAtDebug`);
   - **the allowed actions' shape**: an integration test per resource with flags, on the detail and a list row,
     asserting `allowed`, every reason's `errorCode` and that a reason's `message` equals the write's `detail`
     under the same `Accept-Language` (`PlanAllowedActionsIntegrationTest`, `TodoRequesterIntegrationTest`); per
-    party that may act, every flag it may use allowed with no reasons (`aPlannedPlanAllowsEverything`), and a
-    refusal at an edge (a window in days, a configured limit) through the flag on both sides of it (crud-gen
-    tests.md row 28m);
+    party that may act and per state, every flag asserted, allowed with no reasons or refused with its codes
+    (`aPlannedPlanAllowsEverything`, `everyReasonAtOnce`, `aDonePlanRefusesEveryAction`), and a refusal at an edge (a
+    window in days, a configured limit) through the flag on both sides of it (crud-gen tests.md row 28m); a party's
+    flag of a write it can't make `<ENTITY>_NOT_YOURS` alone, the 403's `detail` its message
+    (`TodoRequesterIntegrationTest.theRequesterReadsTheTodo`, row 28i), and a party still named who lost the reach's
+    permission answered as a stranger;
   - **the converter**: each role's token becomes exactly its permissions and nothing else, an unknown role or
     none grants nothing (`AccessIntegrationTest`);
   - every role holds its permissions' prerequisites (`RoleTest`); reach and name agree, every area is used
@@ -376,7 +380,8 @@ and Policy.
     declarations, a string `@PreAuthorize` outside `common/security`, each kind of role check, a role check
     inside `common/security`;
   - the dropdown's `for`: missing, unknown, not held (403, no statement), an unsupported reach (400), one
-    statement per call.
+    statement per call; for the users picker, the copied `NamedPartyPickerIntegrationTest` runs it for every write a
+    `NamedParty` constant names, so an entity adds its constant and no picker test of its own.
 - **Detect:** a per-endpoint 403 test where the generated one would do (it drifts); a policy tested only
   through HTTP; a policy table that asserts codes without their arguments, or lacks a party × action × state row; a
   policy with no refused-write log test; a converter test that checks containment instead of equality.

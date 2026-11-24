@@ -1088,14 +1088,17 @@ Golden: the todo attachments (`TodoAttachment`, `TodoService`). Without the piec
 `/crud-gen bootstrap` (never hand-write an upload flow).
 
 ## Step 6: Integration tests (always)
-Read `references/tests.md` and follow the golden test classes. **The test plan, before the first test class:** every
-tests.md row that applies to the entity, one line per row and per variant the row multiplies over (each write, each
-list and each of its filter values, each reach, each party, each state, each bounded, normalised or decimal field), each naming the test method that
-will cover it: `4 · approve · stale version → approveWithAStaleVersionIs409`, `25g · create · amount → the 201's body
-in amountsAnswerTheColumnsScale`. A row that applies only in part still gets its line (a NEWEST sort: row 16's times set against the ids, and its tie).
+Read `references/tests.md` and follow the golden test classes. **The test plan, before the first test class:** first
+the entity's variants, each by name: its writes, its lists (each reach's) and each filter's values, its parties (row 14's,
+an owner holding another reach among them), its states, its flags, its bounded, normalised or decimal fields, its
+configured caps. Then each tests.md row that applies × each variant its *Asserts* column multiplies over, one line each naming
+one row, one variant and the test method: `4 · approve · stale version → approveWithAStaleVersionIs409`, `28m ·
+SUBMITTED × owner · delete → aSubmittedClaimRefusesItsWrites`, `16c · /team → aTeamRowIsItsDetail`. A line naming
+several rows (`1, 2, 3 → …`) or a variant in the plural (`every flag`, `each state`) is split before the first test. A
+row that applies only in part still gets its line (a NEWEST sort: row 16's times set against the ids, and its tie).
 After Step 7's green build, tick each line against the written test: the method exists and asserts what the row's
 *Asserts* column says, on the response and at the variant the line names; a gap is fixed and rebuilt before the line
-is ticked. The ticked plan goes into the report (unattended too); a file, if one helps, only under `target/` (Step 7).
+is ticked. The ticked plan goes into the report line by line, never summarised by rows (unattended too); a file, if one helps, only under `target/` (Step 7).
 With `{{tenancy}}` not `none`, also
 generate `EntityNameTenantIsolationIntegrationTest` (golden: the skills repo's
 `overlays/tenancy/src/test/java/com/example/app/todo/TodoTenantIsolationIntegrationTest.java`):

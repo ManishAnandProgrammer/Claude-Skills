@@ -75,7 +75,8 @@ app:
     # roles:end
     # example:begin
     time-entry:
-      # Time logged in one entry, in minutes.
+      # Time logged in one entry, in minutes. Checked on every write, a PUT re-sending the stored value too:
+      # raise it any time, lower it only once no stored entry is longer.
       max-minutes: 1440
     todo:
       # Tags on one todo (distinct ids, on create and on PUT /todos/{id}/tags).

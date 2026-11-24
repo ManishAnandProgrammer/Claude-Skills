@@ -672,6 +672,7 @@ reference-app/src/main/java/$reference_path/user/service/NamedPartyService.java
 reference-app/src/main/java/$reference_path/user/repository/custom/CustomUserRepository.java
 reference-app/src/main/java/$reference_path/user/repository/impl/UserRepositoryImpl.java
 reference-app/src/test/java/$reference_path/user/PermissionHoldersIntegrationTest.java
+reference-app/src/test/java/$reference_path/user/NamedPartyPickerIntegrationTest.java
 reference-app/src/test/java/$reference_path/todo/TodoRequesterPickerIntegrationTest.java
 overlays/roles/src/test/java/$reference_path/user/PermissionHoldersAccessIntegrationTest.java
 overlays/roles/src/main/java/$reference_path/user/dto/internal/AccountCreated.java"

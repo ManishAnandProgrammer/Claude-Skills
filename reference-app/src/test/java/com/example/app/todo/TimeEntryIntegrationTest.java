@@ -337,6 +337,28 @@ class TimeEntryIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("""
+            minutes is checked on every PUT, re-sent unchanged too: an entry stored above the maximum (the limit \
+            lowered since) is 400 at #/minutes, and stays as it was""")
+    void storedMinutesAboveTheMaximumAreRefusedWhenResent() throws Exception {
+        TestUser user = newUser();
+        String todoId = createTodo(user);
+        String id = createEntry(user, todoId, 60, "2026-11-01", false);
+        assertThat(sql("update time_entries set minutes = 1500 where id = ?", UUID.fromString(id))).isOne();
+
+        putAs(user.accessToken(), entry(todoId, id), updatePayload(1500, "2026-11-01", true, 0))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[*].pointer", contains("#/minutes")))
+                .andExpect(jsonPath("$.errors[*].detail", contains("must be at most 1440")));
+        getAs(user.accessToken(), entry(todoId, id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response.minutes").value(1500))
+                .andExpect(jsonPath("$.response.billable").value(false))
+                .andExpect(jsonPath("$.response.version").value(0));
+    }
+
+    @Test
     @DisplayName("spentOn up to UTC today plus the configured day is accepted (any zone's today); the day after is 400, on create and update")
     void spentOnIsNotInTheFuture() throws Exception {
         // Before any request, so every request of the test compares with the same day.

@@ -337,8 +337,9 @@ types.
   party the owner may not be (the constant's `Owner.NEVER_NAMED`, AUTHZ-04: an approver of their own claim), the
   picker leaves the caller out in the same statement (`for` names the caller's own write, so the caller is the
   record's owner: `PermissionHolders.findHoldersOtherThan`), and the write refuses naming oneself with 400
-  `<ENTITY>_<PARTY>_IS_OWNER`; golden `TodoRequesterPickerIntegrationTest.theOwnerIsNeverTheirOwnRequester`, a
-  caller who holds the party's permission calling the picker.
+  `<ENTITY>_<PARTY>_IS_OWNER`; golden `TodoRequesterPickerIntegrationTest.theOwnerIsNeverTheirOwnRequester` (the
+  write) and the copied `NamedPartyPickerIntegrationTest` (the picker, for every party's write: a caller who holds the
+  party's permission left out, the refusals, one statement).
 - **Also:** a screen that needs a picker has its dropdown (an assignee picker for "reassign"); a
   resource other screens pick from (another entity references it) without `@DropdownCandidate` is
   worth asking about.
