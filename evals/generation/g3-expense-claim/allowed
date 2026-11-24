@@ -22,8 +22,10 @@ src/main/java/@PKG@/user/api/NamedParty.java
 # Limits and settings (4.2; the approval window, a Period) and the changelog (Step 2)
 src/main/resources/config/limits.yml
 src/main/resources/config/limits-prod.yml
-# The approval window is a module setting, not a request limit: it may land in application.yml (CFG-12, typed)
+# The approval window is a module setting, not a request limit: it may land in application.yml or in the module's own
+# config file (CFG-10, CFG-12, typed)
 src/main/resources/application.yml
+src/main/resources/config/claim.yml
 src/main/resources/db/changelog/db.changelog-master.yaml
 src/main/resources/db/changelog/changes/01[0-9][0-9]-*.sql
 # Shared test data the skill edits by design (4.8, 4.2)
